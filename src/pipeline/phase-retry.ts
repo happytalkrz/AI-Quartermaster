@@ -76,6 +76,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         if (match) {
           const pct = parseInt(match[1], 10);
           jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
+          jl.log(line.trim());
+        } else if (line.includes("[HEARTBEAT]") || line.includes("[INFO]") || line.includes("[STEP]")) {
+          jl.log(line.trim());
         }
       } : undefined,
     });

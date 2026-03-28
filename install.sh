@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+AQM_HOME="${AQM_HOME:-$HOME/.ai-quartermaster}"
+BIN_DIR="${HOME}/.local/bin"
+REPO_URL="https://github.com/happytalkrz/AI-Quartermaster.git"
+
+echo -e "${BLUE}"
+echo "  ╔═══════════════════════════════════════╗"
+echo "  ║   AI Quartermaster 설치               ║"
+echo "  ╚═══════════════════════════════════════╝"
+echo -e "${NC}"
+
+# 1. Check prerequisites
+echo -e "${YELLOW}1. 사전 요구사항 확인...${NC}"
+
+check_cmd() {
+  if ! command -v "$1" &>/dev/null; then
+    echo -e "  ${RED}✗ $1 — $2${NC}"
+    exit 1
+  fi
+  echo -e "  ${GREEN}✓ $1${NC}"
+}
+
+check_cmd "git" "https://git-scm.com 에서 설치하세요"
+check_cmd "node" "https://nodejs.org 에서 Node.js 20+ 설치하세요"
+check_cmd "npm" "Node.js 설치 시 함께 설치됩니다"
+check_cmd "gh" "https://cli.github.com 에서 설치 후 gh auth login 하세요"
+check_cmd "claude" "https://docs.anthropic.com/en/docs/claude-code 에서 설치하세요"
+echo ""
+
+# 2. Install or update
+if [ -d "$AQM_HOME" ]; then
+  echo -e "${YELLOW}2. 기존 설치 업데이트...${NC}"
+  cd "$AQM_HOME"
+  git pull --quiet
+  npm install --silent 2>/dev/null
+  echo -e "  ${GREEN}✓ 업데이트 완료${NC}"
+else
+  echo -e "${YELLOW}2. AI Quartermaster 설치...${NC}"
+  git clone --depth 1 "$REPO_URL" "$AQM_HOME" --quiet
+  cd "$AQM_HOME"
+  npm install --silent 2>/dev/null
+  echo -e "  ${GREEN}✓ 설치 완료: $AQM_HOME${NC}"
+fi
+echo ""
+
+# 3. Install aqm wrapper from bin/aqm
+echo -e "${YELLOW}3. aqm 명령어 등록...${NC}"
+mkdir -p "$BIN_DIR"
+cp "$AQM_HOME/bin/aqm" "$BIN_DIR/aqm"
+chmod +x "$BIN_DIR/aqm"
+echo -e "  ${GREEN}✓ aqm 명령어 생성: $BIN_DIR/aqm${NC}"
+
+# 4. Add to PATH if needed
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  echo ""
+  echo -e "${YELLOW}4. PATH 등록...${NC}"
+
+  SHELL_RC=""
+  if [ -f "$HOME/.zshrc" ]; then
+    SHELL_RC="$HOME/.zshrc"
+  elif [ -f "$HOME/.bashrc" ]; then
+    SHELL_RC="$HOME/.bashrc"
+  elif [ -f "$HOME/.bash_profile" ]; then
+    SHELL_RC="$HOME/.bash_profile"
+  fi
+
+  if [ -n "$SHELL_RC" ]; then
+    if ! grep -q '.local/bin' "$SHELL_RC" 2>/dev/null; then
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+      echo -e "  ${GREEN}✓ $SHELL_RC에 PATH 추가됨${NC}"
+      echo -e "  ${YELLOW}→ 새 터미널을 열거나 source $SHELL_RC 실행하세요${NC}"
+    else
+      echo -e "  ${GREEN}✓ PATH 이미 등록됨${NC}"
+    fi
+  else
+    echo -e "  ${YELLOW}→ $BIN_DIR 를 PATH에 수동 추가하세요${NC}"
+  fi
+fi
+
+echo ""
+echo -e "${GREEN}╔═══════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║        설치 완료!                      ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════╝${NC}"
+echo ""
+echo "사용법:"
+echo "  aqm setup                           초기 설정"
+echo "  aqm start                           서버 시작"
+echo "  aqm run --issue 42 --repo org/repo  수동 실행"
+echo "  aqm status                          상태 확인"
+echo "  aqm update                          업데이트"
+echo "  aqm version                         버전 확인"
+echo "  aqm uninstall                       삭제"
+echo ""

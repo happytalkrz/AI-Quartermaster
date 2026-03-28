@@ -200,13 +200,20 @@ async function startCommand(args: CliArgs): Promise<void> {
   const queue = new JobQueue(store, effectiveConfig.general.concurrency, async (job) => {
     const jl = new JobLogger(store, job.id);
     try {
+      // Check for checkpoint to resume from
+      const { loadCheckpoint } = await import("./pipeline/checkpoint.js");
+      const checkpoint = loadCheckpoint(resolve(aqRoot, "data"), job.issueNumber);
+      if (checkpoint) {
+        jl.log(`체크포인트 발견 — ${checkpoint.state} 단계부터 재개`);
+      }
+
       const result = await runPipeline({
         issueNumber: job.issueNumber,
         repo: job.repo,
         config: effectiveConfig,
         aqRoot,
         jobLogger: jl,
-        // projectRoot is NOT passed — resolved from config.projects
+        resumeFrom: checkpoint ?? undefined,
       });
 
       const ghPath = effectiveConfig.commands.ghCli.path;

@@ -96,6 +96,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
   if (resumeFrom) {
     logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
+    const { progressForState } = await import("./progress-tracker.js");
+    jl?.setProgress(progressForState(resumeFrom.state));
   }
 
   try {

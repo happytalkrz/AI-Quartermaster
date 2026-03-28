@@ -778,14 +778,7 @@ function renderJobDetail(job) {
    Phase Progress Bar
    ══════════════════════════════════════════════════════════════ */
 function renderPhaseProgress(job) {
-  const phases = job.phaseResults || [];
-  const totalPhases = Math.max(phases.length, 5);
-  const completedPhases = phases.filter(p => p.success !== undefined).length;
-  const currentPhaseIdx = phases.findIndex(p => p.success === undefined);
-  // Use fine-grained progress from server if available, otherwise fall back to phase-based calc
-  const pct = (typeof job.progress === 'number')
-    ? job.progress
-    : (totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0);
+  const pct = (typeof job.progress === 'number') ? job.progress : 0;
 
   let html = '<div class="space-y-4 mt-6">';
   html += '<div class="flex justify-between text-xs font-headline font-bold text-outline uppercase tracking-widest">';
@@ -793,27 +786,22 @@ function renderPhaseProgress(job) {
   if (job.status === 'success') {
     html += '<span class="text-[#3fb950]">' + t('complete') + '</span>';
   } else if (job.status === 'failure') {
-    html += '<span class="text-[#f85149]">' + t('failed') + '</span>';
+    html += '<span class="text-[#f85149]">' + t('failed') + ' (' + pct + '%)</span>';
   } else {
     html += '<span class="text-primary">' + pct + '% ' + t('complete') + '</span>';
   }
   html += '</div>';
 
-  // Progress segments
-  html += '<div class="flex gap-2 h-2.5">';
-  for (let i = 0; i < totalPhases; i++) {
-    if (i < completedPhases) {
-      const phase = phases[i];
-      if (phase && phase.success === false) {
-        html += '<div class="flex-1 bg-[#f85149] rounded-full"></div>';
-      } else {
-        html += '<div class="flex-1 bg-primary rounded-full"></div>';
-      }
-    } else if (i === completedPhases && (job.status === 'running' || job.status === 'queued')) {
-      html += '<div class="flex-1 bg-surface-variant rounded-full relative overflow-hidden"><div class="absolute inset-0 shimmer-bar"></div></div>';
-    } else {
-      html += '<div class="flex-1 bg-surface-variant rounded-full"></div>';
-    }
+  // Single smooth progress bar based on job.progress
+  html += '<div class="h-2.5 bg-surface-variant rounded-full overflow-hidden">';
+  if (job.status === 'failure') {
+    html += '<div class="h-full bg-[#f85149] rounded-full transition-all duration-500" style="width:' + pct + '%"></div>';
+  } else if (job.status === 'success') {
+    html += '<div class="h-full bg-[#3fb950] rounded-full" style="width:100%"></div>';
+  } else if (pct > 0) {
+    html += '<div class="h-full bg-primary rounded-full transition-all duration-500 relative overflow-hidden" style="width:' + pct + '%">';
+    html += '<div class="absolute inset-0 shimmer-bar"></div>';
+    html += '</div>';
   }
   html += '</div></div>';
 

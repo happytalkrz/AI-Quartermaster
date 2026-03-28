@@ -53,3 +53,21 @@ export function phaseProgress(index: number, total: number, internalPercent: num
   const perPhase = PHASE_EXECUTION_RANGE / total;
   return PHASE_EXECUTION_START + (index * perPhase) + (internalPercent / 100 * perPhase);
 }
+
+/** Returns progress % for a given pipeline state (for resume). */
+export function progressForState(state: string): number {
+  switch (state) {
+    case "RECEIVED": return 0;
+    case "VALIDATED": return PROGRESS_ISSUE_VALIDATED;
+    case "BASE_SYNCED": return PROGRESS_ISSUE_VALIDATED;
+    case "BRANCH_CREATED": return PROGRESS_ISSUE_VALIDATED;
+    case "WORKTREE_CREATED": return PROGRESS_ISSUE_VALIDATED;
+    case "PLAN_GENERATED": return PROGRESS_PLAN_GENERATED;
+    case "REVIEWING": return PROGRESS_REVIEW_START;
+    case "SIMPLIFYING": return PROGRESS_SIMPLIFY_START;
+    case "FINAL_VALIDATING": return PROGRESS_VALIDATION_START;
+    case "DRAFT_PR_CREATED": return PROGRESS_PR_CREATED;
+    case "DONE": return PROGRESS_DONE;
+    default: return 0;
+  }
+}

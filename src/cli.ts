@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "fs";
 import { loadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runPipeline } from "./pipeline/orchestrator.js";
-import { createLogger, setGlobalLogLevel } from "./utils/logger.js";
+import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
@@ -45,7 +45,7 @@ async function runCommand(args: CliArgs): Promise<void> {
     : config;
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const targetRoot = args.target ? resolve(args.target) : process.cwd();
-  const logger = createLogger(effectiveConfig.general.logLevel);
+  const logger = getLogger();
 
   logger.info(`AI 병참부 시작 - Issue #${args.issue} (${args.repo})`);
   logger.info(`대상 프로젝트: ${targetRoot}`);
@@ -78,8 +78,8 @@ async function checkForUpdates(aqRoot: string): Promise<void> {
 async function startCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
 
-  // Check for updates
-  await checkForUpdates(aqRoot);
+  // Check for updates (non-blocking)
+  checkForUpdates(aqRoot).catch(() => {});
 
   // Load .env
   const envPath = resolve(aqRoot, ".env");
@@ -105,7 +105,7 @@ async function startCommand(args: CliArgs): Promise<void> {
     ? { ...config, general: { ...config.general, dryRun: true } }
     : config;
   setGlobalLogLevel(effectiveConfig.general.logLevel);
-  const logger = createLogger(effectiveConfig.general.logLevel);
+  const logger = getLogger();
   const port = args.port ?? 3000;
 
   // === Pre-flight checks ===
@@ -143,7 +143,12 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   // Override pollingIntervalMs from --interval CLI arg (seconds → ms)
   if (args.interval !== undefined) {
-    effectiveConfig.general.pollingIntervalMs = args.interval * 1000;
+    const intervalMs = args.interval * 1000;
+    if (intervalMs < 10000) {
+      console.error("--interval은 최소 10초 이상이어야 합니다.");
+      process.exit(1);
+    }
+    effectiveConfig.general.pollingIntervalMs = intervalMs;
   }
 
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
@@ -261,6 +266,7 @@ async function startCommand(args: CliArgs): Promise<void> {
     app = createWebhookApp({
       config: effectiveConfig,
       webhookSecret,
+      store,
       onPipelineTrigger: (issueNumber, repo, dependencies) => {
         queue.enqueue(issueNumber, repo, dependencies);
       },
@@ -470,7 +476,7 @@ async function resumeCommand(args: CliArgs): Promise<void> {
     ? { ...config, general: { ...config.general, dryRun: true } }
     : config;
   setGlobalLogLevel(effectiveConfig.general.logLevel);
-  createLogger(effectiveConfig.general.logLevel);
+  getLogger();
 
   const result = await runPipeline({
     issueNumber,
@@ -486,7 +492,7 @@ async function resumeCommand(args: CliArgs): Promise<void> {
 async function cleanupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
-  const logger = createLogger(config.general.logLevel);
+  const logger = getLogger();
 
   logger.info("Starting worktree cleanup...");
   const removed = await cleanOldWorktrees(config.git, config.worktree, { cwd: aqRoot });

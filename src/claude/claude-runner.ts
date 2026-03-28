@@ -54,11 +54,21 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     child.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
     child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let killId: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
+      if (killId) { clearTimeout(killId); killId = undefined; }
+    };
+
     child.on("close", (code) => {
+      cleanup();
       resolve({ stdout, stderr, exitCode: code ?? 1 });
     });
 
     child.on("error", (err) => {
+      cleanup();
       resolve({ stdout, stderr: err.message, exitCode: 1 });
     });
 
@@ -70,10 +80,9 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     // Timeout
     if (config.timeout > 0) {
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         child.kill("SIGTERM");
-        // Force kill after 10s grace period
-        setTimeout(() => {
+        killId = setTimeout(() => {
           if (!child.killed) child.kill("SIGKILL");
         }, 10000);
       }, config.timeout);

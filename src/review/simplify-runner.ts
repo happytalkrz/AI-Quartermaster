@@ -3,7 +3,8 @@ import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
-import { runCli } from "../utils/cli-runner.js";
+import { runCli, runShell } from "../utils/cli-runner.js";
+import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { parseNumstat } from "../git/diff-collector.js";
 import { getLogger } from "../utils/logger.js";
 import type { ClaudeCliConfig } from "../types/config.js";
@@ -68,7 +69,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
   }
 
   // Run tests to verify simplification didn't break anything
-  const testResult = await runCli("sh", ["-c", ctx.testCommand], { cwd: ctx.cwd, timeout: 120000 });
+  const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
 
   if (testResult.exitCode !== 0) {
     logger.warn("Tests failed after simplification, rolling back");
@@ -89,8 +90,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
   const { insertions: linesAdded, deletions: linesRemoved, files: filesModified } = parseNumstat(diffResult.stdout);
 
   // Commit simplification
-  await runCli(git, ["add", "-A"], { cwd: ctx.cwd });
-  await runCli(git, ["commit", "-m", "refactor: code simplification"], { cwd: ctx.cwd });
+  await autoCommitIfDirty(git, ctx.cwd, "refactor: code simplification");
 
   logger.info(`Simplification applied: +${linesAdded} -${linesRemoved} in ${filesModified.length} files`);
 

@@ -1,6 +1,7 @@
-import { runCli } from "../utils/cli-runner.js";
+import { runCli, runShell } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import type { CommandsConfig } from "../types/config.js";
+import { autoCommitIfDirty } from "../git/commit-helper.js";
 
 const logger = getLogger();
 
@@ -16,7 +17,7 @@ export interface ValidationCheck {
 }
 
 async function runCheck(name: string, command: string, options: { cwd: string }, timeout = 300000): Promise<ValidationCheck> {
-  const result = await runCli("sh", ["-c", command], { cwd: options.cwd, timeout });
+  const result = await runShell(command, { cwd: options.cwd, timeout });
   return {
     name,
     passed: result.exitCode === 0,
@@ -43,19 +44,15 @@ export async function runFinalValidation(
 
   // Run lint sequentially (has autofix retry)
   if (commands.lint) {
-    let lintResult = await runCli("sh", ["-c", commands.lint], { cwd: options.cwd, timeout: 60000 });
+    let lintResult = await runShell(commands.lint, { cwd: options.cwd, timeout: 60000 });
     if (lintResult.exitCode !== 0) {
       // Try autofix
       logger.info("  Lint failed, attempting autofix...");
-      await runCli("sh", ["-c", `${commands.lint} --fix`], { cwd: options.cwd, timeout: 60000 });
+      await runShell(`${commands.lint} --fix`, { cwd: options.cwd, timeout: 60000 });
       // Commit fixes if any
-      const status = await runCli(git, ["status", "--porcelain"], { cwd: options.cwd });
-      if (status.stdout.trim()) {
-        await runCli(git, ["add", "-A"], { cwd: options.cwd });
-        await runCli(git, ["commit", "-m", "style: lint autofix"], { cwd: options.cwd });
-      }
+      await autoCommitIfDirty(git, options.cwd, "style: lint autofix");
       // Re-check
-      lintResult = await runCli("sh", ["-c", commands.lint], { cwd: options.cwd, timeout: 60000 });
+      lintResult = await runShell(commands.lint, { cwd: options.cwd, timeout: 60000 });
     }
     checks.push({
       name: "lint",
@@ -66,7 +63,7 @@ export async function runFinalValidation(
 
   // Run build sequentially
   if (commands.build) {
-    const buildResult = await runCli("sh", ["-c", commands.build], { cwd: options.cwd, timeout: 120000 });
+    const buildResult = await runShell(commands.build, { cwd: options.cwd, timeout: 120000 });
     checks.push({
       name: "build",
       passed: buildResult.exitCode === 0,

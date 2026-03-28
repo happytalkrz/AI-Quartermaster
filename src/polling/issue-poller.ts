@@ -57,11 +57,10 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
-    for (const project of projects) {
-      for (const label of triggerLabels) {
-        await this.pollProjectLabel(project.repo, label, ghPath, ghTimeout);
-      }
-    }
+    const tasks = projects.flatMap(p =>
+      triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
+    );
+    await Promise.allSettled(tasks);
   }
 
   private async pollProjectLabel(

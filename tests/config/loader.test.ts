@@ -26,7 +26,7 @@ git:
 `);
     const config = loadConfig(testDir);
     expect(config.general.projectName).toBe("test-project");
-    expect(config.git.defaultBaseBranch).toBe("master");
+    expect(config.git.defaultBaseBranch).toBe("main");
   });
 
   it("should throw if config.yml is missing", () => {

@@ -1,8 +1,8 @@
-import { readFileSync } from "fs";
 import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
+import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 
 export interface IssuePlan {
@@ -83,12 +83,7 @@ export async function generateExecutionPlan(
   aqRoot: string
 ): Promise<ExecutionPlan> {
   const promptTemplatePath = resolve(aqRoot, "prompts/issue-orchestration.md");
-  let promptTemplate: string;
-  try {
-    promptTemplate = readFileSync(promptTemplatePath, "utf-8");
-  } catch {
-    throw new Error(`Cannot read prompt template: ${promptTemplatePath}`);
-  }
+  const promptTemplate = loadTemplate(promptTemplatePath);
 
   const issuesSummary = issues
     .map(
@@ -97,7 +92,7 @@ export async function generateExecutionPlan(
     )
     .join("\n\n");
 
-  const prompt = promptTemplate.replace("{{issues}}", issuesSummary);
+  const prompt = renderTemplate(promptTemplate, { issues: issuesSummary });
 
   const claudeResult = await runClaude({
     prompt,

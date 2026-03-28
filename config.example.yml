@@ -8,6 +8,9 @@ general:
   dryRun: false
   locale: "ko"
   concurrency: 1
+  # stuckTimeoutMs: 600000      # stuck job 감지 타임아웃 (ms)
+  # pollingIntervalMs: 60000    # 폴링 간격 (ms)
+  # maxJobs: 500                # 최대 job 보관 수 (초과 시 자동 정리)
 
 # 대상 프로젝트 목록
 projects:
@@ -56,6 +59,7 @@ commands:
   build: "npm run build"
   typecheck: "npx tsc --noEmit"
   preInstall: "npm ci"
+  # claudeMdPath: "CLAUDE.md"   # 프로젝트 컨벤션 파일 경로
 
 review:
   enabled: true

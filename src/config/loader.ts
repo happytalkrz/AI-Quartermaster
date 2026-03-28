@@ -19,6 +19,7 @@ export function deepMerge(target: any, source: any): any {
 
   const result = { ...target };
   for (const key of Object.keys(source)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     result[key] = deepMerge(target[key], source[key]);
   }
   return result;
@@ -40,8 +41,8 @@ export function loadConfig(projectRoot: string): AQConfig {
   try {
     const localRaw = parseYaml(readFileSync(localConfigPath, "utf-8"));
     config = deepMerge(config, localRaw);
-  } catch (err: any) {
-    if (err?.code !== "ENOENT") throw err;
+  } catch (err: unknown) {
+    if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
   return validateConfig(config);

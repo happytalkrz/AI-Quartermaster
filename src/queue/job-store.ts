@@ -88,21 +88,30 @@ export class JobStore {
   }
 
   findByIssue(issueNumber: number, repo: string): Job | undefined {
-    return this.list().find(
-      j => j.issueNumber === issueNumber && j.repo === repo && (j.status === "queued" || j.status === "running")
-    );
+    for (const job of this.cache.values()) {
+      if (job.issueNumber === issueNumber && job.repo === repo && (job.status === "queued" || job.status === "running")) {
+        return job;
+      }
+    }
+    return undefined;
   }
 
   findCompletedByIssue(issueNumber: number, repo: string): Job | undefined {
-    return this.list().find(
-      j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success"
-    );
+    for (const job of this.cache.values()) {
+      if (job.issueNumber === issueNumber && job.repo === repo && job.status === "success") {
+        return job;
+      }
+    }
+    return undefined;
   }
 
   findAnyByIssue(issueNumber: number, repo: string): Job | undefined {
-    return this.list().find(
-      j => j.issueNumber === issueNumber && j.repo === repo
-    );
+    for (const job of this.cache.values()) {
+      if (job.issueNumber === issueNumber && job.repo === repo) {
+        return job;
+      }
+    }
+    return undefined;
   }
 
   prune(maxJobs: number): number {

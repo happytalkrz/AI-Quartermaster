@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     maxJobs: 500,
   },
   git: {
-    defaultBaseBranch: "master",
+    defaultBaseBranch: "main",
     branchTemplate: "aq/{{issueNumber}}-{{slug}}",
     commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
     remoteAlias: "origin",
@@ -73,7 +73,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
   },
   pr: {
-    targetBranch: "master",
+    targetBranch: "main",
     draft: true,
     titleTemplate: "[AQ-#{{issueNumber}}] {{title}}",
     bodyTemplate:

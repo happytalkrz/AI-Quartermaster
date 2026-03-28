@@ -8,7 +8,9 @@ export function checkStopConditions(
   stopConditions: string[]
 ): void {
   for (const condition of stopConditions) {
-    if (text.includes(condition)) {
+    const escaped = condition.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`\\b${escaped}\\b`);
+    if (regex.test(text)) {
       throw new SafetyViolationError(
         "StopConditionWatcher",
         `Stop condition detected: "${condition}"`,

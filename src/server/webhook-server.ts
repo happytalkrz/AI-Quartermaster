@@ -4,6 +4,7 @@ import { verifyWebhookSignature } from "./webhook-validator.js";
 import { dispatchEvent, GitHubIssueEvent } from "./event-dispatcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
+import type { JobStore } from "../queue/job-store.js";
 
 const logger = getLogger();
 
@@ -12,6 +13,7 @@ export interface WebhookServerOptions {
   webhookSecret: string;
   port?: number;
   onPipelineTrigger: (issueNumber: number, repo: string, dependencies?: number[]) => void;
+  store?: JobStore;  // for dependency validation
 }
 
 export function createWebhookApp(options: WebhookServerOptions): Hono {
@@ -42,7 +44,9 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
     const result = dispatchEvent(
       eventType,
       payload,
-      options.config.safety.allowedLabels
+      options.config.safety.allowedLabels,
+      options.config,
+      options.store
     );
 
     if (result.shouldProcess && result.issueNumber && result.repo) {

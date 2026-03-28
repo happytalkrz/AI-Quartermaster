@@ -3,7 +3,6 @@ import { checkChangeLimits } from "./change-limit-guard.js";
 import { assertNotOnBaseBranch } from "./base-branch-guard.js";
 import { checkPhaseLimit } from "./phase-limit-guard.js";
 import { isAllowedLabel } from "./label-filter.js";
-import { checkStopConditions } from "./stop-condition-watcher.js";
 import { collectDiff } from "../git/diff-collector.js";
 import { getLogger } from "../utils/logger.js";
 import type { SafetyConfig, GitConfig } from "../types/config.js";
@@ -78,12 +77,3 @@ export async function validateBeforePush(ctx: SafetyContext): Promise<void> {
   logger.info("Safety checks passed");
 }
 
-/**
- * Check Claude output for stop conditions.
- */
-export function validateClaudeOutput(
-  output: string,
-  safetyConfig: SafetyConfig
-): void {
-  checkStopConditions(output, safetyConfig.stopConditions);
-}

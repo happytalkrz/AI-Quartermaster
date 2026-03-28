@@ -207,8 +207,25 @@ export class JobQueue {
       if (job.dependencies && job.dependencies.length > 0) {
         const { met, pending } = areDependenciesMet(job.dependencies, job.repo, this.store);
         if (!met) {
-          logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
-          deferred.push(jobId);
+          // Check if any dependency has permanently failed — fail the dependent job immediately
+          let depFailed = false;
+          for (const depNum of job.dependencies) {
+            const depJob = this.store.findAnyByIssue(depNum, job.repo);
+            if (depJob && (depJob.status === "failure" || depJob.status === "cancelled")) {
+              logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
+              this.store.update(jobId, {
+                status: "failure",
+                completedAt: new Date().toISOString(),
+                error: `의존 이슈 #${depNum}이(가) 실패하여 실행 불가`,
+              });
+              depFailed = true;
+              break;
+            }
+          }
+          if (!depFailed) {
+            logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
+            deferred.push(jobId);
+          }
           continue;
         }
       }
@@ -232,12 +249,22 @@ export class JobQueue {
 
   private async executeJob(job: Job): Promise<void> {
     try {
-      const result = await this.handler(job);
-
+      // Check if already aborted before running handler
       if (this.stuckAborted.has(job.id)) {
         this.stuckAborted.delete(job.id);
-        // Already marked failed by checkStuckJobs
-      } else if (this.cancelled.has(job.id)) {
+        return;
+      }
+
+      const result = await this.handler(job);
+
+      // Re-check after handler completes — stuck checker may have fired during execution
+      if (this.stuckAborted.has(job.id)) {
+        this.stuckAborted.delete(job.id);
+        logger.warn(`Job ${job.id} handler completed after stuck-abort — ignoring result`);
+        return;
+      }
+
+      if (this.cancelled.has(job.id)) {
         this.cancelled.delete(job.id);
         // Already marked cancelled
       } else if (result.error) {
@@ -261,8 +288,8 @@ export class JobQueue {
       });
     } finally {
       this.running.delete(job.id);
-      // Process next in queue
-      this.processNext();
+      // Process next in queue (defer via setTimeout to avoid deep call stacks)
+      setTimeout(() => this.processNext(), 0);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
@@ -44,29 +44,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     });
 
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
-    api.use("/api/jobs", async (c, next) => {
+    const bearerAuth = async (c: Context, next: Next) => {
       const auth = c.req.header("Authorization");
       if (!auth || auth !== `Bearer ${apiKey}`) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       await next();
-    });
+    };
 
-    api.use("/api/jobs/:id", async (c, next) => {
-      const auth = c.req.header("Authorization");
-      if (!auth || auth !== `Bearer ${apiKey}`) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    });
-
-    api.use("/api/stats", async (c, next) => {
-      const auth = c.req.header("Authorization");
-      if (!auth || auth !== `Bearer ${apiKey}`) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    });
+    api.use("/api/jobs", bearerAuth);
+    api.use("/api/jobs/*", bearerAuth);
+    api.use("/api/stats", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     api.use("/api/events", async (c, next) => {

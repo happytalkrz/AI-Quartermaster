@@ -26,11 +26,13 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
   const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
   const template = loadTemplate(templatePath);
 
+  const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
+
   const rendered = renderTemplate(template, {
     issue: {
       number: String(ctx.issue.number),
       title: ctx.issue.title,
-      body: ctx.issue.body,
+      body: sanitizedBody,
       labels: ctx.issue.labels,
     },
     repo: {
@@ -127,8 +129,10 @@ function validatePlan(plan: Plan): void {
   if (!plan.requirements || plan.requirements.length === 0) {
     throw new Error("Plan must have requirements");
   }
-  // Ensure phases have indices
+  // Ensure phases have indices and required array fields
   plan.phases.forEach((phase, i) => {
     phase.index = i;
+    phase.targetFiles = phase.targetFiles ?? [];
+    phase.verificationCriteria = phase.verificationCriteria ?? [];
   });
 }

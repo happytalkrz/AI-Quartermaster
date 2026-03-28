@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
-import { runCli, runShell } from "../utils/cli-runner.js";
+import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
@@ -10,6 +10,7 @@ import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
+import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 
 const logger = getLogger();
 
@@ -42,11 +43,13 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
+    const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
+
     const rendered = renderTemplate(template, {
       issue: {
         number: String(ctx.issue.number),
         title: ctx.issue.title,
-        body: ctx.issue.body,
+        body: sanitizedBody,
       },
       plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
       phase: {
@@ -79,13 +82,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
     // 3. Auto-commit if Claude didn't commit
-    const statusResult = await runCli(ctx.gitPath, ["status", "--porcelain"], { cwd: ctx.cwd });
-    if (statusResult.stdout.trim().length > 0) {
+    const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index}: ${ctx.phase.name}`;
+    const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
+    if (autoCommitted) {
       logger.info(`Auto-committing uncommitted changes for phase ${ctx.phase.index}`);
-      // Exclude Claude CLI artifacts from commit
-      await runCli(ctx.gitPath, ["add", "-A", "--", ".", ":!.omc", ":!.claude"], { cwd: ctx.cwd });
-      const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index}: ${ctx.phase.name}`;
-      await runCli(ctx.gitPath, ["commit", "-m", commitMsg, "--allow-empty"], { cwd: ctx.cwd });
     }
 
     // 4. Run verification (test + lint) — skip if command is empty
@@ -98,8 +98,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     }
 
     // 5. Get latest commit hash
-    const gitLog = await runCli(ctx.gitPath, ["log", "-1", "--format=%H"], { cwd: ctx.cwd });
-    const commitHash = gitLog.stdout.trim();
+    const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
     return {
       phaseIndex: ctx.phase.index,

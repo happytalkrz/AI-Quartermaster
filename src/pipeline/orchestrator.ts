@@ -11,7 +11,7 @@ import type { PipelineReport } from "./result-reporter.js";
 import { runFinalValidation } from "./final-validator.js";
 import { runReviews } from "../review/review-orchestrator.js";
 import { runSimplify } from "../review/simplify-runner.js";
-import { collectDiff, getDiffContent } from "../git/diff-collector.js";
+import { getDiffContent } from "../git/diff-collector.js";
 import { validateIssue, validateBeforePush } from "../safety/safety-checker.js";
 import { createCheckpoint, rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
 import { PipelineTimer } from "../safety/timeout-manager.js";
@@ -28,6 +28,7 @@ import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
+import { withRepoLock } from "../git/repo-lock.js";
 
 export interface OrchestratorInput {
   issueNumber: number;
@@ -46,7 +47,6 @@ const STATE_ORDER: PipelineState[] = [
   "BRANCH_CREATED",
   "WORKTREE_CREATED",
   "PLAN_GENERATED",
-  "PHASE_IN_PROGRESS",
   "REVIEWING",
   "SIMPLIFYING",
   "FINAL_VALIDATING",
@@ -57,6 +57,8 @@ const STATE_ORDER: PipelineState[] = [
 function isPastState(checkpointState: PipelineState, current: PipelineState): boolean {
   const checkpointIdx = STATE_ORDER.indexOf(checkpointState);
   const currentIdx = STATE_ORDER.indexOf(current);
+  // States not in STATE_ORDER (FAILED, PHASE_FAILED) return -1 → re-execute all stages
+  if (checkpointIdx === -1 || currentIdx === -1) return false;
   return checkpointIdx > currentIdx;
 }
 
@@ -81,6 +83,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   let gitConfig = config.git;
   let promptsDir: string = resolve(projectRoot, "prompts");
   let rollbackHash: string | undefined;
+  let rollbackStrategy: "none" | "all" | "failed-only" = "none";
 
   if (resumeFrom) {
     logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
@@ -142,71 +145,74 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     logger.info(`Pipeline mode (초기): ${mode}`);
     jl?.log(`모드: ${mode}`);
 
-    // === VALIDATED → BASE_SYNCED ===
-    if (isPastState(state, "BASE_SYNCED")) {
-      logger.info(`[SKIP] VALIDATED → BASE_SYNCED (already done)`);
-    } else {
-      await syncBaseBranch(gitConfig, { cwd: projectRoot });
-      state = "BASE_SYNCED";
-      logger.info(`[BASE_SYNCED] Base branch ${project.baseBranch} synced`);
-      jl?.setStep("브랜치 생성 중...");
-
+    const checkpoint = (overrides?: Partial<PipelineCheckpoint>) => {
       saveCheckpoint(dataDir, issueNumber, {
         issueNumber, repo, state, projectRoot,
-        worktreePath, branchName, phaseResults: [], mode, savedAt: new Date().toISOString(),
+        worktreePath, branchName, phaseResults: [],
+        mode, savedAt: new Date().toISOString(),
+        ...overrides,
       });
-    }
+    };
 
-    // === BASE_SYNCED → BRANCH_CREATED ===
-    if (isPastState(state, "BRANCH_CREATED")) {
-      logger.info(`[SKIP] BASE_SYNCED → BRANCH_CREATED (already done, branch: ${branchName})`);
-    } else {
-      const branchInfo = await createWorkBranch(
-        gitConfig,
-        issueNumber,
-        issue.title,
-        { cwd: projectRoot }
-      );
-      branchName = branchInfo.workBranch;
-      state = "BRANCH_CREATED";
-      logger.info(`[BRANCH_CREATED] Branch: ${branchName}`);
-      jl?.log(`브랜치: ${branchName}`);
+    // === VALIDATED → BASE_SYNCED → BRANCH_CREATED → WORKTREE_CREATED ===
+    // Serialize git operations per-repo to prevent concurrent branch/worktree conflicts
+    await withRepoLock(repo, async () => {
+      if (isPastState(state, "BASE_SYNCED")) {
+        logger.info(`[SKIP] VALIDATED → BASE_SYNCED (already done)`);
+      } else {
+        await syncBaseBranch(gitConfig, { cwd: projectRoot });
+        state = "BASE_SYNCED";
+        logger.info(`[BASE_SYNCED] Base branch ${project.baseBranch} synced`);
+        jl?.setStep("브랜치 생성 중...");
 
-      saveCheckpoint(dataDir, issueNumber, {
-        issueNumber, repo, state, projectRoot,
-        worktreePath, branchName, phaseResults: [], mode, savedAt: new Date().toISOString(),
-      });
-    }
-
-    // === BRANCH_CREATED → WORKTREE_CREATED ===
-    if (isPastState(state, "WORKTREE_CREATED")) {
-      logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
-      // Verify worktree still exists
-      if (worktreePath && !existsSync(worktreePath)) {
-        throw new Error(`Resume failed: worktree path no longer exists: ${worktreePath}`);
+        checkpoint();
       }
-    } else {
-      const slug = createSlugWithFallback(issue.title);
-      const worktreeInfo = await createWorktree(
-        gitConfig,
-        config.worktree,
-        branchName!,
-        issueNumber,
-        slug,
-        { cwd: projectRoot }
-      );
-      worktreePath = worktreeInfo.path;
-      state = "WORKTREE_CREATED";
-      logger.info(`[WORKTREE_CREATED] Worktree: ${worktreePath}`);
 
-      saveCheckpoint(dataDir, issueNumber, {
-        issueNumber, repo, state, projectRoot,
-        worktreePath, branchName, phaseResults: [], mode, savedAt: new Date().toISOString(),
-      });
-    }
+      // === BASE_SYNCED → BRANCH_CREATED ===
+      if (isPastState(state, "BRANCH_CREATED")) {
+        logger.info(`[SKIP] BASE_SYNCED → BRANCH_CREATED (already done, branch: ${branchName})`);
+      } else {
+        const branchInfo = await createWorkBranch(
+          gitConfig,
+          issueNumber,
+          issue.title,
+          { cwd: projectRoot }
+        );
+        branchName = branchInfo.workBranch;
+        state = "BRANCH_CREATED";
+        logger.info(`[BRANCH_CREATED] Branch: ${branchName}`);
+        jl?.log(`브랜치: ${branchName}`);
+
+        checkpoint();
+      }
+
+      // === BRANCH_CREATED → WORKTREE_CREATED ===
+      if (isPastState(state, "WORKTREE_CREATED")) {
+        logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
+        // Verify worktree still exists
+        if (worktreePath && !existsSync(worktreePath)) {
+          throw new Error(`Resume failed: worktree path no longer exists: ${worktreePath}`);
+        }
+      } else {
+        const slug = createSlugWithFallback(issue.title);
+        const worktreeInfo = await createWorktree(
+          gitConfig,
+          config.worktree,
+          branchName!,
+          issueNumber,
+          slug,
+          { cwd: projectRoot }
+        );
+        worktreePath = worktreeInfo.path;
+        state = "WORKTREE_CREATED";
+        logger.info(`[WORKTREE_CREATED] Worktree: ${worktreePath}`);
+
+        checkpoint();
+      }
+    });
 
     // === Create rollback checkpoint (before any phase commits) ===
-    const rollbackStrategy = project.safety.rollbackStrategy;
+    rollbackStrategy = project.safety.rollbackStrategy;
     if (rollbackStrategy !== "none" && worktreePath) {
       try {
         const hash = await createCheckpoint({ cwd: worktreePath, gitPath: gitConfig.gitPath });
@@ -298,11 +304,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       jl?.log(`실패: ${failedPhase?.error ?? "Phase execution failed"}`);
       jl?.setStep("실패");
       // Save checkpoint so pipeline can be resumed
-      saveCheckpoint(dataDir, issueNumber, {
-        issueNumber, repo, state: "PLAN_GENERATED", projectRoot,
-        worktreePath, branchName, plan: coreResult.plan,
-        phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-      });
+      checkpoint({ state: "PLAN_GENERATED", plan: coreResult.plan, phaseResults: coreResult.phaseResults });
       // Record failure pattern
       try {
         patternStore.add({
@@ -346,19 +348,22 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     state = "PLAN_GENERATED"; // core-loop completed all phases
 
-    saveCheckpoint(dataDir, issueNumber, {
-      issueNumber, repo, state, projectRoot,
-      worktreePath, branchName, plan: coreResult.plan,
-      phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-    });
+    checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
 
     // === REVIEWING: 3-round review ===
-    let reviewVariables: {
+    type ReviewVars = {
       issue: { number: string; title: string; body: string };
       plan: { summary: string };
       diff: { full: string };
       config: { testCommand: string; lintCommand: string };
-    } | undefined;
+    };
+    const buildReviewVars = async (): Promise<ReviewVars> => ({
+      issue: { number: String(issueNumber), title: issue.title, body: issue.body },
+      plan: { summary: coreResult.plan.problemDefinition },
+      diff: { full: await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! }) },
+      config: { testCommand: project.commands.test, lintCommand: project.commands.lint },
+    });
+    let reviewVariables: ReviewVars | undefined;
 
     if (!preset.skipReview) {
       if (isPastState(state, "REVIEWING")) {
@@ -369,20 +374,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         logger.info("[REVIEWING] Starting review rounds...");
         jl?.setStep("리뷰 진행 중...");
 
-        const diffContent = await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! });
-        reviewVariables = {
-          issue: {
-            number: String(issueNumber),
-            title: issue.title,
-            body: issue.body,
-          },
-          plan: { summary: coreResult.plan.problemDefinition },
-          diff: { full: diffContent },
-          config: {
-            testCommand: project.commands.test,
-            lintCommand: project.commands.lint,
-          },
-        };
+        reviewVariables = await buildReviewVars();
 
         const reviewResult: ReviewPipelineResult = await runReviews({
           reviewConfig: project.review,
@@ -400,22 +392,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           logger.error("[REVIEWING] Review pipeline failed");
           jl?.log(`실패: Review pipeline failed`);
           jl?.setStep("실패");
-          saveCheckpoint(dataDir, issueNumber, {
-            issueNumber, repo, state, projectRoot,
-            worktreePath, branchName, plan: coreResult.plan,
-            phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-          });
+          checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
           const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
           printResult(report);
           saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
           return { success: false, state: "FAILED", error: "Review failed", report };
         }
 
-        saveCheckpoint(dataDir, issueNumber, {
-          issueNumber, repo, state, projectRoot,
-          worktreePath, branchName, plan: coreResult.plan,
-          phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-        });
+        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
       }
     }
 
@@ -429,20 +413,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         logger.info("[SIMPLIFYING] Running code simplification...");
         jl?.setStep("코드 간소화 중...");
         if (!reviewVariables) {
-          const diffContent = await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! });
-          reviewVariables = {
-            issue: {
-              number: String(issueNumber),
-              title: issue.title,
-              body: issue.body,
-            },
-            plan: { summary: coreResult.plan.problemDefinition },
-            diff: { full: diffContent },
-            config: {
-              testCommand: project.commands.test,
-              lintCommand: project.commands.lint,
-            },
-          };
+          reviewVariables = await buildReviewVars();
         }
         await runSimplify({
           promptTemplate: project.review.simplify.promptTemplate,
@@ -454,11 +425,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           gitPath: gitConfig.gitPath,
         });
 
-        saveCheckpoint(dataDir, issueNumber, {
-          issueNumber, repo, state, projectRoot,
-          worktreePath, branchName, plan: coreResult.plan,
-          phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-        });
+        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
       }
     }
 
@@ -480,22 +447,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           logger.error(`[FINAL_VALIDATING] Failed checks: ${failedChecks}`);
           jl?.log(`실패: Final validation failed: ${failedChecks}`);
           jl?.setStep("실패");
-          saveCheckpoint(dataDir, issueNumber, {
-            issueNumber, repo, state, projectRoot,
-            worktreePath, branchName, plan: coreResult.plan,
-            phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-          });
+          checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
           const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
           printResult(report);
           saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
           return { success: false, state: "FAILED", error: `Final validation failed: ${failedChecks}`, report };
         }
 
-        saveCheckpoint(dataDir, issueNumber, {
-          issueNumber, repo, state, projectRoot,
-          worktreePath, branchName, plan: coreResult.plan,
-          phaseResults: coreResult.phaseResults, mode, savedAt: new Date().toISOString(),
-        });
+        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
       }
     }
 
@@ -617,7 +576,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     // === Rollback on exception ===
     let rollbackInfo: string | undefined;
-    const exceptionRollbackStrategy = config.safety.rollbackStrategy;
+    const exceptionRollbackStrategy = rollbackStrategy;
     if (worktreePath && exceptionRollbackStrategy !== "none" && rollbackHash) {
       try {
         await doRollback(rollbackHash, { cwd: worktreePath, gitPath: gitConfig.gitPath });
@@ -634,6 +593,16 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
       } catch {
         // ignore cleanup errors
+      }
+    }
+
+    // Cleanup orphaned branch on failure if configured
+    if (branchName && config.worktree.cleanupOnFailure) {
+      try {
+        await runCli(gitConfig.gitPath, ["branch", "-D", branchName], { cwd: projectRoot });
+        logger.info(`Cleaned up branch: ${branchName}`);
+      } catch {
+        // ignore — branch may not exist
       }
     }
 

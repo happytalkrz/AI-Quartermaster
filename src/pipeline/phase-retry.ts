@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
-import { runCli, runShell } from "../utils/cli-runner.js";
+import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult, ErrorCategory } from "../types/pipeline.js";
@@ -10,6 +10,7 @@ import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
+import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 
 const logger = getLogger();
 
@@ -74,12 +75,10 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     }
 
     // Auto-commit if needed
-    const statusResult = await runCli(ctx.gitPath, ["status", "--porcelain"], { cwd: ctx.cwd });
-    if (statusResult.stdout.trim().length > 0) {
+    const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index} fix: ${ctx.phase.name}`;
+    const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
+    if (autoCommitted) {
       logger.info(`Auto-committing retry changes for phase ${ctx.phase.index}`);
-      await runCli(ctx.gitPath, ["add", "-A", "--", ".", ":!.omc", ":!.claude"], { cwd: ctx.cwd });
-      const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index} fix: ${ctx.phase.name}`;
-      await runCli(ctx.gitPath, ["commit", "-m", commitMsg, "--allow-empty"], { cwd: ctx.cwd });
     }
 
     // Run verification
@@ -91,8 +90,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       }
     }
 
-    const gitLog = await runCli(ctx.gitPath, ["log", "-1", "--format=%H"], { cwd: ctx.cwd });
-    const commitHash = gitLog.stdout.trim();
+    const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
     return {
       phaseIndex: ctx.phase.index,

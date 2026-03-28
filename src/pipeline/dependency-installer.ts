@@ -1,4 +1,4 @@
-import { runCli } from "../utils/cli-runner.js";
+import { runShell } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger();
@@ -17,7 +17,7 @@ export async function installDependencies(
 
   logger.info(`Installing dependencies: ${preInstallCommand}`);
 
-  const result = await runCli("sh", ["-c", preInstallCommand], {
+  const result = await runShell(preInstallCommand, {
     cwd: options.cwd,
     timeout: options.timeout ?? 120000,
   });

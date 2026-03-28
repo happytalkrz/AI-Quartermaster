@@ -40,6 +40,11 @@ export function dispatchEvent(
   config?: AQConfig,
   store?: JobStore
 ): DispatchResult {
+  // Defensive validation: ensure required fields are present
+  if (!payload?.issue?.number || !Array.isArray(payload?.issue?.labels) || !payload?.repository?.full_name) {
+    return { shouldProcess: false, reason: "Malformed payload: missing required fields" };
+  }
+
   // Only handle issue events
   if (eventType !== "issues") {
     return { shouldProcess: false, reason: `Ignored event type: ${eventType}` };
@@ -74,8 +79,9 @@ export function dispatchEvent(
     }
   }
 
-  // Parse dependencies from issue body
-  const dependencies = parseDependencies(payload.issue.body ?? "");
+  // Parse dependencies from issue body (filter out self-references)
+  const dependencies = parseDependencies(payload.issue.body ?? "")
+    .filter(dep => dep !== payload.issue.number);
 
   // Check for circular dependencies when a store is available
   if (dependencies.length > 0 && store) {

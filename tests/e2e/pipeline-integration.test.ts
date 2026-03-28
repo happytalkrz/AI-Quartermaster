@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
+vi.mock("../../src/pipeline/checkpoint.js", () => ({
+  saveCheckpoint: vi.fn(),
+  loadCheckpoint: vi.fn(),
+  removeCheckpoint: vi.fn(),
+}));
+vi.mock("../../src/git/repo-lock.js", () => ({
+  withRepoLock: vi.fn((_repo: string, fn: () => Promise<void>) => fn()),
+}));
 vi.mock("../../src/github/issue-fetcher.js", () => ({
   fetchIssue: vi.fn(),
 }));

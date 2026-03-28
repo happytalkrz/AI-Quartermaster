@@ -50,29 +50,3 @@ export function getLogger(): Logger {
   };
 }
 
-export function createLogger(level: LogLevel): Logger {
-  const minRank = LEVEL_RANK[level];
-
-  return {
-    debug(message: string, ...args: unknown[]): void {
-      if (LEVEL_RANK.debug >= minRank) {
-        console.log(formatMessage("debug", message), ...args);
-      }
-    },
-    info(message: string, ...args: unknown[]): void {
-      if (LEVEL_RANK.info >= minRank) {
-        console.log(formatMessage("info", message), ...args);
-      }
-    },
-    warn(message: string, ...args: unknown[]): void {
-      if (LEVEL_RANK.warn >= minRank) {
-        console.warn(formatMessage("warn", message), ...args);
-      }
-    },
-    error(message: string, ...args: unknown[]): void {
-      if (LEVEL_RANK.error >= minRank) {
-        console.error(formatMessage("error", message), ...args);
-      }
-    },
-  };
-}

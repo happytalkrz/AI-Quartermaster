@@ -74,9 +74,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     });
   }
 
-  // List all jobs
+  // List all jobs (exclude archived by default, ?include=archived to show)
   api.get("/api/jobs", (c) => {
-    const jobs = store.list();
+    const includeArchived = c.req.query("include") === "archived";
+    const jobs = includeArchived ? store.list() : store.list().filter(j => j.status !== "archived");
     const status = queue.getStatus();
     return c.json({ jobs, queue: status });
   });

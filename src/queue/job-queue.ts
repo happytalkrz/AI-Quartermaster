@@ -44,22 +44,16 @@ export class JobQueue {
         const lastActivityMs = getLastActivityMs();
         const ACTIVITY_THRESHOLD_MS = 5 * 60 * 1000; // 5분 무활동 시 stuck 판정
 
-        if (!processAlive) {
-          // Claude process died — fail immediately
-          logger.error(`Job ${jobId}: Claude 프로세스 종료 감지 — 즉시 실패 처리`);
-          this.store.update(jobId, {
-            status: "failure",
-            completedAt: new Date().toISOString(),
-            error: `Claude 프로세스가 비정상 종료됨 (${Math.round(elapsed / 60000)}분 경과)`,
-          });
-          this.stuckAborted.add(jobId);
-          this.running.delete(jobId);
-          this.processNext();
-        } else if (lastActivityMs >= 0 && lastActivityMs < ACTIVITY_THRESHOLD_MS) {
-          // Process alive + recent activity — still working, extend
+        if (processAlive && lastActivityMs >= 0 && lastActivityMs < ACTIVITY_THRESHOLD_MS) {
+          // Claude process alive + recent stream activity — still working, extend
           logger.info(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 활동 중 (${Math.round(lastActivityMs / 1000)}초 전) — 대기 연장`);
           this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
-        } else {
+        } else if (!processAlive && elapsed < this.stuckTimeoutMs * 2) {
+          // No Claude process but within 2x timeout — pipeline may be in non-Claude stage (validation, push, PR)
+          // Check if job store was recently updated (log/step changes)
+          logger.debug(`Job ${jobId}: Claude 프로세스 없음, 파이프라인 단계 진행 중일 수 있음 — 대기 연장`);
+          this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
+        } else if (processAlive && (lastActivityMs < 0 || lastActivityMs >= ACTIVITY_THRESHOLD_MS)) {
           // Process alive but no recent activity — Claude stuck
           logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 무응답 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분 — 실패 처리`);
           this.store.update(jobId, {
@@ -69,7 +63,18 @@ export class JobQueue {
           });
           this.stuckAborted.add(jobId);
           this.running.delete(jobId);
-          this.processNext();
+          setTimeout(() => this.processNext(), 0);
+        } else {
+          // No process, exceeded 2x timeout — genuinely stuck
+          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, 프로세스 없음 — 실패 처리`);
+          this.store.update(jobId, {
+            status: "failure",
+            completedAt: new Date().toISOString(),
+            error: `파이프라인이 ${Math.round(elapsed / 60000)}분간 응답 없음`,
+          });
+          this.stuckAborted.add(jobId);
+          this.running.delete(jobId);
+          setTimeout(() => this.processNext(), 0);
         }
       }
     }

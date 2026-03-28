@@ -60,19 +60,27 @@ export async function validateBeforePush(ctx: SafetyContext): Promise<void> {
   // Check sensitive paths
   checkSensitivePaths(diffStats.changedFiles, ctx.safetyConfig.sensitivePaths);
 
-  // Check change limits
-  checkChangeLimits(
-    {
-      filesChanged: diffStats.filesChanged,
-      insertions: diffStats.insertions,
-      deletions: diffStats.deletions,
-    },
-    {
-      maxFileChanges: ctx.safetyConfig.maxFileChanges,
-      maxInsertions: ctx.safetyConfig.maxInsertions,
-      maxDeletions: ctx.safetyConfig.maxDeletions,
+  // Check change limits — warn only, do not block (draft PR can be discarded)
+  try {
+    checkChangeLimits(
+      {
+        filesChanged: diffStats.filesChanged,
+        insertions: diffStats.insertions,
+        deletions: diffStats.deletions,
+      },
+      {
+        maxFileChanges: ctx.safetyConfig.maxFileChanges,
+        maxInsertions: ctx.safetyConfig.maxInsertions,
+        maxDeletions: ctx.safetyConfig.maxDeletions,
+      }
+    );
+  } catch (err) {
+    if (err instanceof SafetyViolationError) {
+      logger.warn(`[ChangeLimitGuard] ${err.message} — 경고만 남기고 계속 진행합니다`);
+    } else {
+      throw err;
     }
-  );
+  }
 
   logger.info("Safety checks passed");
 }

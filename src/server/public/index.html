@@ -651,7 +651,8 @@ let selectedJobId = null;
    ══════════════════════════════════════════════════════════════ */
 function filterJobs(jobs) {
   if (currentFilter === 'all') return jobs;
-  if (currentFilter === 'running') return jobs.filter(j => j.status === 'queued' || j.status === 'running');
+  if (currentFilter === 'running') return jobs.filter(j => j.status === 'running');
+  if (currentFilter === 'queued') return jobs.filter(j => j.status === 'queued');
   return jobs.filter(j => j.status === currentFilter);
 }
 

@@ -64,23 +64,19 @@ commands:
 review:
   enabled: true
   rounds:
-    - name: "기능 정합성"
+    - name: "code-review"
       promptTemplate: "review-round1.md"
       failAction: "warn"
-      maxRetries: 2
-      model: null
-    - name: "구조/설계"
-      promptTemplate: "review-round2.md"
-      failAction: "warn"
       maxRetries: 1
       model: null
-    - name: "단순화"
-      promptTemplate: "review-round3-simplify.md"
-      failAction: "warn"
-      maxRetries: 1
-      model: null
+    # 필요 시 추가 라운드:
+    # - name: "구조/설계"
+    #   promptTemplate: "review-round2.md"
+    #   failAction: "warn"
+    #   maxRetries: 1
+    #   model: null
   simplify:
-    enabled: true
+    enabled: false                               # 필요 시 true로 변경
     promptTemplate: "review-round3-simplify.md"
 
 pr:

@@ -123,6 +123,15 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
     phaseResults.push(result);
 
+    // Phase 완료할 때마다 대시보드에 진행률 반영
+    jl?.setPhaseResults(phaseResults.map(r => ({
+      name: r.phaseName,
+      success: r.success,
+      commit: r.commitHash?.slice(0, 8),
+      durationMs: r.durationMs,
+      error: r.error,
+    })));
+
     if (!result.success) {
       logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
       jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);

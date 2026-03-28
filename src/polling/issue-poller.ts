@@ -29,7 +29,8 @@ export class IssuePoller {
     if (this.running) return;
     this.running = true;
     logger.info(`폴링 모드 시작 — 간격: ${this.config.general.pollingIntervalMs}ms`);
-    this.scheduleNext();
+    // 첫 폴링 즉시 실행, 이후 interval 적용
+    this.poll().then(() => this.scheduleNext()).catch(() => this.scheduleNext());
   }
 
   stop(): void {

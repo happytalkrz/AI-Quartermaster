@@ -46,7 +46,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         title: ctx.issue.title,
       },
       phase: {
-        index: String(ctx.phase.index),
+        index: String(ctx.phase.index + 1),
         name: ctx.phase.name,
         description: ctx.phase.description,
         files: ctx.phase.targetFiles,

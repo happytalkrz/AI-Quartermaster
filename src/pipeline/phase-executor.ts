@@ -54,7 +54,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       },
       plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
       phase: {
-        index: String(ctx.phase.index),
+        index: String(ctx.phase.index + 1),
         name: ctx.phase.name,
         description: ctx.phase.description,
         files: ctx.phase.targetFiles,

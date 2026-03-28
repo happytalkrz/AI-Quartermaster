@@ -38,8 +38,8 @@
 `[HEARTBEAT] Phase {{phase.index}}: <현재 하고 있는 작업> (<진행률>)`
 
 예시:
-- `[HEARTBEAT] Phase 0: src/components/Chat.tsx 수정 중 (30%)`
-- `[HEARTBEAT] Phase 1: 테스트 작성 중 (80%)`
+- `[HEARTBEAT] Phase 1: src/components/Chat.tsx 수정 중 (30%)`
+- `[HEARTBEAT] Phase 2: 테스트 작성 중 (80%)`
 
 **출력이 5분간 없으면 시스템이 작업을 중단합니다.** 반드시 주기적으로 진행 상황을 보고하세요.
 

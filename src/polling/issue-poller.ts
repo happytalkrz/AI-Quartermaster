@@ -97,6 +97,9 @@ export class IssuePoller {
 
     logger.debug(`${repo} — 레이블 "${label}" 오픈 이슈 ${issues.length}개 조회됨`);
 
+    // 이슈 번호 오름차순 (오래된 이슈 먼저 처리)
+    issues.sort((a, b) => a.number - b.number);
+
     for (const issue of issues) {
       const existing = this.store.findAnyByIssue(issue.number, repo);
       if (existing) {

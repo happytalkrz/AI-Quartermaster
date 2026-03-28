@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+logs/
+!logs/.gitkeep
+
+# Config (local overrides)
+config.yml
+config.local.yml
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Runtime data
+data/
+
+# Package artifacts
+*.tgz
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# AI tools
+.omc/
+.claude/
+.claude-*
+CLAUDE.md
+AGENTS.md
+.cursorrules
+.cursor/
+.copilot/
+.github/copilot/
+.aider*
+.codeium/
+.continue/
+.windsurf/

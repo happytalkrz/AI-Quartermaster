@@ -1,0 +1,107 @@
+import { AQConfig } from "../types/config.js";
+
+export const DEFAULT_CONFIG: AQConfig = {
+  general: {
+    projectName: "ai-quartermaster",
+    logLevel: "info",
+    logDir: "logs",
+    dryRun: false,
+    locale: "en",
+    concurrency: 1,
+    stuckTimeoutMs: 600000,
+  },
+  git: {
+    defaultBaseBranch: "master",
+    branchTemplate: "aq/{{issueNumber}}-{{slug}}",
+    commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
+    remoteAlias: "origin",
+    allowedRepos: [],
+    gitPath: "git",
+    fetchDepth: 1,
+    signCommits: false,
+  },
+  worktree: {
+    rootPath: ".worktrees",
+    cleanupOnSuccess: true,
+    cleanupOnFailure: false,
+    maxAge: "24h",
+    dirTemplate: "{{issueNumber}}-{{slug}}",
+  },
+  commands: {
+    claudeCli: {
+      path: "claude",
+      model: "claude-opus-4-5",
+      maxTurns: 50,
+      timeout: 600000,
+      additionalArgs: [],
+    },
+    ghCli: {
+      path: "gh",
+      timeout: 30000,
+    },
+    test: "npm test",
+    lint: "npm run lint",
+    build: "npm run build",
+    typecheck: "npm run typecheck",
+    preInstall: "",
+    shellWhitelist: ["npm", "npx", "node", "git", "gh", "tsc", "vitest"],
+    claudeMdPath: "CLAUDE.md",
+  },
+  review: {
+    enabled: true,
+    rounds: [
+      {
+        name: "code-review",
+        promptTemplate:
+          "Review the following code changes for correctness, style, and potential issues:\n\n{diff}",
+        failAction: "warn",
+        maxRetries: 2,
+        model: null,
+      },
+    ],
+    simplify: {
+      enabled: false,
+      promptTemplate:
+        "Simplify the following implementation while preserving all functionality:\n\n{diff}",
+    },
+  },
+  pr: {
+    targetBranch: "master",
+    draft: true,
+    titleTemplate: "[AQ-#{{issueNumber}}] {{title}}",
+    bodyTemplate:
+      "## Summary\n\n{summary}\n\nCloses #{issueNumber}",
+    labels: [],
+    assignees: [],
+    reviewers: [],
+    linkIssue: true,
+    autoMerge: false,
+    mergeMethod: "squash",
+  },
+  safety: {
+    sensitivePaths: [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "secrets/**",
+      "credentials/**",
+    ],
+    maxPhases: 10,
+    maxRetries: 3,
+    maxTotalDurationMs: 3600000,
+    maxFileChanges: 50,
+    maxInsertions: 2000,
+    maxDeletions: 1000,
+    requireTests: false,
+    blockDirectBasePush: true,
+    timeouts: {
+      planGeneration: 120000,
+      phaseImplementation: 600000,
+      reviewRound: 180000,
+      prCreation: 60000,
+    },
+    stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
+    allowedLabels: [],
+  },
+};

@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { loadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runPipeline } from "./pipeline/orchestrator.js";
@@ -157,10 +157,21 @@ async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  // === Cache dashboard HTML at startup (fix #15) ===
+  // === Cache dashboard HTML and JS at startup (fix #15) ===
   const htmlPath = resolve(aqRoot, "src/server/public/index.html");
   let dashboardHtml: string;
   try { dashboardHtml = readFileSync(htmlPath, "utf-8"); } catch { dashboardHtml = ""; }
+
+  // Cache dashboard JS files at startup
+  const jsDir = resolve(aqRoot, "src/server/public/js");
+  const dashboardJs: Record<string, string> = {};
+  try {
+    for (const f of readdirSync(jsDir)) {
+      if (f.endsWith(".js")) {
+        dashboardJs[f] = readFileSync(resolve(jsDir, f), "utf-8");
+      }
+    }
+  } catch { /* js dir may not exist */ }
 
   if (!isPollingMode) {
     // === Auto-register webhooks for projects in parallel (fix #16) ===
@@ -285,6 +296,14 @@ async function startCommand(args: CliArgs): Promise<void> {
   app.get("/", (c) => {
     if (!dashboardHtml) return c.text("Dashboard UI not found", 404);
     return c.html(dashboardHtml);
+  });
+
+  // Serve cached dashboard JS files
+  app.get("/js/:file", (c) => {
+    const file = c.req.param("file");
+    const content = dashboardJs[file];
+    if (!content) return c.text("Not found", 404);
+    return c.text(content, 200, { "Content-Type": "application/javascript; charset=utf-8" });
   });
 
   // === PID file management ===

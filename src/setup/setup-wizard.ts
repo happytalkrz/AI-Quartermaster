@@ -4,13 +4,23 @@ import { runCli } from "../utils/cli-runner.js";
 import { randomBytes } from "crypto";
 
 export async function runSetup(aqRoot: string): Promise<void> {
-  console.log("\n=== AI 병참부 Setup ===\n");
+  console.log("\n=== AI Quartermaster Setup ===\n");
 
   // 1. Check prerequisites
   console.log("1. 사전 요구사항 확인...");
   await checkPrerequisite("git", ["--version"], "Git");
   await checkPrerequisite("gh", ["auth", "status"], "GitHub CLI (인증 필요: gh auth login)");
   await checkPrerequisite("claude", ["--version"], "Claude CLI");
+
+  // Setup gh as git credential helper (prevents HTTPS password prompts)
+  try {
+    const { runCli } = await import("../utils/cli-runner.js");
+    await runCli("gh", ["auth", "setup-git"], { timeout: 10000 });
+    console.log("   git credential helper 설정 완료 (gh auth)");
+  } catch {
+    console.log("   git credential helper 설정 실패 — 'gh auth setup-git' 수동 실행 권장");
+  }
+
   console.log("   모든 사전 요구사항 충족\n");
 
   // 2. Create config.yml
@@ -86,7 +96,9 @@ export async function runSetup(aqRoot: string): Promise<void> {
         }
       }
       if (projects.length === 0 || projects.every((p: { repo: string }) => p.repo === "owner/repo-name")) {
-        console.log("   config.yml에 프로젝트를 추가한 후 'setup-webhook --repo <repo>' 실행하세요");
+        console.log("   config.yml의 projects 섹션에 대상 프로젝트를 등록하세요");
+        console.log("   등록 후: aqm setup-webhook --repo <owner/repo> 로 webhook을 연결합니다");
+        console.log("   (폴링 모드 사용 시 webhook 등록 불필요)");
       }
     } catch {
       console.log("   config.yml 파싱 실패 — webhook 수동 등록 필요");
@@ -100,7 +112,14 @@ export async function runSetup(aqRoot: string): Promise<void> {
   console.log("=== Setup 완료 ===\n");
   console.log("다음 단계:");
   console.log("  1. config.yml 수정 → projects 섹션에 대상 프로젝트 추가");
-  console.log("  2. npx tsx src/cli.ts start  ← 서버 시작 (smee 자동 연결)");
+  console.log("  2. aqm start                    ← 웹훅 서버 시작");
+  console.log("     aqm start --mode polling     ← 폴링 모드 (webhook 불필요)");
+  console.log("");
+  console.log("사용법:");
+  console.log("  aqm run --issue <번호> --repo <owner/repo>   수동 실행");
+  console.log("  aqm doctor                                   환경 점검");
+  console.log("  aqm status                                   상태 확인");
+  console.log("  aqm help                                     전체 명령어");
   console.log("");
   console.log("사용법:");
   console.log("  수동 실행: npx tsx src/cli.ts run --issue <번호> --repo <owner/repo>");

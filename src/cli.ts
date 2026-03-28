@@ -33,8 +33,7 @@ interface CliArgs {
 
 async function runCommand(args: CliArgs): Promise<void> {
   if (!args.issue || !args.repo) {
-    console.error("Usage: npx tsx src/cli.ts run --issue <number> --repo <owner/repo> [--config <path>]");
-    console.error("       npx tsx src/cli.ts --issue <number> --repo <owner/repo>");
+    console.error("Usage: aqm run --issue <number> --repo <owner/repo>");
     process.exit(1);
   }
 
@@ -47,7 +46,7 @@ async function runCommand(args: CliArgs): Promise<void> {
   const targetRoot = args.target ? resolve(args.target) : process.cwd();
   const logger = getLogger();
 
-  logger.info(`AI 병참부 시작 - Issue #${args.issue} (${args.repo})`);
+  logger.info(`AI Quartermaster 시작 - Issue #${args.issue} (${args.repo})`);
   logger.info(`대상 프로젝트: ${targetRoot}`);
 
   const result = await runPipeline({
@@ -511,7 +510,7 @@ async function main() {
     await setupCommand(args);
   } else if (command === "setup-webhook") {
     if (!args.repo) {
-      console.error("Usage: npx tsx src/cli.ts setup-webhook --repo <owner/repo>");
+      console.error("Usage: aqm setup-webhook --repo <owner/repo>");
       process.exit(1);
     }
     const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
@@ -539,7 +538,7 @@ async function main() {
 
 function printHelp(): void {
   console.log(`
-AI 병참부 (AI Quartermaster)
+AI Quartermaster (AI Quartermaster)
 
 Usage:
   aqm setup                                          Initial setup
@@ -562,7 +561,7 @@ Usage:
   aqm version                                        Show version info
   aqm help                                           Show this help
 
-  (또는 npx tsx src/cli.ts <command> 로 직접 실행 가능)
+  (또는 npx tsx src/cli.ts <command> 로 개발환경에서 직접 실행 가능)
 
 Options:
   --issue <number>    GitHub issue number

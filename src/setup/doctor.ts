@@ -65,10 +65,24 @@ async function checkPrerequisites(): Promise<void> {
 async function checkGhAuth(): Promise<void> {
   console.log("\n[GitHub 인증]");
   const result = await runCli("gh", ["auth", "status"], { timeout: 10000 });
-  // gh auth status writes to stderr when not logged in
   const output = result.stdout + result.stderr;
   if (result.exitCode === 0 && !output.includes("not logged in")) {
     pass("gh auth");
+
+    // Check if gh is configured as git credential helper
+    const credResult = await runCli("git", ["config", "--global", "credential.helper"], { timeout: 5000 });
+    const credHelper = credResult.stdout.trim();
+    if (credHelper.includes("gh") || credHelper.includes("manager") || credHelper.includes("store")) {
+      pass(`git credential helper (${credHelper})`);
+    } else {
+      // Check gh auth setup-git status
+      const setupResult = await runCli("gh", ["auth", "setup-git", "--hostname", "github.com"], { timeout: 10000 });
+      if (setupResult.exitCode === 0) {
+        pass("git credential helper (gh auth setup-git 자동 설정 완료)");
+      } else {
+        warn("git credential helper", "HTTPS push 시 비밀번호를 물어볼 수 있습니다 — 'gh auth setup-git' 실행을 권장합니다");
+      }
+    }
   } else {
     fail("gh auth", "'gh auth login'으로 먼저 로그인하세요");
   }
@@ -214,7 +228,7 @@ function checkDiskWritable(aqRoot: string): void {
 }
 
 export async function runDoctor(config: AQConfig, aqRoot: string): Promise<void> {
-  console.log("\n=== AI 병참부 Doctor ===");
+  console.log("\n=== AI Quartermaster Doctor ===");
 
   await checkPrerequisites();
   await checkGhAuth();

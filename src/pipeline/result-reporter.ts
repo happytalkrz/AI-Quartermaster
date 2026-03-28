@@ -65,7 +65,7 @@ export function formatResult(
  */
 export function printResult(report: PipelineReport): void {
   logger.info("Pipeline result ready");
-  console.log("\n=== AI 병참부 Pipeline Result ===\n");
+  console.log("\n=== AI Quartermaster Pipeline Result ===\n");
   console.log(`Issue: #${report.issueNumber} (${report.repo})`);
   console.log(`Plan: ${report.plan.title} (${report.plan.phaseCount} phases)`);
   console.log(`Result: ${report.success ? "SUCCESS" : "FAILED"}`);

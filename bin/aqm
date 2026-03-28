@@ -4,7 +4,7 @@ AQM_PID_FILE="$AQM_HOME/.aqm-server.pid"
 AQM_LOG_FILE="$AQM_HOME/logs/server.log"
 
 if [ ! -d "$AQM_HOME" ]; then
-  echo "AI 병참부가 설치되어 있지 않습니다."
+  echo "AI Quartermaster가 설치되어 있지 않습니다."
   echo "설치: curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash"
   exit 1
 fi
@@ -16,7 +16,7 @@ is_running() {
 
 case "${1:-}" in
   update)
-    echo "AI 병참부 업데이트 중..."
+    echo "AI Quartermaster 업데이트 중..."
     cd "$AQM_HOME"
     BEFORE=$(git rev-parse HEAD)
     git pull --quiet
@@ -41,7 +41,7 @@ case "${1:-}" in
       kill "$(cat "$AQM_PID_FILE")" 2>/dev/null
       rm -f "$AQM_PID_FILE"
     fi
-    echo "AI 병참부를 삭제합니다..."
+    echo "AI Quartermaster를 삭제합니다..."
     rm -rf "$AQM_HOME"
     rm -f "$HOME/.local/bin/aqm"
     echo "삭제 완료."
@@ -51,7 +51,7 @@ case "${1:-}" in
     cd "$AQM_HOME"
     VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)" 2>/dev/null || echo "unknown")
     COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-    echo "AI 병참부 v${VERSION} (${COMMIT})"
+    echo "AI Quartermaster v${VERSION} (${COMMIT})"
     exit 0
     ;;
   start)
@@ -140,4 +140,5 @@ case "${1:-}" in
 esac
 
 # Forward other commands to CLI
+cd "$AQM_HOME"
 exec npx --prefix "$AQM_HOME" tsx "$AQM_HOME/src/cli.ts" "$@"

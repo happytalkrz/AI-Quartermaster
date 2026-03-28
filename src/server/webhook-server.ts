@@ -78,7 +78,7 @@ export function startServer(
     }
     throw err;
   }
-  logger.info(`AI 병참부 server listening on port ${port}`);
+  logger.info(`AI Quartermaster server listening on port ${port}`);
   return {
     close: () => {
       // @hono/node-server returns a Node http.Server

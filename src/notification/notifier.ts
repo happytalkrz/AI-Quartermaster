@@ -39,7 +39,7 @@ export async function notifySuccess(
   prUrl: string,
   options?: { ghPath?: string; dryRun?: boolean }
 ): Promise<void> {
-  const message = `## AI 병참부 - PR 생성 완료\n\nDraft PR이 생성되었습니다: ${prUrl}\n\n리뷰 후 머지해 주세요.`;
+  const message = `## AI Quartermaster - PR 생성 완료\n\nDraft PR이 생성되었습니다: ${prUrl}\n\n리뷰 후 머지해 주세요.`;
   await notifyIssue(repo, issueNumber, message, options);
 }
 
@@ -57,6 +57,6 @@ export async function notifyFailure(
     ? `\n<details><summary>마지막 출력 (최대 50줄)</summary>\n\n\`\`\`\n${options.lastOutput.split("\n").slice(-50).join("\n")}\n\`\`\`\n</details>\n`
     : "";
   const rollback = options?.rollbackInfo ? `\n**롤백**: ${options.rollbackInfo}\n` : "";
-  const message = `## AI 병참부 - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n수동 확인이 필요합니다.`;
+  const message = `## AI Quartermaster - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n수동 확인이 필요합니다.`;
   await notifyIssue(repo, issueNumber, message, options);
 }

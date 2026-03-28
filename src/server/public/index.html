@@ -782,7 +782,10 @@ function renderPhaseProgress(job) {
   const totalPhases = Math.max(phases.length, 5);
   const completedPhases = phases.filter(p => p.success !== undefined).length;
   const currentPhaseIdx = phases.findIndex(p => p.success === undefined);
-  const pct = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0;
+  // Use fine-grained progress from server if available, otherwise fall back to phase-based calc
+  const pct = (typeof job.progress === 'number')
+    ? job.progress
+    : (totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0);
 
   let html = '<div class="space-y-4 mt-6">';
   html += '<div class="flex justify-between text-xs font-headline font-bold text-outline uppercase tracking-widest">';

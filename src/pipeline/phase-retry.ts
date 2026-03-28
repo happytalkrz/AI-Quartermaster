@@ -11,6 +11,7 @@ import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
+import { phaseProgress } from "./progress-tracker.js";
 
 const logger = getLogger();
 
@@ -64,10 +65,19 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     });
 
     jl?.log(`Claude 수정 중: ${ctx.phase.name} (retry ${ctx.attempt})`);
+    const totalPhases = ctx.plan.phases.length;
+    const phaseIdx = ctx.phase.index;
     const result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "fallback"),
+      onStderr: jl ? (line: string) => {
+        const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
+        if (match) {
+          const pct = parseInt(match[1], 10);
+          jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
+        }
+      } : undefined,
     });
 
     if (!result.success) {

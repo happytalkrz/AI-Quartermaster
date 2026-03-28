@@ -9,6 +9,7 @@ import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
+import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 
 const logger = getLogger();
 
@@ -54,6 +55,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
   // Step 2: Execute phases sequentially with retry
   const jl = ctx.jobLogger;
+  jl?.setProgress(PROGRESS_PLAN_GENERATED);
   const phaseResults: PhaseResult[] = [];
   const maxRetries = ctx.config.safety.maxRetries;
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
@@ -73,6 +75,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   for (const phase of plan.phases) {
     logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} ---`);
     jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
+    jl?.setProgress(phaseStart(phase.index, plan.phases.length));
 
     let result = await executePhase({
       issue: ctx.issue,
@@ -140,6 +143,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
     logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
     jl?.log(`Phase ${phase.index + 1} 완료 (${result.commitHash?.slice(0, 8)})`);
+    jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
   }
 
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);

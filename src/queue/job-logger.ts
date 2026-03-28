@@ -27,4 +27,8 @@ export class JobLogger {
   setPhaseResults(results: Job["phaseResults"]): void {
     this.store.update(this.jobId, { phaseResults: results });
   }
+
+  setProgress(progress: number): void {
+    this.store.update(this.jobId, { progress: Math.round(progress) });
+  }
 }

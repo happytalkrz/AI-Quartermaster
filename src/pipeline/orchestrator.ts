@@ -29,6 +29,15 @@ import { PatternStore } from "../learning/pattern-store.js";
 import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import { withRepoLock } from "../git/repo-lock.js";
+import {
+  PROGRESS_ISSUE_VALIDATED,
+  PROGRESS_PLAN_GENERATED,
+  PROGRESS_REVIEW_START,
+  PROGRESS_SIMPLIFY_START,
+  PROGRESS_VALIDATION_START,
+  PROGRESS_PR_CREATED,
+  PROGRESS_DONE,
+} from "./progress-tracker.js";
 
 export interface OrchestratorInput {
   issueNumber: number;
@@ -129,6 +138,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       logger.info(`[VALIDATED] Issue: ${issue.title}`);
       jl?.log(`이슈: ${issue.title}`);
       state = "VALIDATED";
+      jl?.setProgress(PROGRESS_ISSUE_VALIDATED);
 
       // === Safety: validate issue labels ===
       validateIssue(issue, project.safety);
@@ -347,6 +357,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     state = "PLAN_GENERATED"; // core-loop completed all phases
+    jl?.setProgress(PROGRESS_REVIEW_START);
 
     checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
 
@@ -373,6 +384,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         state = "REVIEWING";
         logger.info("[REVIEWING] Starting review rounds...");
         jl?.setStep("리뷰 진행 중...");
+        jl?.setProgress(PROGRESS_REVIEW_START);
 
         reviewVariables = await buildReviewVars();
 
@@ -412,6 +424,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         state = "SIMPLIFYING";
         logger.info("[SIMPLIFYING] Running code simplification...");
         jl?.setStep("코드 간소화 중...");
+        jl?.setProgress(PROGRESS_SIMPLIFY_START);
         if (!reviewVariables) {
           reviewVariables = await buildReviewVars();
         }
@@ -438,6 +451,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         state = "FINAL_VALIDATING";
         logger.info("[FINAL_VALIDATING] Running final validation...");
         jl?.setStep("최종 검증 중...");
+        jl?.setProgress(PROGRESS_VALIDATION_START);
         const validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
         for (const check of validation.checks) {
           jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
@@ -503,6 +517,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     // === Create Draft PR ===
     state = "DRAFT_PR_CREATED";
+    jl?.setProgress(PROGRESS_PR_CREATED);
     let prUrl: string | undefined;
 
     const prResult = await createDraftPR(
@@ -552,6 +567,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     state = "DONE";
+    jl?.setProgress(PROGRESS_DONE);
     // Record success pattern
     try {
       patternStore.add({

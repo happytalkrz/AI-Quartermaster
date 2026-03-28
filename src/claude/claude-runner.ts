@@ -34,6 +34,7 @@ export interface ClaudeRunOptions {
   config: ClaudeCliConfig;
   systemPrompt?: string;
   jsonSchema?: string;  // JSON Schema string to force structured output
+  onStderr?: (line: string) => void;  // callback for each stderr line (e.g. HEARTBEAT parsing)
 }
 
 export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
@@ -83,10 +84,17 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       }
     });
     child.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString();
+      const chunk = data.toString();
+      stderr += chunk;
       if (child.pid !== undefined) {
         const entry = activeProcesses.get(child.pid);
         if (entry) entry.lastActivity = Date.now();
+      }
+      if (options.onStderr) {
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (line.trim()) options.onStderr(line);
+        }
       }
     });
 

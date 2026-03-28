@@ -27,6 +27,7 @@ export interface Job {
     durationMs: number;
     error?: string;
   }>;
+  progress?: number;  // 0-100 overall pipeline progress
 }
 
 export class JobStore {

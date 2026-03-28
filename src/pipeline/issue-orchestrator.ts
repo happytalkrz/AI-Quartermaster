@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
+import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 
 export interface IssuePlan {
@@ -101,7 +102,7 @@ export async function generateExecutionPlan(
   const claudeResult = await runClaude({
     prompt,
     cwd,
-    config: claudeConfig,
+    config: configForTask(claudeConfig, "plan"),
   });
 
   if (!claudeResult.success) {

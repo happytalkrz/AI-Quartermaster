@@ -42,9 +42,17 @@ const worktreeConfigSchema = z.object({
   dirTemplate: z.string(),
 });
 
+const modelRoutingSchema = z.object({
+  plan: z.string(),
+  phase: z.string(),
+  review: z.string(),
+  fallback: z.string(),
+});
+
 const claudeCliConfigSchema = z.object({
   path: z.string(),
   model: z.string(),
+  models: modelRoutingSchema,
   maxTurns: z.number().int().positive(),
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),

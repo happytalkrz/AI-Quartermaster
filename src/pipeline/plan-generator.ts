@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
+import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan } from "../types/pipeline.js";
@@ -88,7 +89,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     const result = await runClaude({
       prompt: finalPrompt,
       cwd: ctx.cwd,
-      config: ctx.claudeConfig,
+      config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
     });
 

@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
+import { configForTask } from "../claude/model-router.js";
 import { runCli, runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
@@ -65,7 +66,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     const result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
-      config: ctx.claudeConfig,
+      config: configForTask(ctx.claudeConfig, "fallback"),
     });
 
     if (!result.success) {

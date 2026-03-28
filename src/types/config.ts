@@ -34,9 +34,17 @@ export interface WorktreeConfig {
   dirTemplate: string;
 }
 
+export interface ModelRouting {
+  plan: string;       // Plan 생성 (복잡한 분석) — 기본 opus
+  phase: string;      // Phase 구현 (코딩) — 기본 sonnet
+  review: string;     // 리뷰/검증 (확인) — 기본 haiku
+  fallback: string;   // 실패 시 폴백 — 기본 sonnet
+}
+
 export interface ClaudeCliConfig {
   path: string;
-  model: string;
+  model: string;            // 글로벌 기본 모델 (routing 미설정 시 사용)
+  models: ModelRouting;     // 태스크별 모델 라우팅
   maxTurns: number;
   timeout: number;
   additionalArgs: string[];

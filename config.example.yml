@@ -39,7 +39,12 @@ worktree:
 commands:
   claudeCli:
     path: "claude"
-    model: "claude-sonnet-4-20250514"
+    model: "claude-opus-4-5"              # 글로벌 기본
+    models:
+      plan: "claude-opus-4-5"             # Plan 생성 (복잡한 분석)
+      phase: "claude-sonnet-4-20250514"   # Phase 구현 (코딩)
+      review: "claude-haiku-4-5-20251001" # 리뷰/검증 (확인)
+      fallback: "claude-sonnet-4-20250514" # 실패 시 폴백
     maxTurns: 50
     timeout: 600000
     additionalArgs: []

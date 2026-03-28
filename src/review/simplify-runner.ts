@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
+import { configForTask } from "../claude/model-router.js";
 import { runCli } from "../utils/cli-runner.js";
 import { parseNumstat } from "../git/diff-collector.js";
 import { getLogger } from "../utils/logger.js";
@@ -31,7 +32,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
   const result = await runClaude({
     prompt: rendered,
     cwd: ctx.cwd,
-    config: ctx.claudeConfig,
+    config: configForTask(ctx.claudeConfig, "review"),
   });
 
   if (!result.success) {

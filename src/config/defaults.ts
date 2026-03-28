@@ -32,6 +32,12 @@ export const DEFAULT_CONFIG: AQConfig = {
     claudeCli: {
       path: "claude",
       model: "claude-opus-4-5",
+      models: {
+        plan: "claude-opus-4-5",
+        phase: "claude-sonnet-4-20250514",
+        review: "claude-haiku-4-5-20251001",
+        fallback: "claude-sonnet-4-20250514",
+      },
       maxTurns: 50,
       timeout: 600000,
       additionalArgs: [],

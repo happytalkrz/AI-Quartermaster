@@ -1,4 +1,5 @@
 import { runReviewRound } from "./review-runner.js";
+import { configForTask } from "../claude/model-router.js";
 import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import type { ReviewConfig, ClaudeCliConfig } from "../types/config.js";
@@ -35,7 +36,7 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
 
       const claudeConfig = round.model
         ? { ...ctx.claudeConfig, model: round.model }
-        : ctx.claudeConfig;
+        : configForTask(ctx.claudeConfig, "review");
 
       result = await runReviewRound({
         roundName: round.name,

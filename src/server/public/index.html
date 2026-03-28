@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="dark" lang="ko">
+<html class="dark" lang="ko" id="html-root">
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
@@ -153,7 +153,7 @@
 <div id="api-key-banner" style="display:none;" class="fixed top-0 left-0 right-0 z-[999] bg-surface-container-high border-b border-outline-variant/30 px-6 py-3 flex items-center gap-4 flex-wrap">
   <span class="text-sm text-on-surface flex-1 min-w-[200px]">API 키가 필요합니다. <code class="font-mono text-xs bg-surface-container-lowest px-2 py-0.5 rounded border border-outline-variant/20">DASHBOARD_API_KEY</code> 값을 입력하세요.</span>
   <input id="api-key-input" type="password" placeholder="API Key" class="font-mono text-sm px-3 py-1.5 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface outline-none w-64 focus:ring-1 focus:ring-primary"/>
-  <button onclick="saveApiKey()" class="px-4 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/30 text-sm font-bold hover:bg-primary/20 transition-colors">저장</button>
+  <button onclick="saveApiKey()" class="px-4 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/30 text-sm font-bold hover:bg-primary/20 transition-colors" data-i18n="save">저장</button>
 </div>
 
 <!-- TopNavBar -->
@@ -161,8 +161,8 @@
   <div class="flex items-center gap-8">
     <span class="font-headline font-bold text-primary-container text-lg uppercase tracking-wider">AI Quartermaster</span>
     <nav class="hidden md:flex gap-6">
-      <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer" data-nav="dashboard">Dashboard</a>
-      <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer" data-nav="logs">Logs</a>
+      <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer" data-nav="dashboard" data-i18n="dashboard">Dashboard</a>
+      <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer" data-nav="logs" data-i18n="logs">Logs</a>
     </nav>
   </div>
   <div class="flex items-center gap-4">
@@ -171,6 +171,11 @@
       <span id="conn-dot" class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
       <span id="conn-label">연결 중...</span>
     </div>
+    <!-- Language toggle -->
+    <button onclick="toggleLang()" class="flex items-center gap-1 text-slate-400 hover:bg-slate-800/50 px-2 py-1.5 rounded-md transition-all active:scale-95">
+      <span class="material-symbols-outlined text-base">translate</span>
+      <span class="text-xs font-bold" id="lang-label">KO</span>
+    </button>
     <!-- Theme toggle -->
     <button id="btn-theme" class="material-symbols-outlined text-slate-400 hover:bg-slate-800/50 p-2 rounded-md transition-all active:scale-95" onclick="toggleTheme()">dark_mode</button>
   </div>
@@ -180,29 +185,29 @@
 <!-- SideNavBar -->
 <aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d]">
   <div class="mb-6 px-2">
-    <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60">Command HQ</div>
+    <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60" data-i18n="commandHQ">Command HQ</div>
     <div class="text-[10px] font-mono text-outline uppercase">v1.0.4-stable</div>
   </div>
   <nav class="flex-1 space-y-1" id="sidebar-nav">
     <a class="nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer" data-nav="dashboard">
       <span class="material-symbols-outlined">dashboard</span>
-      Dashboard
+      <span data-i18n="dashboard">Dashboard</span>
     </a>
     <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="logs">
       <span class="material-symbols-outlined">terminal</span>
-      Logs
+      <span data-i18n="logs">Logs</span>
     </a>
     <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="repositories">
       <span class="material-symbols-outlined">inventory_2</span>
-      Repositories
+      <span data-i18n="repositories">Repositories</span>
     </a>
     <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="automations">
       <span class="material-symbols-outlined">precision_manufacturing</span>
-      Automations
+      <span data-i18n="automations">Automations</span>
     </a>
     <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="settings">
       <span class="material-symbols-outlined">settings</span>
-      Settings
+      <span data-i18n="settings">Settings</span>
     </a>
   </nav>
   <div class="mt-auto pt-4 border-t border-outline-variant/30">
@@ -219,20 +224,20 @@
     <!-- Stats Bar -->
     <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
-        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2">Total Jobs</div>
+        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2" data-i18n="totalJobs">Total Jobs</div>
         <div class="flex items-baseline gap-2">
           <span id="stat-total" class="text-3xl font-headline font-bold text-on-surface">0</span>
         </div>
       </div>
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
-        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2">Success Rate</div>
+        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2" data-i18n="successRate">Success Rate</div>
         <div class="flex items-center gap-3">
           <span id="stat-rate" class="text-3xl font-headline font-bold text-on-surface">0%</span>
           <span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
         </div>
       </div>
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
-        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2">Active</div>
+        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2" data-i18n="active">Active</div>
         <div class="flex items-center gap-3">
           <span id="stat-active" class="text-3xl font-headline font-bold text-on-surface">0</span>
           <div class="relative flex items-center justify-center">
@@ -242,7 +247,7 @@
         </div>
       </div>
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
-        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2">Failed</div>
+        <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2" data-i18n="failed">Failed</div>
         <div class="flex items-center gap-3">
           <span id="stat-failed" class="text-3xl font-headline font-bold text-on-surface">0</span>
           <span class="material-symbols-outlined text-[#f85149]" style="font-variation-settings: 'FILL' 1;">cancel</span>
@@ -254,15 +259,15 @@
     <div class="flex items-center gap-3 mb-6">
       <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
         <span class="w-1 h-4 bg-primary-container rounded-full"></span>
-        Operations
+        <span data-i18n="recentOps">Operations</span>
       </h2>
       <div class="flex-1"></div>
       <div class="flex gap-1 bg-surface-container rounded-lg p-1 ring-1 ring-outline-variant/10">
-        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary" data-filter="all" onclick="setFilter('all')">전체 <span id="cnt-all" class="font-mono">0</span></button>
-        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="running" onclick="setFilter('running')">진행중 <span id="cnt-running" class="font-mono">0</span></button>
-        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="success" onclick="setFilter('success')">성공 <span id="cnt-success" class="font-mono">0</span></button>
-        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="failure" onclick="setFilter('failure')">실패 <span id="cnt-failure" class="font-mono">0</span></button>
-        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="queued" onclick="setFilter('queued')">대기 <span id="cnt-queued" class="font-mono">0</span></button>
+        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary" data-filter="all" onclick="setFilter('all')"><span data-i18n="filter.all">전체</span> <span id="cnt-all" class="font-mono">0</span></button>
+        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="running" onclick="setFilter('running')"><span data-i18n="filter.running">진행중</span> <span id="cnt-running" class="font-mono">0</span></button>
+        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="success" onclick="setFilter('success')"><span data-i18n="filter.success">성공</span> <span id="cnt-success" class="font-mono">0</span></button>
+        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="failure" onclick="setFilter('failure')"><span data-i18n="filter.failure">실패</span> <span id="cnt-failure" class="font-mono">0</span></button>
+        <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="queued" onclick="setFilter('queued')"><span data-i18n="filter.queued">대기</span> <span id="cnt-queued" class="font-mono">0</span></button>
       </div>
     </div>
 
@@ -299,7 +304,7 @@
   <div id="view-logs" class="view-panel">
     <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
       <span class="w-1 h-4 bg-primary-container rounded-full"></span>
-      Full Log Viewer
+      <span data-i18n="logs">Logs</span>
     </h2>
     <div id="logs-detail" class="bg-surface-container-lowest p-6 rounded-xl font-mono text-xs leading-relaxed border border-outline-variant/10 min-h-[400px] max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar">
       <div class="text-outline text-center py-12">왼쪽 Dashboard에서 작업을 선택하면 전체 로그가 여기에 표시됩니다.</div>
@@ -310,22 +315,22 @@
   <div id="view-repositories" class="view-panel">
     <div class="flex flex-col items-center justify-center py-32 text-center">
       <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">inventory_2</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2">Repositories</h2>
-      <p class="text-sm text-outline">Coming Soon</p>
+      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="repositories">Repositories</h2>
+      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
     </div>
   </div>
   <div id="view-automations" class="view-panel">
     <div class="flex flex-col items-center justify-center py-32 text-center">
       <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">precision_manufacturing</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2">Automations</h2>
-      <p class="text-sm text-outline">Coming Soon</p>
+      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="automations">Automations</h2>
+      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
     </div>
   </div>
   <div id="view-settings" class="view-panel">
     <div class="flex flex-col items-center justify-center py-32 text-center">
       <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">settings</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2">Settings</h2>
-      <p class="text-sm text-outline">Coming Soon</p>
+      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="settings">Settings</h2>
+      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
     </div>
   </div>
 
@@ -334,6 +339,105 @@
 
 <script>
 'use strict';
+
+/* ══════════════════════════════════════════════════════════════
+   i18n
+   ══════════════════════════════════════════════════════════════ */
+const i18n = {
+  ko: {
+    dashboard: "대시보드",
+    logs: "로그",
+    repositories: "저장소",
+    automations: "자동화",
+    settings: "설정",
+    totalJobs: "전체 작업",
+    successRate: "성공률",
+    active: "실행 중",
+    failed: "실패",
+    recentOps: "최근 작업",
+    comingSoon: "준비 중",
+    noJobSelected: "작업을 선택하세요",
+    noJobs: "등록된 작업이 없습니다",
+    cancel: "취소",
+    retry: "재시도",
+    delete: "삭제",
+    filter: { all: "전체", running: "실행 중", success: "성공", failure: "실패", queued: "대기" },
+    phase: "단계",
+    duration: "소요시간",
+    telemetry: "텔레메트리 스트림",
+    expandLogs: "전체 로그 보기",
+    pipeline: "파이프라인 진행률",
+    complete: "완료",
+    prLink: "PR 링크",
+    error: "에러",
+    apiKeyPrompt: "API 키를 입력하세요",
+    save: "저장",
+    newAutomation: "새 자동화",
+    commandHQ: "커맨드 HQ",
+    jobDetail: "작업 상세",
+    phaseProgress: "단계 진행률",
+  },
+  en: {
+    dashboard: "Dashboard",
+    logs: "Logs",
+    repositories: "Repositories",
+    automations: "Automations",
+    settings: "Settings",
+    totalJobs: "Total Jobs",
+    successRate: "Success Rate",
+    active: "Active",
+    failed: "Failed",
+    recentOps: "Recent Operations",
+    comingSoon: "Coming Soon",
+    noJobSelected: "Select a job to view details",
+    noJobs: "No jobs found",
+    cancel: "Cancel",
+    retry: "Retry",
+    delete: "Delete",
+    filter: { all: "All", running: "Running", success: "Success", failure: "Failed", queued: "Queued" },
+    phase: "Phase",
+    duration: "Duration",
+    telemetry: "Telemetry Stream",
+    expandLogs: "Expand Full Logs",
+    pipeline: "Pipeline Progress",
+    complete: "Complete",
+    prLink: "PR Link",
+    error: "Error",
+    apiKeyPrompt: "Enter API Key",
+    save: "Save",
+    newAutomation: "New Automation",
+    commandHQ: "Command HQ",
+    jobDetail: "Job Detail",
+    phaseProgress: "Phase Progress",
+  }
+};
+
+let currentLang = localStorage.getItem('aqm-lang') || 'ko';
+
+function t(key) {
+  const keys = key.split('.');
+  let val = i18n[currentLang];
+  for (const k of keys) val = val?.[k];
+  return val ?? key;
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.getElementById('lang-label').textContent = currentLang.toUpperCase();
+  document.getElementById('html-root').lang = currentLang;
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'ko' ? 'en' : 'ko';
+  localStorage.setItem('aqm-lang', currentLang);
+  applyTranslations();
+  renderFromState();
+}
+
+// Apply on load
+applyTranslations();
 
 /* ══════════════════════════════════════════════════════════════
    API Key Management
@@ -600,7 +704,7 @@ function renderJobListItem(job, isSelected) {
    ══════════════════════════════════════════════════════════════ */
 function renderJobDetail(job) {
   if (!job) {
-    return '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>';
+    return '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
   }
 
   const color = statusColor(job.status);
@@ -631,13 +735,13 @@ function renderJobDetail(job) {
   // Action buttons
   html += '<div class="flex gap-3">';
   if (isActive) {
-    html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors">Cancel</button>';
+    html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors">' + t('cancel') + '</button>';
   }
   if (job.status === 'failure') {
-    html += '<button onclick="retryJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors">Retry</button>';
+    html += '<button onclick="retryJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors">' + t('retry') + '</button>';
   }
   if (!isActive) {
-    html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors">Delete</button>';
+    html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors">' + t('delete') + '</button>';
   }
   html += '</div></div>';
 
@@ -650,7 +754,7 @@ function renderJobDetail(job) {
   // PR link
   if (job.prUrl) {
     html += '<div class="mt-2"><a href="' + esc(job.prUrl) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 bg-[#3fb950]/10 text-[#3fb950] text-sm font-bold rounded-lg border border-[#3fb950]/30 hover:bg-[#3fb950]/20 transition-colors">';
-    html += '<span class="material-symbols-outlined text-sm">open_in_new</span> PR 보기</a></div>';
+    html += '<span class="material-symbols-outlined text-sm">open_in_new</span> ' + t('prLink') + '</a></div>';
   }
 
   // Error box
@@ -681,13 +785,13 @@ function renderPhaseProgress(job) {
 
   let html = '<div class="space-y-4 mt-6">';
   html += '<div class="flex justify-between text-xs font-headline font-bold text-outline uppercase tracking-widest">';
-  html += '<span>Pipeline Progress</span>';
+  html += '<span>' + t('pipeline') + '</span>';
   if (job.status === 'success') {
-    html += '<span class="text-[#3fb950]">Complete</span>';
+    html += '<span class="text-[#3fb950]">' + t('complete') + '</span>';
   } else if (job.status === 'failure') {
-    html += '<span class="text-[#f85149]">Failed</span>';
+    html += '<span class="text-[#f85149]">' + t('failed') + '</span>';
   } else {
-    html += '<span class="text-primary">' + pct + '% Complete</span>';
+    html += '<span class="text-primary">' + pct + '% ' + t('complete') + '</span>';
   }
   html += '</div>';
 
@@ -779,8 +883,8 @@ function renderLogSection(job) {
 
   let html = '<div class="space-y-3 mt-6">';
   html += '<div class="flex items-center justify-between">';
-  html += '<h3 class="text-xs font-headline font-bold text-outline uppercase tracking-widest">Telemetry Stream</h3>';
-  html += '<button onclick="navigateTo(\'logs\')" class="text-[10px] text-primary hover:underline uppercase font-bold">Expand Full Logs</button>';
+  html += '<h3 class="text-xs font-headline font-bold text-outline uppercase tracking-widest">' + t('telemetry') + '</h3>';
+  html += '<button onclick="navigateTo(\'logs\')" class="text-[10px] text-primary hover:underline uppercase font-bold">' + t('expandLogs') + '</button>';
   html += '</div>';
 
   html += '<div class="bg-surface-container-lowest p-6 rounded-xl font-mono text-xs leading-relaxed border border-outline-variant/10 max-h-64 overflow-y-auto custom-scrollbar" id="detail-log-box">';
@@ -884,7 +988,7 @@ function renderFromState() {
     listEl.classList.add('hidden');
     emptyEl.classList.remove('hidden');
     emptyEl.classList.add('flex');
-    document.getElementById('job-detail').innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>';
+    document.getElementById('job-detail').innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     startLiveTickers();
     return;
   }
@@ -1002,7 +1106,7 @@ function setConnState(state) {
     label.textContent = 'Connected';
   } else if (state === 'connecting') {
     dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-pulse';
-    label.textContent = '연결 중...';
+    label.textContent = currentLang === 'ko' ? '연결 중...' : 'Connecting...';
   } else {
     dot.className = 'w-2 h-2 rounded-full bg-outline';
     label.textContent = 'Disconnected';

@@ -186,7 +186,7 @@
 <aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d]">
   <div class="mb-6 px-2">
     <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60" data-i18n="commandHQ">Command HQ</div>
-    <div class="text-[10px] font-mono text-outline uppercase">v1.0.4-stable</div>
+    <div class="text-[10px] font-mono text-outline uppercase">AQM</div>
   </div>
   <nav class="flex-1 space-y-1" id="sidebar-nav">
     <a class="nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer" data-nav="dashboard">
@@ -225,8 +225,9 @@
     <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
         <div class="text-xs font-medium text-outline uppercase tracking-wider mb-2" data-i18n="totalJobs">Total Jobs</div>
-        <div class="flex items-baseline gap-2">
+        <div class="flex items-center gap-3">
           <span id="stat-total" class="text-3xl font-headline font-bold text-on-surface">0</span>
+          <span class="material-symbols-outlined text-outline">monitoring</span>
         </div>
       </div>
       <div class="bg-surface-container p-5 rounded-xl border-none ring-1 ring-outline-variant/10">
@@ -850,7 +851,7 @@ function renderPhaseList(job) {
       html += '<div class="flex items-center gap-4">';
       html += '<span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: \'FILL\' 1;">check_circle</span>';
       html += '<div><div class="text-sm font-bold">' + esc(phase.name || 'Phase ' + (i + 1)) + '</div>';
-      if (phase.commit) html += '<div class="text-[10px] text-outline font-mono">' + esc(phase.commit) + '</div>';
+      if (phase.commit) html += '<div class="text-[10px] text-outline font-mono">commit: ' + esc(phase.commit) + '</div>';
       html += '</div></div>';
       html += '<div class="flex items-center gap-8"><span class="text-xs font-mono text-outline">' + dur + '</span>';
       html += '<span class="material-symbols-outlined text-outline text-lg">chevron_right</span></div></div>';
@@ -886,6 +887,56 @@ function renderPhaseList(job) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Log Colorizer
+   ══════════════════════════════════════════════════════════════ */
+function colorizeLogLine(line) {
+  const escaped = esc(line);
+
+  // Timestamp pattern: [2026. 3. 28. 18시 25분 41초] or [2026-03-28T18:25:41...]
+  const tsPattern = /^(\[[\d., 년월일시분초TZ:+-]+\])/;
+  const tsMatch = line.match(tsPattern);
+
+  // Tag colors
+  const tagMap = {
+    '[HEARTBEAT]': '#58a6ff',
+    '[INFO]':      '#3fb950',
+    '[PASS]':      '#3fb950',
+    '[FAIL]':      '#f85149',
+    '[STEP]':      '#58a6ff',
+    '[WARN]':      '#d29922',
+    '[EXEC]':      '#ffba42',
+    '[ERROR]':     '#f85149',
+  };
+
+  let lineColor = '#c9d1d9'; // default muted
+  let rendered = escaped;
+
+  // Apply timestamp muting
+  if (tsMatch) {
+    const ts = esc(tsMatch[1]);
+    rendered = rendered.replace(ts, '<span style="color:#8b949e">' + ts + '</span>');
+  }
+
+  // Apply tag coloring
+  for (const [tag, color] of Object.entries(tagMap)) {
+    if (line.includes(tag)) {
+      lineColor = color;
+      const escapedTag = esc(tag);
+      rendered = rendered.replace(escapedTag, '<span style="color:' + color + ';font-weight:700">' + escapedTag + '</span>');
+      break;
+    }
+  }
+
+  // Fallback: error/pass keywords
+  if (lineColor === '#c9d1d9') {
+    if (line.includes('실패') || line.includes('ERROR') || line.includes('error')) lineColor = '#f85149';
+    else if (line.includes('성공') || line.includes('SUCCESS')) lineColor = '#3fb950';
+  }
+
+  return '<div class="mt-0.5 leading-5" style="color:' + lineColor + '">' + rendered + '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Log Section
    ══════════════════════════════════════════════════════════════ */
 function renderLogSection(job) {
@@ -900,25 +951,15 @@ function renderLogSection(job) {
   html += '<button onclick="navigateTo(\'logs\')" class="text-[10px] text-primary hover:underline uppercase font-bold">' + t('expandLogs') + '</button>';
   html += '</div>';
 
+  html += '<div class="relative">';
+  html += '<div class="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-surface-container-lowest to-transparent pointer-events-none z-10 rounded-t-xl"></div>';
   html += '<div class="bg-surface-container-lowest p-6 rounded-xl font-mono text-xs leading-relaxed border border-outline-variant/10 max-h-64 overflow-y-auto custom-scrollbar" id="detail-log-box">';
 
   lines.forEach(line => {
-    const isError = line.includes('실패') || line.includes('FAIL') || line.includes('ERROR') || line.includes('error');
-    const isPass = line.includes('PASS') || line.includes('성공') || line.includes('SUCCESS');
-    const isStep = line.includes('STEP') || line.includes('phase');
-
-    let colorClass = 'text-on-surface/80';
-    let label = '';
-    if (isError) { colorClass = 'text-[#f85149]'; label = '<span class="text-[#f85149] font-bold">[FAIL]</span>'; }
-    else if (isPass) { colorClass = 'text-[#3fb950]'; label = '<span class="text-[#3fb950] font-bold">[PASS]</span>'; }
-    else if (isStep) { colorClass = 'text-[#58a6ff]'; label = '<span class="text-[#58a6ff] font-bold">[STEP]</span>'; }
-
-    html += '<div class="flex gap-4 group mt-1">';
-    if (label) html += label + ' ';
-    html += '<span class="' + colorClass + '">' + esc(line) + '</span></div>';
+    html += colorizeLogLine(line);
   });
 
-  html += '</div></div>';
+  html += '</div></div></div>';
   return html;
 }
 
@@ -935,14 +976,7 @@ function renderLogsView(job) {
   let html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status, job) + '</div>';
 
   job.logs.forEach(line => {
-    const isError = line.includes('실패') || line.includes('FAIL') || line.includes('ERROR');
-    const isPass = line.includes('PASS') || line.includes('성공') || line.includes('SUCCESS');
-
-    let colorClass = 'text-on-surface/80';
-    if (isError) colorClass = 'text-[#f85149]';
-    else if (isPass) colorClass = 'text-[#3fb950]';
-
-    html += '<div class="' + colorClass + ' mt-0.5">' + esc(line) + '</div>';
+    html += colorizeLogLine(line);
   });
 
   container.innerHTML = html;

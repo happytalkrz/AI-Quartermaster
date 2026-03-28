@@ -122,6 +122,28 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     const dataDir = resolve(aqRoot ?? projectRoot, "data");
 
+    // Check if a PR already exists for this issue (prevents duplicate work)
+    try {
+      const prCheckResult = await runCli(
+        project.commands.ghCli.path,
+        ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
+        { timeout: 10000 }
+      );
+      if (prCheckResult.exitCode === 0) {
+        const prs = JSON.parse(prCheckResult.stdout);
+        if (prs.length > 0) {
+          logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
+          jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
+          jl?.setProgress(PROGRESS_DONE);
+          jl?.setStep("완료 (기존 PR)");
+          removeCheckpoint(dataDir, issueNumber);
+          return { success: true, state: "DONE", prUrl: prs[0].url };
+        }
+      }
+    } catch {
+      // non-fatal: continue pipeline if PR check fails
+    }
+
     // === RECEIVED → VALIDATED ===
     let issue: Awaited<ReturnType<typeof fetchIssue>>;
     if (isPastState(state, "VALIDATED")) {

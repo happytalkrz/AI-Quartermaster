@@ -269,6 +269,11 @@
         <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="failure" onclick="setFilter('failure')"><span data-i18n="filter.failure">실패</span> <span id="cnt-failure" class="font-mono">0</span></button>
         <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="queued" onclick="setFilter('queued')"><span data-i18n="filter.queued">대기</span> <span id="cnt-queued" class="font-mono">0</span></button>
       </div>
+      <label class="flex items-center gap-1.5 text-xs text-outline cursor-pointer select-none ml-2">
+        <input type="checkbox" id="hide-archived" onchange="toggleArchived()" class="rounded border-outline-variant accent-primary">
+        <span data-i18n="hideArchived">아카이브 숨기기</span>
+      </label>
+      <button onclick="clearAllJobs()" class="ml-2 px-3 py-1 text-xs font-bold rounded-md text-[#f85149] hover:bg-[#f85149]/10 transition-colors" data-i18n="clearAll">전체 삭제</button>
     </div>
 
     <!-- Dashboard Layout Grid -->
@@ -361,6 +366,10 @@ const i18n = {
     cancel: "취소",
     retry: "재시도",
     delete: "삭제",
+    clearAll: "전체 삭제",
+    clearAllConfirm: "완료/실패된 모든 작업을 삭제하시겠습니까?",
+    cancelConfirm: "이 작업을 취소하시겠습니까?",
+    hideArchived: "아카이브 숨기기",
     filter: { all: "전체", running: "실행 중", success: "성공", failure: "실패", queued: "대기" },
     phase: "단계",
     duration: "소요시간",
@@ -394,6 +403,10 @@ const i18n = {
     cancel: "Cancel",
     retry: "Retry",
     delete: "Delete",
+    clearAll: "Clear All",
+    clearAllConfirm: "Delete all completed/failed jobs?",
+    cancelConfirm: "Cancel this job?",
+    hideArchived: "Hide Archived",
     filter: { all: "All", running: "Running", success: "Success", failure: "Failed", queued: "Queued" },
     phase: "Phase",
     duration: "Duration",
@@ -539,7 +552,10 @@ function fmtTime(iso) {
          d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function statusLabel(s) {
+function statusLabel(s, job) {
+  if (s === 'queued' && job && job.progress > 0) {
+    return currentLang === 'ko' ? '재개 대기' : 'Resuming';
+  }
   const map = { queued: 'Queued', running: 'Running', success: 'Success', failure: 'Failed', cancelled: 'Cancelled' };
   return map[s] || s;
 }
@@ -637,6 +653,9 @@ function toggleTheme() {
     document.documentElement.classList.remove('dark');
     document.getElementById('btn-theme').textContent = 'light_mode';
   }
+  // Restore archived toggle
+  const archiveEl = document.getElementById('hide-archived');
+  if (archiveEl) archiveEl.checked = localStorage.getItem('aqm-hide-archived') === 'true';
 })();
 
 /* ══════════════════════════════════════════════════════════════
@@ -650,10 +669,12 @@ let selectedJobId = null;
    Filter
    ══════════════════════════════════════════════════════════════ */
 function filterJobs(jobs) {
-  if (currentFilter === 'all') return jobs;
-  if (currentFilter === 'running') return jobs.filter(j => j.status === 'running');
-  if (currentFilter === 'queued') return jobs.filter(j => j.status === 'queued');
-  return jobs.filter(j => j.status === currentFilter);
+  let filtered = jobs;
+  if (hideArchived) filtered = filtered.filter(j => j.status !== 'archived');
+  if (currentFilter === 'all') return filtered;
+  if (currentFilter === 'running') return filtered.filter(j => j.status === 'running');
+  if (currentFilter === 'queued') return filtered.filter(j => j.status === 'queued');
+  return filtered.filter(j => j.status === currentFilter);
 }
 
 function setFilter(f) {
@@ -685,7 +706,7 @@ function renderJobListItem(job, isSelected) {
   if (isRunning) {
     badgeHtml = '<span class="text-[10px] bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20 px-2 py-0.5 rounded uppercase font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-pulse"></span>Running</span>';
   } else {
-    badgeHtml = '<span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status) + '</span>';
+    badgeHtml = '<span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
   }
 
   return '<div class="' + activeBg + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
@@ -717,7 +738,7 @@ function renderJobDetail(job) {
   if (job.status === 'running') {
     statusBadge = '<span class="px-3 py-1 bg-[#58a6ff]/10 text-[#58a6ff] text-xs font-bold rounded-full ring-1 ring-[#58a6ff]/30 uppercase tracking-tighter">In Progress</span>';
   } else {
-    statusBadge = '<span class="px-3 py-1 text-xs font-bold rounded-full uppercase tracking-tighter" style="background:' + color + '15;color:' + color + ';box-shadow:inset 0 0 0 1px ' + color + '44">' + statusLabel(job.status) + '</span>';
+    statusBadge = '<span class="px-3 py-1 text-xs font-bold rounded-full uppercase tracking-tighter" style="background:' + color + '15;color:' + color + ';box-shadow:inset 0 0 0 1px ' + color + '44">' + statusLabel(job.status, job) + '</span>';
   }
 
   // Header
@@ -911,7 +932,7 @@ function renderLogsView(job) {
     return;
   }
 
-  let html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status) + '</div>';
+  let html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status, job) + '</div>';
 
   job.logs.forEach(line => {
     const isError = line.includes('실패') || line.includes('FAIL') || line.includes('ERROR');
@@ -1047,6 +1068,7 @@ function startLiveTickers() {
    Job Actions
    ══════════════════════════════════════════════════════════════ */
 function cancelJob(id) {
+  if (!confirm(t('cancelConfirm'))) return;
   apiFetch('/api/jobs/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
     .then(() => apiFetch('/api/jobs').then(r => r.json()).then(handleData))
     .catch(() => {});
@@ -1067,6 +1089,24 @@ function deleteJob(id) {
       }
     })
     .catch(() => {});
+}
+
+function clearAllJobs() {
+  if (!confirm(t('clearAllConfirm'))) return;
+  const deletable = currentJobs.filter(j => j.status === 'success' || j.status === 'failure' || j.status === 'cancelled' || j.status === 'archived');
+  Promise.all(deletable.map(j =>
+    apiFetch('/api/jobs/' + encodeURIComponent(j.id), { method: 'DELETE' }).catch(() => {})
+  )).then(() => {
+    selectedJobId = null;
+    apiFetch('/api/jobs').then(r => r.json()).then(handleData).catch(() => {});
+  });
+}
+
+let hideArchived = localStorage.getItem('aqm-hide-archived') === 'true';
+function toggleArchived() {
+  hideArchived = document.getElementById('hide-archived').checked;
+  localStorage.setItem('aqm-hide-archived', hideArchived);
+  renderFromState();
 }
 
 /* ══════════════════════════════════════════════════════════════

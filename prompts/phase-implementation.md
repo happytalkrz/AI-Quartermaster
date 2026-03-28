@@ -1,0 +1,56 @@
+# Phase 구현
+
+당신은 시니어 개발자입니다. 아래 Phase를 구현하세요.
+
+---
+
+## 이슈 정보
+
+- **이슈**: #{{issue.number}} — {{issue.title}}
+
+## 전체 계획 요약
+
+{{plan.summary}}
+
+## 현재 Phase
+
+- **Phase**: {{phase.index}}/{{phase.totalCount}} — {{phase.name}}
+- **설명**: {{phase.description}}
+- **대상 파일**: {{phase.files}}
+
+## 이전 Phase 결과
+
+{{previousPhases.summary}}
+
+## 프로젝트 컨벤션
+
+{{projectConventions}}
+
+---
+
+## 구현 규칙
+
+1. **이 Phase의 대상 파일만 수정하세요.** 범위를 벗어난 파일은 수정하지 마세요.
+2. 구현이 완료되면 반드시 **git add + git commit**을 수행하세요.
+3. 커밋 메시지 형식: `[#{{issue.number}}] Phase {{phase.index}}: {{phase.name}}`
+4. 구현 후 아래 검증 명령을 실행하세요:
+   - 테스트: `{{config.testCommand}}`
+   - 린트: `{{config.lintCommand}}`
+5. 검증이 실패하면 수정 후 다시 검증하세요.
+6. 불필요한 파일, 주석, console.log를 추가하지 마세요.
+7. 기존 코드 스타일과 패턴을 따르세요.
+
+## 출력
+
+구현 완료 후 아래 JSON을 출력하세요:
+
+```json
+{
+  "phaseIndex": {{phase.index}},
+  "phaseName": "{{phase.name}}",
+  "filesModified": ["<수정한 파일 경로>", ...],
+  "testsAdded": ["<추가한 테스트>", ...],
+  "commitMessage": "<커밋 메시지>",
+  "notes": "<특이사항>"
+}
+```

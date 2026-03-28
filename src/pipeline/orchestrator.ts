@@ -291,6 +291,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       projectConventions,
       dataDir,
       jobLogger: jl,
+      previousPhaseResults: resumeFrom?.phaseResults?.map(r => ({
+        phaseIndex: r.phaseIndex ?? 0,
+        phaseName: r.phaseName ?? "",
+        success: r.success ?? false,
+        commitHash: r.commitHash,
+        error: r.error,
+        durationMs: r.durationMs ?? 0,
+      })),
     });
 
     // Re-evaluate mode from Claude's Plan judgment (Plan.mode overrides if not set by label)

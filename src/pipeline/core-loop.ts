@@ -25,6 +25,7 @@ export interface CoreLoopContext {
   projectConventions?: string;
   dataDir?: string;
   jobLogger?: JobLogger;
+  previousPhaseResults?: PhaseResult[];  // from checkpoint resume
 }
 
 export interface CoreLoopResult {
@@ -56,7 +57,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   // Step 2: Execute phases sequentially with retry
   const jl = ctx.jobLogger;
   jl?.setProgress(PROGRESS_PLAN_GENERATED);
-  const phaseResults: PhaseResult[] = [];
+  const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? [])];
   const maxRetries = ctx.config.safety.maxRetries;
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
 
@@ -73,6 +74,15 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   }
 
   for (const phase of plan.phases) {
+    // Skip phases already completed (from checkpoint resume)
+    const alreadyDone = phaseResults.find(r => r.phaseIndex === phase.index && r.success);
+    if (alreadyDone) {
+      logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} [SKIP - already completed] ---`);
+      jl?.log(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} (이전 완료, 스킵)`);
+      jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
+      continue;
+    }
+
     logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} ---`);
     jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
     jl?.setProgress(phaseStart(phase.index, plan.phases.length));

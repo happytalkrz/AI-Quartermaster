@@ -232,6 +232,9 @@ async function startCommand(args: CliArgs): Promise<void> {
   // Recover jobs from previous session
   queue.recover();
 
+  // Prune old completed/failed jobs to prevent unbounded accumulation
+  store.prune(effectiveConfig.general.maxJobs);
+
   // === Polling mode ===
   let poller: IssuePoller | undefined;
   if (isPollingMode) {

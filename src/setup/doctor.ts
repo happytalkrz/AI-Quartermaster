@@ -4,6 +4,19 @@ import * as net from "net";
 import { runCli } from "../utils/cli-runner.js";
 import { AQConfig } from "../types/config.js";
 
+const MIN_CLAUDE_VERSION = "1.0.0";
+
+/** Compare semver strings. Returns negative if a < b, 0 if equal, positive if a > b. */
+function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map(n => parseInt(n, 10) || 0);
+  const pb = b.split(".").map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
 // ANSI color helpers
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
@@ -26,7 +39,23 @@ async function checkPrerequisites(): Promise<void> {
   for (const tool of ["git", "gh", "claude"]) {
     const result = await runCli(tool, ["--version"], { timeout: 5000 });
     if (result.exitCode === 0) {
-      pass(`${tool} CLI`);
+      if (tool === "claude") {
+        const output = (result.stdout + result.stderr).trim();
+        // Extract version like "1.2.3" from output such as "Claude Code 1.2.3" or "1.2.3"
+        const match = output.match(/(\d+\.\d+\.\d+)/);
+        if (match) {
+          const version = match[1];
+          if (compareSemver(version, MIN_CLAUDE_VERSION) < 0) {
+            warn(`claude CLI (v${version})`, `최소 권장 버전은 v${MIN_CLAUDE_VERSION}입니다 — 'claude update' 또는 npm으로 업데이트하세요`);
+          } else {
+            pass(`claude CLI (v${version})`);
+          }
+        } else {
+          pass(`claude CLI (버전 파싱 불가: ${output.slice(0, 40)})`);
+        }
+      } else {
+        pass(`${tool} CLI`);
+      }
     } else {
       fail(`${tool} CLI`, `'${tool} --version' 실패 — PATH에 설치되어 있는지 확인하세요`);
     }

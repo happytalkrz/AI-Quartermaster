@@ -14,7 +14,9 @@ AI-Quartermaster/
   config.local.yml    # 로컬 오버라이드 (gitignore 대상)
 ```
 
-로딩 우선순위: `config.yml` < `config.local.yml` < 환경변수 (`AQ_` 접두사). 깊은 병합(deep merge) 방식으로 합산한다.
+로딩 우선순위: `config.yml` < `config.local.yml`. 깊은 병합(deep merge) 방식으로 합산한다.
+
+> 참고: 환경변수 오버라이드(`AQ_` 접두사)는 향후 구현 예정
 
 ---
 
@@ -30,6 +32,9 @@ AI-Quartermaster/
 | `general.dryRun` | `boolean` | `false` | X | `true`면 git push, PR 생성 등 외부 변경을 실행하지 않고 로그만 남긴다 |
 | `general.locale` | `string` | `"ko"` | X | PR 본문, 커밋 메시지의 언어 (`"ko"` \| `"en"`) |
 | `general.concurrency` | `number` | `1` | X | 동시에 처리할 최대 이슈 수. 워크트리 기반이므로 병렬 가능 |
+| `general.pollingIntervalMs` | `number` | `60000` | X | 폴링 모드에서 이슈 목록을 조회하는 간격 (ms) |
+| `general.stuckTimeoutMs` | `number` | `600000` | X | 실행 중 잡이 이 시간을 초과하면 멈춘 것으로 간주 (ms) |
+| `general.maxJobs` | `number` | `500` | X | 저장소에 보관할 최대 잡 수. 초과 시 오래된 완료/실패 잡부터 삭제 |
 
 ### 2. `git` — Git 관련 설정
 
@@ -59,7 +64,11 @@ AI-Quartermaster/
 | 필드 | 타입 | 기본값 | 필수 | 설명 |
 |------|------|--------|------|------|
 | `commands.claudeCli.path` | `string` | `"claude"` | X | Claude CLI 바이너리 경로 |
-| `commands.claudeCli.model` | `string` | `"claude-sonnet-4-20250514"` | X | Claude 모델 ID |
+| `commands.claudeCli.model` | `string` | `"claude-opus-4-5"` | X | 글로벌 기본 Claude 모델 ID (`models` 미설정 시 사용) |
+| `commands.claudeCli.models.plan` | `string` | `"claude-opus-4-5"` | X | Plan 생성 단계 모델 |
+| `commands.claudeCli.models.phase` | `string` | `"claude-sonnet-4-20250514"` | X | Phase 구현 단계 모델 |
+| `commands.claudeCli.models.review` | `string` | `"claude-haiku-4-5-20251001"` | X | 리뷰/검증 단계 모델 |
+| `commands.claudeCli.models.fallback` | `string` | `"claude-sonnet-4-20250514"` | X | 실패 시 폴백 모델 |
 | `commands.claudeCli.maxTurns` | `number` | `50` | X | Claude CLI `--max-turns` 값 |
 | `commands.claudeCli.timeout` | `number` | `600000` | X | Claude CLI 단일 호출 타임아웃 (ms) |
 | `commands.claudeCli.additionalArgs` | `string[]` | `[]` | X | Claude CLI에 전달할 추가 인자 (예: `["--verbose"]`) |
@@ -70,36 +79,7 @@ AI-Quartermaster/
 | `commands.build` | `string` | `"npm run build"` | X | 빌드 실행 명령어 |
 | `commands.typecheck` | `string` | `""` | X | 타입 체크 명령어. 빈 문자열이면 건너뜀 |
 | `commands.preInstall` | `string` | `"npm ci"` | X | 워크트리 생성 후 의존성 설치 명령어 |
-| `commands.shellWhitelist` | `string[]` | (아래 참조) | X | Claude CLI가 실행할 수 있는 셸 명령어 화이트리스트 |
-
-`commands.shellWhitelist` 기본값:
-
-```yaml
-shellWhitelist:
-  - "node"
-  - "npm"
-  - "npx"
-  - "git"
-  - "cat"
-  - "ls"
-  - "find"
-  - "grep"
-  - "head"
-  - "tail"
-  - "wc"
-  - "diff"
-  - "mkdir"
-  - "cp"
-  - "mv"
-  - "rm"
-  - "touch"
-  - "echo"
-  - "tsc"
-  - "eslint"
-  - "prettier"
-  - "jest"
-  - "vitest"
-```
+| `commands.claudeMdPath` | `string` | `"CLAUDE.md"` | X | Claude에게 전달할 컨텍스트 파일 경로 (워크트리 기준) |
 
 ### 5. `review` — 리뷰 라운드 설정
 
@@ -238,7 +218,12 @@ worktree:
 commands:
   claudeCli:
     path: "claude"
-    model: "claude-sonnet-4-20250514"
+    model: "claude-opus-4-5"
+    models:
+      plan: "claude-opus-4-5"
+      phase: "claude-sonnet-4-20250514"
+      review: "claude-haiku-4-5-20251001"
+      fallback: "claude-sonnet-4-20250514"
     maxTurns: 50
     timeout: 600000
     additionalArgs: []
@@ -250,30 +235,7 @@ commands:
   build: "npm run build"
   typecheck: "npx tsc --noEmit"
   preInstall: "npm ci"
-  shellWhitelist:
-    - "node"
-    - "npm"
-    - "npx"
-    - "git"
-    - "cat"
-    - "ls"
-    - "find"
-    - "grep"
-    - "head"
-    - "tail"
-    - "wc"
-    - "diff"
-    - "mkdir"
-    - "cp"
-    - "mv"
-    - "rm"
-    - "touch"
-    - "echo"
-    - "tsc"
-    - "eslint"
-    - "prettier"
-    - "jest"
-    - "vitest"
+  claudeMdPath: "CLAUDE.md"
 
 review:
   enabled: true

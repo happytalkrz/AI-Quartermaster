@@ -17,6 +17,7 @@ const generalConfigSchema = z.object({
   targetRoot: z.string().optional(),
   stuckTimeoutMs: z.number().int().min(60000),
   pollingIntervalMs: z.number().int().min(10000),
+  maxJobs: z.number().int().min(1),
 });
 
 const gitConfigSchema = z.object({

@@ -35,6 +35,9 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string }>
           (j.status === "queued" || j.status === "running"),
       );
     }),
+    findAnyByIssue: vi.fn((issueNumber: number, repo: string): Job | undefined => {
+      return jobs.find(j => j.issueNumber === issueNumber && j.repo === repo);
+    }),
     create: vi.fn((issueNumber: number, repo: string): Job => {
       const job: Job = {
         id: `aq-${issueNumber}-${Date.now()}`,

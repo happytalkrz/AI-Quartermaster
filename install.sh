@@ -34,6 +34,12 @@ check_cmd "node" "https://nodejs.org 에서 Node.js 20+ 설치하세요"
 check_cmd "npm" "Node.js 설치 시 함께 설치됩니다"
 check_cmd "gh" "https://cli.github.com 에서 설치 후 gh auth login 하세요"
 check_cmd "claude" "https://docs.anthropic.com/en/docs/claude-code 에서 설치하세요"
+
+# Print claude version
+CLAUDE_VERSION=$(claude --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+if [ -n "$CLAUDE_VERSION" ]; then
+  echo -e "  ${GREEN}  claude 버전: v${CLAUDE_VERSION}${NC}"
+fi
 echo ""
 
 # 2. Install or update

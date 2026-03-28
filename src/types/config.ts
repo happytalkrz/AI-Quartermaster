@@ -13,6 +13,7 @@ export interface GeneralConfig {
   targetRoot?: string;
   stuckTimeoutMs: number;
   pollingIntervalMs: number;
+  maxJobs: number;
 }
 
 export interface GitConfig {

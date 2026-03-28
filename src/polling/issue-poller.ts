@@ -99,9 +99,9 @@ export class IssuePoller {
     logger.debug(`${repo} — 레이블 "${label}" 오픈 이슈 ${issues.length}개 조회됨`);
 
     for (const issue of issues) {
-      const existing = this.store.findByIssue(issue.number, repo);
+      const existing = this.store.findAnyByIssue(issue.number, repo);
       if (existing) {
-        logger.debug(`이슈 #${issue.number} (${repo}) — 이미 큐에 존재 (${existing.id}), 건너뜀`);
+        logger.debug(`이슈 #${issue.number} (${repo}) — 이미 처리됨 (${existing.id}, 상태: ${existing.status}), 건너뜀`);
         continue;
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);

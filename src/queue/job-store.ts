@@ -99,6 +99,38 @@ export class JobStore {
     );
   }
 
+  findAnyByIssue(issueNumber: number, repo: string): Job | undefined {
+    return this.list().find(
+      j => j.issueNumber === issueNumber && j.repo === repo
+    );
+  }
+
+  prune(maxJobs: number): number {
+    const all = this.list();
+    if (all.length <= maxJobs) return 0;
+
+    const completed = all
+      .filter(j => j.status === "success" || j.status === "failure" || j.status === "cancelled")
+      .sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : new Date(a.createdAt).getTime();
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : new Date(b.createdAt).getTime();
+        return ta - tb; // oldest first
+      });
+
+    const excess = all.length - maxJobs;
+    const toDelete = completed.slice(0, excess);
+
+    for (const job of toDelete) {
+      this.remove(job.id);
+    }
+
+    if (toDelete.length > 0) {
+      logger.info(`Job pruning: ${toDelete.length}개 완료 작업 삭제 (총 ${all.length} → ${all.length - toDelete.length})`);
+    }
+
+    return toDelete.length;
+  }
+
   remove(id: string): boolean {
     try {
       unlinkSync(this.jobPath(id));

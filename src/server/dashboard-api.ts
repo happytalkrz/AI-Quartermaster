@@ -4,9 +4,26 @@ import type { JobQueue } from "../queue/job-queue.js";
 
 /**
  * Creates dashboard API routes.
+ * If apiKey is provided, all /api/* routes require `Authorization: Bearer <key>`.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?: string): Hono {
   const api = new Hono();
+
+  // Auth middleware — only active when apiKey is configured
+  // Accepts: Authorization: Bearer <key>  OR  ?key=<key> (for EventSource/SSE)
+  if (apiKey) {
+    api.use("/api/*", async (c, next) => {
+      const auth = c.req.header("Authorization");
+      const queryKey = c.req.query("key");
+      const valid =
+        (auth && auth === `Bearer ${apiKey}`) ||
+        (queryKey && queryKey === apiKey);
+      if (!valid) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    });
+  }
 
   // List all jobs
   api.get("/api/jobs", (c) => {

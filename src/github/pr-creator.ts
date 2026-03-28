@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
-import type { PrConfig, GhCliConfig } from "../types/config.js";
+import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
 import type { Plan, PhaseResult } from "../types/pipeline.js";
 
 const logger = getLogger();
@@ -115,4 +115,43 @@ export async function createDraftPR(
 
   logger.info(`Created draft PR: ${url}`);
   return { url, number };
+}
+
+/**
+ * Marks a PR as ready and enables auto-merge via gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function enableAutoMerge(
+  prNumber: number,
+  repo: string,
+  mergeMethod: MergeMethod,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would enable auto-merge on PR #${prNumber} (method: ${mergeMethod})`);
+    return true;
+  }
+
+  // Mark PR as ready (required before enabling auto-merge on a draft PR)
+  const readyResult = await runCli(ghPath, ["pr", "ready", String(prNumber), "--repo", repo], {});
+  if (readyResult.exitCode !== 0) {
+    logger.warn(`Failed to mark PR #${prNumber} as ready: ${readyResult.stderr}`);
+    return false;
+  }
+
+  // Enable auto-merge
+  const mergeResult = await runCli(
+    ghPath,
+    ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`],
+    {}
+  );
+  if (mergeResult.exitCode !== 0) {
+    logger.warn(`Failed to enable auto-merge on PR #${prNumber}: ${mergeResult.stderr}`);
+    return false;
+  }
+
+  logger.info(`Auto-merge enabled on PR #${prNumber} (method: ${mergeMethod})`);
+  return true;
 }

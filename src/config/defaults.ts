@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     locale: "en",
     concurrency: 1,
     stuckTimeoutMs: 600000,
+    pollingIntervalMs: 60000,
   },
   git: {
     defaultBaseBranch: "master",

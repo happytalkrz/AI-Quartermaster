@@ -12,6 +12,7 @@ export interface GeneralConfig {
   concurrency: number;
   targetRoot?: string;
   stuckTimeoutMs: number;
+  pollingIntervalMs: number;
 }
 
 export interface GitConfig {

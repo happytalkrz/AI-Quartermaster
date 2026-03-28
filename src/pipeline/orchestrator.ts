@@ -1,8 +1,8 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { fetchIssue } from "../github/issue-fetcher.js";
-import { createDraftPR } from "../github/pr-creator.js";
-import { syncBaseBranch, createWorkBranch, pushBranch } from "../git/branch-manager.js";
+import { createDraftPR, enableAutoMerge } from "../github/pr-creator.js";
+import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { runCoreLoop } from "./core-loop.js";
 import { installDependencies } from "./dependency-installer.js";
@@ -322,6 +322,34 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       baseBranch: project.baseBranch,
     });
 
+    // === Conflict detection before push ===
+    {
+      // Fetch latest base branch to ensure we're comparing against current remote
+      const fetchResult = await runCli(
+        gitConfig.gitPath,
+        ["fetch", gitConfig.remoteAlias, project.baseBranch],
+        { cwd: worktreePath }
+      );
+      if (fetchResult.exitCode !== 0) {
+        logger.warn(`Failed to fetch ${project.baseBranch} for conflict check: ${fetchResult.stderr}`);
+      } else {
+        const conflictCheck = await checkConflicts(gitConfig, project.baseBranch, { cwd: worktreePath });
+        if (conflictCheck.hasConflicts) {
+          logger.warn(`Conflicts detected with ${project.baseBranch}: ${conflictCheck.conflictFiles.join(", ") || "(unknown files)"}`);
+          jl?.log(`충돌 감지됨, rebase 시도 중...`);
+          const rebaseResult = await attemptRebase(gitConfig, project.baseBranch, { cwd: worktreePath });
+          if (rebaseResult.success) {
+            logger.info(`Rebase succeeded — branch is now conflict-free`);
+            jl?.log(`Rebase 성공`);
+          } else {
+            logger.warn(`Rebase failed — PR will show conflicts. Files: ${conflictCheck.conflictFiles.join(", ") || "(unknown)"}`);
+            jl?.log(`Rebase 실패 (충돌 있음): ${conflictCheck.conflictFiles.join(", ") || "unknown files"}`);
+            // Non-blocking: continue with push and let humans resolve
+          }
+        }
+      }
+    }
+
     // === Push branch to remote ===
     timer.assertNotExpired("push");
     jl?.setStep("Push 중...");
@@ -349,8 +377,25 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     );
     prUrl = prResult.url;
     logger.info(`[DRAFT_PR_CREATED] PR: ${prUrl}`);
-    jl?.setStep("완료");
     jl?.log(`PR: ${prUrl}`);
+
+    // === Enable auto-merge if configured ===
+    if (project.pr.autoMerge && prResult.number > 0) {
+      jl?.setStep("Auto-merge 설정 중...");
+      const merged = await enableAutoMerge(
+        prResult.number,
+        repo,
+        project.pr.mergeMethod,
+        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun }
+      );
+      if (merged) {
+        jl?.log(`Auto-merge 활성화 (${project.pr.mergeMethod})`);
+      } else {
+        jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
+      }
+    }
+
+    jl?.setStep("완료");
 
     // === Cleanup worktree on success ===
     if (config.worktree.cleanupOnSuccess && worktreePath) {

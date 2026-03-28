@@ -1,0 +1,222 @@
+import { existsSync, accessSync, constants, readFileSync } from "fs";
+import { resolve } from "path";
+import * as net from "net";
+import { runCli } from "../utils/cli-runner.js";
+import { AQConfig } from "../types/config.js";
+
+// ANSI color helpers
+const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+
+function pass(name: string): void {
+  console.log(`  ${green("PASS")} ${name}`);
+}
+
+function warn(name: string, message: string): void {
+  console.log(`  ${yellow("WARN")} ${name}: ${message}`);
+}
+
+function fail(name: string, message: string): void {
+  console.log(`  ${red("FAIL")} ${name}: ${message}`);
+}
+
+async function checkPrerequisites(): Promise<void> {
+  console.log("\n[사전 요구사항]");
+  for (const tool of ["git", "gh", "claude"]) {
+    const result = await runCli(tool, ["--version"], { timeout: 5000 });
+    if (result.exitCode === 0) {
+      pass(`${tool} CLI`);
+    } else {
+      fail(`${tool} CLI`, `'${tool} --version' 실패 — PATH에 설치되어 있는지 확인하세요`);
+    }
+  }
+}
+
+async function checkGhAuth(): Promise<void> {
+  console.log("\n[GitHub 인증]");
+  const result = await runCli("gh", ["auth", "status"], { timeout: 10000 });
+  // gh auth status writes to stderr when not logged in
+  const output = result.stdout + result.stderr;
+  if (result.exitCode === 0 && !output.includes("not logged in")) {
+    pass("gh auth");
+  } else {
+    fail("gh auth", "'gh auth login'으로 먼저 로그인하세요");
+  }
+}
+
+async function checkGitSafeDirectory(projectPath: string, projectRepo: string): Promise<void> {
+  const result = await runCli("git", ["-C", projectPath, "rev-parse", "--git-dir"], { timeout: 5000 });
+  const output = result.stdout + result.stderr;
+  if (result.exitCode === 0) {
+    pass(`git safe.directory (${projectRepo})`);
+  } else if (output.includes("dubious ownership") || output.includes("safe.directory")) {
+    fail(
+      `git safe.directory (${projectRepo})`,
+      `git config --global --add safe.directory ${projectPath}  를 실행하세요`,
+    );
+  } else {
+    fail(`git safe.directory (${projectRepo})`, result.stderr.trim() || "git 작업 실패");
+  }
+}
+
+async function checkRemoteUrl(projectPath: string, projectRepo: string): Promise<void> {
+  const result = await runCli("git", ["-C", projectPath, "remote", "get-url", "origin"], {
+    timeout: 5000,
+  });
+  if (result.exitCode !== 0) {
+    warn(`remote URL (${projectRepo})`, "origin remote를 찾을 수 없습니다");
+    return;
+  }
+  const url = result.stdout.trim();
+  if (url.startsWith("git@") || url.startsWith("ssh://")) {
+    pass(`remote URL (${projectRepo}) [SSH: ${url}]`);
+  } else if (url.startsWith("https://")) {
+    warn(
+      `remote URL (${projectRepo})`,
+      `HTTPS 사용 중 (${url}) — SSH 사용 권장: git remote set-url origin git@github.com:<owner>/<repo>.git`,
+    );
+  } else {
+    warn(`remote URL (${projectRepo})`, `알 수 없는 remote URL 형식: ${url}`);
+  }
+}
+
+function checkProjectPath(projectPath: string, projectRepo: string): boolean {
+  console.log(`\n[프로젝트: ${projectRepo}]`);
+  if (!existsSync(projectPath)) {
+    fail(`경로 존재 여부 (${projectRepo})`, `경로가 없습니다: ${projectPath}`);
+    return false;
+  }
+  const gitDir = resolve(projectPath, ".git");
+  if (!existsSync(gitDir)) {
+    fail(`git 저장소 (${projectRepo})`, `${projectPath} 는 git 저장소가 아닙니다`);
+    return false;
+  }
+  pass(`경로 & git 저장소 (${projectRepo})`);
+  return true;
+}
+
+function checkPackageJsonScripts(
+  projectPath: string,
+  projectRepo: string,
+  commands: { test?: string; lint?: string; build?: string },
+): void {
+  const pkgPath = resolve(projectPath, "package.json");
+  if (!existsSync(pkgPath)) {
+    // Not a Node project — skip silently
+    return;
+  }
+
+  let scripts: Record<string, string> = {};
+  try {
+    const raw = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    scripts = raw?.scripts ?? {};
+  } catch {
+    warn(`package.json (${projectRepo})`, "package.json 파싱 실패");
+    return;
+  }
+
+  const entries: Array<[string, string | undefined]> = [
+    ["test", commands.test],
+    ["lint", commands.lint],
+    ["build", commands.build],
+  ];
+
+  for (const [label, cmd] of entries) {
+    if (!cmd) continue;
+    // Extract npm script name from commands like "npm test", "npm run lint"
+    const match = cmd.match(/npm(?:\s+run)?\s+(\S+)/);
+    if (!match) continue;
+    const scriptName = match[1];
+    if (!scripts[scriptName]) {
+      warn(
+        `package.json script (${projectRepo})`,
+        `config의 ${label} 명령(${cmd})이 참조하는 스크립트 "${scriptName}"가 package.json에 없습니다`,
+      );
+    } else {
+      pass(`package.json script "${scriptName}" (${projectRepo})`);
+    }
+  }
+}
+
+function checkPort(port: number): Promise<void> {
+  return new Promise((resolve) => {
+    console.log("\n[포트 가용성]");
+    const server = net.createServer();
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        warn(`포트 ${port}`, `이미 사용 중입니다 — 다른 포트를 사용하거나 기존 프로세스를 종료하세요`);
+      } else {
+        warn(`포트 ${port}`, err.message);
+      }
+      resolve();
+    });
+    server.once("listening", () => {
+      server.close(() => {
+        pass(`포트 ${port} 가용`);
+        resolve();
+      });
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+function checkDiskWritable(aqRoot: string): void {
+  console.log("\n[디스크 쓰기 권한]");
+  for (const dir of ["data", "logs"]) {
+    const dirPath = resolve(aqRoot, dir);
+    if (!existsSync(dirPath)) {
+      // Directory doesn't exist yet — check parent is writable
+      try {
+        accessSync(aqRoot, constants.W_OK);
+        pass(`${dir}/ (생성 가능)`);
+      } catch {
+        fail(`${dir}/`, `${aqRoot} 에 쓰기 권한이 없습니다`);
+      }
+    } else {
+      try {
+        accessSync(dirPath, constants.W_OK);
+        pass(`${dir}/ 쓰기 가능`);
+      } catch {
+        fail(`${dir}/`, `${dirPath} 에 쓰기 권한이 없습니다`);
+      }
+    }
+  }
+}
+
+export async function runDoctor(config: AQConfig, aqRoot: string): Promise<void> {
+  console.log("\n=== AI 병참부 Doctor ===");
+
+  await checkPrerequisites();
+  await checkGhAuth();
+
+  const projects = config.projects ?? [];
+  for (const project of projects) {
+    const pathOk = checkProjectPath(project.path, project.repo);
+    if (pathOk) {
+      await checkGitSafeDirectory(project.path, project.repo);
+      await checkRemoteUrl(project.path, project.repo);
+
+      const projectCommands = project.commands
+        ? { ...config.commands, ...project.commands }
+        : config.commands;
+      checkPackageJsonScripts(project.path, project.repo, {
+        test: projectCommands.test,
+        lint: projectCommands.lint,
+        build: projectCommands.build,
+      });
+    }
+  }
+
+  if (projects.length === 0) {
+    console.log("\n[프로젝트]");
+    warn("projects", "config.yml에 등록된 프로젝트가 없습니다");
+  }
+
+  const port = 3000; // default; config doesn't store port
+  await checkPort(port);
+
+  checkDiskWritable(aqRoot);
+
+  console.log("\n=== Doctor 완료 ===\n");
+}

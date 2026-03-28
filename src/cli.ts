@@ -9,9 +9,12 @@ import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
 import { createDashboardRoutes } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
+import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
 import { notifySuccess, notifyFailure } from "./notification/notifier.js";
 import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
+import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
+import { IssuePoller } from "./polling/issue-poller.js";
 
 interface CliArgs {
   command?: string;
@@ -21,6 +24,8 @@ interface CliArgs {
   target?: string;
   dryRun?: boolean;
   port?: number;
+  mode?: string;
+  interval?: number;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -131,8 +136,15 @@ async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
+  const isPollingMode = args.mode === "polling";
+
+  // Override pollingIntervalMs from --interval CLI arg (seconds → ms)
+  if (args.interval !== undefined) {
+    config.general.pollingIntervalMs = args.interval * 1000;
+  }
+
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
-  if (!webhookSecret) {
+  if (!isPollingMode && !webhookSecret) {
     console.error("\n✗ GITHUB_WEBHOOK_SECRET이 설정되지 않았습니다.");
     console.error("  먼저 aqm setup을 실행하세요.\n");
     process.exit(1);
@@ -143,33 +155,37 @@ async function startCommand(args: CliArgs): Promise<void> {
   let dashboardHtml: string;
   try { dashboardHtml = readFileSync(htmlPath, "utf-8"); } catch { dashboardHtml = ""; }
 
-  // === Auto-register webhooks for projects in parallel (fix #16) ===
-  const smeeUrl = process.env.SMEE_URL;
-  if (smeeUrl) {
-    await Promise.allSettled(
-      projects.map(p => setupWebhook(aqRoot, p.repo).catch(err =>
-        logger.warn(`Webhook 등록 실패 (${p.repo}): ${err}`)
-      ))
-    );
-  }
+  if (!isPollingMode) {
+    // === Auto-register webhooks for projects in parallel (fix #16) ===
+    const smeeUrl = process.env.SMEE_URL;
+    if (smeeUrl) {
+      await Promise.allSettled(
+        projects.map(p => setupWebhook(aqRoot, p.repo).catch(err =>
+          logger.warn(`Webhook 등록 실패 (${p.repo}): ${err}`)
+        ))
+      );
+    }
 
-  logger.info(`프로젝트 ${projects.length}개 등록됨: ${projects.map(p => p.repo).join(", ")}`);
+    logger.info(`프로젝트 ${projects.length}개 등록됨: ${projects.map(p => p.repo).join(", ")}`);
 
-  // Auto-start smee-client if SMEE_URL is set
-  if (smeeUrl) {
-    const { spawn: spawnChild } = await import("child_process");
-    const smee = spawnChild("npx", ["smee-client", "--url", smeeUrl, "--target", `http://localhost:${port}/webhook/github`], {
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-      shell: true,
-    });
-    smee.stdout?.on("data", (d: Buffer) => logger.info(`[smee] ${d.toString().trim()}`));
-    smee.stderr?.on("data", (d: Buffer) => logger.warn(`[smee] ${d.toString().trim()}`));
-    smee.on("error", (err) => logger.warn(`smee-client 시작 실패: ${err.message}`));
-    process.on("exit", () => { try { smee.kill(); } catch {} });
-    logger.info(`Smee 프록시 연결: ${smeeUrl}`);
+    // Auto-start smee-client if SMEE_URL is set
+    if (smeeUrl) {
+      const { spawn: spawnChild } = await import("child_process");
+      const smee = spawnChild("npx", ["smee-client", "--url", smeeUrl, "--target", `http://localhost:${port}/webhook/github`], {
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+        shell: true,
+      });
+      smee.stdout?.on("data", (d: Buffer) => logger.info(`[smee] ${d.toString().trim()}`));
+      smee.stderr?.on("data", (d: Buffer) => logger.warn(`[smee] ${d.toString().trim()}`));
+      smee.on("error", (err) => logger.warn(`smee-client 시작 실패: ${err.message}`));
+      process.on("exit", () => { try { smee.kill(); } catch {} });
+      logger.info(`Smee 프록시 연결: ${smeeUrl}`);
+    } else {
+      logger.warn("SMEE_URL 미설정 — webhook을 받으려면 .env에 SMEE_URL을 설정하세요");
+    }
   } else {
-    logger.warn("SMEE_URL 미설정 — webhook을 받으려면 .env에 SMEE_URL을 설정하세요");
+    logger.info(`프로젝트 ${projects.length}개 등록됨: ${projects.map(p => p.repo).join(", ")}`);
   }
 
   const dataDir = resolve(aqRoot, "data");
@@ -214,6 +230,14 @@ async function startCommand(args: CliArgs): Promise<void> {
   // Recover jobs from previous session
   queue.recover();
 
+  // === Polling mode ===
+  if (isPollingMode) {
+    const poller = new IssuePoller(config, store, queue);
+    poller.start();
+    process.on("SIGINT", () => { poller.stop(); process.exit(0); });
+    process.on("SIGTERM", () => { poller.stop(); process.exit(0); });
+  }
+
   const app = createWebhookApp({
     config,
     webhookSecret,
@@ -223,7 +247,8 @@ async function startCommand(args: CliArgs): Promise<void> {
   });
 
   // Mount dashboard and health routes
-  const dashboardRoutes = createDashboardRoutes(store, queue);
+  const apiKey = process.env.DASHBOARD_API_KEY || undefined;
+  const dashboardRoutes = createDashboardRoutes(store, queue, apiKey);
   const healthRoutes = createHealthRoutes(queue);
   app.route("/", dashboardRoutes);
   app.route("/", healthRoutes);
@@ -234,7 +259,23 @@ async function startCommand(args: CliArgs): Promise<void> {
     return c.html(dashboardHtml);
   });
 
+  // === PID file management ===
+  const pidPath = resolve(aqRoot, "data/aqm.pid");
+  const canStart = cleanupStalePid(pidPath);
+  if (!canStart) {
+    const existingPid = readPidFile(pidPath);
+    console.error(`\nAQM이 이미 실행 중입니다 (PID: ${existingPid})\n`);
+    process.exit(1);
+  }
+
   startServer(app, port);
+  writePidFile(pidPath);
+
+  const cleanup = () => removePidFile(pidPath);
+  process.on("exit", cleanup);
+  process.on("SIGINT", () => { cleanup(); process.exit(0); });
+  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+
   logger.info(`Dashboard available at http://localhost:${port}/`);
 }
 
@@ -276,6 +317,12 @@ async function statusCommand(args: CliArgs): Promise<void> {
   console.log();
 }
 
+async function doctorCommand(args: CliArgs): Promise<void> {
+  const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
+  const config = loadConfig(aqRoot);
+  await runDoctor(config, aqRoot);
+}
+
 async function cleanupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
@@ -307,6 +354,8 @@ async function main() {
     await statusCommand(args);
   } else if (command === "cleanup") {
     await cleanupCommand(args);
+  } else if (command === "doctor") {
+    await doctorCommand(args);
   } else if (command === "help") {
     printHelp();
   } else {
@@ -325,12 +374,14 @@ Usage:
   aqm setup-webhook --repo <owner/repo>              Register GitHub webhook
   aqm run --issue <number> --repo <owner/repo>       Run pipeline for an issue
   aqm start [--port <n>]                             Start webhook server (foreground)
+  aqm start --mode polling [--interval <sec>]        Start in polling mode (no webhook needed)
   aqm start --daemon                                 Start server in background
   aqm stop                                           Stop background server
   aqm restart                                        Restart background server
   aqm logs                                           Tail server logs
   aqm status                                         Show queue status
   aqm cleanup                                        Clean old worktrees
+  aqm doctor                                         Pre-validate environment and report issues
   aqm update                                         Update to latest version
   aqm version                                        Show version info
   aqm help                                           Show this help
@@ -343,6 +394,8 @@ Options:
   --config <path>     Path to config.yml (default: ./config.yml)
   --target <path>     Target project path (overrides config)
   --port <number>     Port for webhook server (default: 3000)
+  --mode <mode>       Start mode: webhook (default) or polling
+  --interval <sec>    Polling interval in seconds (default: 60)
   --dry-run           Skip external actions (push, PR creation)
 
 Environment:
@@ -375,6 +428,10 @@ function parseArgs(argv: string[]): CliArgs {
       result.dryRun = true;
     } else if (argv[i] === "--port" && argv[i + 1]) {
       result.port = parseInt(argv[++i], 10);
+    } else if (argv[i] === "--mode" && argv[i + 1]) {
+      result.mode = argv[++i];
+    } else if (argv[i] === "--interval" && argv[i + 1]) {
+      result.interval = parseInt(argv[++i], 10);
     }
   }
   return result;

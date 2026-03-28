@@ -95,6 +95,91 @@ export async function createWorkBranch(
 }
 
 /**
+ * Detects merge conflicts between current HEAD and the remote base branch
+ * using git merge-tree (no actual merge performed).
+ */
+export async function checkConflicts(
+  gitConfig: GitConfig,
+  baseBranch: string,
+  options: { cwd: string }
+): Promise<{ hasConflicts: boolean; conflictFiles: string[] }> {
+  // Get merge base
+  const mergeBaseResult = await runCli(
+    gitConfig.gitPath,
+    ["merge-base", "HEAD", `${gitConfig.remoteAlias}/${baseBranch}`],
+    { cwd: options.cwd }
+  );
+  if (mergeBaseResult.exitCode !== 0) {
+    logger.warn(`Could not determine merge base: ${mergeBaseResult.stderr}`);
+    return { hasConflicts: false, conflictFiles: [] };
+  }
+
+  const mergeBase = mergeBaseResult.stdout.trim();
+
+  // Use merge-tree to detect conflicts without touching working tree
+  const mergeTreeResult = await runCli(
+    gitConfig.gitPath,
+    ["merge-tree", mergeBase, "HEAD", `${gitConfig.remoteAlias}/${baseBranch}`],
+    { cwd: options.cwd }
+  );
+
+  const output = mergeTreeResult.stdout;
+  if (!output.includes("<<<<<<<")) {
+    return { hasConflicts: false, conflictFiles: [] };
+  }
+
+  // Parse conflicting file names from merge-tree output.
+  // merge-tree format for conflict sections: "changed in both\n  base   <mode> <hash> <path>\n  ..."
+  const conflictFiles: string[] = [];
+  const changedBothSections = output.split(/^changed in both$/m);
+  for (let i = 1; i < changedBothSections.length; i++) {
+    const section = changedBothSections[i];
+    const pathMatch = section.match(/base\s+\d+ [a-f0-9]+ (.+)/);
+    if (pathMatch) {
+      conflictFiles.push(pathMatch[1].trim());
+    }
+  }
+
+  // Fallback: if we couldn't parse specific files, report generic conflict
+  return { hasConflicts: true, conflictFiles };
+}
+
+/**
+ * Attempts to rebase HEAD onto the remote base branch.
+ * Aborts and returns failure if rebase encounters conflicts.
+ */
+export async function attemptRebase(
+  gitConfig: GitConfig,
+  baseBranch: string,
+  options: { cwd: string }
+): Promise<{ success: boolean; error?: string }> {
+  const rebaseResult = await runCli(
+    gitConfig.gitPath,
+    ["rebase", `${gitConfig.remoteAlias}/${baseBranch}`],
+    { cwd: options.cwd }
+  );
+
+  if (rebaseResult.exitCode === 0) {
+    logger.info(`Rebase onto ${gitConfig.remoteAlias}/${baseBranch} succeeded`);
+    return { success: true };
+  }
+
+  // Rebase failed — abort to restore original state
+  const abortResult = await runCli(
+    gitConfig.gitPath,
+    ["rebase", "--abort"],
+    { cwd: options.cwd }
+  );
+  if (abortResult.exitCode !== 0) {
+    logger.warn(`git rebase --abort failed: ${abortResult.stderr}`);
+  }
+
+  const error = rebaseResult.stderr || rebaseResult.stdout;
+  logger.warn(`Rebase failed: ${error}`);
+  return { success: false, error };
+}
+
+/**
  * Pushes the work branch to remote.
  */
 export async function pushBranch(

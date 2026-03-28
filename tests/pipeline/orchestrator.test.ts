@@ -6,11 +6,14 @@ vi.mock("../../src/github/issue-fetcher.js", () => ({
 }));
 vi.mock("../../src/github/pr-creator.js", () => ({
   createDraftPR: vi.fn(),
+  enableAutoMerge: vi.fn(),
 }));
 vi.mock("../../src/git/branch-manager.js", () => ({
   syncBaseBranch: vi.fn(),
   createWorkBranch: vi.fn(),
   pushBranch: vi.fn(),
+  checkConflicts: vi.fn(),
+  attemptRebase: vi.fn(),
 }));
 vi.mock("../../src/git/worktree-manager.js", () => ({
   createWorktree: vi.fn(),
@@ -46,8 +49,8 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
-import { createDraftPR } from "../../src/github/pr-creator.js";
-import { syncBaseBranch, createWorkBranch, pushBranch } from "../../src/git/branch-manager.js";
+import { createDraftPR, enableAutoMerge } from "../../src/github/pr-creator.js";
+import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
 import { runCoreLoop } from "../../src/pipeline/core-loop.js";
 import { installDependencies } from "../../src/pipeline/dependency-installer.js";
@@ -63,6 +66,9 @@ const mockCreateDraftPR = vi.mocked(createDraftPR);
 const mockSyncBase = vi.mocked(syncBaseBranch);
 const mockCreateBranch = vi.mocked(createWorkBranch);
 const mockPushBranch = vi.mocked(pushBranch);
+const mockCheckConflicts = vi.mocked(checkConflicts);
+const mockAttemptRebase = vi.mocked(attemptRebase);
+const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
 const mockCreateWorktree = vi.mocked(createWorktree);
 const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockCoreLoop = vi.mocked(runCoreLoop);
@@ -104,6 +110,9 @@ function setupSuccessMocks() {
     success: true,
   });
   mockPushBranch.mockResolvedValue(undefined);
+  mockCheckConflicts.mockResolvedValue({ hasConflicts: false, conflictFiles: [] });
+  mockAttemptRebase.mockResolvedValue({ success: true });
+  mockEnableAutoMerge.mockResolvedValue(true);
   mockCreateDraftPR.mockResolvedValue({ url: "https://github.com/test/repo/pull/1", number: 1 });
   mockRemoveWorktree.mockResolvedValue(undefined);
   mockGetDiffContent.mockResolvedValue("diff --git a/file.ts b/file.ts\n+new line");

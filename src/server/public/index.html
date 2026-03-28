@@ -851,6 +851,13 @@
 </head>
 <body>
 
+<!-- API Key Banner -->
+<div id="api-key-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:var(--bg-overlay);border-bottom:1px solid var(--border);padding:12px 16px;align-items:center;gap:10px;flex-wrap:wrap;">
+  <span style="font-size:13px;color:var(--text-primary);flex:1;min-width:200px;">API 키가 필요합니다. <code style="font-family:var(--font-mono);font-size:11px;background:var(--bg-inset);padding:1px 5px;border-radius:4px;border:1px solid var(--border);">DASHBOARD_API_KEY</code> 값을 입력하세요.</span>
+  <input id="api-key-input" type="password" placeholder="API Key" style="font-family:var(--font-mono);font-size:13px;padding:5px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg-inset);color:var(--text-primary);outline:none;width:260px;" />
+  <button onclick="saveApiKey()" style="padding:5px 14px;border-radius:var(--radius-sm);background:var(--accent-muted);color:var(--accent);border:1px solid var(--accent);font-size:13px;cursor:pointer;">저장</button>
+</div>
+
 <div class="page-wrap">
 
   <!-- Header -->
@@ -950,6 +957,48 @@
 
 <script>
 'use strict';
+
+/* ── API Key management ──────────────────────────────────────── */
+const API_KEY_STORAGE = 'aqm-api-key';
+
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE) || '';
+}
+
+function setApiKey(key) {
+  if (key) localStorage.setItem(API_KEY_STORAGE, key);
+  else localStorage.removeItem(API_KEY_STORAGE);
+}
+
+function apiFetch(url, opts) {
+  const key = getApiKey();
+  const headers = Object.assign({}, opts && opts.headers);
+  if (key) headers['Authorization'] = 'Bearer ' + key;
+  return fetch(url, Object.assign({}, opts, { headers })).then(r => {
+    if (r.status === 401) {
+      showApiKeyPrompt();
+      return Promise.reject(new Error('Unauthorized'));
+    }
+    return r;
+  });
+}
+
+function showApiKeyPrompt() {
+  document.getElementById('api-key-banner').style.display = 'flex';
+}
+
+function hideApiKeyPrompt() {
+  document.getElementById('api-key-banner').style.display = 'none';
+}
+
+function saveApiKey() {
+  const input = document.getElementById('api-key-input');
+  setApiKey(input.value.trim());
+  hideApiKeyPrompt();
+  // Reconnect SSE and reload
+  connectSSE();
+  apiFetch('/api/jobs').then(r => r.json()).then(handleData).catch(() => {});
+}
 
 /* ── SVG icon snippets ───────────────────────────────────────── */
 const ICON = {
@@ -1446,7 +1495,7 @@ function startLiveTickers() {
 function cancelJob(id) {
   const btns = document.querySelectorAll(`[data-id="${CSS.escape(id)}"] .btn-cancel`);
   btns.forEach(btn => { btn.disabled = true; btn.style.opacity = '.5'; });
-  fetch('/api/jobs/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
+  apiFetch('/api/jobs/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
     .catch(() => {
       btns.forEach(btn => { btn.disabled = false; btn.style.opacity = ''; });
     });
@@ -1461,7 +1510,7 @@ function deleteJob(id) {
   ];
   targets.forEach(el => { el.style.opacity = '.5'; el.style.transition = 'opacity .3s'; });
 
-  fetch('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' })
+  apiFetch('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' })
     .then(r => {
       if (r.ok) {
         targets.forEach(el => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); });
@@ -1520,7 +1569,9 @@ function handleData(data) {
 function connectSSE() {
   if (es) { try { es.close(); } catch(e) {} }
   setConnState('connecting');
-  es = new EventSource('/api/events');
+  const key = getApiKey();
+  const sseUrl = key ? '/api/events?key=' + encodeURIComponent(key) : '/api/events';
+  es = new EventSource(sseUrl);
   es.onopen = () => {
     setConnState('connected');
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -1546,7 +1597,7 @@ window.addEventListener('resize', () => {
 });
 
 /* ── Boot ────────────────────────────────────────────────────── */
-fetch('/api/jobs')
+apiFetch('/api/jobs')
   .then(r => r.json())
   .then(handleData)
   .catch(() => {});

@@ -187,6 +187,15 @@ export class JobQueue {
     if (!oldJob) return undefined;
     if (oldJob.status !== "failure" && oldJob.status !== "cancelled") return undefined;
 
+    // PR이 이미 생성된 job은 재시도 방지 (stuck 오판으로 failure 표시된 경우)
+    const logs = oldJob.logs ?? [];
+    const hasPR = oldJob.prUrl || logs.some((l: string) => l.includes("PR: https://"));
+    if (hasPR) {
+      logger.warn(`Job ${jobId} already has a PR — fixing status to success instead of retrying`);
+      this.store.update(jobId, { status: "success", error: undefined });
+      return undefined;
+    }
+
     const { issueNumber, repo } = oldJob;
     // Archive old job so failure history is preserved; findAnyByIssue skips archived jobs
     this.store.archive(jobId);

@@ -24,6 +24,14 @@ export function readPidFile(pidPath: string): number | null {
 export function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
+    // Check for zombie process on Linux
+    try {
+      const { readFileSync: readFs } = require("fs");
+      const stat = readFs(`/proc/${pid}/status`, "utf-8");
+      if (stat.includes("State:\tZ")) return false; // zombie
+    } catch {
+      // /proc not available (non-Linux) — trust kill(0)
+    }
     return true;
   } catch {
     return false;

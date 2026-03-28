@@ -956,7 +956,7 @@ function render(data) {
   const total = currentJobs.length;
   const successCount = currentJobs.filter(j => j.status === 'success').length;
   const failedCount = currentJobs.filter(j => j.status === 'failure').length;
-  const activeCount = currentJobs.filter(j => j.status === 'running' || j.status === 'queued').length;
+  const activeCount = currentJobs.filter(j => j.status === 'running').length;
   const rate = total > 0 ? ((successCount / total) * 100).toFixed(1) : '0';
 
   document.getElementById('stat-total').textContent = total;
@@ -973,7 +973,7 @@ function renderFromState() {
 
   // Update filter counts
   document.getElementById('cnt-all').textContent = allJobs.length;
-  document.getElementById('cnt-running').textContent = allJobs.filter(j => j.status === 'queued' || j.status === 'running').length;
+  document.getElementById('cnt-running').textContent = allJobs.filter(j => j.status === 'running').length;
   document.getElementById('cnt-success').textContent = allJobs.filter(j => j.status === 'success').length;
   document.getElementById('cnt-failure').textContent = allJobs.filter(j => j.status === 'failure').length;
   document.getElementById('cnt-queued').textContent = allJobs.filter(j => j.status === 'queued').length;

@@ -48,7 +48,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     "-p", useStdin ? "-" : prompt,
     "--model", config.model,
     "--max-turns", options.jsonSchema ? "5" : String(config.maxTurns),
-    "--output-format", "json",
+    "--output-format", "stream-json", "--verbose",
     "--permission-mode", "bypassPermissions",
     ...config.additionalArgs,
   ];
@@ -62,7 +62,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
   const startTime = Date.now();
 
-  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
+  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number }>((resolve) => {
     const child = spawn(config.path, args, {
       cwd,
       env: process.env,
@@ -73,14 +73,67 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       activeProcesses.set(child.pid, { process: child, lastActivity: Date.now() });
     }
 
-    let stdout = "";
     let stderr = "";
+    let streamBuffer = "";
+    let finalResult: { output: string; costUsd?: number; isError: boolean } | undefined;
 
     child.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString();
+      streamBuffer += data.toString();
       if (child.pid !== undefined) {
         const entry = activeProcesses.get(child.pid);
         if (entry) entry.lastActivity = Date.now();
+      }
+
+      // Process complete lines
+      let newlineIdx;
+      while ((newlineIdx = streamBuffer.indexOf("\n")) !== -1) {
+        const line = streamBuffer.slice(0, newlineIdx).trim();
+        streamBuffer = streamBuffer.slice(newlineIdx + 1);
+        if (!line) continue;
+
+        try {
+          const event = JSON.parse(line) as {
+            type?: string;
+            subtype?: string;
+            message?: { content?: Array<{ type: string; text?: string }> };
+            result?: string;
+            total_cost_usd?: number;
+            is_error?: boolean;
+            structured_output?: unknown;
+          };
+
+          if (event.type === "assistant" && event.message?.content) {
+            for (const block of event.message.content) {
+              if (block.type === "text" && block.text) {
+                options.onStderr?.(block.text);
+              }
+            }
+          }
+
+          if (event.type === "result") {
+            if (event.subtype === "error_max_turns") {
+              finalResult = {
+                output: "Claude max turns exceeded — increase commands.claudeCli.maxTurns in config",
+                costUsd: event.total_cost_usd,
+                isError: true,
+              };
+            } else if (event.structured_output) {
+              finalResult = {
+                output: JSON.stringify(event.structured_output),
+                costUsd: event.total_cost_usd,
+                isError: event.is_error === true,
+              };
+            } else {
+              finalResult = {
+                output: event.result ?? "",
+                costUsd: event.total_cost_usd,
+                isError: event.is_error === true,
+              };
+            }
+          }
+        } catch {
+          // Not valid JSON line, skip
+        }
       }
     });
     child.stderr?.on("data", (data: Buffer) => {
@@ -89,12 +142,6 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       if (child.pid !== undefined) {
         const entry = activeProcesses.get(child.pid);
         if (entry) entry.lastActivity = Date.now();
-      }
-      if (options.onStderr) {
-        const lines = chunk.split("\n");
-        for (const line of lines) {
-          if (line.trim()) options.onStderr(line);
-        }
       }
     });
 
@@ -111,12 +158,21 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     child.on("close", (code) => {
       cleanup();
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
+      if (finalResult) {
+        resolve({
+          stdout: finalResult.output,
+          stderr: finalResult.isError ? finalResult.output : "",
+          exitCode: finalResult.isError ? 1 : 0,
+          costUsd: finalResult.costUsd,
+        });
+      } else {
+        resolve({ stdout: streamBuffer, stderr, exitCode: code ?? 1 });
+      }
     });
 
     child.on("error", (err) => {
       cleanup();
-      resolve({ stdout, stderr: err.message, exitCode: 1 });
+      resolve({ stdout: streamBuffer, stderr: err.message, exitCode: 1 });
     });
 
     // Write prompt to stdin if needed
@@ -142,49 +198,15 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     return {
       success: false,
       output: result.stderr || result.stdout,
+      costUsd: result.costUsd,
       durationMs,
     };
   }
 
-  // Parse Claude JSON output: { result: string, cost_usd: number, duration_ms: number, ... }
-  let output = result.stdout;
-  let costUsd: number | undefined;
-
-  try {
-    const parsed = JSON.parse(result.stdout) as {
-      result?: string;
-      structured_output?: unknown;
-      cost_usd?: number;
-      total_cost_usd?: number;
-      subtype?: string;
-      is_error?: boolean;
-    };
-    costUsd = parsed.cost_usd ?? parsed.total_cost_usd;
-
-    // Check for max_turns or other non-result responses
-    if (parsed.subtype === "error_max_turns" && !parsed.result && !parsed.structured_output) {
-      return {
-        success: false,
-        output: "Claude max turns exceeded — increase commands.claudeCli.maxTurns in config",
-        costUsd,
-        durationMs,
-      };
-    }
-
-    // structured_output from --json-schema takes priority
-    if (parsed.structured_output) {
-      output = JSON.stringify(parsed.structured_output);
-    } else {
-      output = parsed.result ?? result.stdout;
-    }
-  } catch {
-    // stdout is not JSON - use it as-is
-  }
-
   return {
     success: true,
-    output,
-    costUsd,
+    output: result.stdout,
+    costUsd: result.costUsd,
     durationMs,
   };
 }

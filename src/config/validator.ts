@@ -145,6 +145,8 @@ const projectConfigSchema = z.object({
   }).partial().optional(),
   review: z.object({
     enabled: z.boolean(),
+    rounds: z.array(reviewRoundSchema),
+    simplify: simplifyConfigSchema,
   }).partial().optional(),
   pr: z.object({
     targetBranch: z.string(),

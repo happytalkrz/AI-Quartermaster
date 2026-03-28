@@ -35,6 +35,8 @@ Thumbs.db
 
 # AI tools
 .omc/
+.mcp.json
+stitch-proxy.sh
 .claude/
 .claude-*
 CLAUDE.md

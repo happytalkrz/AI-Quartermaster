@@ -119,6 +119,7 @@ export interface SafetyConfig {
   timeouts: TimeoutsConfig;
   stopConditions: string[];
   allowedLabels: string[];
+  rollbackStrategy: "none" | "all" | "failed-only";
 }
 
 export type PipelineMode = "code" | "content";

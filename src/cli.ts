@@ -28,6 +28,7 @@ interface CliArgs {
   mode?: string;
   interval?: number;
   execute?: boolean;
+  job?: string;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -428,6 +429,60 @@ async function statsCommand(args: CliArgs): Promise<void> {
   console.log();
 }
 
+async function resumeCommand(args: CliArgs): Promise<void> {
+  const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
+  const dataDir = resolve(aqRoot, "data");
+
+  let issueNumber: number | undefined;
+  let repo: string | undefined;
+
+  if (args.job) {
+    // --job <id>: look up the job to get issue + repo
+    const { JobStore } = await import("./queue/job-store.js");
+    const store = new JobStore(dataDir);
+    const job = store.get(args.job);
+    if (!job) {
+      console.error(`No job found with id: ${args.job}`);
+      process.exit(1);
+    }
+    issueNumber = job.issueNumber;
+    repo = job.repo;
+  } else if (args.issue && args.repo) {
+    issueNumber = args.issue;
+    repo = args.repo;
+  } else {
+    console.error("Usage: aqm resume --job <id>");
+    console.error("       aqm resume --issue <number> --repo <owner/repo>");
+    process.exit(1);
+  }
+
+  const { loadCheckpoint } = await import("./pipeline/checkpoint.js");
+  const checkpoint = loadCheckpoint(dataDir, issueNumber);
+  if (!checkpoint) {
+    console.error(`No checkpoint found for issue #${issueNumber}`);
+    process.exit(1);
+  }
+
+  console.log(`Resuming pipeline for issue #${issueNumber} from state: ${checkpoint.state}`);
+
+  const config = loadConfig(aqRoot);
+  const effectiveConfig = args.dryRun
+    ? { ...config, general: { ...config.general, dryRun: true } }
+    : config;
+  setGlobalLogLevel(effectiveConfig.general.logLevel);
+  createLogger(effectiveConfig.general.logLevel);
+
+  const result = await runPipeline({
+    issueNumber,
+    repo,
+    config: effectiveConfig,
+    aqRoot,
+    resumeFrom: checkpoint,
+  });
+
+  process.exit(result.success ? 0 : 1);
+}
+
 async function cleanupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
@@ -465,6 +520,8 @@ async function main() {
     await planCommand(args);
   } else if (command === "stats") {
     await statsCommand(args);
+  } else if (command === "resume") {
+    await resumeCommand(args);
   } else if (command === "help") {
     printHelp();
   } else {
@@ -491,6 +548,8 @@ Usage:
   aqm status                                         Show queue status
   aqm cleanup                                        Clean old worktrees
   aqm plan --repo <owner/repo> [--execute]           Scan open issues and generate execution plan
+  aqm resume --job <id>                              Resume pipeline from last checkpoint
+  aqm resume --issue <number> --repo <owner/repo>    Resume pipeline by issue number
   aqm stats [--repo <owner/repo>]                    Show pattern learning stats
   aqm doctor                                         Pre-validate environment and report issues
   aqm update                                         Update to latest version
@@ -545,6 +604,8 @@ function parseArgs(argv: string[]): CliArgs {
       result.interval = parseInt(argv[++i], 10);
     } else if (argv[i] === "--execute") {
       result.execute = true;
+    } else if (argv[i] === "--job" && argv[i + 1]) {
+      result.job = argv[++i];
     }
   }
   return result;

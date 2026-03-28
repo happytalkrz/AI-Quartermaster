@@ -119,3 +119,8 @@ safety:
     - "BASE_BRANCH_MODIFIED"
   allowedLabels:
     - "ai-quartermaster"
+  # Rollback strategy on pipeline failure:
+  #   "none"        — no rollback (default)
+  #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)
+  #   "failed-only" — reset to last successful phase commit
+  rollbackStrategy: "none"

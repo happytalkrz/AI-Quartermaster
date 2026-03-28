@@ -50,12 +50,13 @@ export async function notifyFailure(
   repo: string,
   issueNumber: number,
   error: string,
-  options?: { ghPath?: string; dryRun?: boolean; errorCategory?: string; lastOutput?: string }
+  options?: { ghPath?: string; dryRun?: boolean; errorCategory?: string; lastOutput?: string; rollbackInfo?: string }
 ): Promise<void> {
   const category = options?.errorCategory ? `**유형**: \`${options.errorCategory}\`\n` : "";
   const output = options?.lastOutput
     ? `\n<details><summary>마지막 출력 (최대 50줄)</summary>\n\n\`\`\`\n${options.lastOutput.split("\n").slice(-50).join("\n")}\n\`\`\`\n</details>\n`
     : "";
-  const message = `## AI 병참부 - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${output}\n수동 확인이 필요합니다.`;
+  const rollback = options?.rollbackInfo ? `\n**롤백**: ${options.rollbackInfo}\n` : "";
+  const message = `## AI 병참부 - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n수동 확인이 필요합니다.`;
   await notifyIssue(repo, issueNumber, message, options);
 }

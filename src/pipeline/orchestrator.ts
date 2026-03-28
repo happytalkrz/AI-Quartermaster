@@ -5,6 +5,9 @@ import { createDraftPR, enableAutoMerge } from "../github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { runCoreLoop } from "./core-loop.js";
+import { runClaude } from "../claude/claude-runner.js";
+import { configForTask } from "../claude/model-router.js";
+import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { installDependencies } from "./dependency-installer.js";
 import { formatResult, printResult } from "./result-reporter.js";
 import type { PipelineReport } from "./result-reporter.js";
@@ -454,20 +457,64 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         logger.info("[FINAL_VALIDATING] Running final validation...");
         jl?.setStep("최종 검증 중...");
         jl?.setProgress(PROGRESS_VALIDATION_START);
-        const validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
+        let validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
         for (const check of validation.checks) {
           jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
         }
         if (!validation.success) {
-          const failedChecks = validation.checks.filter(c => !c.passed).map(c => c.name).join(", ");
-          logger.error(`[FINAL_VALIDATING] Failed checks: ${failedChecks}`);
-          jl?.log(`실패: Final validation failed: ${failedChecks}`);
-          jl?.setStep("실패");
-          checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-          const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
-          printResult(report);
-          saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-          return { success: false, state: "FAILED", error: `Final validation failed: ${failedChecks}`, report };
+          const maxRetries = project.safety.maxRetries;
+          let retrySuccess = false;
+
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            const failedChecks = validation.checks.filter(c => !c.passed);
+            const failedNames = failedChecks.map(c => c.name).join(", ");
+            logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${maxRetries} — fixing: ${failedNames}`);
+            jl?.log(`검증 실패 수정 시도 ${attempt}/${maxRetries}: ${failedNames}`);
+            jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
+
+            const errorDetails = failedChecks
+              .map(c => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
+              .join("\n\n");
+
+            const fixPrompt = [
+              "The following validation checks failed. Fix the errors only — do not add new features or refactor unrelated code.",
+              "",
+              errorDetails,
+            ].join("\n");
+
+            const claudeConfig = configForTask(project.commands.claudeCli, "fallback");
+            await runClaude({
+              prompt: fixPrompt,
+              cwd: worktreePath!,
+              config: claudeConfig,
+            });
+
+            await autoCommitIfDirty(gitConfig.gitPath, worktreePath!, `fix: validation 오류 수정 (retry ${attempt})`);
+
+            validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
+            for (const check of validation.checks) {
+              jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name} (retry ${attempt})`);
+            }
+
+            if (validation.success) {
+              logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
+              jl?.log(`검증 통과 (retry ${attempt})`);
+              retrySuccess = true;
+              break;
+            }
+          }
+
+          if (!retrySuccess) {
+            const failedChecks = validation.checks.filter(c => !c.passed).map(c => c.name).join(", ");
+            logger.error(`[FINAL_VALIDATING] Failed after ${maxRetries} retries: ${failedChecks}`);
+            jl?.log(`실패: Final validation failed after ${maxRetries} retries: ${failedChecks}`);
+            jl?.setStep("실패");
+            checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
+            const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+            printResult(report);
+            saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
+            return { success: false, state: "FAILED", error: `Final validation failed after ${maxRetries} retries: ${failedChecks}`, report };
+          }
         }
 
         checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });

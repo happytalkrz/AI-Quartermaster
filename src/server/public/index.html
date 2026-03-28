@@ -961,12 +961,14 @@ function render(data) {
   currentJobs = sortJobs(data.jobs || []);
   const q = data.queue || {};
 
-  // Stats from /api/stats or computed
-  const total = currentJobs.length;
-  const successCount = currentJobs.filter(j => j.status === 'success').length;
-  const failedCount = currentJobs.filter(j => j.status === 'failure').length;
-  const activeCount = currentJobs.filter(j => j.status === 'running').length;
-  const rate = total > 0 ? ((successCount / total) * 100).toFixed(1) : '0';
+  // Stats from /api/stats or computed (exclude archived from counts)
+  const activeJobs = currentJobs.filter(j => j.status !== 'archived');
+  const total = activeJobs.length;
+  const successCount = activeJobs.filter(j => j.status === 'success').length;
+  const failedCount = activeJobs.filter(j => j.status === 'failure').length;
+  const activeCount = activeJobs.filter(j => j.status === 'running').length;
+  const completed = successCount + failedCount;
+  const rate = completed > 0 ? ((successCount / completed) * 100).toFixed(1) : '0';
 
   document.getElementById('stat-total').textContent = total;
   document.getElementById('stat-rate').textContent = rate + '%';

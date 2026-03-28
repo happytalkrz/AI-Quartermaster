@@ -121,11 +121,6 @@ export async function runSetup(aqRoot: string): Promise<void> {
   console.log("  aqm status                                   상태 확인");
   console.log("  aqm help                                     전체 명령어");
   console.log("");
-  console.log("사용법:");
-  console.log("  수동 실행: npx tsx src/cli.ts run --issue <번호> --repo <owner/repo>");
-  console.log("  서버 시작: npx tsx src/cli.ts start");
-  console.log("  상태 확인: npx tsx src/cli.ts status");
-  console.log("");
 }
 
 export async function setupWebhook(aqRoot: string, repo: string): Promise<void> {

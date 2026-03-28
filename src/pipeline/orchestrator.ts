@@ -24,6 +24,7 @@ import type { ReviewPipelineResult } from "../types/review.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
+import { PatternStore } from "../learning/pattern-store.js";
 
 export interface OrchestratorInput {
   issueNumber: number;
@@ -162,6 +163,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const [owner, name] = repo.split("/");
     // Build a config with project-specific commands for core-loop
     const projectConfig = { ...config, commands: project.commands, safety: project.safety };
+    const dataDir = resolve(aqRoot ?? projectRoot, "data");
+    const patternStore = new PatternStore(dataDir);
     const coreResult = await runCoreLoop({
       issue,
       repo: { owner, name },
@@ -172,6 +175,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       cwd: worktreePath,
       modeHint: preset.planHint,
       projectConventions,
+      dataDir,
       jobLogger: jl,
     });
 
@@ -200,6 +204,18 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       const failedPhase = coreResult.phaseResults.find(r => !r.success);
       jl?.log(`실패: ${failedPhase?.error ?? "Phase execution failed"}`);
       jl?.setStep("실패");
+      // Record failure pattern
+      try {
+        patternStore.add({
+          issueNumber,
+          repo,
+          type: "failure",
+          errorCategory: failedPhase?.errorCategory,
+          errorMessage: failedPhase?.error,
+          phaseName: failedPhase?.phaseName,
+          tags: [],
+        });
+      } catch { /* non-fatal */ }
       const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
       printResult(report);
       saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
@@ -408,6 +424,15 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     state = "DONE";
+    // Record success pattern
+    try {
+      patternStore.add({
+        issueNumber,
+        repo,
+        type: "success",
+        tags: [],
+      });
+    } catch { /* non-fatal */ }
     const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl);
     printResult(report);
     saveResult(config, aqRoot ?? projectRoot, issueNumber, report);

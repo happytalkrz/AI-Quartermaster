@@ -26,6 +26,8 @@
 
 {{projectConventions}}
 
+{{pastFailures}}
+
 ---
 
 ## 구현 규칙

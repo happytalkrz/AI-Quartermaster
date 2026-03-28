@@ -1,6 +1,7 @@
 import { getLogger } from "../utils/logger.js";
 import { errorMessage } from "../types/errors.js";
 import { JobStore, Job } from "./job-store.js";
+import { areDependenciesMet } from "./dependency-resolver.js";
 
 const logger = getLogger();
 
@@ -81,7 +82,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[]): Job | undefined {
     // Check for duplicate
     const existing = this.store.findByIssue(issueNumber, repo);
     if (existing) {
@@ -89,7 +90,7 @@ export class JobQueue {
       return undefined;
     }
 
-    const job = this.store.create(issueNumber, repo);
+    const job = this.store.create(issueNumber, repo, dependencies);
     // Snapshot before processNext() may mutate cache entry
     const snapshot = { ...job };
     this.pending.push(job.id);
@@ -137,6 +138,9 @@ export class JobQueue {
   }
 
   private async processNext(): Promise<void> {
+    // Collect job IDs that are skipped due to unmet dependencies (put back at end)
+    const deferred: string[] = [];
+
     while (this.running.size < this.concurrency && this.pending.length > 0) {
       const jobId = this.pending.shift()!;
 
@@ -145,14 +149,23 @@ export class JobQueue {
         continue;
       }
 
-      this.running.add(jobId);
-      this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
-
       const job = this.store.get(jobId);
       if (!job) {
-        this.running.delete(jobId);
         continue;
       }
+
+      // Check dependency readiness
+      if (job.dependencies && job.dependencies.length > 0) {
+        const { met, pending } = areDependenciesMet(job.dependencies, job.repo, this.store);
+        if (!met) {
+          logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
+          deferred.push(jobId);
+          continue;
+        }
+      }
+
+      this.running.add(jobId);
+      this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
 
       logger.info(`Job started: ${jobId}`);
 
@@ -160,6 +173,11 @@ export class JobQueue {
       this.executeJob(job).catch(err => {
         logger.error(`Job ${jobId} unexpected error: ${err}`);
       });
+    }
+
+    // Re-append deferred jobs so they are retried on the next processNext() call
+    for (const jobId of deferred) {
+      this.pending.push(jobId);
     }
   }
 

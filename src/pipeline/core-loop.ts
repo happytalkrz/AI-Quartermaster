@@ -8,6 +8,7 @@ import type { Plan, PhaseResult } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
+import { PatternStore } from "../learning/pattern-store.js";
 
 const logger = getLogger();
 
@@ -21,6 +22,7 @@ export interface CoreLoopContext {
   cwd: string;
   modeHint?: string;
   projectConventions?: string;
+  dataDir?: string;
   jobLogger?: JobLogger;
 }
 
@@ -54,6 +56,19 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   const jl = ctx.jobLogger;
   const phaseResults: PhaseResult[] = [];
   const maxRetries = ctx.config.safety.maxRetries;
+  const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
+
+  // Load past failures for this repo to inject into phase prompts
+  let pastFailures = "";
+  if (ctx.dataDir) {
+    try {
+      const patternStore = new PatternStore(ctx.dataDir);
+      const recentFailures = patternStore.getRecentFailures(repoFull, 5);
+      pastFailures = patternStore.formatForPrompt(recentFailures);
+    } catch {
+      // non-fatal: ignore pattern load errors
+    }
+  }
 
   for (const phase of plan.phases) {
     logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} ---`);
@@ -71,6 +86,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       lintCommand: ctx.config.commands.lint,
       gitPath: ctx.config.git.gitPath,
       projectConventions: ctx.projectConventions,
+      pastFailures: pastFailures || undefined,
       jobLogger: jl,
     });
 

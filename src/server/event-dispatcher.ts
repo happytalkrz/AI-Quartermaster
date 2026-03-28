@@ -1,6 +1,8 @@
 import { getLogger } from "../utils/logger.js";
 import { listConfiguredRepos } from "../config/project-resolver.js";
 import type { AQConfig } from "../types/config.js";
+import { parseDependencies, checkCircularDependency } from "../queue/dependency-resolver.js";
+import type { JobStore } from "../queue/job-store.js";
 
 const logger = getLogger();
 
@@ -24,6 +26,7 @@ export interface DispatchResult {
   issueNumber?: number;
   repo?: string;
   reason?: string;
+  dependencies?: number[];
 }
 
 /**
@@ -34,7 +37,8 @@ export function dispatchEvent(
   eventType: string,
   payload: GitHubIssueEvent,
   triggerLabels: string[],
-  config?: AQConfig
+  config?: AQConfig,
+  store?: JobStore
 ): DispatchResult {
   // Only handle issue events
   if (eventType !== "issues") {
@@ -70,11 +74,29 @@ export function dispatchEvent(
     }
   }
 
+  // Parse dependencies from issue body
+  const dependencies = parseDependencies(payload.issue.body ?? "");
+
+  // Check for circular dependencies when a store is available
+  if (dependencies.length > 0 && store) {
+    const hasCircular = checkCircularDependency(payload.issue.number, dependencies, store);
+    if (hasCircular) {
+      logger.warn(
+        `Circular dependency detected for issue #${payload.issue.number} in ${repo} — skipping`
+      );
+      return {
+        shouldProcess: false,
+        reason: `Circular dependency detected for issue #${payload.issue.number}`,
+      };
+    }
+  }
+
   logger.info(`Dispatching pipeline for issue #${payload.issue.number} in ${repo}`);
 
   return {
     shouldProcess: true,
     issueNumber: payload.issue.number,
     repo,
+    ...(dependencies.length > 0 ? { dependencies } : {}),
   };
 }

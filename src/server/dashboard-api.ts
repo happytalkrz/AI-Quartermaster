@@ -60,6 +60,109 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     return c.json({ status: "deleted", id });
   });
 
+  // Aggregate stats
+  api.get("/api/stats", (c) => {
+    const jobs = store.list();
+    const total = jobs.length;
+    const successCount = jobs.filter(j => j.status === "success").length;
+    const failureCount = jobs.filter(j => j.status === "failure").length;
+    const runningCount = jobs.filter(j => j.status === "running").length;
+    const queuedCount  = jobs.filter(j => j.status === "queued").length;
+    const cancelledCount = jobs.filter(j => j.status === "cancelled").length;
+
+    const completed = jobs.filter(j => j.completedAt && j.startedAt);
+    const avgDurationMs = completed.length > 0
+      ? Math.round(completed.reduce((sum, j) => {
+          return sum + (new Date(j.completedAt!).getTime() - new Date(j.startedAt!).getTime());
+        }, 0) / completed.length)
+      : 0;
+
+    const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
+
+    return c.json({
+      total,
+      successCount,
+      failureCount,
+      runningCount,
+      queuedCount,
+      cancelledCount,
+      avgDurationMs,
+      successRate,
+    });
+  });
+
+  // SSE stream for job logs
+  api.get("/api/jobs/:id/logs/stream", (c) => {
+    const id = c.req.param("id");
+    let lastLogCount = 0;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const send = () => {
+          try {
+            const job = store.get(id);
+            if (!job) {
+              controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Job not found" })}\n\n`));
+              clearInterval(intervalId);
+              try { controller.close(); } catch { /* already closed */ }
+              return;
+            }
+            const logs = job.logs || [];
+            if (logs.length > lastLogCount) {
+              const newLines = logs.slice(lastLogCount);
+              lastLogCount = logs.length;
+              for (const line of newLines) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ line, status: job.status })}\n\n`));
+              }
+            }
+            // Send status update so client knows when job finishes
+            if (job.status !== "running" && job.status !== "queued") {
+              controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ status: job.status })}\n\n`));
+              clearInterval(intervalId);
+              try { controller.close(); } catch { /* already closed */ }
+            }
+          } catch {
+            // stream closed
+          }
+        };
+        send();
+        intervalId = setInterval(send, 1000);
+        setTimeout(() => {
+          clearInterval(intervalId);
+          try { controller.close(); } catch { /* already closed */ }
+        }, 300000); // 5 min max
+      },
+      cancel() {
+        clearInterval(intervalId);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  });
+
+  // Retry a failed job
+  api.post("/api/jobs/:id/retry", async (c) => {
+    const id = c.req.param("id");
+    const job = store.get(id);
+    if (!job) return c.json({ error: "Job not found" }, 404);
+    if (job.status !== "failure" && job.status !== "cancelled") {
+      return c.json({ error: "Only failed or cancelled jobs can be retried" }, 400);
+    }
+    const newJob = queue.enqueue(job.issueNumber, job.repo);
+    if (!newJob) {
+      return c.json({ error: "A job for this issue is already active" }, 409);
+    }
+    return c.json({ status: "queued", id: newJob.id });
+  });
+
   // SSE endpoint for real-time updates
   api.get("/api/events", (c) => {
     // Simple SSE - send current state every 2 seconds

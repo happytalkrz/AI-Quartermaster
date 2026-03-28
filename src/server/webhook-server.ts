@@ -11,7 +11,7 @@ export interface WebhookServerOptions {
   config: AQConfig;
   webhookSecret: string;
   port?: number;
-  onPipelineTrigger: (issueNumber: number, repo: string) => void;
+  onPipelineTrigger: (issueNumber: number, repo: string, dependencies?: number[]) => void;
 }
 
 export function createWebhookApp(options: WebhookServerOptions): Hono {
@@ -46,7 +46,7 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
     );
 
     if (result.shouldProcess && result.issueNumber && result.repo) {
-      options.onPipelineTrigger(result.issueNumber, result.repo);
+      options.onPipelineTrigger(result.issueNumber, result.repo, result.dependencies);
       return c.json({
         status: "accepted",
         issueNumber: result.issueNumber,

@@ -15,6 +15,7 @@ import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
 import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
+import { PatternStore } from "./learning/pattern-store.js";
 
 interface CliArgs {
   command?: string;
@@ -26,6 +27,7 @@ interface CliArgs {
   port?: number;
   mode?: string;
   interval?: number;
+  execute?: boolean;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -241,8 +243,8 @@ async function startCommand(args: CliArgs): Promise<void> {
   const app = createWebhookApp({
     config,
     webhookSecret,
-    onPipelineTrigger: (issueNumber, repo) => {
-      queue.enqueue(issueNumber, repo);
+    onPipelineTrigger: (issueNumber, repo, dependencies) => {
+      queue.enqueue(issueNumber, repo, dependencies);
     },
   });
 
@@ -323,6 +325,87 @@ async function doctorCommand(args: CliArgs): Promise<void> {
   await runDoctor(config, aqRoot);
 }
 
+async function planCommand(args: CliArgs): Promise<void> {
+  if (!args.repo) {
+    console.error("Usage: aqm plan --repo <owner/repo> [--execute]");
+    process.exit(1);
+  }
+
+  const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
+  const config = loadConfig(aqRoot);
+  setGlobalLogLevel(config.general.logLevel);
+
+  const { listTriggerIssues, generateExecutionPlan, printExecutionPlan } = await import("./pipeline/issue-orchestrator.js");
+
+  const ghPath = config.commands.ghCli.path;
+  const labels = config.safety.allowedLabels;
+
+  console.log(`\n이슈 목록을 가져오는 중... (${args.repo}, 라벨: ${labels.join(", ")})`);
+  const issues = await listTriggerIssues(args.repo, labels, ghPath);
+
+  if (issues.length === 0) {
+    console.log("트리거 라벨이 붙은 열린 이슈가 없습니다.");
+    return;
+  }
+
+  console.log(`이슈 ${issues.length}개를 분석 중...`);
+  const plan = await generateExecutionPlan(issues, config.commands.claudeCli, aqRoot, aqRoot);
+  plan.repo = args.repo;
+
+  printExecutionPlan(plan);
+
+  if (args.execute) {
+    const dataDir = resolve(aqRoot, "data");
+    const { JobStore } = await import("./queue/job-store.js");
+    const { JobQueue } = await import("./queue/job-queue.js");
+    const store = new JobStore(dataDir);
+    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs);
+
+    let enqueued = 0;
+    for (const batch of plan.executionOrder) {
+      for (const issuePlan of batch) {
+        queue.enqueue(issuePlan.issueNumber, args.repo!, issuePlan.dependencies);
+        enqueued++;
+      }
+    }
+    console.log(`\n${enqueued}개 이슈가 큐에 등록되었습니다. aqm start 로 처리하세요.`);
+  }
+}
+
+async function statsCommand(args: CliArgs): Promise<void> {
+  const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
+  const dataDir = resolve(aqRoot, "data");
+  const patternStore = new PatternStore(dataDir);
+  const stats = patternStore.getStats(args.repo);
+  const successRate = stats.total > 0 ? ((stats.successes / stats.total) * 100).toFixed(1) : "N/A";
+
+  console.log(`\nPattern Learning Stats${args.repo ? ` (${args.repo})` : ""}:`);
+  console.log(`  Total runs   : ${stats.total}`);
+  console.log(`  Successes    : ${stats.successes}`);
+  console.log(`  Failures     : ${stats.failures}`);
+  console.log(`  Success rate : ${successRate}%`);
+
+  if (Object.keys(stats.byCategory).length > 0) {
+    console.log("\nTop Failure Categories:");
+    const sorted = Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]);
+    for (const [cat, count] of sorted) {
+      console.log(`  ${cat.padEnd(20)} ${count}`);
+    }
+  }
+
+  const recentFailures = patternStore.list({ type: "failure", repo: args.repo, limit: 5 });
+  if (recentFailures.length > 0) {
+    console.log("\nRecent Failures:");
+    for (const e of recentFailures) {
+      const ts = new Date(e.timestamp).toLocaleString();
+      const msg = e.errorMessage ? ` — ${e.errorMessage}` : "";
+      console.log(`  [${ts}] #${e.issueNumber} ${e.repo} (${e.errorCategory ?? "UNKNOWN"})${msg}`);
+      if (e.phaseName) console.log(`    Phase: ${e.phaseName}`);
+    }
+  }
+  console.log();
+}
+
 async function cleanupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
@@ -356,6 +439,10 @@ async function main() {
     await cleanupCommand(args);
   } else if (command === "doctor") {
     await doctorCommand(args);
+  } else if (command === "plan") {
+    await planCommand(args);
+  } else if (command === "stats") {
+    await statsCommand(args);
   } else if (command === "help") {
     printHelp();
   } else {
@@ -381,6 +468,8 @@ Usage:
   aqm logs                                           Tail server logs
   aqm status                                         Show queue status
   aqm cleanup                                        Clean old worktrees
+  aqm plan --repo <owner/repo> [--execute]           Scan open issues and generate execution plan
+  aqm stats [--repo <owner/repo>]                    Show pattern learning stats
   aqm doctor                                         Pre-validate environment and report issues
   aqm update                                         Update to latest version
   aqm version                                        Show version info
@@ -432,6 +521,8 @@ function parseArgs(argv: string[]): CliArgs {
       result.mode = argv[++i];
     } else if (argv[i] === "--interval" && argv[i + 1]) {
       result.interval = parseInt(argv[++i], 10);
+    } else if (argv[i] === "--execute") {
+      result.execute = true;
     }
   }
   return result;

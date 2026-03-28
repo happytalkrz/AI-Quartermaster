@@ -23,6 +23,7 @@ export interface PhaseExecutorContext {
   lintCommand: string;
   gitPath: string;
   projectConventions?: string;
+  pastFailures?: string;
   jobLogger?: JobLogger;
 }
 
@@ -59,6 +60,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         lintCommand: ctx.lintCommand,
       },
       projectConventions: ctx.projectConventions ?? "",
+      pastFailures: ctx.pastFailures ?? "",
     });
 
     // 2. Run Claude to implement the phase

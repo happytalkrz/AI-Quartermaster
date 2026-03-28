@@ -819,6 +819,181 @@
       flex-shrink: 0;
     }
 
+    /* ── Phase progress bar ─────────────────────────────────────── */
+    .phase-progress-wrap {
+      margin: 10px 0 4px;
+    }
+    .phase-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .phase-progress-bar {
+      height: 4px;
+      background: var(--border-muted);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .phase-progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--success);
+      transition: width 0.4s ease;
+    }
+    .phase-progress-fill.in-progress {
+      background: var(--warning);
+    }
+
+    /* ── Live log stream box ─────────────────────────────────────── */
+    .log-stream-box {
+      background: var(--bg-inset);
+      border: 1px solid var(--border-muted);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-secondary);
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+    .log-stream-box .log-line { line-height: 1.6; display: block; }
+    .log-stream-box .log-fail { color: var(--danger); }
+    .log-stream-box .log-pass { color: var(--success); }
+    .log-stream-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+    .log-stream-header .live-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--warning);
+      animation: pulse-warn 1.2s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+
+    /* ── Aggregate stats bar ─────────────────────────────────────── */
+    .agg-stats-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-muted);
+      border-radius: var(--radius-md);
+      margin-bottom: 18px;
+      font-size: 12px;
+    }
+    .agg-stat-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    .agg-stat-item .agg-val {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .agg-stat-item .agg-val.success-val { color: var(--success); }
+    .agg-stat-item .agg-val.danger-val  { color: var(--danger); }
+    .agg-stat-sep { color: var(--border); }
+
+    /* ── History section ─────────────────────────────────────────── */
+    .history-section {
+      margin-top: 24px;
+    }
+    .history-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .history-sort-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .history-sort-btn {
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      font-size: 11px;
+      cursor: pointer;
+      transition: color var(--transition), border-color var(--transition);
+    }
+    .history-sort-btn.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-muted);
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .history-table th {
+      text-align: left;
+      padding: 6px 10px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-muted);
+    }
+    .history-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-muted);
+      vertical-align: middle;
+      color: var(--text-secondary);
+    }
+    .history-table tr:last-child td { border-bottom: none; }
+    .history-table tr:hover td { background: var(--bg-subtle); }
+    .history-table .col-issue { font-family: var(--font-mono); font-weight: 700; color: var(--accent); width: 60px; }
+    .history-table .col-repo  { color: var(--text-primary); font-weight: 500; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-table .col-dur   { font-family: var(--font-mono); white-space: nowrap; }
+    .history-table .col-date  { font-family: var(--font-mono); white-space: nowrap; font-size: 11px; }
+    .history-table .col-acts  { white-space: nowrap; }
+
+    /* retry button */
+    .btn-retry {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-muted);
+      color: var(--accent);
+      border: 1px solid #1f6feb55;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .btn-retry:hover  { background: #1f6feb33; border-color: var(--accent); }
+    .btn-retry:active { transform: scale(.97); }
+    .btn-retry svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
     /* phase results list */
     .phase-list {
       margin-top: 8px;
@@ -903,6 +1078,19 @@
 
   <hr class="divider">
 
+  <!-- Aggregate stats bar -->
+  <div class="agg-stats-bar" id="agg-stats-bar" style="display:none;">
+    <span class="agg-stat-item">총 <span class="agg-val" id="agg-total">0</span>건</span>
+    <span class="agg-stat-sep">|</span>
+    <span class="agg-stat-item">성공률 <span class="agg-val success-val" id="agg-rate">0</span>%</span>
+    <span class="agg-stat-sep">|</span>
+    <span class="agg-stat-item">성공 <span class="agg-val success-val" id="agg-success">0</span></span>
+    <span class="agg-stat-sep">|</span>
+    <span class="agg-stat-item">실패 <span class="agg-val danger-val" id="agg-failure">0</span></span>
+    <span class="agg-stat-sep">|</span>
+    <span class="agg-stat-item">평균 소요 <span class="agg-val" id="agg-avg-dur">—</span></span>
+  </div>
+
   <!-- Toolbar: section label + filter tabs -->
   <div class="toolbar">
     <div class="section-label" id="section-label">Jobs</div>
@@ -944,6 +1132,32 @@
 
     <!-- Filter has no results -->
     <div class="filter-empty" id="filter-empty">필터 조건에 맞는 작업이 없습니다</div>
+  </div>
+
+  <!-- History section (completed + failed + cancelled jobs) -->
+  <div class="history-section" id="history-section" style="display:none;">
+    <div class="history-toolbar">
+      <div class="section-label">History</div>
+      <div class="history-sort-group">
+        정렬:
+        <button class="history-sort-btn active" id="hsort-date" onclick="setHistorySort('date')">날짜</button>
+        <button class="history-sort-btn" id="hsort-dur" onclick="setHistorySort('duration')">소요시간</button>
+        <button class="history-sort-btn" id="hsort-status" onclick="setHistorySort('status')">상태</button>
+      </div>
+    </div>
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th class="col-issue">#</th>
+          <th>저장소</th>
+          <th>상태</th>
+          <th>완료</th>
+          <th>소요</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody"></tbody>
+    </table>
   </div>
 
 </div>

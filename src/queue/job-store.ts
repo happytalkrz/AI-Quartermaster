@@ -19,6 +19,7 @@ export interface Job {
   lastUpdatedAt?: string;
   logs?: string[];
   currentStep?: string;
+  dependencies?: number[];
   phaseResults?: Array<{
     name: string;
     success: boolean;
@@ -54,7 +55,7 @@ export class JobStore {
     return resolve(this.dataDir, `${id}.json`);
   }
 
-  create(issueNumber: number, repo: string): Job {
+  create(issueNumber: number, repo: string, dependencies?: number[]): Job {
     const id = `aq-${issueNumber}-${Date.now()}`;
     const job: Job = {
       id,
@@ -62,6 +63,7 @@ export class JobStore {
       repo,
       status: "queued",
       createdAt: new Date().toISOString(),
+      ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
     };
     this.save(job);
     logger.info(`Job created: ${id}`);
@@ -88,6 +90,12 @@ export class JobStore {
   findByIssue(issueNumber: number, repo: string): Job | undefined {
     return this.list().find(
       j => j.issueNumber === issueNumber && j.repo === repo && (j.status === "queued" || j.status === "running")
+    );
+  }
+
+  findCompletedByIssue(issueNumber: number, repo: string): Job | undefined {
+    return this.list().find(
+      j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success"
     );
   }
 

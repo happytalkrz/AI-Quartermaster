@@ -18,6 +18,8 @@ export class JobQueue {
   private cancelled: Set<string> = new Set();
   private stuckChecker: ReturnType<typeof setInterval> | undefined;
   private stuckTimeoutMs: number;
+  private shuttingDown: boolean = false;
+  private stuckAborted: Set<string> = new Set();
 
   constructor(store: JobStore, concurrency: number, handler: JobHandler, stuckTimeoutMs: number = 600000) {
     this.store = store;
@@ -43,10 +45,52 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: `작업이 ${Math.round(elapsed / 60000)}분간 응답 없어 자동 종료됨`,
         });
+        this.stuckAborted.add(jobId);
         this.running.delete(jobId);
         this.processNext();
       }
     }
+  }
+
+  /**
+   * Marks a job as stuck-aborted so executeJob can detect it after the handler returns.
+   */
+  abortJob(jobId: string): boolean {
+    if (this.running.has(jobId)) {
+      this.stuckAborted.add(jobId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Stops accepting new jobs and waits for all running jobs to finish.
+   * Resolves when running set is empty or timeoutMs elapses.
+   */
+  shutdown(timeoutMs: number = 30000): Promise<void> {
+    this.shuttingDown = true;
+    if (this.stuckChecker !== undefined) {
+      clearInterval(this.stuckChecker);
+      this.stuckChecker = undefined;
+    }
+    if (this.running.size === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const check = setInterval(() => {
+        if (this.running.size === 0) {
+          clearInterval(check);
+          resolve();
+          return;
+        }
+        if (Date.now() - start >= timeoutMs) {
+          clearInterval(check);
+          logger.warn(`Shutdown timeout: ${this.running.size} job(s) still running after ${timeoutMs / 1000}s`);
+          resolve();
+        }
+      }, 1000);
+    });
   }
 
   /**
@@ -83,6 +127,11 @@ export class JobQueue {
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
   enqueue(issueNumber: number, repo: string, dependencies?: number[]): Job | undefined {
+    if (this.shuttingDown) {
+      logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
+      return undefined;
+    }
+
     // Check for duplicate
     const existing = this.store.findByIssue(issueNumber, repo);
     if (existing) {
@@ -185,7 +234,10 @@ export class JobQueue {
     try {
       const result = await this.handler(job);
 
-      if (this.cancelled.has(job.id)) {
+      if (this.stuckAborted.has(job.id)) {
+        this.stuckAborted.delete(job.id);
+        // Already marked failed by checkStuckJobs
+      } else if (this.cancelled.has(job.id)) {
         this.cancelled.delete(job.id);
         // Already marked cancelled
       } else if (result.error) {

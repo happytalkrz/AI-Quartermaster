@@ -17,6 +17,7 @@ export interface SimplifyContext {
   cwd: string;
   testCommand: string;
   variables: TemplateVariables;
+  gitPath?: string;
 }
 
 export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult> {
@@ -46,8 +47,10 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
     };
   }
 
+  const git = ctx.gitPath ?? "git";
+
   // Check what changed
-  const diffResult = await runCli("git", ["diff", "--numstat", "HEAD"], { cwd: ctx.cwd });
+  const diffResult = await runCli(git, ["diff", "--numstat", "HEAD"], { cwd: ctx.cwd });
   const hasChanges = diffResult.stdout.trim().length > 0;
 
   if (!hasChanges) {
@@ -68,8 +71,8 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
 
   if (testResult.exitCode !== 0) {
     logger.warn("Tests failed after simplification, rolling back");
-    await runCli("git", ["checkout", "."], { cwd: ctx.cwd });
-    await runCli("git", ["clean", "-fd"], { cwd: ctx.cwd });
+    await runCli(git, ["checkout", "."], { cwd: ctx.cwd });
+    await runCli(git, ["clean", "-fd"], { cwd: ctx.cwd });
     return {
       applied: false,
       linesRemoved: 0,
@@ -85,8 +88,8 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
   const { insertions: linesAdded, deletions: linesRemoved, files: filesModified } = parseNumstat(diffResult.stdout);
 
   // Commit simplification
-  await runCli("git", ["add", "-A"], { cwd: ctx.cwd });
-  await runCli("git", ["commit", "-m", "refactor: code simplification"], { cwd: ctx.cwd });
+  await runCli(git, ["add", "-A"], { cwd: ctx.cwd });
+  await runCli(git, ["commit", "-m", "refactor: code simplification"], { cwd: ctx.cwd });
 
   logger.info(`Simplification applied: +${linesAdded} -${linesRemoved} in ${filesModified.length} files`);
 

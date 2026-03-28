@@ -151,11 +151,13 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       }
     }
 
-    // === Get repo structure for plan generation ===
+    // === Get repo structure for plan generation (tracked files only) ===
     const structureResult = await runCli(
-      "find", [".", "-maxdepth", "3", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"],
+      gitConfig.gitPath, ["ls-tree", "-r", "--name-only", "HEAD"],
       { cwd: worktreePath }
     );
+    // Limit output so prompt stays manageable
+    structureResult.stdout = structureResult.stdout.split("\n").slice(0, 200).join("\n");
 
     // === WORKTREE_CREATED → PLAN_GENERATED → PHASE_IN_PROGRESS ===
     jl?.setStep("Plan 생성 중...");
@@ -305,6 +307,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         cwd: worktreePath,
         testCommand: project.commands.test,
         variables: reviewVariables,
+        gitPath: gitConfig.gitPath,
       });
     }
 
@@ -402,7 +405,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         prResult.number,
         repo,
         project.pr.mergeMethod,
-        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun }
+        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun, isDraft: project.pr.draft }
       );
       if (merged) {
         jl?.log(`Auto-merge 활성화 (${project.pr.mergeMethod})`);

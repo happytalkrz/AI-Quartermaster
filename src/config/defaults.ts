@@ -45,7 +45,6 @@ export const DEFAULT_CONFIG: AQConfig = {
     build: "npm run build",
     typecheck: "npm run typecheck",
     preInstall: "",
-    shellWhitelist: ["npm", "npx", "node", "git", "gh", "tsc", "vitest"],
     claudeMdPath: "CLAUDE.md",
   },
   review: {

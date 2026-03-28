@@ -63,7 +63,6 @@ const commandsConfigSchema = z.object({
   build: z.string(),
   typecheck: z.string(),
   preInstall: z.string(),
-  shellWhitelist: z.array(z.string()),
   claudeMdPath: z.string(),
 });
 

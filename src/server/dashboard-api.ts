@@ -1,24 +1,85 @@
 import { Hono } from "hono";
+import { randomUUID } from "crypto";
 import type { JobStore } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
+
+// In-memory session token store: token → expiry timestamp
+const sessionTokens = new Map<string, number>();
+const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function pruneExpiredTokens(): void {
+  const now = Date.now();
+  for (const [token, expiry] of sessionTokens) {
+    if (now > expiry) sessionTokens.delete(token);
+  }
+}
+
+function isValidSessionToken(token: string): boolean {
+  pruneExpiredTokens();
+  const expiry = sessionTokens.get(token);
+  return expiry !== undefined && Date.now() <= expiry;
+}
 
 /**
  * Creates dashboard API routes.
  * If apiKey is provided, all /api/* routes require `Authorization: Bearer <key>`.
+ * SSE endpoints (/api/events, /api/jobs/:id/logs/stream) cannot set headers in the
+ * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
+ * Obtain a session token from POST /api/auth with the Bearer key.
  */
 export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?: string): Hono {
   const api = new Hono();
 
-  // Auth middleware — only active when apiKey is configured
-  // Accepts: Authorization: Bearer <key>  OR  ?key=<key> (for EventSource/SSE)
   if (apiKey) {
-    api.use("/api/*", async (c, next) => {
+    // POST /api/auth — exchange Bearer key for a short-lived session token
+    api.post("/api/auth", (c) => {
       const auth = c.req.header("Authorization");
-      const queryKey = c.req.query("key");
-      const valid =
-        (auth && auth === `Bearer ${apiKey}`) ||
-        (queryKey && queryKey === apiKey);
-      if (!valid) {
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      pruneExpiredTokens();
+      const token = randomUUID();
+      sessionTokens.set(token, Date.now() + SESSION_TTL_MS);
+      return c.json({ token, expiresIn: SESSION_TTL_MS });
+    });
+
+    // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
+    api.use("/api/jobs", async (c, next) => {
+      const auth = c.req.header("Authorization");
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    });
+
+    api.use("/api/jobs/:id", async (c, next) => {
+      const auth = c.req.header("Authorization");
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    });
+
+    api.use("/api/stats", async (c, next) => {
+      const auth = c.req.header("Authorization");
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    });
+
+    // SSE endpoints use short-lived session token from ?token= query param
+    api.use("/api/events", async (c, next) => {
+      const token = c.req.query("token");
+      if (!token || !isValidSessionToken(token)) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    });
+
+    api.use("/api/jobs/:id/logs/stream", async (c, next) => {
+      const token = c.req.query("token");
+      if (!token || !isValidSessionToken(token)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       await next();

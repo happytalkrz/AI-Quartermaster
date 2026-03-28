@@ -118,14 +118,17 @@ export async function createDraftPR(
 }
 
 /**
- * Marks a PR as ready and enables auto-merge via gh CLI.
+ * Enables auto-merge on a PR via gh CLI.
+ * If the PR was created as a draft (prConfig.draft === true), it must be un-drafted first
+ * before GitHub will accept the auto-merge request. A warning is logged in that case so
+ * the operator is aware the draft status is being cleared.
  * Best-effort: returns false (with a warning) instead of throwing on failure.
  */
 export async function enableAutoMerge(
   prNumber: number,
   repo: string,
   mergeMethod: MergeMethod,
-  options: { ghPath?: string; dryRun?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean }
 ): Promise<boolean> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -134,11 +137,15 @@ export async function enableAutoMerge(
     return true;
   }
 
-  // Mark PR as ready (required before enabling auto-merge on a draft PR)
-  const readyResult = await runCli(ghPath, ["pr", "ready", String(prNumber), "--repo", repo], {});
-  if (readyResult.exitCode !== 0) {
-    logger.warn(`Failed to mark PR #${prNumber} as ready: ${readyResult.stderr}`);
-    return false;
+  // Only call `gh pr ready` if the PR was created as a draft — un-drafting is required
+  // before GitHub will accept an auto-merge request on a draft PR.
+  if (options.isDraft) {
+    logger.warn(`PR #${prNumber} was created as a draft but auto-merge is enabled — marking as ready for review.`);
+    const readyResult = await runCli(ghPath, ["pr", "ready", String(prNumber), "--repo", repo], {});
+    if (readyResult.exitCode !== 0) {
+      logger.warn(`Failed to mark PR #${prNumber} as ready: ${readyResult.stderr}`);
+      return false;
+    }
   }
 
   // Enable auto-merge

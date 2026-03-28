@@ -5,6 +5,7 @@ import { runCli, runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult, ErrorCategory } from "../types/pipeline.js";
+import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -106,29 +107,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       phaseName: ctx.phase.name,
       success: false,
       error: errMsg,
-      errorCategory: classifyRetryError(errMsg),
+      errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
     };
   }
-}
-
-function classifyRetryError(error: string): ErrorCategory {
-  const lower = error.toLowerCase();
-  if (lower.includes("ts2") || lower.includes("ts1") || lower.includes("type error") || lower.includes("cannot find name")) {
-    return "TS_ERROR";
-  }
-  if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("sigterm")) {
-    return "TIMEOUT";
-  }
-  if (lower.includes("enoent") || lower.includes("spawn") || lower.includes("cli_crash")) {
-    return "CLI_CRASH";
-  }
-  if (lower.includes("tests failed") || lower.includes("lint") || lower.includes("verification")) {
-    return "VERIFICATION_FAILED";
-  }
-  if (lower.includes("safety") || lower.includes("sensitive") || lower.includes("violation")) {
-    return "SAFETY_VIOLATION";
-  }
-  return "UNKNOWN";
 }

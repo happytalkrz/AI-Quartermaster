@@ -51,17 +51,6 @@ commands:
   build: "npm run build"
   typecheck: "npx tsc --noEmit"
   preInstall: "npm ci"
-  shellWhitelist:
-    - "node"
-    - "npm"
-    - "npx"
-    - "git"
-    - "cat"
-    - "ls"
-    - "grep"
-    - "tsc"
-    - "eslint"
-    - "vitest"
 
 review:
   enabled: true

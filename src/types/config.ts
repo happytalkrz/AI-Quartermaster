@@ -55,7 +55,6 @@ export interface CommandsConfig {
   build: string;
   typecheck: string;
   preInstall: string;
-  shellWhitelist: string[];
   claudeMdPath: string;
 }
 

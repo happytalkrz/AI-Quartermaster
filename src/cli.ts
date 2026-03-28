@@ -39,12 +39,12 @@ async function runCommand(args: CliArgs): Promise<void> {
 
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
-  if (args.dryRun) {
-    config.general.dryRun = true;
-  }
-  setGlobalLogLevel(config.general.logLevel);
+  const effectiveConfig = args.dryRun
+    ? { ...config, general: { ...config.general, dryRun: true } }
+    : config;
+  setGlobalLogLevel(effectiveConfig.general.logLevel);
   const targetRoot = args.target ? resolve(args.target) : process.cwd();
-  const logger = createLogger(config.general.logLevel);
+  const logger = createLogger(effectiveConfig.general.logLevel);
 
   logger.info(`AI 병참부 시작 - Issue #${args.issue} (${args.repo})`);
   logger.info(`대상 프로젝트: ${targetRoot}`);
@@ -52,7 +52,7 @@ async function runCommand(args: CliArgs): Promise<void> {
   const result = await runPipeline({
     issueNumber: args.issue,
     repo: args.repo,
-    config,
+    config: effectiveConfig,
     projectRoot: targetRoot,
     aqRoot,
   });
@@ -100,15 +100,15 @@ async function startCommand(args: CliArgs): Promise<void> {
   }
 
   const config = loadConfig(aqRoot);
-  if (args.dryRun) {
-    config.general.dryRun = true;
-  }
-  setGlobalLogLevel(config.general.logLevel);
-  const logger = createLogger(config.general.logLevel);
+  const effectiveConfig = args.dryRun
+    ? { ...config, general: { ...config.general, dryRun: true } }
+    : config;
+  setGlobalLogLevel(effectiveConfig.general.logLevel);
+  const logger = createLogger(effectiveConfig.general.logLevel);
   const port = args.port ?? 3000;
 
   // === Pre-flight checks ===
-  const projects = config.projects ?? [];
+  const projects = effectiveConfig.projects ?? [];
   if (projects.length === 0) {
     console.error("\n✗ config.yml에 projects가 등록되어 있지 않습니다.");
     console.error("  config.yml을 열고 projects 섹션에 대상 프로젝트를 추가하세요:\n");
@@ -142,7 +142,7 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   // Override pollingIntervalMs from --interval CLI arg (seconds → ms)
   if (args.interval !== undefined) {
-    config.general.pollingIntervalMs = args.interval * 1000;
+    effectiveConfig.general.pollingIntervalMs = args.interval * 1000;
   }
 
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
@@ -192,20 +192,20 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   const dataDir = resolve(aqRoot, "data");
   const store = new JobStore(dataDir);
-  const queue = new JobQueue(store, config.general.concurrency, async (job) => {
+  const queue = new JobQueue(store, effectiveConfig.general.concurrency, async (job) => {
     const jl = new JobLogger(store, job.id);
     try {
       const result = await runPipeline({
         issueNumber: job.issueNumber,
         repo: job.repo,
-        config,
+        config: effectiveConfig,
         aqRoot,
         jobLogger: jl,
         // projectRoot is NOT passed — resolved from config.projects
       });
 
-      const ghPath = config.commands.ghCli.path;
-      const dryRun = config.general.dryRun;
+      const ghPath = effectiveConfig.commands.ghCli.path;
+      const dryRun = effectiveConfig.general.dryRun;
 
       if (result.success && result.prUrl) {
         await notifySuccess(job.repo, job.issueNumber, result.prUrl, { ghPath, dryRun });
@@ -222,38 +222,48 @@ async function startCommand(args: CliArgs): Promise<void> {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       await notifyFailure(job.repo, job.issueNumber, errorMsg, {
-        ghPath: config.commands.ghCli.path,
-        dryRun: config.general.dryRun,
+        ghPath: effectiveConfig.commands.ghCli.path,
+        dryRun: effectiveConfig.general.dryRun,
       });
       return { error: errorMsg };
     }
-  }, config.general.stuckTimeoutMs);
+  }, effectiveConfig.general.stuckTimeoutMs);
 
   // Recover jobs from previous session
   queue.recover();
 
   // === Polling mode ===
+  let poller: IssuePoller | undefined;
   if (isPollingMode) {
-    const poller = new IssuePoller(config, store, queue);
+    poller = new IssuePoller(effectiveConfig, store, queue);
     poller.start();
-    process.on("SIGINT", () => { poller.stop(); process.exit(0); });
-    process.on("SIGTERM", () => { poller.stop(); process.exit(0); });
   }
-
-  const app = createWebhookApp({
-    config,
-    webhookSecret,
-    onPipelineTrigger: (issueNumber, repo, dependencies) => {
-      queue.enqueue(issueNumber, repo, dependencies);
-    },
-  });
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
   const dashboardRoutes = createDashboardRoutes(store, queue, apiKey);
   const healthRoutes = createHealthRoutes(queue);
-  app.route("/", dashboardRoutes);
-  app.route("/", healthRoutes);
+
+  let app: ReturnType<typeof createWebhookApp>;
+  if (isPollingMode) {
+    // In polling mode, webhook routes are intentionally not mounted — only dashboard
+    // and health endpoints are exposed to avoid accepting unauthenticated webhook payloads.
+    const { Hono } = await import("hono");
+    const pollingApp = new Hono();
+    pollingApp.route("/", dashboardRoutes);
+    pollingApp.route("/", healthRoutes);
+    app = pollingApp as ReturnType<typeof createWebhookApp>;
+  } else {
+    app = createWebhookApp({
+      config: effectiveConfig,
+      webhookSecret,
+      onPipelineTrigger: (issueNumber, repo, dependencies) => {
+        queue.enqueue(issueNumber, repo, dependencies);
+      },
+    });
+    app.route("/", dashboardRoutes);
+    app.route("/", healthRoutes);
+  }
 
   // Serve cached dashboard HTML at GET /
   app.get("/", (c) => {
@@ -275,8 +285,17 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   const cleanup = () => removePidFile(pidPath);
   process.on("exit", cleanup);
-  process.on("SIGINT", () => { cleanup(); process.exit(0); });
-  process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+
+  const gracefulShutdown = async (signal: string) => {
+    logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
+    poller?.stop();
+    await queue.shutdown(30000);
+    cleanup();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => { void gracefulShutdown("SIGINT"); });
+  process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });
 
   logger.info(`Dashboard available at http://localhost:${port}/`);
 }

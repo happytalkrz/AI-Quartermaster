@@ -2,6 +2,7 @@ import { getLogger } from "../utils/logger.js";
 import { errorMessage } from "../types/errors.js";
 import { JobStore, Job } from "./job-store.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
+import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 
 const logger = getLogger();
 
@@ -39,15 +40,37 @@ export class JobQueue {
       const lastUpdate = job.lastUpdatedAt ?? job.startedAt ?? job.createdAt;
       const elapsed = now - new Date(lastUpdate).getTime();
       if (elapsed > this.stuckTimeoutMs) {
-        logger.error(`Job ${jobId} stuck for ${Math.round(elapsed / 60000)}min — marking as failed`);
-        this.store.update(jobId, {
-          status: "failure",
-          completedAt: new Date().toISOString(),
-          error: `작업이 ${Math.round(elapsed / 60000)}분간 응답 없어 자동 종료됨`,
-        });
-        this.stuckAborted.add(jobId);
-        this.running.delete(jobId);
-        this.processNext();
+        const processAlive = isClaudeProcessAlive();
+        const lastActivityMs = getLastActivityMs();
+        const ACTIVITY_THRESHOLD_MS = 5 * 60 * 1000; // 5분 무활동 시 stuck 판정
+
+        if (!processAlive) {
+          // Claude process died — fail immediately
+          logger.error(`Job ${jobId}: Claude 프로세스 종료 감지 — 즉시 실패 처리`);
+          this.store.update(jobId, {
+            status: "failure",
+            completedAt: new Date().toISOString(),
+            error: `Claude 프로세스가 비정상 종료됨 (${Math.round(elapsed / 60000)}분 경과)`,
+          });
+          this.stuckAborted.add(jobId);
+          this.running.delete(jobId);
+          this.processNext();
+        } else if (lastActivityMs >= 0 && lastActivityMs < ACTIVITY_THRESHOLD_MS) {
+          // Process alive + recent activity — still working, extend
+          logger.info(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 활동 중 (${Math.round(lastActivityMs / 1000)}초 전) — 대기 연장`);
+          this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
+        } else {
+          // Process alive but no recent activity — Claude stuck
+          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 무응답 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분 — 실패 처리`);
+          this.store.update(jobId, {
+            status: "failure",
+            completedAt: new Date().toISOString(),
+            error: `Claude가 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분간 무응답 (프로세스는 살아있으나 활동 없음)`,
+          });
+          this.stuckAborted.add(jobId);
+          this.running.delete(jobId);
+          this.processNext();
+        }
       }
     }
   }
@@ -132,10 +155,10 @@ export class JobQueue {
       return undefined;
     }
 
-    // Check for duplicate
-    const existing = this.store.findByIssue(issueNumber, repo);
+    // Check for duplicate (any status — active, completed, or failed)
+    const existing = this.store.findAnyByIssue(issueNumber, repo);
     if (existing) {
-      logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id}`);
+      logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
       return undefined;
     }
 
@@ -149,6 +172,20 @@ export class JobQueue {
     this.processNext();
 
     return snapshot;
+  }
+
+  /**
+   * Retries a failed or cancelled job by removing the old one and creating a new one.
+   */
+  retryJob(jobId: string): Job | undefined {
+    const oldJob = this.store.get(jobId);
+    if (!oldJob) return undefined;
+    if (oldJob.status !== "failure" && oldJob.status !== "cancelled") return undefined;
+
+    const { issueNumber, repo } = oldJob;
+    // Archive old job so failure history is preserved; findAnyByIssue skips archived jobs
+    this.store.archive(jobId);
+    return this.enqueue(issueNumber, repo);
   }
 
   /**

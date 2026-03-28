@@ -4,7 +4,7 @@ import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger();
 
-export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled";
+export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
 
 export interface Job {
   id: string;
@@ -107,11 +107,20 @@ export class JobStore {
 
   findAnyByIssue(issueNumber: number, repo: string): Job | undefined {
     for (const job of this.cache.values()) {
-      if (job.issueNumber === issueNumber && job.repo === repo) {
+      if (job.issueNumber === issueNumber && job.repo === repo && job.status !== "archived") {
         return job;
       }
     }
     return undefined;
+  }
+
+  archive(id: string): boolean {
+    const job = this.get(id);
+    if (!job) return false;
+    job.status = "archived";
+    this.save(job);
+    logger.info(`Job archived: ${id}`);
+    return true;
   }
 
   prune(maxJobs: number): number {

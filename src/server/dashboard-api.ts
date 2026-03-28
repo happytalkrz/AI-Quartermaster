@@ -205,9 +205,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     if (job.status !== "failure" && job.status !== "cancelled") {
       return c.json({ error: "Only failed or cancelled jobs can be retried" }, 400);
     }
-    const newJob = queue.enqueue(job.issueNumber, job.repo);
+    const newJob = queue.retryJob(id);
     if (!newJob) {
-      return c.json({ error: "A job for this issue is already active" }, 409);
+      return c.json({ error: "Failed to retry job" }, 500);
     }
     return c.json({ status: "queued", id: newJob.id });
   });

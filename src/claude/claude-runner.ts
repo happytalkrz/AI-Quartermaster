@@ -1,5 +1,25 @@
-import { spawn } from "child_process";
+import { spawn, ChildProcess } from "child_process";
 import type { ClaudeCliConfig } from "../types/config.js";
+
+const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
+
+export function isClaudeProcessAlive(): boolean {
+  return activeProcesses.size > 0;
+}
+
+/** Returns ms since last stderr output from any Claude process, or -1 if no process */
+export function getLastActivityMs(): number {
+  if (activeProcesses.size === 0) return -1;
+  let latest = 0;
+  for (const entry of activeProcesses.values()) {
+    if (entry.lastActivity > latest) latest = entry.lastActivity;
+  }
+  return Date.now() - latest;
+}
+
+export function getActiveProcessPids(): number[] {
+  return Array.from(activeProcesses.keys());
+}
 
 export interface ClaudeRunResult {
   success: boolean;
@@ -48,11 +68,27 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
     });
 
+    if (child.pid !== undefined) {
+      activeProcesses.set(child.pid, { process: child, lastActivity: Date.now() });
+    }
+
     let stdout = "";
     let stderr = "";
 
-    child.stdout?.on("data", (data: Buffer) => { stdout += data.toString(); });
-    child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+    child.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+      if (child.pid !== undefined) {
+        const entry = activeProcesses.get(child.pid);
+        if (entry) entry.lastActivity = Date.now();
+      }
+    });
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+      if (child.pid !== undefined) {
+        const entry = activeProcesses.get(child.pid);
+        if (entry) entry.lastActivity = Date.now();
+      }
+    });
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let killId: ReturnType<typeof setTimeout> | undefined;
@@ -60,6 +96,9 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     const cleanup = () => {
       if (timeoutId) { clearTimeout(timeoutId); timeoutId = undefined; }
       if (killId) { clearTimeout(killId); killId = undefined; }
+      if (child.pid !== undefined) {
+        activeProcesses.delete(child.pid);
+      }
     };
 
     child.on("close", (code) => {

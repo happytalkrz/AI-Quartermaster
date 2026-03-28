@@ -538,45 +538,52 @@ async function main() {
 
 function printHelp(): void {
   console.log(`
-AI Quartermaster (AI Quartermaster)
+AI Quartermaster
 
-Usage:
-  aqm setup                                          Initial setup
-  aqm setup-webhook --repo <owner/repo>              Register GitHub webhook
-  aqm run --issue <number> --repo <owner/repo>       Run pipeline for an issue
-  aqm start [--port <n>]                             Start webhook server (foreground)
-  aqm start --mode polling [--interval <sec>]        Start in polling mode (no webhook needed)
-  aqm start --daemon                                 Start server in background
-  aqm stop                                           Stop background server
-  aqm restart                                        Restart background server
-  aqm logs                                           Tail server logs
-  aqm status                                         Show queue status
-  aqm cleanup                                        Clean old worktrees
-  aqm plan --repo <owner/repo> [--execute]           Scan open issues and generate execution plan
-  aqm resume --job <id>                              Resume pipeline from last checkpoint
-  aqm resume --issue <number> --repo <owner/repo>    Resume pipeline by issue number
-  aqm stats [--repo <owner/repo>]                    Show pattern learning stats
-  aqm doctor                                         Pre-validate environment and report issues
-  aqm update                                         Update to latest version
-  aqm version                                        Show version info
-  aqm help                                           Show this help
+Server:
+  aqm start                                       웹훅 서버 시작 (포그라운드)
+  aqm start --daemon                              백그라운드 실행
+  aqm start --mode polling [--interval <sec>]     폴링 모드 (webhook 불필요)
+  aqm start --port <n>                            포트 지정 (기본: 3000)
+  aqm stop                                        서버 중지
+  aqm restart                                     서버 재시작
+  aqm logs                                        서버 로그 실시간 확인
 
-  (또는 npx tsx src/cli.ts <command> 로 개발환경에서 직접 실행 가능)
+Pipeline:
+  aqm run --issue <n> --repo <owner/repo>         특정 이슈 수동 실행
+  aqm resume --job <id>                           실패 파이프라인 재개
+  aqm resume --issue <n> --repo <owner/repo>      이슈 번호로 재개
+  aqm plan --repo <owner/repo> [--execute]        이슈 분석 및 실행 계획
+
+Monitoring:
+  aqm status                                      큐 상태
+  aqm stats [--repo <owner/repo>]                 성공률/실패 통계
+  aqm doctor                                      환경 점검
+
+Management:
+  aqm setup                                       초기 설정
+  aqm setup-webhook --repo <owner/repo>           GitHub webhook 등록
+  aqm cleanup                                     오래된 worktree 정리
+  aqm update                                      최신 버전 업데이트
+  aqm version                                     버전 확인
+  aqm uninstall                                   삭제
+  aqm help                                        이 도움말
 
 Options:
-  --issue <number>    GitHub issue number
-  --repo <owner/repo> GitHub repository
-  --config <path>     Path to config.yml (default: ./config.yml)
-  --target <path>     Target project path (overrides config)
-  --port <number>     Port for webhook server (default: 3000)
-  --mode <mode>       Start mode: webhook (default) or polling
-  --interval <sec>    Polling interval in seconds (default: 60)
-  --dry-run           Skip external actions (push, PR creation)
+  --issue <number>    이슈 번호
+  --repo <owner/repo> GitHub 저장소
+  --port <number>     서버 포트 (기본: 3000)
+  --mode <mode>       시작 모드: webhook (기본) / polling
+  --interval <sec>    폴링 간격 (초, 기본: 60)
+  --daemon, -d        백그라운드 실행
+  --dry-run           외부 작업 스킵 (push, PR 생성)
+  --execute           plan 후 자동 실행
 
 Environment:
-  GITHUB_WEBHOOK_SECRET   Required for webhook signature verification
-  SMEE_URL                Smee.io channel URL for webhook proxy
-  AQM_HOME                Installation directory (default: ~/.ai-quartermaster)
+  GITHUB_WEBHOOK_SECRET   웹훅 서명 검증 (webhook 모드 필수)
+  SMEE_URL                Smee.io 채널 URL (webhook 프록시)
+  DASHBOARD_API_KEY       대시보드 API 인증 키 (선택)
+  AQM_HOME                설치 디렉토리 (기본: ~/.ai-quartermaster)
 `);
 }
 

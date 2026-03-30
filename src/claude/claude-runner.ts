@@ -50,13 +50,10 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
   const effectiveMaxTurns = maxTurns ?? (options.jsonSchema ? 5 : config.maxTurns);
 
   // Add agent context if enableAgents is true
-  let effectivePrompt = prompt;
-  if (enableAgents) {
-    const agentContext = `You have access to specialized agents via the Agent tool that can help with various tasks. Consider using agents for complex work like multi-file changes, analysis, debugging, or planning. Available agent types include executor, planner, debugger, architect, and others.
+  const agentPrefix = enableAgents ? `You have access to specialized agents via the Agent tool that can help with various tasks. Consider using agents for complex work like multi-file changes, analysis, debugging, or planning. Available agent types include executor, planner, debugger, architect, and others.
 
-`;
-    effectivePrompt = agentContext + prompt;
-  }
+` : '';
+  const effectivePrompt = agentPrefix + prompt;
 
   const args: string[] = [
     "-p", useStdin ? "-" : effectivePrompt,

@@ -93,6 +93,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
+      enableAgents: true,
     });
 
     if (!result.success) {

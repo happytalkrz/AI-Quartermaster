@@ -35,6 +35,7 @@ export interface ClaudeRunOptions {
   systemPrompt?: string;
   jsonSchema?: string;  // JSON Schema string to force structured output
   onStderr?: (line: string) => void;  // callback for each stderr line (e.g. HEARTBEAT parsing)
+  enableAgents?: boolean;  // Enable agent functionality with --allow-agents flag
 }
 
 export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
@@ -58,6 +59,9 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
   }
   if (options.jsonSchema) {
     args.push("--json-schema", options.jsonSchema);
+  }
+  if (options.enableAgents) {
+    args.push("--allow-agents");
   }
 
   const startTime = Date.now();

@@ -162,30 +162,22 @@ async function setWorktreeGitAuthor(
   gitConfig: GitConfig,
   worktreePath: string
 ): Promise<void> {
-  const authorName = "AI-Quartermaster";
-  const authorEmail = "noreply@ai-quartermaster.local";
+  const configs = [
+    ["user.name", "AI-Quartermaster"],
+    ["user.email", "noreply@ai-quartermaster.local"]
+  ] as const;
 
-  // Set user.name in local config
-  const nameResult = await runCli(
-    gitConfig.gitPath,
-    ["config", "--local", "user.name", authorName],
-    { cwd: worktreePath }
-  );
+  for (const [key, value] of configs) {
+    const result = await runCli(
+      gitConfig.gitPath,
+      ["config", "--local", key, value],
+      { cwd: worktreePath }
+    );
 
-  if (nameResult.exitCode !== 0) {
-    throw new Error(`Failed to set git user.name: ${nameResult.stderr}`);
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to set git ${key}: ${result.stderr}`);
+    }
   }
 
-  // Set user.email in local config
-  const emailResult = await runCli(
-    gitConfig.gitPath,
-    ["config", "--local", "user.email", authorEmail],
-    { cwd: worktreePath }
-  );
-
-  if (emailResult.exitCode !== 0) {
-    throw new Error(`Failed to set git user.email: ${emailResult.stderr}`);
-  }
-
-  logger.info(`Set git author to ${authorName} <${authorEmail}> in worktree ${worktreePath}`);
+  logger.info(`Set git author to AI-Quartermaster <noreply@ai-quartermaster.local> in worktree ${worktreePath}`);
 }

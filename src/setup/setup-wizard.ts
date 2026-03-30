@@ -159,8 +159,7 @@ export async function setupWebhook(aqRoot: string, repo: string): Promise<void> 
     active: true,
   });
 
-  const escaped = payload.replace(/'/g, "'\\''");
-  const createResult = await runCli("sh", ["-c", `echo '${escaped}' | gh api repos/${repo}/hooks --method POST --input -`], { timeout: 10000 });
+  const createResult = await runCli("gh", ["api", `repos/${repo}/hooks`, "--method", "POST", "--input", "-"], { timeout: 10000, stdin: payload });
 
   if (createResult.exitCode === 0) {
     console.log("Webhook 등록 완료!");

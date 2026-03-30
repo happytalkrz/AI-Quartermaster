@@ -269,6 +269,28 @@ aqm doctor
 
 git, gh, claude CLI 설치 여부, 인증 상태, 프로젝트 경로, 포트 가용성 등을 자동 점검합니다.
 
+## 보안 고려사항
+
+AQM은 Claude CLI를 `--permission-mode bypassPermissions`로 실행합니다. 이는 자동화에 필수적이지만 보안 리스크가 있습니다.
+
+**알려진 리스크:**
+- GitHub 이슈 본문이 Claude 프롬프트에 포함됩니다. 악의적 이슈로 프롬프트 인젝션이 가능합니다
+- Claude가 worktree 내 파일을 자유롭게 수정할 수 있습니다
+- Bash tool로 worktree 외부 경로 접근이 이론적으로 가능합니다
+
+**완화 조치:**
+- `ai-quartermaster` 라벨이 있는 이슈만 처리 (라벨 권한은 팀원만)
+- git worktree 격리 (메인 레포 직접 수정 불가)
+- 결과물은 Draft PR로 생성 (사람이 리뷰 후 머지)
+- 민감 파일 수정 차단 (`.env`, `*.pem`, `secrets/**`)
+- 프롬프트 인젝션 방어 (`<USER_INPUT>` 태그 격리)
+
+**권장 사항:**
+- **반드시 일반 사용자 계정으로 실행하세요.** Claude CLI는 root에서 `bypassPermissions` 모드를 차단합니다. root로 실행하면 파이프라인이 동작하지 않습니다
+- 신뢰할 수 있는 팀원만 라벨 권한을 가지도록 설정하세요
+- Public 레포에서는 외부인의 이슈에 라벨을 붙이지 마세요
+- Draft PR은 반드시 사람이 리뷰한 후 머지하세요
+
 ## 라이선스
 
 MIT

@@ -82,9 +82,18 @@ case "${1:-}" in
       sleep 2
 
       if is_running; then
+        # Parse --port flag from ARGS
+        PORT=3000
+        for ((i=0; i<${#ARGS[@]}-1; i++)); do
+          if [ "${ARGS[i]}" = "--port" ]; then
+            PORT="${ARGS[i+1]}"
+            break
+          fi
+        done
+
         echo "서버 시작됨 (PID: $(cat "$AQM_PID_FILE"))"
         echo "로그: tail -f $AQM_LOG_FILE"
-        echo "대시보드: http://localhost:${ARGS[1]:-3000}/"
+        echo "대시보드: http://localhost:${PORT}/"
         echo "중지: aqm stop"
       else
         echo "서버 시작 실패. 로그를 확인하세요:"

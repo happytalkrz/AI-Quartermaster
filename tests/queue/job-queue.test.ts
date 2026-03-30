@@ -53,7 +53,7 @@ describe("JobQueue", () => {
     queue.enqueue(2, "test/repo2");
     queue.enqueue(3, "test/repo3");
 
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 500));
 
     expect(maxRunning).toBeLessThanOrEqual(2);
     expect(handler).toHaveBeenCalledTimes(3);

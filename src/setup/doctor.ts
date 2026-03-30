@@ -88,6 +88,19 @@ async function checkGhAuth(): Promise<void> {
   }
 }
 
+async function checkGitObjectsPermission(projectPath: string, projectRepo: string): Promise<void> {
+  const result = await runCli("find", [resolve(projectPath, ".git/objects"), "-user", "root", "-maxdepth", "2"], { timeout: 5000 });
+  if (result.exitCode === 0 && result.stdout.trim().length > 0) {
+    const count = result.stdout.trim().split("\n").length;
+    fail(
+      `git 권한 (${projectRepo})`,
+      `.git/objects/ 내 root 소유 파일 ${count}개 발견 — sudo chown -R $(whoami) ${resolve(projectPath, ".git/")} 실행하세요`,
+    );
+  } else {
+    pass(`git 권한 (${projectRepo})`);
+  }
+}
+
 async function checkGitSafeDirectory(projectPath: string, projectRepo: string): Promise<void> {
   const result = await runCli("git", ["-C", projectPath, "rev-parse", "--git-dir"], { timeout: 5000 });
   const output = result.stdout + result.stderr;
@@ -238,6 +251,7 @@ export async function runDoctor(config: AQConfig, aqRoot: string): Promise<void>
     const pathOk = checkProjectPath(project.path, project.repo);
     if (pathOk) {
       await checkGitSafeDirectory(project.path, project.repo);
+      await checkGitObjectsPermission(project.path, project.repo);
       await checkRemoteUrl(project.path, project.repo);
 
       const projectCommands = project.commands

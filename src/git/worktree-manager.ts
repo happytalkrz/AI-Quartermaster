@@ -53,6 +53,9 @@ export async function createWorktree(
 
   logger.info(`Created worktree at ${worktreePath} on branch ${branchName}`);
 
+  // Set AI-Quartermaster as the commit author in this worktree
+  await setWorktreeGitAuthor(gitConfig, worktreePath);
+
   return {
     path: worktreePath,
     branch: branchName,
@@ -150,4 +153,31 @@ export async function isWorktreeDirty(
     { cwd: worktreePath }
   );
   return result.stdout.trim().length > 0;
+}
+
+/**
+ * Sets AI-Quartermaster as the git author for the worktree using local config.
+ */
+async function setWorktreeGitAuthor(
+  gitConfig: GitConfig,
+  worktreePath: string
+): Promise<void> {
+  const configs = [
+    ["user.name", "AI-Quartermaster"],
+    ["user.email", "noreply@ai-quartermaster.local"]
+  ] as const;
+
+  for (const [key, value] of configs) {
+    const result = await runCli(
+      gitConfig.gitPath,
+      ["config", "--local", key, value],
+      { cwd: worktreePath }
+    );
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Failed to set git ${key}: ${result.stderr}`);
+    }
+  }
+
+  logger.info(`Set git author to AI-Quartermaster <noreply@ai-quartermaster.local> in worktree ${worktreePath}`);
 }

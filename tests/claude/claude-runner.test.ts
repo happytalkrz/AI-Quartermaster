@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractJson } from "../../src/claude/claude-runner.js";
+import { extractJson, type ClaudeRunOptions } from "../../src/claude/claude-runner.js";
 
 describe("extractJson", () => {
   it("should parse plain JSON string", () => {
@@ -27,5 +27,43 @@ describe("extractJson", () => {
     const json = '{"outer": {"inner": {"deep": true}}}';
     const result = extractJson(json);
     expect(result).toEqual({ outer: { inner: { deep: true } } });
+  });
+});
+
+describe("ClaudeRunOptions", () => {
+  it("should accept maxTurns and enableAgents options", () => {
+    // Type-only test: verify the interface accepts the new options
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: []
+      },
+      maxTurns: 15,
+      enableAgents: true
+    };
+
+    expect(options.maxTurns).toBe(15);
+    expect(options.enableAgents).toBe(true);
+  });
+
+  it("should work without maxTurns and enableAgents options", () => {
+    // Verify backward compatibility
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: []
+      }
+    };
+
+    expect(options.maxTurns).toBeUndefined();
+    expect(options.enableAgents).toBeUndefined();
   });
 });

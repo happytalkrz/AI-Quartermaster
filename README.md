@@ -9,10 +9,13 @@ curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/i
 ```
 
 **필수 요구사항:**
+- macOS / Linux / WSL (Windows 네이티브 미지원)
 - Node.js 20+
 - Git
 - [GitHub CLI](https://cli.github.com) (`gh auth login` 완료)
-- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (Claude Max/Pro 요금제)
+- [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (Claude Max 요금제 권장)
+
+**Public / Private 레포 모두 지원** — `gh auth login` 인증 토큰에 repo 접근 권한이 있으면 Private 레포에서도 동작합니다.
 
 ## 빠른 시작
 

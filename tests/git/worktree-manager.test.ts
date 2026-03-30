@@ -39,6 +39,33 @@ describe("createWorktree", () => {
     expect(mockRunCli).toHaveBeenCalledWith("git", expect.arrayContaining(["worktree", "add"]), expect.any(Object));
   });
 
+  it("should set AI-Quartermaster as git author in worktree", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await createWorktree(gitConfig, worktreeConfig, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" });
+
+    // Verify git config commands were called
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "git",
+      ["config", "--local", "user.name", "AI-Quartermaster"],
+      { cwd: expect.stringContaining("42-fix-bug") }
+    );
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "git",
+      ["config", "--local", "user.email", "noreply@ai-quartermaster.local"],
+      { cwd: expect.stringContaining("42-fix-bug") }
+    );
+  });
+
+  it("should throw when git config fails", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // worktree add succeeds
+      .mockResolvedValueOnce({ stdout: "", stderr: "config error", exitCode: 1 }); // git config fails
+
+    await expect(
+      createWorktree(gitConfig, worktreeConfig, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" })
+    ).rejects.toThrow("Failed to set git user.name");
+  });
+
   it("should throw on failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "error", exitCode: 1 });
     await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "test", { cwd: "/repo" })).rejects.toThrow("Failed to create worktree");

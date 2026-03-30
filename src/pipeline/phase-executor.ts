@@ -74,17 +74,14 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
 
-    // Enable agents for parallel processing
-    const baseConfig = configForTask(ctx.claudeConfig, "phase");
-    const configWithAgents = {
-      ...baseConfig,
-      additionalArgs: [...baseConfig.additionalArgs, "--enable-agents"]
-    };
-
+    const config = configForTask(ctx.claudeConfig, "phase");
     const result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
-      config: configWithAgents,
+      config: {
+        ...config,
+        additionalArgs: [...config.additionalArgs, "--enable-agents"]
+      },
       onStderr: jl ? (line: string) => {
         const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
         if (match) {

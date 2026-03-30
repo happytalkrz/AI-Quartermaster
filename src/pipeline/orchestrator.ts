@@ -597,8 +597,6 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     // === Create Draft PR ===
     state = "DRAFT_PR_CREATED";
     jl?.setProgress(PROGRESS_PR_CREATED);
-    let prUrl: string | undefined;
-
     const prResult = await createDraftPR(
       project.pr,
       project.commands.ghCli,
@@ -613,7 +611,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       },
       { cwd: worktreePath!, promptsDir, dryRun: config.general.dryRun }
     );
-    prUrl = prResult.url;
+    const prUrl = prResult.url;
     logger.info(`[DRAFT_PR_CREATED] PR: ${prUrl}`);
     jl?.log(`PR: ${prUrl}`);
 

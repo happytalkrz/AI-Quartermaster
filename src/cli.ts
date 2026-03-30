@@ -197,7 +197,7 @@ async function startCommand(args: CliArgs): Promise<void> {
       smee.stdout?.on("data", (d: Buffer) => logger.info(`[smee] ${d.toString().trim()}`));
       smee.stderr?.on("data", (d: Buffer) => logger.warn(`[smee] ${d.toString().trim()}`));
       smee.on("error", (err) => logger.warn(`smee-client 시작 실패: ${err.message}`));
-      process.on("exit", () => { try { smee.kill(); } catch {} });
+      process.on("exit", () => { try { smee.kill(); } catch { /* ignore */ } });
       logger.info(`Smee 프록시 연결: ${smeeUrl}`);
     } else {
       logger.warn("SMEE_URL 미설정 — webhook을 받으려면 .env에 SMEE_URL을 설정하세요");

@@ -28,6 +28,7 @@ export async function runReviewRound(ctx: ReviewRunnerContext): Promise<ReviewRe
     prompt: rendered,
     cwd: ctx.cwd,
     config: ctx.claudeConfig,
+    enableAgents: true,
   });
 
   if (!result.success) {

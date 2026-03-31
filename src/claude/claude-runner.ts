@@ -35,7 +35,7 @@ export interface ClaudeRunOptions {
   systemPrompt?: string;
   jsonSchema?: string;  // JSON Schema string to force structured output
   onStderr?: (line: string) => void;  // callback for each stderr line (e.g. HEARTBEAT parsing)
-  enableAgents?: boolean;  // Enable agent functionality with --allow-agents flag
+  enableAgents?: boolean;  // enable Agent tools for specialized task delegation
 }
 
 export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
@@ -53,6 +53,10 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     "--permission-mode", "bypassPermissions",
     ...config.additionalArgs,
   ];
+
+  if (options.enableAgents) {
+    args.push("--allow-tools");
+  }
 
   if (systemPrompt) {
     args.push("--system-prompt", systemPrompt);

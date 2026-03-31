@@ -64,6 +64,9 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
   if (options.jsonSchema) {
     args.push("--json-schema", options.jsonSchema);
   }
+  if (options.enableAgents) {
+    args.push("--allow-agents");
+  }
 
   const startTime = Date.now();
 

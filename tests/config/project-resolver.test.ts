@@ -41,6 +41,47 @@ describe("resolveProject", () => {
     };
     expect(() => resolveProject("unknown/repo", config)).toThrow("not configured");
   });
+
+  it("should override pr.targetBranch for project-specific config", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/feature-app",
+        path: "/home/user/feature-app",
+        pr: {
+          targetBranch: "develop",
+        },
+      }],
+    };
+    const resolved = resolveProject("myorg/feature-app", config);
+
+    // Project-specific pr.targetBranch should override global setting
+    expect(resolved.pr.targetBranch).toBe("develop");
+
+    // Other pr settings should inherit from global config
+    expect(resolved.pr.draft).toBe(DEFAULT_CONFIG.pr.draft);
+    expect(resolved.pr.titleTemplate).toBe(DEFAULT_CONFIG.pr.titleTemplate);
+  });
+
+  it("should use global pr.targetBranch when no project override exists", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/standard-app",
+        path: "/home/user/standard-app",
+        // No pr override - should use global config
+      }],
+    };
+    const resolved = resolveProject("myorg/standard-app", config);
+
+    // Should use global pr.targetBranch
+    expect(resolved.pr.targetBranch).toBe(DEFAULT_CONFIG.pr.targetBranch); // "main"
+    expect(resolved.pr.draft).toBe(DEFAULT_CONFIG.pr.draft);
+  });
 });
 
 describe("listConfiguredRepos", () => {

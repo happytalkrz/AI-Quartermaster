@@ -83,6 +83,54 @@ describe("resolveProject", () => {
     expect(resolved.pr.targetBranch).toBe(DEFAULT_CONFIG.pr.targetBranch); // "main"
     expect(resolved.pr.draft).toBe(DEFAULT_CONFIG.pr.draft);
   });
+
+  it("should expand ~ path in project config", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/home-app",
+        path: "~/projects/my-app",
+      }],
+    };
+    const resolved = resolveProject("myorg/home-app", config);
+    expect(resolved.path).toBe(`${homedir()}/projects/my-app`);
+  });
+
+  it("should expand relative path in project config", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/relative-app",
+        path: "projects/my-app",
+      }],
+    };
+    const resolved = resolveProject("myorg/relative-app", config);
+    expect(resolved.path).toBe(`${AQM_HOME}/projects/my-app`);
+  });
+
+  it("should expand ~ path in fallback targetRoot", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: "~/fallback-projects" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: ["org/fallback-repo"] },
+    };
+    const resolved = resolveProject("org/fallback-repo", config);
+    expect(resolved.path).toBe(`${homedir()}/fallback-projects`);
+  });
+
+  it("should expand relative path in fallback targetRoot", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: "projects" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: ["org/fallback-repo"] },
+    };
+    const resolved = resolveProject("org/fallback-repo", config);
+    expect(resolved.path).toBe(`${AQM_HOME}/projects`);
+  });
 });
 
 describe("listConfiguredRepos", () => {

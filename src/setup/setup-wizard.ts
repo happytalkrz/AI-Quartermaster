@@ -26,15 +26,15 @@ export async function runSetup(aqRoot: string): Promise<void> {
   // 2. Create config.yml
   console.log("2. 설정 파일 생성...");
   const configPath = resolve(aqRoot, "config.yml");
-  const examplePath = resolve(aqRoot, "config.example.yml");
+  const referencePath = resolve(aqRoot, "config.reference.yml");
 
   if (existsSync(configPath)) {
     console.log("   config.yml 이미 존재 (건너뜀)");
-  } else if (existsSync(examplePath)) {
-    copyFileSync(examplePath, configPath);
-    console.log("   config.yml 생성됨 (config.example.yml에서 복사)");
+  } else if (existsSync(referencePath)) {
+    copyFileSync(referencePath, configPath);
+    console.log("   config.yml 생성됨 (config.reference.yml에서 복사)");
   } else {
-    console.log("   config.example.yml을 찾을 수 없습니다");
+    console.log("   config.reference.yml을 찾을 수 없습니다");
   }
 
   // 3. Create .env

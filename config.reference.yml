@@ -1,0 +1,129 @@
+# AI 병참부 설정 파일 - 전체 옵션 레퍼런스
+# 최소 설정은 config.yml을 참조하세요
+# 이 파일을 config.yml로 복사한 후 필요한 부분만 수정하세요: cp config.reference.yml config.yml
+
+general:                                 # [선택] 전체 설정 (모든 필드에 기본값 있음)
+  projectName: "my-project"              # [선택] 프로젝트 이름 (기본값: "ai-quartermaster")
+  logLevel: "info"                       # [선택] 로그 레벨: debug | info | warn | error (기본값: "info")
+  logDir: "./logs"                       # [선택] 로그 디렉토리 (기본값: "logs")
+  dryRun: false                          # [선택] 드라이 런 모드 (기본값: false)
+  locale: "ko"                           # [선택] 언어: ko | en (기본값: "en")
+  concurrency: 1                         # [선택] 동시 처리 수 (기본값: 1)
+  # stuckTimeoutMs: 600000               # [선택] stuck job 감지 타임아웃 ms (기본값: 600000)
+  # pollingIntervalMs: 60000             # [선택] 폴링 간격 ms (기본값: 60000)
+  # maxJobs: 500                         # [선택] 최대 job 보관 수 (기본값: 500)
+
+# 대상 프로젝트 목록
+projects:                                # [선택] 프로젝트별 설정 (없으면 git.allowedRepos 사용)
+  - repo: "owner/repo-name"              # [필수] GitHub 저장소 (owner/repo)
+    path: "/path/to/local/clone"         # [필수] 로컬 클론 경로
+    baseBranch: "main"                   # [선택] 기본 브랜치 (기본값: git.defaultBaseBranch)
+    # mode: "code"                       # [선택] 파이프라인 모드: code | content (기본값: "code")
+    # commands:                          # [선택] 프로젝트별 명령어 오버라이드
+    #   test: "yarn test"                # [선택] 테스트 명령어
+    #   lint: "yarn lint"                # [선택] 린트 명령어
+
+git:                                     # [선택] Git 설정 (모든 필드에 기본값 있음)
+  defaultBaseBranch: "main"              # [선택] 기본 브랜치 (기본값: "main")
+  branchTemplate: "aq/{{issueNumber}}-{{slug}}"  # [선택] 브랜치 이름 템플릿
+  commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"  # [선택] 커밋 메시지 템플릿
+  remoteAlias: "origin"                  # [선택] 원격 저장소 별명 (기본값: "origin")
+  allowedRepos: []                       # [선택] 허용된 저장소 목록 (projects 사용 시 비워둘 수 있음)
+  gitPath: "git"                         # [선택] git 명령어 경로 (기본값: "git")
+  fetchDepth: 1                          # [선택] fetch 깊이 (기본값: 1)
+  signCommits: false                     # [선택] 커밋 서명 여부 (기본값: false)
+
+worktree:                                # [선택] 워크트리 설정 (모든 필드에 기본값 있음)
+  rootPath: "../.aq-worktrees"           # [선택] 워크트리 루트 경로 (기본값: ".worktrees")
+  cleanupOnSuccess: true                 # [선택] 성공 시 정리 (기본값: true)
+  cleanupOnFailure: false                # [선택] 실패 시 정리 (기본값: false)
+  maxAge: "24h"                          # [선택] 최대 보관 기간 (기본값: "24h")
+  dirTemplate: "{{issueNumber}}-{{slug}}" # [선택] 디렉토리 이름 템플릿
+
+commands:                                # [선택] 명령어 설정 (모든 필드에 기본값 있음)
+  claudeCli:                             # [선택] Claude CLI 설정
+    path: "claude"                       # [선택] claude 명령어 경로 (기본값: "claude")
+    model: "claude-opus-4-5"             # [선택] 글로벌 기본 모델
+    models:                              # [선택] 태스크별 모델 라우팅
+      plan: "claude-opus-4-5"            # [선택] Plan 생성용 모델 (복잡한 분석)
+      phase: "claude-sonnet-4-20250514"  # [선택] Phase 구현용 모델 (코딩)
+      review: "claude-haiku-4-5-20251001" # [선택] 리뷰/검증용 모델
+      fallback: "claude-sonnet-4-20250514" # [선택] 실패 시 폴백 모델
+    maxTurns: 50                         # [선택] 최대 턴 수 (기본값: 50)
+    timeout: 600000                      # [선택] 타임아웃 ms (기본값: 600000)
+    additionalArgs: []                   # [선택] 추가 인수 (기본값: [])
+  ghCli:                                 # [선택] GitHub CLI 설정
+    path: "gh"                           # [선택] gh 명령어 경로 (기본값: "gh")
+    timeout: 30000                       # [선택] 타임아웃 ms (기본값: 30000)
+  test: "npm test"                       # [선택] 테스트 명령어 (기본값: "npm test")
+  lint: "npm run lint"                   # [선택] 린트 명령어 (기본값: "npm run lint")
+  build: "npm run build"                 # [선택] 빌드 명령어 (기본값: "npm run build")
+  typecheck: "npx tsc --noEmit"          # [선택] 타입체크 명령어 (기본값: "npm run typecheck")
+  preInstall: "npm ci"                   # [선택] 설치 전 명령어 (기본값: "")
+  # claudeMdPath: "CLAUDE.md"            # [선택] 프로젝트 컨벤션 파일 경로 (기본값: "CLAUDE.md")
+
+review:                                  # [선택] 리뷰 설정 (모든 필드에 기본값 있음)
+  enabled: true                          # [선택] 리뷰 활성화 여부 (기본값: true)
+  rounds:                                # [선택] 리뷰 라운드 설정
+    - name: "code-review"                # [선택] 라운드 이름
+      promptTemplate: "review-round1.md" # [선택] 프롬프트 템플릿
+      failAction: "warn"                 # [선택] 실패 시 동작: block | warn | retry (기본값: "warn")
+      maxRetries: 2                      # [선택] 최대 재시도 횟수 (기본값: 2)
+      model: null                        # [선택] 사용할 모델 (null이면 기본 모델)
+      blind: true                        # [선택] 구현 맥락 차단 (기본값: true)
+      adversarial: true                  # [선택] 적대적 리뷰 모드 (기본값: true)
+    # 필요 시 추가 라운드:
+    # - name: "구조/설계"                  # [선택] 추가 리뷰 라운드
+    #   promptTemplate: "review-round2.md"
+    #   failAction: "warn"
+    #   maxRetries: 1
+    #   model: null
+  simplify:                              # [선택] 코드 간소화 설정
+    enabled: false                       # [선택] 간소화 활성화 여부 (기본값: false)
+    promptTemplate: "review-round3-simplify.md"  # [선택] 간소화 프롬프트 템플릿
+
+pr:                                      # [선택] PR 설정 (모든 필드에 기본값 있음)
+  targetBranch: "main"                   # [선택] 대상 브랜치 (기본값: "main")
+  draft: true                            # [선택] 드래프트 PR 생성 여부 (기본값: true)
+  titleTemplate: "[AQ-#{{issueNumber}}] {{title}}"  # [선택] PR 제목 템플릿
+  bodyTemplate: "pr-body.md"             # [선택] PR 본문 템플릿
+  labels:                                # [선택] PR 라벨 (기본값: [])
+    - "ai-quartermaster"
+  assignees: []                          # [선택] 담당자 목록 (기본값: [])
+  reviewers: []                          # [선택] 리뷰어 목록 (기본값: [])
+  linkIssue: true                        # [선택] 이슈 연결 여부 (기본값: true)
+  autoMerge: false                       # [선택] 자동 머지 여부 (기본값: false)
+  mergeMethod: "squash"                  # [선택] 머지 방법: merge | squash | rebase (기본값: "squash")
+
+safety:                                  # [선택] 안전장치 설정 (모든 필드에 기본값 있음)
+  sensitivePaths:                        # [선택] 민감한 경로 패턴 목록
+    - ".env*"
+    - "**/*.pem"
+    - "**/*.key"
+    - "**/secrets/**"
+    - "config.local.yml"
+    - ".github/workflows/**"
+  maxPhases: 10                          # [선택] 최대 Phase 수 (기본값: 10)
+  maxRetries: 3                          # [선택] 최대 재시도 횟수 (기본값: 3)
+  maxTotalDurationMs: 3600000            # [선택] 최대 총 실행 시간 ms (기본값: 3600000)
+  maxFileChanges: 50                     # [선택] 최대 파일 변경 수 (기본값: 50)
+  maxInsertions: 2000                    # [선택] 최대 삽입 라인 수 (기본값: 2000)
+  maxDeletions: 1000                     # [선택] 최대 삭제 라인 수 (기본값: 1000)
+  requireTests: false                    # [선택] 테스트 필수 여부 (기본값: false)
+  blockDirectBasePush: true              # [선택] 베이스 브랜치 직접 푸시 차단 (기본값: true)
+  timeouts:                              # [선택] 타임아웃 설정
+    planGeneration: 120000               # [선택] 계획 생성 타임아웃 ms (기본값: 120000)
+    phaseImplementation: 600000          # [선택] Phase 구현 타임아웃 ms (기본값: 600000)
+    reviewRound: 180000                  # [선택] 리뷰 라운드 타임아웃 ms (기본값: 180000)
+    prCreation: 60000                    # [선택] PR 생성 타임아웃 ms (기본값: 60000)
+  stopConditions:                        # [선택] 중단 조건 목록
+    - "CRITICAL_ERROR"
+    - "SECURITY_VIOLATION"
+    - "BASE_BRANCH_MODIFIED"
+  allowedLabels:                         # [선택] 허용된 라벨 목록 (기본값: [])
+    - "ai-quartermaster"
+  # Rollback strategy on pipeline failure:
+  #   "none"        — no rollback (default)
+  #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)
+  #   "failed-only" — reset to last successful phase commit
+  rollbackStrategy: "none"               # [선택] 롤백 전략: none | all | failed-only (기본값: "none")

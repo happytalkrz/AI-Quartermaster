@@ -86,8 +86,8 @@ const mockRunReviews = vi.mocked(runReviews);
 const mockRunSimplify = vi.mocked(runSimplify);
 const mockFinalValidation = vi.mocked(runFinalValidation);
 const mockGetDiffContent = vi.mocked(getDiffContent);
-const mockValidateIssue = vi.mocked(validateIssue);
-const mockValidatePlan = vi.mocked(validatePlan);
+vi.mocked(validateIssue);
+vi.mocked(validatePlan);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
 
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
@@ -111,7 +111,7 @@ function setupSuccessMocks() {
     plan: {
       issueNumber: 42, title: "Fix bug", problemDefinition: "Bug fix",
       requirements: ["Fix"], affectedFiles: [], risks: [],
-      phases: [{ index: 0, name: "Fix", description: "Fix it", targetFiles: [], commitStrategy: "", verificationCriteria: [] }],
+      phases: [{ index: 0, name: "Fix", description: "Fix it", targetFiles: [], commitStrategy: "", verificationCriteria: [], dependsOn: [] }],
       verificationPoints: [], stopConditions: [],
     },
     phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: true, commitHash: "abc12345", durationMs: 1000 }],
@@ -164,7 +164,7 @@ describe("runPipeline", () => {
       plan: {
         issueNumber: 42, title: "Fix", problemDefinition: "Bug",
         requirements: [], affectedFiles: [], risks: [],
-        phases: [{ index: 0, name: "Fix", description: "", targetFiles: [], commitStrategy: "", verificationCriteria: [] }],
+        phases: [{ index: 0, name: "Fix", description: "", targetFiles: [], commitStrategy: "", verificationCriteria: [], dependsOn: [] }],
         verificationPoints: [], stopConditions: [],
       },
       phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: false, error: "test failed", durationMs: 500 }],

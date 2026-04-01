@@ -60,19 +60,13 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter; con
 export function loadSkills(skillsPath: string): SkillContent[] {
   const resolvedPath = resolve(skillsPath);
 
-  // Return empty array if directory doesn't exist
-  if (!existsSync(resolvedPath)) {
-    logger.debug(`Skills directory not found: ${resolvedPath}`);
-    return [];
-  }
-
   try {
     if (!statSync(resolvedPath).isDirectory()) {
       logger.warn(`Skills path is not a directory: ${resolvedPath}`);
       return [];
     }
   } catch (error) {
-    logger.warn(`Cannot access skills directory: ${resolvedPath}`, error);
+    logger.debug(`Skills directory not found: ${resolvedPath}`);
     return [];
   }
 

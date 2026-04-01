@@ -73,6 +73,7 @@
       "name": "<Phase 이름>",
       "description": "<Phase 상세 설명>",
       "targetFiles": ["<수정 대상 파일>", ...],
+      "dependsOn": [<선행 Phase index>],
       "commitStrategy": "<이 Phase의 커밋 메시지 전략>",
       "verificationCriteria": ["<검증 기준 1>", ...]
     }
@@ -82,6 +83,13 @@
 }
 ```
 
+### JSON 필드 설명
+
+- `dependsOn`: 이 Phase가 의존하는 선행 Phase들의 index 배열
+  - 독립적인 Phase: 생략 가능하거나 빈 배열 `[]`
+  - 의존 Phase: 선행 Phase의 index 배열 (예: `[0, 2]`)
+  - 병렬 실행 최적화를 위해 반드시 명시
+
 ## mode 판단 기준
 
 이슈 내용을 보고 `mode`를 판단하세요:
@@ -90,6 +98,42 @@
 
 `content` 모드일 경우 Phase를 1개로 구성하세요.
 
+## Phase 의존성 관리
+
+Phase 간 의존성을 명시하여 병렬 실행을 최적화하세요:
+
+1. **독립적인 Phase**: `dependsOn` 필드를 생략하거나 빈 배열 `[]`로 설정
+2. **의존 Phase**: 선행되어야 할 Phase의 index를 배열로 명시 (예: `[0, 2]`)
+3. **병렬 실행 고려**: 독립적인 Phase들은 동시에 실행될 수 있으므로, 파일 충돌을 방지하도록 계획
+
+### 의존성 예시
+```json
+{
+  "phases": [
+    {
+      "index": 0,
+      "name": "타입 정의",
+      "dependsOn": []
+    },
+    {
+      "index": 1,
+      "name": "유틸리티 함수",
+      "dependsOn": []
+    },
+    {
+      "index": 2,
+      "name": "핵심 로직",
+      "dependsOn": [0]
+    },
+    {
+      "index": 3,
+      "name": "테스트 작성",
+      "dependsOn": [0, 2]
+    }
+  ]
+}
+```
+
 ## 제약 조건
 
 1. Phase는 최대 {{config.maxPhases}}개까지 가능합니다 (content 모드는 1개). {{config.maxPhases}}개를 초과하는 Phase 계획은 절대 불가합니다.
@@ -97,3 +141,4 @@
 3. 베이스 브랜치({{branch.base}})를 직접 수정하는 계획은 금지입니다.
 4. code 모드에서 각 Phase에는 반드시 테스트 또는 검증 전략이 포함되어야 합니다.
 5. 민감 파일({{config.sensitivePaths}})은 수정 대상에 포함하지 마세요.
+6. **의존성 순환 금지**: Phase 간 순환 의존성이 발생하지 않도록 계획하세요.

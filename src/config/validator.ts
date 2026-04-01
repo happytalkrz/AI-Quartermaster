@@ -81,6 +81,8 @@ const reviewRoundSchema = z.object({
   failAction: reviewFailActionSchema,
   maxRetries: z.number().int().nonnegative(),
   model: z.string().nullable(),
+  blind: z.boolean().optional(),
+  adversarial: z.boolean().optional(),
 });
 
 const simplifyConfigSchema = z.object({

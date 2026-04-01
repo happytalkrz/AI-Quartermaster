@@ -13,6 +13,7 @@ import { formatResult, printResult } from "./result-reporter.js";
 import type { PipelineReport } from "./result-reporter.js";
 import { runFinalValidation } from "./final-validator.js";
 import { runReviews } from "../review/review-orchestrator.js";
+import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
 import { getDiffContent } from "../git/diff-collector.js";
 import { validateIssue, validateBeforePush } from "../safety/safety-checker.js";
@@ -24,7 +25,7 @@ import { errorMessage } from "../types/errors.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
-import type { ReviewPipelineResult } from "../types/review.js";
+import type { ReviewPipelineResult, AnalystResult } from "../types/review.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -396,7 +397,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
 
-    // === REVIEWING: 3-round review ===
+    // === REVIEWING: analyst + 3-round review ===
     type ReviewVars = {
       issue: { number: string; title: string; body: string };
       plan: { summary: string };
@@ -417,12 +418,30 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       } else {
         timer.assertNotExpired("review");
         state = "REVIEWING";
-        logger.info("[REVIEWING] Starting review rounds...");
-        jl?.setStep("리뷰 진행 중...");
+        logger.info("[REVIEWING] Starting analyst and review rounds...");
+        jl?.setStep("요구사항 대조 분석 중...");
         jl?.setProgress(PROGRESS_REVIEW_START);
 
         reviewVariables = await buildReviewVars();
 
+        // === Phase 1: Requirements Analysis ===
+        const analystTemplatePath = resolve(promptsDir, "analyst-requirements.md");
+        let analystResult: AnalystResult | undefined;
+
+        if (existsSync(analystTemplatePath)) {
+          analystResult = await runAnalyst({
+            promptsDir,
+            claudeConfig: project.commands.claudeCli,
+            cwd: worktreePath!,
+            variables: reviewVariables,
+          });
+          jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
+        } else {
+          logger.info("[REVIEWING] Analyst template not found, skipping requirements analysis");
+        }
+
+        // === Phase 2: Code Review Rounds ===
+        jl?.setStep("리뷰 진행 중...");
         const reviewResult: ReviewPipelineResult = await runReviews({
           reviewConfig: project.review,
           claudeConfig: project.commands.claudeCli,
@@ -431,19 +450,30 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           variables: reviewVariables,
         });
 
+        if (analystResult) {
+          reviewResult.analyst = analystResult;
+        }
+
         for (const round of reviewResult.rounds) {
           jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
         }
 
-        if (!reviewResult.allPassed) {
-          logger.error("[REVIEWING] Review pipeline failed");
-          jl?.log(`실패: Review pipeline failed`);
+        const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
+          f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+        ) || false;
+
+        if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
+          const errorMsg = hasCriticalAnalystIssues
+            ? "[REVIEWING] Analyst found critical issues"
+            : "[REVIEWING] Review pipeline failed";
+          logger.error(errorMsg);
+          jl?.log(`실패: ${hasCriticalAnalystIssues ? "Critical requirements analysis issues found" : "Review pipeline failed"}`);
           jl?.setStep("실패");
           checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
           const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
           printResult(report);
           saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-          return { success: false, state: "FAILED", error: "Review failed", report };
+          return { success: false, state: "FAILED", error: "Review or requirements analysis failed", report };
         }
 
         checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });

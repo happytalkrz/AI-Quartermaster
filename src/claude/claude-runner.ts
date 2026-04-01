@@ -35,20 +35,30 @@ export interface ClaudeRunOptions {
   systemPrompt?: string;
   jsonSchema?: string;  // JSON Schema string to force structured output
   onStderr?: (line: string) => void;  // callback for each stderr line (e.g. HEARTBEAT parsing)
+  maxTurns?: number;  // Override maxTurns for this specific run
   enableAgents?: boolean;  // enable Agent tools for specialized task delegation
 }
 
 export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
-  const { prompt, cwd, config, systemPrompt } = options;
+  const { prompt, cwd, config, systemPrompt, maxTurns, enableAgents } = options;
 
   // When jsonSchema is set, use direct -p arg with --max-turns 1 (no file editing needed)
   // Otherwise use stdin pipe for long prompts
   const useStdin = !options.jsonSchema;
 
+  // Determine maxTurns: options.maxTurns overrides default logic
+  const effectiveMaxTurns = maxTurns ?? (options.jsonSchema ? 5 : config.maxTurns);
+
+  // Add agent context if enableAgents is true
+  const agentPrefix = enableAgents ? `You have access to specialized agents via the Agent tool that can help with various tasks. Consider using agents for complex work like multi-file changes, analysis, debugging, or planning. Available agent types include executor, planner, debugger, architect, and others.
+
+` : '';
+  const effectivePrompt = agentPrefix + prompt;
+
   const args: string[] = [
-    "-p", useStdin ? "-" : prompt,
+    "-p", useStdin ? "-" : effectivePrompt,
     "--model", config.model,
-    "--max-turns", options.jsonSchema ? "5" : String(config.maxTurns),
+    "--max-turns", String(effectiveMaxTurns),
     "--output-format", "stream-json", "--verbose",
     "--permission-mode", "bypassPermissions",
     ...config.additionalArgs,
@@ -185,7 +195,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     // Write prompt to stdin if needed
     if (useStdin && child.stdin) {
-      child.stdin.write(prompt);
+      child.stdin.write(effectivePrompt);
       child.stdin.end();
     }
 

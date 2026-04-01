@@ -73,6 +73,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
             targetFiles: { type: "array", items: { type: "string" } },
             commitStrategy: { type: "string" },
             verificationCriteria: { type: "array", items: { type: "string" } },
+            dependsOn: { type: "array", items: { type: "number" }, description: "Phase indices this phase depends on" },
           },
           required: ["name", "description"],
         },
@@ -135,5 +136,6 @@ function validatePlan(plan: Plan): void {
     phase.index = i;
     phase.targetFiles = phase.targetFiles ?? [];
     phase.verificationCriteria = phase.verificationCriteria ?? [];
+    phase.dependsOn = phase.dependsOn ?? [];
   });
 }

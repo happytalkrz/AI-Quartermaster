@@ -12,7 +12,7 @@ export interface AnalystContext {
   variables: TemplateVariables;
 }
 
-const EMPTY_COVERAGE = { implemented: [], missing: [], excess: [] };
+const EMPTY_COVERAGE = { implemented: [] as string[], missing: [] as string[], excess: [] as string[] };
 
 function createAnalystResult(
   verdict: "COMPLETE" | "INCOMPLETE" | "MISALIGNED",

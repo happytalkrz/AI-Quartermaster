@@ -162,3 +162,34 @@ export async function enableAutoMerge(
   logger.info(`Auto-merge enabled on PR #${prNumber} (method: ${mergeMethod})`);
   return true;
 }
+
+/**
+ * Closes an issue on GitHub using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function closeIssue(
+  issueNumber: number,
+  repo: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would close issue #${issueNumber}`);
+    return true;
+  }
+
+  // Close issue
+  const result = await runCli(
+    ghPath,
+    ["issue", "close", String(issueNumber), "--repo", repo],
+    {}
+  );
+  if (result.exitCode !== 0) {
+    logger.warn(`Failed to close issue #${issueNumber}: ${result.stderr}`);
+    return false;
+  }
+
+  logger.info(`Closed issue #${issueNumber}`);
+  return true;
+}

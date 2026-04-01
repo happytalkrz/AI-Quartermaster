@@ -64,8 +64,8 @@ export const DEFAULT_CONFIG: AQConfig = {
         failAction: "warn",
         maxRetries: 2,
         model: null,
-        blind: false,
-        adversarial: false,
+        blind: true,
+        adversarial: true,
       },
     ],
     simplify: {

@@ -34,6 +34,7 @@ export interface Phase {
   targetFiles: string[];
   commitStrategy: string;
   verificationCriteria: string[];
+  dependsOn?: number[];
 }
 
 export type ErrorCategory =

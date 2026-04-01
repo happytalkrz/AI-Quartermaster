@@ -38,13 +38,29 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
         ? { ...ctx.claudeConfig, model: round.model }
         : configForTask(ctx.claudeConfig, "review");
 
+      // Apply blind mode filtering if enabled for this round
+      let roundVariables = ctx.variables;
+      if (round.blind) {
+        roundVariables = {
+          ...ctx.variables,
+          issue: {
+            ...ctx.variables.issue,
+            body: ""
+          },
+          plan: {
+            ...ctx.variables.plan,
+            summary: ""
+          }
+        };
+      }
+
       result = await runReviewRound({
         roundName: round.name,
         promptTemplate: round.promptTemplate,
         promptsDir: ctx.promptsDir,
         claudeConfig,
         cwd: ctx.cwd,
-        variables: ctx.variables,
+        variables: roundVariables,
       });
 
       if (result.verdict === "PASS") {

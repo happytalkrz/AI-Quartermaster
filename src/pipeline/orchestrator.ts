@@ -25,7 +25,7 @@ import { errorMessage } from "../types/errors.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
-import type { ReviewPipelineResult } from "../types/review.js";
+import type { ReviewPipelineResult, AnalystResult } from "../types/review.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -425,14 +425,20 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         reviewVariables = await buildReviewVars();
 
         // === Phase 1: Requirements Analysis ===
-        const analystResult = await runAnalyst({
-          promptsDir,
-          claudeConfig: project.commands.claudeCli,
-          cwd: worktreePath!,
-          variables: reviewVariables,
-        });
+        const analystTemplatePath = resolve(promptsDir, "analyst-requirements.md");
+        let analystResult: AnalystResult | undefined;
 
-        jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
+        if (existsSync(analystTemplatePath)) {
+          analystResult = await runAnalyst({
+            promptsDir,
+            claudeConfig: project.commands.claudeCli,
+            cwd: worktreePath!,
+            variables: reviewVariables,
+          });
+          jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
+        } else {
+          logger.info("[REVIEWING] Analyst template not found, skipping requirements analysis");
+        }
 
         // === Phase 2: Code Review Rounds ===
         jl?.setStep("리뷰 진행 중...");
@@ -445,16 +451,18 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         });
 
         // Include analyst result in pipeline result
-        reviewResult.analyst = analystResult;
+        if (analystResult) {
+          reviewResult.analyst = analystResult;
+        }
 
         for (const round of reviewResult.rounds) {
           jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
         }
 
         // Check if analyst found critical issues
-        const hasCriticalAnalystIssues = analystResult.findings.some(f =>
+        const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
           f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-        );
+        ) || false;
 
         if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
           if (hasCriticalAnalystIssues) {

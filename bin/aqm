@@ -16,29 +16,25 @@ is_running() {
 
 case "${1:-}" in
   update)
-    # Parse arguments
     BRANCH="main"
     CLEAN_FLAG=false
 
-    # Process all arguments
     while [ $# -gt 1 ]; do
-      case "$2" in
+      shift
+      case "$1" in
         --branch)
-          BRANCH="${3:-main}"
-          shift 2
+          BRANCH="${2:-main}"
+          shift
           ;;
         --clean)
           CLEAN_FLAG=true
-          shift
           ;;
         --*)
-          echo "Unknown option: $2"
+          echo "Unknown option: $1"
           exit 1
           ;;
         *)
-          # Positional argument (e.g., aqm update develop)
-          BRANCH="$2"
-          shift
+          BRANCH="$1"
           ;;
       esac
     done

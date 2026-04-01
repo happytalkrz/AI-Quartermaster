@@ -12,22 +12,7 @@ fi
 # Check if server is running (PID file + port-based detection)
 is_server_running() {
   local port="${1:-3000}"
-
-  # Check PID file first
-  if [ -f "$AQM_PID_FILE" ]; then
-    local pid=$(cat "$AQM_PID_FILE")
-    if kill -0 "$pid" 2>/dev/null; then
-      return 0
-    fi
-  fi
-
-  # Check port occupation as fallback
-  local pid=$(lsof -ti :$port 2>/dev/null | head -n1)
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    return 0
-  fi
-
-  return 1
+  find_server_pid "$port" > /dev/null 2>&1
 }
 
 # Find server PID using PID file first, then port-based fallback

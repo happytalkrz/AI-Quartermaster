@@ -9,9 +9,25 @@ if [ ! -d "$AQM_HOME" ]; then
   exit 1
 fi
 
-# Check if daemon is running
-is_running() {
-  [ -f "$AQM_PID_FILE" ] && kill -0 "$(cat "$AQM_PID_FILE")" 2>/dev/null
+# Check if server is running (PID file + port-based detection)
+is_server_running() {
+  local port="${1:-3000}"
+
+  # Check PID file first
+  if [ -f "$AQM_PID_FILE" ]; then
+    local pid=$(cat "$AQM_PID_FILE")
+    if kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # Check port occupation as fallback
+  local pid=$(lsof -ti :$port 2>/dev/null | head -n1)
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
 }
 
 # Find server PID using PID file first, then port-based fallback
@@ -100,7 +116,7 @@ case "${1:-}" in
     ;;
   uninstall)
     # Stop daemon if running
-    if is_running; then
+    if is_server_running; then
       kill "$(cat "$AQM_PID_FILE")" 2>/dev/null
       rm -f "$AQM_PID_FILE"
     fi
@@ -130,8 +146,23 @@ case "${1:-}" in
     done
 
     if [ "$DAEMON" = true ]; then
-      if is_running; then
-        echo "서버가 이미 실행 중입니다. (PID: $(cat "$AQM_PID_FILE"))"
+      # Extract --port flag, default to 3000
+      PORT=3000
+      for ((i=0; i<${#ARGS[@]}; i++)); do
+        if [ "${ARGS[i]}" = "--port" ] && [ $((i+1)) -lt ${#ARGS[@]} ]; then
+          PORT="${ARGS[i+1]}"
+          break
+        fi
+      done
+
+      if is_server_running "$PORT"; then
+        # Find the actual running PID
+        RUNNING_PID=$(find_server_pid "$PORT")
+        if [ -n "$RUNNING_PID" ]; then
+          echo "서버가 이미 실행 중입니다. (PID: $RUNNING_PID, Port: $PORT)"
+        else
+          echo "서버가 이미 실행 중입니다. (Port: $PORT)"
+        fi
         echo "중지: aqm stop"
         exit 1
       fi
@@ -144,16 +175,7 @@ case "${1:-}" in
       echo $! > "$AQM_PID_FILE"
       sleep 2
 
-      if is_running; then
-        # Extract --port flag, default to 3000
-        PORT=3000
-        for ((i=0; i<${#ARGS[@]}; i++)); do
-          if [ "${ARGS[i]}" = "--port" ] && [ $((i+1)) -lt ${#ARGS[@]} ]; then
-            PORT="${ARGS[i+1]}"
-            break
-          fi
-        done
-
+      if is_server_running "$PORT"; then
         echo "서버 시작됨 (PID: $(cat "$AQM_PID_FILE"))"
         echo "로그: tail -f $AQM_LOG_FILE"
         echo "대시보드: http://localhost:${PORT}/"

@@ -168,11 +168,9 @@ async function setWorktreeGitAuthor(
   ] as const;
 
   for (const [key, value] of configs) {
-    const result = await runCli(
-      gitConfig.gitPath,
-      ["config", "--local", key, value],
-      { cwd: worktreePath }
-    );
+    const result = await runCli(gitConfig.gitPath, ["config", "--local", key, value], {
+      cwd: worktreePath
+    });
 
     if (result.exitCode !== 0) {
       throw new Error(`Failed to set git ${key}: ${result.stderr}`);

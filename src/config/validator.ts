@@ -148,10 +148,7 @@ const projectConfigSchema = z.object({
     rounds: z.array(reviewRoundSchema),
     simplify: simplifyConfigSchema,
   }).partial().optional(),
-  pr: z.object({
-    targetBranch: z.string(),
-    draft: z.boolean(),
-  }).partial().optional(),
+  pr: prConfigSchema.partial().optional(),
   safety: z.object({
     maxPhases: z.number().int().positive(),
     maxFileChanges: z.number().int().positive(),

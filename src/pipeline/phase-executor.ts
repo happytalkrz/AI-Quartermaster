@@ -73,10 +73,13 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
+
+    const config = configForTask(ctx.claudeConfig, "phase");
     const result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
-      config: configForTask(ctx.claudeConfig, "phase"),
+      config,
+      enableAgents: true,
       onStderr: jl ? (line: string) => {
         const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
         if (match) {

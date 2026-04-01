@@ -16,10 +16,23 @@ is_running() {
 
 case "${1:-}" in
   update)
-    echo "AI Quartermaster 업데이트 중..."
+    # Parse branch argument
+    BRANCH="main"
+    if [ -n "${2:-}" ]; then
+      if [ "$2" = "--branch" ]; then
+        BRANCH="${3:-main}"
+      elif [[ "$2" != --* ]]; then
+        # Positional argument (e.g., aqm update develop)
+        BRANCH="$2"
+      fi
+    fi
+
+    echo "AI Quartermaster 업데이트 중... (브랜치: $BRANCH)"
     cd "$AQM_HOME"
     BEFORE=$(git rev-parse HEAD)
-    git pull --quiet
+    git fetch --quiet origin
+    git checkout --quiet "$BRANCH"
+    git pull --quiet origin "$BRANCH"
     AFTER=$(git rev-parse HEAD)
     if [ "$BEFORE" = "$AFTER" ]; then
       echo "이미 최신 버전입니다."
@@ -82,10 +95,10 @@ case "${1:-}" in
       sleep 2
 
       if is_running; then
-        # Parse --port flag from ARGS
+        # Extract --port flag, default to 3000
         PORT=3000
-        for ((i=0; i<${#ARGS[@]}-1; i++)); do
-          if [ "${ARGS[i]}" = "--port" ]; then
+        for ((i=0; i<${#ARGS[@]}; i++)); do
+          if [ "${ARGS[i]}" = "--port" ] && [ $((i+1)) -lt ${#ARGS[@]} ]; then
             PORT="${ARGS[i+1]}"
             break
           fi

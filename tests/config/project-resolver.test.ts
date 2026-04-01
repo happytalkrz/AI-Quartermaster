@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { resolveProject, listConfiguredRepos, expandProjectPath, AQM_HOME } from "../../src/config/project-resolver.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import { homedir } from "os";
+import { resolve } from "path";
 
 describe("resolveProject", () => {
   it("should resolve project from projects array", () => {
@@ -172,5 +173,41 @@ describe("expandProjectPath", () => {
     const absolutePath = "/home/user/absolute-project";
     const result = expandProjectPath(absolutePath);
     expect(result).toBe(absolutePath);
+  });
+
+  // Edge case tests
+  it("should handle current directory path", () => {
+    const result = expandProjectPath(".");
+    expect(result).toBe(AQM_HOME); // resolve() normalizes "." to the base directory
+  });
+
+  it("should handle parent directory path", () => {
+    const result = expandProjectPath("..");
+    expect(result).toBe(resolve(AQM_HOME, "..")); // resolve() normalizes ".." to actual parent
+  });
+
+  it("should handle complex relative path with parent directory", () => {
+    const result = expandProjectPath("../projects/my-app");
+    expect(result).toBe(resolve(AQM_HOME, "../projects/my-app")); // resolve() normalizes the full path
+  });
+
+  it("should handle path with trailing slash", () => {
+    const result = expandProjectPath("~/projects/");
+    expect(result).toBe(`${homedir()}/projects`); // resolve() removes trailing slash
+  });
+
+  it("should handle relative path with trailing slash", () => {
+    const result = expandProjectPath("projects/");
+    expect(result).toBe(`${AQM_HOME}/projects`); // resolve() removes trailing slash
+  });
+
+  it("should handle empty string as relative path", () => {
+    const result = expandProjectPath("");
+    expect(result).toBe(AQM_HOME);
+  });
+
+  it("should handle nested home directory reference", () => {
+    const result = expandProjectPath("~/workspace/~/nested");
+    expect(result).toBe(`${homedir()}/workspace/~/nested`);
   });
 });

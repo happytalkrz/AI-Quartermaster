@@ -15,6 +15,7 @@ vi.mock("../../src/github/issue-fetcher.js", () => ({
 vi.mock("../../src/github/pr-creator.js", () => ({
   createDraftPR: vi.fn(),
   enableAutoMerge: vi.fn(),
+  closeIssue: vi.fn(),
 }));
 vi.mock("../../src/git/branch-manager.js", () => ({
   syncBaseBranch: vi.fn(),
@@ -57,7 +58,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
-import { createDraftPR, enableAutoMerge } from "../../src/github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue } from "../../src/github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
 import { runCoreLoop } from "../../src/pipeline/core-loop.js";
@@ -77,6 +78,7 @@ const mockPushBranch = vi.mocked(pushBranch);
 const mockCheckConflicts = vi.mocked(checkConflicts);
 const mockAttemptRebase = vi.mocked(attemptRebase);
 const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
+const mockCloseIssue = vi.mocked(closeIssue);
 const mockCreateWorktree = vi.mocked(createWorktree);
 const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockCoreLoop = vi.mocked(runCoreLoop);
@@ -86,8 +88,6 @@ const mockRunReviews = vi.mocked(runReviews);
 const mockRunSimplify = vi.mocked(runSimplify);
 const mockFinalValidation = vi.mocked(runFinalValidation);
 const mockGetDiffContent = vi.mocked(getDiffContent);
-const mockValidateIssue = vi.mocked(validateIssue);
-const mockValidatePlan = vi.mocked(validatePlan);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
 
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
@@ -111,7 +111,7 @@ function setupSuccessMocks() {
     plan: {
       issueNumber: 42, title: "Fix bug", problemDefinition: "Bug fix",
       requirements: ["Fix"], affectedFiles: [], risks: [],
-      phases: [{ index: 0, name: "Fix", description: "Fix it", targetFiles: [], commitStrategy: "", verificationCriteria: [] }],
+      phases: [{ index: 0, name: "Fix", description: "Fix it", targetFiles: [], commitStrategy: "", verificationCriteria: [], dependsOn: [] }],
       verificationPoints: [], stopConditions: [],
     },
     phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: true, commitHash: "abc12345", durationMs: 1000 }],
@@ -121,6 +121,7 @@ function setupSuccessMocks() {
   mockCheckConflicts.mockResolvedValue({ hasConflicts: false, conflictFiles: [] });
   mockAttemptRebase.mockResolvedValue({ success: true });
   mockEnableAutoMerge.mockResolvedValue(true);
+  mockCloseIssue.mockResolvedValue(true);
   mockCreateDraftPR.mockResolvedValue({ url: "https://github.com/test/repo/pull/1", number: 1 });
   mockRemoveWorktree.mockResolvedValue(undefined);
   mockGetDiffContent.mockResolvedValue("diff --git a/file.ts b/file.ts\n+new line");
@@ -164,7 +165,7 @@ describe("runPipeline", () => {
       plan: {
         issueNumber: 42, title: "Fix", problemDefinition: "Bug",
         requirements: [], affectedFiles: [], risks: [],
-        phases: [{ index: 0, name: "Fix", description: "", targetFiles: [], commitStrategy: "", verificationCriteria: [] }],
+        phases: [{ index: 0, name: "Fix", description: "", targetFiles: [], commitStrategy: "", verificationCriteria: [], dependsOn: [] }],
         verificationPoints: [], stopConditions: [],
       },
       phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: false, error: "test failed", durationMs: 500 }],
@@ -203,5 +204,33 @@ describe("runPipeline", () => {
     expect(createWorktreeOrder).toBeLessThan(coreLoopOrder);
     expect(coreLoopOrder).toBeLessThan(pushOrder);
     expect(pushOrder).toBeLessThan(prOrder);
+  });
+
+  it("should close issue after PR creation", async () => {
+    setupSuccessMocks();
+    await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+    expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", expect.objectContaining({
+      ghPath: expect.any(String),
+      dryRun: false,
+    }));
+  });
+
+  it("should continue pipeline even if issue close fails", async () => {
+    setupSuccessMocks();
+    mockCloseIssue.mockResolvedValue(false);
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+    expect(result.success).toBe(true);
+    expect(result.state).toBe("DONE");
+    expect(mockCloseIssue).toHaveBeenCalled();
   });
 });

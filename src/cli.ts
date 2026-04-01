@@ -225,6 +225,7 @@ async function startCommand(args: CliArgs): Promise<void> {
         aqRoot,
         jobLogger: jl,
         resumeFrom: checkpoint ?? undefined,
+        isRetry: job.isRetry,
       });
 
       const ghPath = effectiveConfig.commands.ghCli.path;

@@ -1,7 +1,9 @@
+import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { errorMessage } from "../types/errors.js";
 import { JobStore, Job } from "./job-store.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
+import { removeCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 
 const logger = getLogger();
@@ -154,7 +156,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[]): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -167,7 +169,7 @@ export class JobQueue {
       return undefined;
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry);
     // Snapshot before processNext() may mutate cache entry
     const snapshot = { ...job };
     this.pending.push(job.id);
@@ -197,9 +199,16 @@ export class JobQueue {
     }
 
     const { issueNumber, repo } = oldJob;
-    // Archive old job so failure history is preserved; findAnyByIssue skips archived jobs
+    const dataDir = resolve(process.cwd(), "data");
+
+    try {
+      removeCheckpoint(dataDir, issueNumber);
+    } catch (err) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    }
+
     this.store.archive(jobId);
-    return this.enqueue(issueNumber, repo);
+    return this.enqueue(issueNumber, repo, undefined, true);
   }
 
   /**

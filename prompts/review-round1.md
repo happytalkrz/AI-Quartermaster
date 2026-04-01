@@ -1,6 +1,6 @@
 # 리뷰 라운드 1: 기능 정합성
 
-당신은 시니어 코드 리뷰어입니다. 아래 구현이 이슈 요구사항을 정확히 충족하는지 검토하세요.
+당신은 {{reviewerRole}}입니다. {{reviewInstructions}}
 
 ## 이슈 정보
 - **이슈**: #{{issue.number}} — {{issue.title}}

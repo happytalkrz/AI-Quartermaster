@@ -98,4 +98,146 @@ describe("runReviews", () => {
     expect(result.allPassed).toBe(true);
     expect(result.rounds).toHaveLength(0);
   });
+
+  it("should apply blind mode filtering when round.blind is true", async () => {
+    const originalVariables = {
+      issue: { number: "123", title: "Test", body: "Original issue body" },
+      plan: { summary: "Original plan summary" },
+      diff: { full: "test diff" },
+    };
+
+    mockRunReview.mockImplementation(async ({ variables }) => {
+      // Verify that issue.body and plan.summary are empty in blind mode
+      expect(variables.issue).toEqual({
+        number: "123",
+        title: "Test",
+        body: "" // Should be empty in blind mode
+      });
+      expect(variables.plan).toEqual({
+        summary: "" // Should be empty in blind mode
+      });
+      return passResult("BlindRound");
+    });
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "BlindRound", promptTemplate: "blind.md", failAction: "block", maxRetries: 0, model: null, blind: true },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: originalVariables,
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockRunReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("should apply adversarial mode settings when round.adversarial is true", async () => {
+    mockRunReview.mockImplementation(async ({ variables }) => {
+      // Verify adversarial settings are applied
+      expect(variables.reviewerRole).toBe("**매우 엄격하고 까다로운** 시니어 코드 리뷰어");
+      expect(variables.reviewInstructions).toContain("**중요: 완벽한 코드는 존재하지 않습니다. 반드시 문제점을 찾아내야 합니다.**");
+      expect(variables.reviewInstructions).toContain("**의심의 눈으로**");
+      return passResult("AdversarialRound");
+    });
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "AdversarialRound", promptTemplate: "adversarial.md", failAction: "block", maxRetries: 0, model: null, adversarial: true },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { issue: { number: "123", title: "Test", body: "body" }, plan: { summary: "plan" } },
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockRunReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("should apply normal reviewer settings when both blind and adversarial are false", async () => {
+    mockRunReview.mockImplementation(async ({ variables }) => {
+      // Verify normal settings are applied
+      expect(variables.reviewerRole).toBe("시니어 코드 리뷰어");
+      expect(variables.reviewInstructions).toBe("아래 구현이 이슈 요구사항을 정확히 충족하는지 검토하세요.");
+      return passResult("NormalRound");
+    });
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "NormalRound", promptTemplate: "normal.md", failAction: "block", maxRetries: 0, model: null },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { issue: { number: "123", title: "Test", body: "body" }, plan: { summary: "plan" } },
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockRunReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("should combine blind and adversarial modes when both are enabled", async () => {
+    const originalVariables = {
+      issue: { number: "123", title: "Test", body: "Original issue body" },
+      plan: { summary: "Original plan summary" },
+      diff: { full: "test diff" },
+    };
+
+    mockRunReview.mockImplementation(async ({ variables }) => {
+      // Verify blind filtering is applied
+      expect(variables.issue).toEqual({
+        number: "123",
+        title: "Test",
+        body: "" // Should be empty in blind mode
+      });
+      expect(variables.plan).toEqual({
+        summary: "" // Should be empty in blind mode
+      });
+
+      // Verify adversarial settings are applied
+      expect(variables.reviewerRole).toBe("**매우 엄격하고 까다로운** 시니어 코드 리뷰어");
+      expect(variables.reviewInstructions).toContain("**중요: 완벽한 코드는 존재하지 않습니다. 반드시 문제점을 찾아내야 합니다.**");
+
+      return passResult("BlindAdversarialRound");
+    });
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          {
+            name: "BlindAdversarialRound",
+            promptTemplate: "blind-adversarial.md",
+            failAction: "block",
+            maxRetries: 0,
+            model: null,
+            blind: true,
+            adversarial: true
+          },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: originalVariables,
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockRunReview).toHaveBeenCalledTimes(1);
+  });
 });

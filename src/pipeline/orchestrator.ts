@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { fetchIssue } from "../github/issue-fetcher.js";
-import { createDraftPR, enableAutoMerge } from "../github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue } from "../github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { runCoreLoop } from "./core-loop.js";
@@ -13,6 +13,7 @@ import { formatResult, printResult } from "./result-reporter.js";
 import type { PipelineReport } from "./result-reporter.js";
 import { runFinalValidation } from "./final-validator.js";
 import { runReviews } from "../review/review-orchestrator.js";
+import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
 import { getDiffContent } from "../git/diff-collector.js";
 import { validateIssue, validateBeforePush } from "../safety/safety-checker.js";
@@ -24,7 +25,7 @@ import { errorMessage } from "../types/errors.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
-import type { ReviewPipelineResult } from "../types/review.js";
+import type { ReviewPipelineResult, AnalystResult } from "../types/review.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -50,6 +51,7 @@ export interface OrchestratorInput {
   aqRoot?: string;       // AI Quartermaster root (where prompts/ lives)
   jobLogger?: JobLogger;
   resumeFrom?: PipelineCheckpoint;
+  isRetry?: boolean;     // true if this is a retry of a previously failed job
 }
 
 const STATE_ORDER: PipelineState[] = [
@@ -123,25 +125,28 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const dataDir = resolve(aqRoot ?? projectRoot, "data");
 
     // Check if a PR already exists for this issue (prevents duplicate work)
-    try {
-      const prCheckResult = await runCli(
-        project.commands.ghCli.path,
-        ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
-        { timeout: 10000 }
-      );
-      if (prCheckResult.exitCode === 0) {
-        const prs = JSON.parse(prCheckResult.stdout);
-        if (prs.length > 0) {
-          logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
-          jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
-          jl?.setProgress(PROGRESS_DONE);
-          jl?.setStep("완료 (기존 PR)");
-          removeCheckpoint(dataDir, issueNumber);
-          return { success: true, state: "DONE", prUrl: prs[0].url };
+    // Skip this check for retry jobs to allow re-execution of failed jobs
+    if (!input.isRetry) {
+      try {
+        const prCheckResult = await runCli(
+          project.commands.ghCli.path,
+          ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
+          { timeout: 10000 }
+        );
+        if (prCheckResult.exitCode === 0) {
+          const prs = JSON.parse(prCheckResult.stdout);
+          if (prs.length > 0) {
+            logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
+            jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
+            jl?.setProgress(PROGRESS_DONE);
+            jl?.setStep("완료 (기존 PR)");
+            removeCheckpoint(dataDir, issueNumber);
+            return { success: true, state: "DONE", prUrl: prs[0].url };
+          }
         }
+      } catch {
+        // non-fatal: continue pipeline if PR check fails
       }
-    } catch {
-      // non-fatal: continue pipeline if PR check fails
     }
 
     // === RECEIVED → VALIDATED ===
@@ -224,7 +229,20 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       }
 
       // === BRANCH_CREATED → WORKTREE_CREATED ===
-      if (isPastState(state, "WORKTREE_CREATED")) {
+      // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
+      if (input.isRetry && worktreePath && existsSync(worktreePath)) {
+        try {
+          await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
+          logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
+          jl?.log("재시도 작업 - 기존 worktree 정리 완료");
+        } catch (e) {
+          logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
+        }
+        worktreePath = undefined;
+        state = "BRANCH_CREATED";
+      }
+
+      if (isPastState(state, "WORKTREE_CREATED") && !input.isRetry) {
         logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
         // Verify worktree still exists
         if (worktreePath && !existsSync(worktreePath)) {
@@ -396,7 +414,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
 
-    // === REVIEWING: 3-round review ===
+    // === REVIEWING: analyst + 3-round review ===
     type ReviewVars = {
       issue: { number: string; title: string; body: string };
       plan: { summary: string };
@@ -417,12 +435,30 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       } else {
         timer.assertNotExpired("review");
         state = "REVIEWING";
-        logger.info("[REVIEWING] Starting review rounds...");
-        jl?.setStep("리뷰 진행 중...");
+        logger.info("[REVIEWING] Starting analyst and review rounds...");
+        jl?.setStep("요구사항 대조 분석 중...");
         jl?.setProgress(PROGRESS_REVIEW_START);
 
         reviewVariables = await buildReviewVars();
 
+        // === Phase 1: Requirements Analysis ===
+        const analystTemplatePath = resolve(promptsDir, "analyst-requirements.md");
+        let analystResult: AnalystResult | undefined;
+
+        if (existsSync(analystTemplatePath)) {
+          analystResult = await runAnalyst({
+            promptsDir,
+            claudeConfig: project.commands.claudeCli,
+            cwd: worktreePath!,
+            variables: reviewVariables,
+          });
+          jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
+        } else {
+          logger.info("[REVIEWING] Analyst template not found, skipping requirements analysis");
+        }
+
+        // === Phase 2: Code Review Rounds ===
+        jl?.setStep("리뷰 진행 중...");
         const reviewResult: ReviewPipelineResult = await runReviews({
           reviewConfig: project.review,
           claudeConfig: project.commands.claudeCli,
@@ -431,19 +467,30 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           variables: reviewVariables,
         });
 
+        if (analystResult) {
+          reviewResult.analyst = analystResult;
+        }
+
         for (const round of reviewResult.rounds) {
           jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
         }
 
-        if (!reviewResult.allPassed) {
-          logger.error("[REVIEWING] Review pipeline failed");
-          jl?.log(`실패: Review pipeline failed`);
+        const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
+          f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+        ) || false;
+
+        if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
+          const errorMsg = hasCriticalAnalystIssues
+            ? "[REVIEWING] Analyst found critical issues"
+            : "[REVIEWING] Review pipeline failed";
+          logger.error(errorMsg);
+          jl?.log(`실패: ${hasCriticalAnalystIssues ? "Critical requirements analysis issues found" : "Review pipeline failed"}`);
           jl?.setStep("실패");
           checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
           const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
           printResult(report);
           saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-          return { success: false, state: "FAILED", error: "Review failed", report };
+          return { success: false, state: "FAILED", error: "Review or requirements analysis failed", report };
         }
 
         checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
@@ -629,6 +676,24 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       } else {
         jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
       }
+    }
+
+    // === Close the issue since PR is created ===
+    try {
+      jl?.setStep("이슈 닫는 중...");
+      const closed = await closeIssue(
+        issueNumber,
+        repo,
+        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun }
+      );
+      if (closed) {
+        jl?.log(`이슈 #${issueNumber} 닫음`);
+      } else {
+        jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
+      }
+    } catch (e) {
+      logger.warn(`Failed to close issue #${issueNumber}: ${e}`);
+      jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
     }
 
     jl?.setStep("완료");

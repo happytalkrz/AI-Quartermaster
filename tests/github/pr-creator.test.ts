@@ -8,7 +8,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   loadTemplate: vi.fn(() => "mock template"),
 }));
 
-import { createDraftPR } from "../../src/github/pr-creator.js";
+import { createDraftPR, closeIssue } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -74,5 +74,34 @@ describe("createDraftPR", () => {
     const result = await createDraftPR(prConfig, ghConfig, ctx, { cwd: "/tmp", promptsDir: "/prompts", dryRun: true });
     expect(result.url).toContain("dry-run");
     expect(mockRunCli).not.toHaveBeenCalled();
+  });
+});
+
+describe("closeIssue", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should close issue successfully", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const result = await closeIssue(42, "test/repo", {});
+    expect(result).toBe(true);
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["issue", "close", "42", "--repo", "test/repo"], {});
+  });
+
+  it("should return false on failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Issue not found", exitCode: 1 });
+    const result = await closeIssue(42, "test/repo", {});
+    expect(result).toBe(false);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await closeIssue(42, "test/repo", { dryRun: true });
+    expect(result).toBe(true);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("should use custom gh path", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await closeIssue(42, "test/repo", { ghPath: "/custom/gh" });
+    expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "close", "42", "--repo", "test/repo"], {});
   });
 });

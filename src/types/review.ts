@@ -26,7 +26,29 @@ export interface SimplifyResult {
   summary: string;
 }
 
+export interface AnalystFinding {
+  type: "missing" | "excess" | "mismatch";
+  requirement: string;
+  implementation?: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  suggestion?: string;
+}
+
+export interface AnalystResult {
+  verdict: "COMPLETE" | "INCOMPLETE" | "MISALIGNED";
+  findings: AnalystFinding[];
+  summary: string;
+  coverage: {
+    implemented: string[];
+    missing: string[];
+    excess: string[];
+  };
+  durationMs: number;
+}
+
 export interface ReviewPipelineResult {
+  analyst?: AnalystResult;
   rounds: ReviewResult[];
   simplify?: SimplifyResult;
   allPassed: boolean;

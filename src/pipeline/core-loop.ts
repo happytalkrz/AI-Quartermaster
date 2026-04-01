@@ -1,8 +1,8 @@
-import { resolve } from "path";
-import { generatePlan, PlanGeneratorContext } from "./plan-generator.js";
-import { executePhase, PhaseExecutorContext } from "./phase-executor.js";
+import { generatePlan } from "./plan-generator.js";
+import { executePhase } from "./phase-executor.js";
 import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
+import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
 import type { Plan, PhaseResult } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
@@ -73,87 +73,125 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     }
   }
 
-  for (const phase of plan.phases) {
-    // Skip phases already completed (from checkpoint resume)
-    const alreadyDone = phaseResults.find(r => r.phaseIndex === phase.index && r.success);
-    if (alreadyDone) {
-      logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} [SKIP - already completed] ---`);
-      jl?.log(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} (이전 완료, 스킵)`);
-      jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
+  // Schedule phases for parallel execution based on dependencies
+  const scheduleResult = schedulePhases(plan.phases);
+  if (!scheduleResult.success) {
+    logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
+    jl?.log(`Phase 스케줄링 실패: ${scheduleResult.error}`);
+    return { plan, phaseResults, success: false };
+  }
+
+  logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);
+  jl?.log(`${scheduleResult.groups.length}개 레벨로 병렬 실행 스케줄링`);
+
+  // Execute phases level by level (parallel within level, sequential between levels)
+  for (const group of scheduleResult.groups) {
+    logger.info(`\n--- Level ${group.level}: ${group.phases.length} phases in parallel ---`);
+    jl?.log(`레벨 ${group.level}: ${group.phases.length}개 Phase 병렬 실행`);
+
+    // Identify already completed phases
+    const completedIndices = new Set(phaseResults.filter(r => r.success).map(r => r.phaseIndex));
+
+    // Log skipped phases and filter remaining
+    const remainingPhases = group.phases.filter(phase => {
+      if (completedIndices.has(phase.index)) {
+        logger.info(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} [SKIP - already completed]`);
+        jl?.log(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} (이전 완료, 스킵)`);
+        jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
+        return false;
+      }
+      return true;
+    });
+
+    if (remainingPhases.length === 0) {
+      logger.info(`All phases in level ${group.level} already completed, skipping`);
       continue;
     }
 
-    logger.info(`\n--- Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} ---`);
-    jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
-    jl?.setProgress(phaseStart(phase.index, plan.phases.length));
+    // Execute phases in parallel within the current level
+    const phasePromises = remainingPhases.map(async (phase) => {
+      logger.info(`Starting Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
+      jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
+      jl?.setProgress(phaseStart(phase.index, plan.phases.length));
 
-    let result = await executePhase({
-      issue: ctx.issue,
-      plan,
-      phase,
-      previousResults: phaseResults,
-      claudeConfig: ctx.config.commands.claudeCli,
-      promptsDir: ctx.promptsDir,
-      cwd: ctx.cwd,
-      testCommand: ctx.config.commands.test,
-      lintCommand: ctx.config.commands.lint,
-      gitPath: ctx.config.git.gitPath,
-      projectConventions: ctx.projectConventions,
-      pastFailures: pastFailures || undefined,
-      jobLogger: jl,
-    });
+      let result = await executePhase({
+        issue: ctx.issue,
+        plan,
+        phase,
+        previousResults: phaseResults,
+        claudeConfig: ctx.config.commands.claudeCli,
+        promptsDir: ctx.promptsDir,
+        cwd: ctx.cwd,
+        testCommand: ctx.config.commands.test,
+        lintCommand: ctx.config.commands.lint,
+        gitPath: ctx.config.git.gitPath,
+        projectConventions: ctx.projectConventions,
+        pastFailures: pastFailures || undefined,
+        jobLogger: jl,
+      });
 
-    // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
-    if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION") {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
-        jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
+      // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
+      if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION") {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
+          jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
 
-        result = await retryPhase({
-          issue: ctx.issue,
-          plan,
-          phase,
-          previousError: result.error ?? "Unknown error",
-          errorCategory: result.errorCategory ?? "UNKNOWN",
-          attempt,
-          maxRetries,
-          claudeConfig: ctx.config.commands.claudeCli,
-          promptsDir: ctx.promptsDir,
-          cwd: ctx.cwd,
-          testCommand: ctx.config.commands.test,
-          lintCommand: ctx.config.commands.lint,
-          gitPath: ctx.config.git.gitPath,
-          jobLogger: jl,
-        });
+          result = await retryPhase({
+            issue: ctx.issue,
+            plan,
+            phase,
+            previousError: result.error ?? "Unknown error",
+            errorCategory: result.errorCategory ?? "UNKNOWN",
+            attempt,
+            maxRetries,
+            claudeConfig: ctx.config.commands.claudeCli,
+            promptsDir: ctx.promptsDir,
+            cwd: ctx.cwd,
+            testCommand: ctx.config.commands.test,
+            lintCommand: ctx.config.commands.lint,
+            gitPath: ctx.config.git.gitPath,
+            jobLogger: jl,
+          });
 
-        if (result.success) {
-          logger.info(`Phase ${phase.index + 1} succeeded on retry ${attempt}`);
-          jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt} 성공`);
-          break;
+          if (result.success) {
+            logger.info(`Phase ${phase.index + 1} succeeded on retry ${attempt}`);
+            jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt} 성공`);
+            break;
+          }
         }
       }
+
+      return { phase, result };
+    });
+
+    // Wait for all phases in current level to complete
+    const levelResults = await Promise.all(phasePromises);
+
+    // Add results in order (sequential commits to avoid git conflicts)
+    for (const { phase, result } of levelResults.sort((a, b) => a.phase.index - b.phase.index)) {
+      phaseResults.push(result);
+
+      // Phase 완료할 때마다 대시보드에 진행률 반영
+      jl?.setPhaseResults(phaseResults.map(r => ({
+        name: r.phaseName,
+        success: r.success,
+        commit: r.commitHash?.slice(0, 8),
+        durationMs: r.durationMs,
+        error: r.error,
+      })));
+
+      if (!result.success) {
+        logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
+        jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
+        return { plan, phaseResults, success: false };
+      }
+
+      logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
+      jl?.log(`Phase ${phase.index + 1} 완료 (${result.commitHash?.slice(0, 8)})`);
+      jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
     }
 
-    phaseResults.push(result);
-
-    // Phase 완료할 때마다 대시보드에 진행률 반영
-    jl?.setPhaseResults(phaseResults.map(r => ({
-      name: r.phaseName,
-      success: r.success,
-      commit: r.commitHash?.slice(0, 8),
-      durationMs: r.durationMs,
-      error: r.error,
-    })));
-
-    if (!result.success) {
-      logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
-      jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
-      return { plan, phaseResults, success: false };
-    }
-
-    logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
-    jl?.log(`Phase ${phase.index + 1} 완료 (${result.commitHash?.slice(0, 8)})`);
-    jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
+    logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);
   }
 
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);

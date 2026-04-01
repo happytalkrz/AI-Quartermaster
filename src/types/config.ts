@@ -73,6 +73,8 @@ export interface ReviewRound {
   failAction: ReviewFailAction;
   maxRetries: number;
   model: string | null;
+  blind?: boolean;        // 구현 맥락 차단 (자기평가 편향 방지)
+  adversarial?: boolean;  // 적대적 리뷰 모드 (엄격한 평가)
 }
 
 export interface SimplifyConfig {

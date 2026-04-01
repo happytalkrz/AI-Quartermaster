@@ -28,6 +28,7 @@ export interface Job {
     error?: string;
   }>;
   progress?: number;  // 0-100 overall pipeline progress
+  isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
 }
 
 export class JobStore {
@@ -56,7 +57,7 @@ export class JobStore {
     return resolve(this.dataDir, `${id}.json`);
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[]): Job {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job {
     const id = `aq-${issueNumber}-${Date.now()}`;
     const job: Job = {
       id,
@@ -65,6 +66,7 @@ export class JobStore {
       status: "queued",
       createdAt: new Date().toISOString(),
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
+      ...(isRetry ? { isRetry } : {}),
     };
     this.save(job);
     logger.info(`Job created: ${id}`);

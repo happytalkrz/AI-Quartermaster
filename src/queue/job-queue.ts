@@ -1,7 +1,9 @@
+import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { errorMessage } from "../types/errors.js";
 import { JobStore, Job } from "./job-store.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
+import { removeCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 
 const logger = getLogger();
@@ -197,6 +199,17 @@ export class JobQueue {
     }
 
     const { issueNumber, repo } = oldJob;
+
+    // Remove checkpoint file to prevent new job from loading previous state
+    const dataDir = resolve(process.cwd(), "data");
+    try {
+      removeCheckpoint(dataDir, issueNumber);
+      logger.info(`Checkpoint removed for issue #${issueNumber} before retry`);
+    } catch (err) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+      // Non-fatal: continue with retry even if checkpoint removal fails
+    }
+
     // Archive old job so failure history is preserved; findAnyByIssue skips archived jobs
     this.store.archive(jobId);
     return this.enqueue(issueNumber, repo);

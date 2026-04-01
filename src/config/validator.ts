@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { AQConfig } from "../types/config.js";
-import type { ProjectConfig } from "../types/config.js";
 
 const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 const localeSchema = z.enum(["ko", "en"]);

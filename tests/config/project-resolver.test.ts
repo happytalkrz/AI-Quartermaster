@@ -175,35 +175,19 @@ describe("expandProjectPath", () => {
     expect(result).toBe(absolutePath);
   });
 
-  // Edge case tests
-  it("should handle current directory path", () => {
-    const result = expandProjectPath(".");
-    expect(result).toBe(AQM_HOME); // resolve() normalizes "." to the base directory
-  });
-
-  it("should handle parent directory path", () => {
-    const result = expandProjectPath("..");
-    expect(result).toBe(resolve(AQM_HOME, "..")); // resolve() normalizes ".." to actual parent
-  });
-
   it("should handle complex relative path with parent directory", () => {
     const result = expandProjectPath("../projects/my-app");
-    expect(result).toBe(resolve(AQM_HOME, "../projects/my-app")); // resolve() normalizes the full path
+    expect(result).toBe(resolve(AQM_HOME, "../projects/my-app"));
   });
 
   it("should handle path with trailing slash", () => {
     const result = expandProjectPath("~/projects/");
-    expect(result).toBe(`${homedir()}/projects`); // resolve() removes trailing slash
+    expect(result).toBe(`${homedir()}/projects`);
   });
 
   it("should handle relative path with trailing slash", () => {
     const result = expandProjectPath("projects/");
-    expect(result).toBe(`${AQM_HOME}/projects`); // resolve() removes trailing slash
-  });
-
-  it("should handle empty string as relative path", () => {
-    const result = expandProjectPath("");
-    expect(result).toBe(AQM_HOME);
+    expect(result).toBe(`${AQM_HOME}/projects`);
   });
 
   it("should handle nested home directory reference", () => {

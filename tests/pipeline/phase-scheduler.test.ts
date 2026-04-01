@@ -4,7 +4,6 @@ import {
   detectCircularDependencies,
   getExecutablePhases,
   validatePhaseDependencies,
-  type PhaseGroup,
 } from "../../src/pipeline/phase-scheduler.js";
 import type { Phase } from "../../src/types/pipeline.js";
 

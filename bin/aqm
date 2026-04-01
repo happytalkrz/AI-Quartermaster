@@ -16,16 +16,32 @@ is_running() {
 
 case "${1:-}" in
   update)
-    # Parse branch argument
+    # Parse arguments
     BRANCH="main"
-    if [ -n "${2:-}" ]; then
-      if [ "$2" = "--branch" ]; then
-        BRANCH="${3:-main}"
-      elif [[ "$2" != --* ]]; then
-        # Positional argument (e.g., aqm update develop)
-        BRANCH="$2"
-      fi
-    fi
+    CLEAN_FLAG=false
+
+    # Process all arguments
+    while [ $# -gt 1 ]; do
+      case "$2" in
+        --branch)
+          BRANCH="${3:-main}"
+          shift 2
+          ;;
+        --clean)
+          CLEAN_FLAG=true
+          shift
+          ;;
+        --*)
+          echo "Unknown option: $2"
+          exit 1
+          ;;
+        *)
+          # Positional argument (e.g., aqm update develop)
+          BRANCH="$2"
+          shift
+          ;;
+      esac
+    done
 
     echo "AI Quartermaster 업데이트 중... (브랜치: $BRANCH)"
     cd "$AQM_HOME"
@@ -34,6 +50,21 @@ case "${1:-}" in
     git checkout --quiet "$BRANCH"
     git pull --quiet origin "$BRANCH"
     AFTER=$(git rev-parse HEAD)
+
+    # Handle --clean option
+    if [ "$CLEAN_FLAG" = true ]; then
+      echo "untracked 파일 정리 확인 중..."
+      CLEAN_OUTPUT=$(git clean -fd --dry-run)
+      if [ -n "$CLEAN_OUTPUT" ]; then
+        echo "다음 untracked 파일/디렉토리가 삭제됩니다:"
+        echo "$CLEAN_OUTPUT"
+        git clean -fd
+        echo "untracked 파일 정리 완료."
+      else
+        echo "정리할 untracked 파일이 없습니다."
+      fi
+    fi
+
     if [ "$BEFORE" = "$AFTER" ]; then
       echo "이미 최신 버전입니다."
     else

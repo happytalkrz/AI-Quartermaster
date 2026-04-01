@@ -146,9 +146,6 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       } catch {
         // non-fatal: continue pipeline if PR check fails
       }
-    } else {
-      logger.info(`[RETRY] Skipping PR check for retry job #${issueNumber}`);
-      jl?.log("재시도 작업 - 기존 PR 체크 건너뜀");
     }
 
     // === RECEIVED → VALIDATED ===
@@ -233,18 +230,15 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       // === BRANCH_CREATED → WORKTREE_CREATED ===
       // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
       if (input.isRetry && worktreePath && existsSync(worktreePath)) {
-        logger.info(`[RETRY] Cleaning up existing worktree: ${worktreePath}`);
-        jl?.log("재시도 작업 - 기존 worktree 정리 중...");
         try {
           await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
-          logger.info(`[RETRY] Removed existing worktree: ${worktreePath}`);
+          logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
+          jl?.log("재시도 작업 - 기존 worktree 정리 완료");
         } catch (e) {
           logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
-          // Continue anyway, createWorktree will handle cleanup
         }
-        // Reset worktreePath to force creation of new one
         worktreePath = undefined;
-        state = "BRANCH_CREATED"; // Reset state to force worktree recreation
+        state = "BRANCH_CREATED";
       }
 
       if (isPastState(state, "WORKTREE_CREATED") && !input.isRetry) {

@@ -429,7 +429,6 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           promptsDir,
           cwd: worktreePath!,
           variables: reviewVariables,
-          buildReviewVars,
         });
 
         for (const round of reviewResult.rounds) {

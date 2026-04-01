@@ -78,10 +78,8 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     const result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
-      config: {
-        ...config,
-        additionalArgs: [...config.additionalArgs, "--enable-agents"]
-      },
+      config,
+      enableAgents: true,
       onStderr: jl ? (line: string) => {
         const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
         if (match) {

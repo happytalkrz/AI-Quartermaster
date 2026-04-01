@@ -450,7 +450,6 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           variables: reviewVariables,
         });
 
-        // Include analyst result in pipeline result
         if (analystResult) {
           reviewResult.analyst = analystResult;
         }
@@ -459,19 +458,16 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
           jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
         }
 
-        // Check if analyst found critical issues
         const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
           f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
         ) || false;
 
         if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
-          if (hasCriticalAnalystIssues) {
-            logger.error("[REVIEWING] Analyst found critical issues");
-            jl?.log(`실패: Critical requirements analysis issues found`);
-          } else {
-            logger.error("[REVIEWING] Review pipeline failed");
-            jl?.log(`실패: Review pipeline failed`);
-          }
+          const errorMsg = hasCriticalAnalystIssues
+            ? "[REVIEWING] Analyst found critical issues"
+            : "[REVIEWING] Review pipeline failed";
+          logger.error(errorMsg);
+          jl?.log(`실패: ${hasCriticalAnalystIssues ? "Critical requirements analysis issues found" : "Review pipeline failed"}`);
           jl?.setStep("실패");
           checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
           const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);

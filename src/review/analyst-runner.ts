@@ -12,8 +12,28 @@ export interface AnalystContext {
   variables: TemplateVariables;
 }
 
+const EMPTY_COVERAGE = { implemented: [], missing: [], excess: [] };
+
+function createAnalystResult(
+  verdict: "COMPLETE" | "INCOMPLETE" | "MISALIGNED",
+  durationMs: number,
+  findings: AnalystFinding[] = [],
+  summary: string = "",
+  coverage = EMPTY_COVERAGE
+): AnalystResult {
+  return { verdict, findings, summary, coverage, durationMs };
+}
+
+function extractVerdictFromText(text: string): "COMPLETE" | "INCOMPLETE" | "MISALIGNED" {
+  const lower = text.toLowerCase();
+  if (lower.includes('"complete"') || lower.includes("verdict: complete")) return "COMPLETE";
+  if (lower.includes('"misaligned"') || lower.includes("verdict: misaligned")) return "MISALIGNED";
+  return "INCOMPLETE";
+}
+
 export async function runAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
   const startTime = Date.now();
+  const durationMs = () => Date.now() - startTime;
 
   const templatePath = resolve(ctx.promptsDir, "analyst-requirements.md");
   const template = loadTemplate(templatePath);
@@ -23,22 +43,21 @@ export async function runAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
     prompt: rendered,
     cwd: ctx.cwd,
     config: ctx.claudeConfig,
-    enableAgents: false, // 직접 분석, 에이전트 위임 없음
+    enableAgents: false,
   });
 
   if (!result.success) {
-    return {
-      verdict: "INCOMPLETE",
-      findings: [{
+    return createAnalystResult(
+      "INCOMPLETE",
+      durationMs(),
+      [{
         type: "mismatch",
         requirement: "Claude analysis execution",
         severity: "error",
         message: `Claude invocation failed: ${result.output}`
       }],
-      summary: "Analysis failed due to Claude error",
-      coverage: { implemented: [], missing: [], excess: [] },
-      durationMs: Date.now() - startTime,
-    };
+      "Analysis failed due to Claude error"
+    );
   }
 
   try {
@@ -53,30 +72,19 @@ export async function runAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
       };
     }>(result.output);
 
-    return {
-      verdict: parsed.verdict || "INCOMPLETE",
-      findings: parsed.findings || [],
-      summary: parsed.summary || "",
-      coverage: parsed.coverage || { implemented: [], missing: [], excess: [] },
-      durationMs: Date.now() - startTime,
-    };
+    return createAnalystResult(
+      parsed.verdict || "INCOMPLETE",
+      durationMs(),
+      parsed.findings || [],
+      parsed.summary || "",
+      parsed.coverage || EMPTY_COVERAGE
+    );
   } catch {
-    // JSON 파싱 실패 시 텍스트에서 판정 추출 시도
-    const output = result.output.toLowerCase();
-    let verdict: "COMPLETE" | "INCOMPLETE" | "MISALIGNED" = "INCOMPLETE";
-
-    if (output.includes('"complete"') || output.includes("verdict: complete")) {
-      verdict = "COMPLETE";
-    } else if (output.includes('"misaligned"') || output.includes("verdict: misaligned")) {
-      verdict = "MISALIGNED";
-    }
-
-    return {
-      verdict,
-      findings: [],
-      summary: result.output.slice(0, 500),
-      coverage: { implemented: [], missing: [], excess: [] },
-      durationMs: Date.now() - startTime,
-    };
+    return createAnalystResult(
+      extractVerdictFromText(result.output),
+      durationMs(),
+      [],
+      result.output.slice(0, 500)
+    );
   }
 }

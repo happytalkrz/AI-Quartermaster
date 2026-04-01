@@ -86,4 +86,34 @@ git:
     expect(config.safety.maxPhases).toBe(10);
     expect(config.commands.claudeCli.model).toBe("claude-opus-4-5");
   });
+
+  it("should provide friendly error message for YAML tab characters in config.yml", () => {
+    // 탭 문자가 포함된 YAML (문자열에서 \t는 실제 탭 문자로 변환됨)
+    const yamlWithTab = `general:
+\tprojectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"`;
+    writeFileSync(join(testDir, "config.yml"), yamlWithTab);
+
+    expect(() => loadConfig(testDir)).toThrow(/YAML 설정 파일에 탭 문자가 포함되어 있습니다/);
+  });
+
+  it("should provide friendly error message for YAML tab characters in config.local.yml", () => {
+    // 유효한 config.yml 먼저 생성
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+
+    // 탭 문자가 포함된 config.local.yml
+    const yamlWithTab = `general:
+\tlogLevel: "debug"`;
+    writeFileSync(join(testDir, "config.local.yml"), yamlWithTab);
+
+    expect(() => loadConfig(testDir)).toThrow(/YAML 설정 파일에 탭 문자가 포함되어 있습니다/);
+  });
 });

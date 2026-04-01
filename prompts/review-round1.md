@@ -9,6 +9,9 @@
 ## 구현 계획
 {{plan.summary}}
 
+## 프로젝트 개발 가이드
+{{skillsContext}}
+
 ## 변경된 코드 (diff)
 ```
 {{diff.full}}

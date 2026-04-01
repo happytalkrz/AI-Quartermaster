@@ -28,6 +28,10 @@
 
 {{projectConventions}}
 
+## 프로젝트 개발 가이드
+
+{{skillsContext}}
+
 {{pastFailures}}
 
 ---

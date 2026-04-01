@@ -437,12 +437,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       plan: { summary: string };
       diff: { full: string };
       config: { testCommand: string; lintCommand: string };
+      skillsContext: string;
     };
     const buildReviewVars = async (): Promise<ReviewVars> => ({
       issue: { number: String(issueNumber), title: issue.title, body: issue.body },
       plan: { summary: coreResult.plan.problemDefinition },
       diff: { full: await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! }) },
       config: { testCommand: project.commands.test, lintCommand: project.commands.lint },
+      skillsContext: skillsContext,
     });
     let reviewVariables: ReviewVars | undefined;
 

@@ -86,8 +86,6 @@ const mockRunReviews = vi.mocked(runReviews);
 const mockRunSimplify = vi.mocked(runSimplify);
 const mockFinalValidation = vi.mocked(runFinalValidation);
 const mockGetDiffContent = vi.mocked(getDiffContent);
-vi.mocked(validateIssue);
-vi.mocked(validatePlan);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
 
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";

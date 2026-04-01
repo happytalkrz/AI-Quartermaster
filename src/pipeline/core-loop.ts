@@ -89,10 +89,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`\n--- Level ${group.level}: ${group.phases.length} phases in parallel ---`);
     jl?.log(`레벨 ${group.level}: ${group.phases.length}개 Phase 병렬 실행`);
 
-    // Filter out already completed phases
+    // Identify already completed phases
+    const completedIndices = new Set(phaseResults.filter(r => r.success).map(r => r.phaseIndex));
+
+    // Log skipped phases and filter remaining
     const remainingPhases = group.phases.filter(phase => {
-      const alreadyDone = phaseResults.find(r => r.phaseIndex === phase.index && r.success);
-      if (alreadyDone) {
+      if (completedIndices.has(phase.index)) {
         logger.info(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} [SKIP - already completed]`);
         jl?.log(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name} (이전 완료, 스킵)`);
         jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));

@@ -1,4 +1,4 @@
-import { existsSync, copyFileSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { randomBytes } from "crypto";
@@ -26,15 +26,21 @@ export async function runSetup(aqRoot: string): Promise<void> {
   // 2. Create config.yml
   console.log("2. 설정 파일 생성...");
   const configPath = resolve(aqRoot, "config.yml");
-  const referencePath = resolve(aqRoot, "config.reference.yml");
 
   if (existsSync(configPath)) {
     console.log("   config.yml 이미 존재 (건너뜀)");
-  } else if (existsSync(referencePath)) {
-    copyFileSync(referencePath, configPath);
-    console.log("   config.yml 생성됨 (config.reference.yml에서 복사)");
   } else {
-    console.log("   config.reference.yml을 찾을 수 없습니다");
+    const minimalConfig = `# AI 병참부 최소 설정 파일
+# 전체 옵션은 config.reference.yml 참조
+
+projects:
+  - repo: "owner/repo-name"        # 필수: GitHub 저장소 (owner/repo)
+    path: "/path/to/local/clone"   # 필수: 로컬 클론 경로
+
+# 추가 설정이 필요하면 config.reference.yml을 참조하세요
+`;
+    writeFileSync(configPath, minimalConfig, 'utf-8');
+    console.log("   config.yml 생성됨 (최소 템플릿)");
   }
 
   // 3. Create .env

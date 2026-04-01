@@ -8,6 +8,7 @@ import {
   isProcessRunning,
   cleanupStalePid,
   removePidFile,
+  findProcessByPort,
 } from "../../src/server/pid-manager.js";
 
 let tmpDir: string;
@@ -94,5 +95,25 @@ describe("removePidFile", () => {
 
   it("does not throw when file does not exist", () => {
     expect(() => removePidFile(join(tmpDir, "ghost.pid"))).not.toThrow();
+  });
+});
+
+describe("findProcessByPort", () => {
+  it("returns null for a port that is not in use", () => {
+    // Use a high port number that is unlikely to be in use
+    const unusedPort = 65432;
+    expect(findProcessByPort(unusedPort)).toBeNull();
+  });
+
+  it("returns null for invalid port numbers", () => {
+    expect(findProcessByPort(-1)).toBeNull();
+    expect(findProcessByPort(0)).toBeNull();
+    expect(findProcessByPort(99999)).toBeNull();
+  });
+
+  it("does not throw for edge cases", () => {
+    expect(() => findProcessByPort(80)).not.toThrow();
+    expect(() => findProcessByPort(443)).not.toThrow();
+    expect(() => findProcessByPort(3000)).not.toThrow();
   });
 });

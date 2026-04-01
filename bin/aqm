@@ -82,10 +82,10 @@ case "${1:-}" in
       sleep 2
 
       if is_running; then
-        # Parse --port flag from ARGS
+        # Extract --port flag, default to 3000
         PORT=3000
-        for ((i=0; i<${#ARGS[@]}-1; i++)); do
-          if [ "${ARGS[i]}" = "--port" ]; then
+        for ((i=0; i<${#ARGS[@]}; i++)); do
+          if [ "${ARGS[i]}" = "--port" ] && [ $((i+1)) -lt ${#ARGS[@]} ]; then
             PORT="${ARGS[i+1]}"
             break
           fi

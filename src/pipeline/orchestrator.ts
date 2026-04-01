@@ -231,7 +231,23 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       }
 
       // === BRANCH_CREATED → WORKTREE_CREATED ===
-      if (isPastState(state, "WORKTREE_CREATED")) {
+      // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
+      if (input.isRetry && worktreePath && existsSync(worktreePath)) {
+        logger.info(`[RETRY] Cleaning up existing worktree: ${worktreePath}`);
+        jl?.log("재시도 작업 - 기존 worktree 정리 중...");
+        try {
+          await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
+          logger.info(`[RETRY] Removed existing worktree: ${worktreePath}`);
+        } catch (e) {
+          logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
+          // Continue anyway, createWorktree will handle cleanup
+        }
+        // Reset worktreePath to force creation of new one
+        worktreePath = undefined;
+        state = "BRANCH_CREATED"; // Reset state to force worktree recreation
+      }
+
+      if (isPastState(state, "WORKTREE_CREATED") && !input.isRetry) {
         logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
         // Verify worktree still exists
         if (worktreePath && !existsSync(worktreePath)) {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { resolveProject, listConfiguredRepos } from "../../src/config/project-resolver.js";
+import { resolveProject, listConfiguredRepos, expandProjectPath, AQM_HOME } from "../../src/config/project-resolver.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
+import { homedir } from "os";
 
 describe("resolveProject", () => {
   it("should resolve project from projects array", () => {
@@ -95,5 +96,33 @@ describe("listConfiguredRepos", () => {
     const repos = listConfiguredRepos(config);
     expect(repos).toContain("org/new-repo");
     expect(repos).toContain("org/old-repo");
+  });
+});
+
+describe("expandProjectPath", () => {
+  it("should expand ~ to home directory", () => {
+    const result = expandProjectPath("~/my-project");
+    expect(result).toBe(`${homedir()}/my-project`);
+  });
+
+  it("should expand bare ~ to home directory", () => {
+    const result = expandProjectPath("~");
+    expect(result).toBe(homedir());
+  });
+
+  it("should resolve relative path against AQM_HOME", () => {
+    const result = expandProjectPath("my-project");
+    expect(result).toBe(`${AQM_HOME}/my-project`);
+  });
+
+  it("should resolve relative path with subdirectories", () => {
+    const result = expandProjectPath("projects/my-app");
+    expect(result).toBe(`${AQM_HOME}/projects/my-app`);
+  });
+
+  it("should return absolute path as-is", () => {
+    const absolutePath = "/home/user/absolute-project";
+    const result = expandProjectPath(absolutePath);
+    expect(result).toBe(absolutePath);
   });
 });

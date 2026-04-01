@@ -58,6 +58,99 @@ describe("runDoctor", () => {
     vi.restoreAllMocks();
   });
 
+  function createMockConfig(projectPath?: string): AQConfig {
+    return {
+      general: {
+        projectName: "test-project",
+        logLevel: "info",
+        logDir: "logs",
+        dryRun: false,
+        locale: "ko",
+        concurrency: 1,
+        stuckTimeoutMs: 300000,
+        pollingIntervalMs: 5000,
+        maxJobs: 10,
+      },
+      git: {
+        defaultBaseBranch: "main",
+        branchTemplate: "aq/{{issueNumber}}-{{slug}}",
+        commitMessageTemplate: "[#{{issueNumber}}] {{issueTitle}}",
+        remoteAlias: "origin",
+        allowedRepos: [],
+        gitPath: "git",
+        fetchDepth: 1,
+        signCommits: false,
+      },
+      worktree: {
+        rootPath: "/tmp/aq-worktrees",
+        cleanupOnSuccess: true,
+        cleanupOnFailure: false,
+        maxAge: "7d",
+        dirTemplate: "{{issueNumber}}-{{slug}}",
+      },
+      commands: {
+        claudeCli: {
+          path: "claude",
+          model: "claude-opus-4-5",
+          models: {
+            plan: "claude-opus-4-5",
+            phase: "claude-sonnet-4-5",
+            review: "claude-haiku-4-5",
+            fallback: "claude-sonnet-4-5",
+          },
+          maxTurns: 50,
+          timeout: 300000,
+          additionalArgs: [],
+        },
+        ghCli: { path: "gh", timeout: 30000 },
+        test: "npm test",
+        lint: "npm run lint",
+        build: "npm run build",
+        typecheck: "npx tsc --noEmit",
+        preInstall: "npm ci",
+        claudeMdPath: "./CLAUDE.md",
+      },
+      review: {
+        enabled: true,
+        rounds: [],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      pr: {
+        targetBranch: "main",
+        draft: true,
+        titleTemplate: "[#{{issueNumber}}] {{issueTitle}}",
+        bodyTemplate: "Fixes #{{issueNumber}}",
+        labels: ["auto-generated"],
+        assignees: [],
+        reviewers: [],
+        linkIssue: true,
+        autoMerge: false,
+        mergeMethod: "squash",
+      },
+      safety: {
+        sensitivePaths: [".env", "credentials"],
+        maxPhases: 10,
+        maxRetries: 3,
+        maxTotalDurationMs: 3600000,
+        maxFileChanges: 50,
+        maxInsertions: 1000,
+        maxDeletions: 500,
+        requireTests: false,
+        blockDirectBasePush: true,
+        timeouts: {
+          planGeneration: 300000,
+          phaseImplementation: 600000,
+          reviewRound: 180000,
+          prCreation: 120000,
+        },
+        stopConditions: ["CRITICAL", "SECURITY"],
+        allowedLabels: ["bug", "feature", "docs"],
+        rollbackStrategy: "failed-only",
+      },
+      projects: projectPath ? [{ repo: "test/repo", path: projectPath }] : [],
+    };
+  }
+
   it("should check only prerequisites when config is null", async () => {
     await runDoctor(null, testDir);
 
@@ -143,101 +236,7 @@ describe("runDoctor", () => {
   });
 
   it("should show FAIL message when project path does not exist", async () => {
-    const mockConfig: AQConfig = {
-      general: {
-        projectName: "test-project",
-        logLevel: "info",
-        logDir: "logs",
-        dryRun: false,
-        locale: "ko",
-        concurrency: 1,
-        stuckTimeoutMs: 300000,
-        pollingIntervalMs: 5000,
-        maxJobs: 10,
-      },
-      git: {
-        defaultBaseBranch: "main",
-        branchTemplate: "aq/{{issueNumber}}-{{slug}}",
-        commitMessageTemplate: "[#{{issueNumber}}] {{issueTitle}}",
-        remoteAlias: "origin",
-        allowedRepos: [],
-        gitPath: "git",
-        fetchDepth: 1,
-        signCommits: false,
-      },
-      worktree: {
-        rootPath: "/tmp/aq-worktrees",
-        cleanupOnSuccess: true,
-        cleanupOnFailure: false,
-        maxAge: "7d",
-        dirTemplate: "{{issueNumber}}-{{slug}}",
-      },
-      commands: {
-        claudeCli: {
-          path: "claude",
-          model: "claude-opus-4-5",
-          models: {
-            plan: "claude-opus-4-5",
-            phase: "claude-sonnet-4-5",
-            review: "claude-haiku-4-5",
-            fallback: "claude-sonnet-4-5",
-          },
-          maxTurns: 50,
-          timeout: 300000,
-          additionalArgs: [],
-        },
-        ghCli: { path: "gh", timeout: 30000 },
-        test: "npm test",
-        lint: "npm run lint",
-        build: "npm run build",
-        typecheck: "npx tsc --noEmit",
-        preInstall: "npm ci",
-        claudeMdPath: "./CLAUDE.md",
-      },
-      review: {
-        enabled: true,
-        rounds: [],
-        simplify: { enabled: false, promptTemplate: "" },
-      },
-      pr: {
-        targetBranch: "main",
-        draft: true,
-        titleTemplate: "[#{{issueNumber}}] {{issueTitle}}",
-        bodyTemplate: "Fixes #{{issueNumber}}",
-        labels: ["auto-generated"],
-        assignees: [],
-        reviewers: [],
-        linkIssue: true,
-        autoMerge: false,
-        mergeMethod: "squash",
-      },
-      safety: {
-        sensitivePaths: [".env", "credentials"],
-        maxPhases: 10,
-        maxRetries: 3,
-        maxTotalDurationMs: 3600000,
-        maxFileChanges: 50,
-        maxInsertions: 1000,
-        maxDeletions: 500,
-        requireTests: false,
-        blockDirectBasePush: true,
-        timeouts: {
-          planGeneration: 300000,
-          phaseImplementation: 600000,
-          reviewRound: 180000,
-          prCreation: 120000,
-        },
-        stopConditions: ["CRITICAL", "SECURITY"],
-        allowedLabels: ["bug", "feature", "docs"],
-        rollbackStrategy: "failed-only",
-      },
-      projects: [
-        {
-          repo: "test/repo",
-          path: "/nonexistent/path", // This path doesn't exist
-        }
-      ]
-    };
+    const mockConfig = createMockConfig("/nonexistent/path");
 
     await runDoctor(mockConfig, testDir);
 
@@ -264,101 +263,7 @@ describe("runDoctor", () => {
       }
     }));
 
-    const mockConfig: AQConfig = {
-      general: {
-        projectName: "test-project",
-        logLevel: "info",
-        logDir: "logs",
-        dryRun: false,
-        locale: "ko",
-        concurrency: 1,
-        stuckTimeoutMs: 300000,
-        pollingIntervalMs: 5000,
-        maxJobs: 10,
-      },
-      git: {
-        defaultBaseBranch: "main",
-        branchTemplate: "aq/{{issueNumber}}-{{slug}}",
-        commitMessageTemplate: "[#{{issueNumber}}] {{issueTitle}}",
-        remoteAlias: "origin",
-        allowedRepos: [],
-        gitPath: "git",
-        fetchDepth: 1,
-        signCommits: false,
-      },
-      worktree: {
-        rootPath: "/tmp/aq-worktrees",
-        cleanupOnSuccess: true,
-        cleanupOnFailure: false,
-        maxAge: "7d",
-        dirTemplate: "{{issueNumber}}-{{slug}}",
-      },
-      commands: {
-        claudeCli: {
-          path: "claude",
-          model: "claude-opus-4-5",
-          models: {
-            plan: "claude-opus-4-5",
-            phase: "claude-sonnet-4-5",
-            review: "claude-haiku-4-5",
-            fallback: "claude-sonnet-4-5",
-          },
-          maxTurns: 50,
-          timeout: 300000,
-          additionalArgs: [],
-        },
-        ghCli: { path: "gh", timeout: 30000 },
-        test: "npm test",
-        lint: "npm run lint",
-        build: "npm run build",
-        typecheck: "npx tsc --noEmit",
-        preInstall: "npm ci",
-        claudeMdPath: "./CLAUDE.md",
-      },
-      review: {
-        enabled: true,
-        rounds: [],
-        simplify: { enabled: false, promptTemplate: "" },
-      },
-      pr: {
-        targetBranch: "main",
-        draft: true,
-        titleTemplate: "[#{{issueNumber}}] {{issueTitle}}",
-        bodyTemplate: "Fixes #{{issueNumber}}",
-        labels: ["auto-generated"],
-        assignees: [],
-        reviewers: [],
-        linkIssue: true,
-        autoMerge: false,
-        mergeMethod: "squash",
-      },
-      safety: {
-        sensitivePaths: [".env", "credentials"],
-        maxPhases: 10,
-        maxRetries: 3,
-        maxTotalDurationMs: 3600000,
-        maxFileChanges: 50,
-        maxInsertions: 1000,
-        maxDeletions: 500,
-        requireTests: false,
-        blockDirectBasePush: true,
-        timeouts: {
-          planGeneration: 300000,
-          phaseImplementation: 600000,
-          reviewRound: 180000,
-          prCreation: 120000,
-        },
-        stopConditions: ["CRITICAL", "SECURITY"],
-        allowedLabels: ["bug", "feature", "docs"],
-        rollbackStrategy: "failed-only",
-      },
-      projects: [
-        {
-          repo: "test/repo",
-          path: projectPath,
-        }
-      ]
-    };
+    const mockConfig = createMockConfig(projectPath);
 
     await runDoctor(mockConfig, testDir);
 

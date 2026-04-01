@@ -110,27 +110,18 @@ export function tryLoadConfig(projectRoot: string): TryLoadConfigResult {
     const validatedConfig = validateConfig(config);
     return { config: validatedConfig };
   } catch (err: unknown) {
-    if (err instanceof Error) {
-      // Parse validation error details
-      const details = err.message.includes('\n')
-        ? err.message.split('\n').slice(1).filter(line => line.trim())
-        : undefined;
-
-      return {
-        config: null,
-        error: {
-          type: 'validation',
-          message: err.message.split('\n')[0] || 'Validation failed',
-          details
-        }
-      };
-    }
+    const message = err instanceof Error ? err.message : 'Unknown validation error';
+    const lines = message.split('\n');
+    const details = lines.length > 1
+      ? lines.slice(1).filter(line => line.trim())
+      : undefined;
 
     return {
       config: null,
       error: {
         type: 'validation',
-        message: 'Unknown validation error'
+        message: lines[0] || 'Validation failed',
+        details: details?.length ? details : undefined
       }
     };
   }

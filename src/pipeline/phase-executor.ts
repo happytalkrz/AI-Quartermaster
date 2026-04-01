@@ -27,6 +27,7 @@ export interface PhaseExecutorContext {
   lintCommand: string;
   gitPath: string;
   projectConventions?: string;
+  skillsContext?: string;
   pastFailures?: string;
   jobLogger?: JobLogger;
 }
@@ -66,6 +67,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         lintCommand: ctx.lintCommand,
       },
       projectConventions: ctx.projectConventions ?? "",
+      skillsContext: ctx.skillsContext ?? "",
       pastFailures: ctx.pastFailures ?? "",
     });
 

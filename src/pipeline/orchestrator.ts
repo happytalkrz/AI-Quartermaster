@@ -51,6 +51,7 @@ export interface OrchestratorInput {
   aqRoot?: string;       // AI Quartermaster root (where prompts/ lives)
   jobLogger?: JobLogger;
   resumeFrom?: PipelineCheckpoint;
+  isRetry?: boolean;     // true if this is a retry of a previously failed job
 }
 
 const STATE_ORDER: PipelineState[] = [
@@ -124,25 +125,28 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const dataDir = resolve(aqRoot ?? projectRoot, "data");
 
     // Check if a PR already exists for this issue (prevents duplicate work)
-    try {
-      const prCheckResult = await runCli(
-        project.commands.ghCli.path,
-        ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
-        { timeout: 10000 }
-      );
-      if (prCheckResult.exitCode === 0) {
-        const prs = JSON.parse(prCheckResult.stdout);
-        if (prs.length > 0) {
-          logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
-          jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
-          jl?.setProgress(PROGRESS_DONE);
-          jl?.setStep("완료 (기존 PR)");
-          removeCheckpoint(dataDir, issueNumber);
-          return { success: true, state: "DONE", prUrl: prs[0].url };
+    // Skip this check for retry jobs to allow re-execution of failed jobs
+    if (!input.isRetry) {
+      try {
+        const prCheckResult = await runCli(
+          project.commands.ghCli.path,
+          ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
+          { timeout: 10000 }
+        );
+        if (prCheckResult.exitCode === 0) {
+          const prs = JSON.parse(prCheckResult.stdout);
+          if (prs.length > 0) {
+            logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
+            jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
+            jl?.setProgress(PROGRESS_DONE);
+            jl?.setStep("완료 (기존 PR)");
+            removeCheckpoint(dataDir, issueNumber);
+            return { success: true, state: "DONE", prUrl: prs[0].url };
+          }
         }
+      } catch {
+        // non-fatal: continue pipeline if PR check fails
       }
-    } catch {
-      // non-fatal: continue pipeline if PR check fails
     }
 
     // === RECEIVED → VALIDATED ===
@@ -225,7 +229,20 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       }
 
       // === BRANCH_CREATED → WORKTREE_CREATED ===
-      if (isPastState(state, "WORKTREE_CREATED")) {
+      // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
+      if (input.isRetry && worktreePath && existsSync(worktreePath)) {
+        try {
+          await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
+          logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
+          jl?.log("재시도 작업 - 기존 worktree 정리 완료");
+        } catch (e) {
+          logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
+        }
+        worktreePath = undefined;
+        state = "BRANCH_CREATED";
+      }
+
+      if (isPastState(state, "WORKTREE_CREATED") && !input.isRetry) {
         logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
         // Verify worktree still exists
         if (worktreePath && !existsSync(worktreePath)) {

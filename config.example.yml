@@ -29,14 +29,14 @@ git:
   remoteAlias: "origin"
   allowedRepos: []                     # projects를 사용하면 비워둬도 됩니다
   gitPath: "git"
-  fetchDepth: 0
+  fetchDepth: 1
   signCommits: false
 
 worktree:
   rootPath: "../.aq-worktrees"
   cleanupOnSuccess: true
   cleanupOnFailure: false
-  maxAge: "7d"
+  maxAge: "24h"
   dirTemplate: "{{issueNumber}}-{{slug}}"
 
 commands:
@@ -67,8 +67,10 @@ review:
     - name: "code-review"
       promptTemplate: "review-round1.md"
       failAction: "warn"
-      maxRetries: 1
+      maxRetries: 2
       model: null
+      blind: true
+      adversarial: true
     # 필요 시 추가 라운드:
     # - name: "구조/설계"
     #   promptTemplate: "review-round2.md"
@@ -103,16 +105,16 @@ safety:
   maxPhases: 10
   maxRetries: 3
   maxTotalDurationMs: 3600000
-  maxFileChanges: 30
+  maxFileChanges: 50
   maxInsertions: 2000
   maxDeletions: 1000
-  requireTests: true
+  requireTests: false
   blockDirectBasePush: true
   timeouts:
     planGeneration: 120000
-    phaseImplementation: 300000
-    reviewRound: 120000
-    prCreation: 30000
+    phaseImplementation: 600000
+    reviewRound: 180000
+    prCreation: 60000
   stopConditions:
     - "CRITICAL_ERROR"
     - "SECURITY_VIOLATION"

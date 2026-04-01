@@ -10,9 +10,9 @@ import { validateConfig } from "./validator.js";
 function formatYamlTabError(error: unknown, filePath: string): Error {
   if (error instanceof Error &&
       error.constructor.name === 'YAMLParseError' &&
-      ('code' in error && (error as any).code === 'TAB_AS_INDENT')) {
+      (error as any).code === 'TAB_AS_INDENT') {
     const lineMatch = error.message.match(/line (\d+)/);
-    const lineNumber = lineMatch ? lineMatch[1] : '?';
+    const lineNumber = lineMatch?.[1] ?? '?';
 
     const friendlyMessage = `❌ YAML 설정 파일에 탭 문자가 포함되어 있습니다.
    파일: ${filePath}

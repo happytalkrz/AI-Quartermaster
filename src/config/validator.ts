@@ -114,17 +114,15 @@ function formatValidationError(error: z.ZodError): string {
       m.path === path && (!m.code || m.code === code)
     );
 
-    if (mapping) {
-      let result = `❌ ${mapping.message}\n`;
-      result += `   해결방법: ${mapping.solution}`;
-      if (mapping.example) {
-        result += `\n   예시:\n   ${mapping.example.replace(/\n/g, '\n   ')}`;
-      }
-      return result;
+    if (!mapping) {
+      return `❌ ${path}: ${issue.message}`;
     }
 
-    // 기본 메시지 (매핑되지 않은 경우)
-    return `❌ ${path}: ${issue.message}`;
+    const parts = [`❌ ${mapping.message}`, `   해결방법: ${mapping.solution}`];
+    if (mapping.example) {
+      parts.push(`   예시:\n   ${mapping.example.replace(/\n/g, '\n   ')}`);
+    }
+    return parts.join('\n');
   });
 
   return messages.join("\n\n");

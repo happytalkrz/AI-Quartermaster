@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
 import { fetchIssue } from "../github/issue-fetcher.js";
-import { createDraftPR, enableAutoMerge } from "../github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue } from "../github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { runCoreLoop } from "./core-loop.js";
@@ -629,6 +629,24 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       } else {
         jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
       }
+    }
+
+    // === Close the issue since PR is created ===
+    try {
+      jl?.setStep("이슈 닫는 중...");
+      const closed = await closeIssue(
+        issueNumber,
+        repo,
+        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun }
+      );
+      if (closed) {
+        jl?.log(`이슈 #${issueNumber} 닫음`);
+      } else {
+        jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
+      }
+    } catch (e) {
+      logger.warn(`Failed to close issue #${issueNumber}: ${e}`);
+      jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
     }
 
     jl?.setStep("완료");

@@ -29,6 +29,7 @@ interface CliArgs {
   interval?: number;
   execute?: boolean;
   job?: string;
+  nonInteractive?: boolean;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -338,7 +339,7 @@ async function startCommand(args: CliArgs): Promise<void> {
 
 async function setupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
-  await runSetup(aqRoot);
+  await runSetup(aqRoot, { nonInteractive: args.nonInteractive });
 }
 
 async function statusCommand(args: CliArgs): Promise<void> {
@@ -588,7 +589,8 @@ Monitoring:
   aqm doctor                                      환경 점검
 
 Management:
-  aqm setup                                       초기 설정
+  aqm setup                                       초기 설정 (인터랙티브)
+  aqm setup --non-interactive                    초기 설정 (자동 생성)
   aqm setup-webhook --repo <owner/repo>           GitHub webhook 등록
   aqm cleanup                                     오래된 worktree 정리
   aqm update                                      최신 버전 업데이트
@@ -605,6 +607,7 @@ Options:
   --daemon, -d        백그라운드 실행
   --dry-run           외부 작업 스킵 (push, PR 생성)
   --execute           plan 후 자동 실행
+  --non-interactive   비인터랙티브 모드 (setup 명령용)
 
 Environment:
   GITHUB_WEBHOOK_SECRET   웹훅 서명 검증 (webhook 모드 필수)
@@ -645,6 +648,8 @@ function parseArgs(argv: string[]): CliArgs {
       result.execute = true;
     } else if (argv[i] === "--job" && argv[i + 1]) {
       result.job = argv[++i];
+    } else if (argv[i] === "--non-interactive") {
+      result.nonInteractive = true;
     }
   }
   return result;

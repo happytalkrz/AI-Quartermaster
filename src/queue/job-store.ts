@@ -117,6 +117,15 @@ export class JobStore {
     return undefined;
   }
 
+  shouldBlockRepickup(issueNumber: number, repo: string): boolean {
+    for (const job of this.cache.values()) {
+      if (job.issueNumber === issueNumber && job.repo === repo && job.status === "success") {
+        return true;
+      }
+    }
+    return false;
+  }
+
   archive(id: string): boolean {
     const job = this.get(id);
     if (!job) return false;

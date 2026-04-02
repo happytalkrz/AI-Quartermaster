@@ -833,7 +833,7 @@ safety:
     expect(projectsLine).toMatch(/^projects:\s*$/); // No leading spaces for projects:
 
     const newRepoLine = lines.find(line => line.includes("new/repo"));
-    expect(newRepoLine).toMatch(/^  - repo:/); // 2 spaces for project items
+    expect(newRepoLine).toMatch(/^ {2}- repo:/); // 2 spaces for project items
   });
 
   it("should handle empty projects section", () => {

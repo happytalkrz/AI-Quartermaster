@@ -7,7 +7,7 @@ import {
   ValidationResult
 } from "../../src/setup/validators.js";
 import * as cliRunner from "../../src/utils/cli-runner.js";
-import { writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
+import { mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 

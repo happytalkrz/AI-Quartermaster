@@ -164,33 +164,28 @@ export class JobQueue {
       return undefined;
     }
 
-    // Check if success job exists (should block repickup)
-    if (this.store.shouldBlockRepickup(issueNumber, repo)) {
-      const existing = this.store.findAnyByIssue(issueNumber, repo);
-      logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing?.id}`);
-      return undefined;
-    }
-
-    // Check for existing failed/cancelled jobs and auto-archive them
+    // Check for existing job
     const existing = this.store.findAnyByIssue(issueNumber, repo);
-    if (existing && (existing.status === "failure" || existing.status === "cancelled")) {
-      logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
-
-      // Remove checkpoint for the failed job
-      const dataDir = resolve(process.cwd(), "data");
-      try {
-        removeCheckpoint(dataDir, issueNumber);
-        logger.info(`Checkpoint removed for issue #${issueNumber}`);
-      } catch (err) {
-        logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    if (existing) {
+      if (existing.status === "success") {
+        logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing.id}`);
+        return undefined;
       }
 
-      // Archive the existing job
-      this.store.archive(existing.id);
-    } else if (existing) {
-      // Other statuses (queued, running) should still block
-      logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
-      return undefined;
+      if (existing.status === "failure" || existing.status === "cancelled") {
+        logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
+        const dataDir = resolve(process.cwd(), "data");
+        try {
+          removeCheckpoint(dataDir, issueNumber);
+        } catch (err) {
+          logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+        }
+        this.store.archive(existing.id);
+      } else {
+        // queued/running statuses should still block
+        logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
+        return undefined;
+      }
     }
 
     const job = this.store.create(issueNumber, repo, dependencies, isRetry);

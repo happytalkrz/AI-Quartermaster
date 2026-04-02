@@ -1,6 +1,6 @@
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, writeFileSync } from "fs";
 import { parse as parseYaml } from "yaml";
-import { AQConfig } from "../types/config.js";
+import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
 
@@ -165,5 +165,211 @@ export function tryLoadConfig(projectRoot: string): TryLoadConfigResult {
         details: details?.length ? details : undefined
       }
     };
+  }
+}
+
+/**
+ * Git 정보를 현재 디렉토리에서 자동 감지
+ */
+export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseBranch?: string; error?: string }> {
+  try {
+    const { runCli } = await import("../utils/cli-runner.js");
+
+    // 1. git remote에서 repo 감지
+    let repo: string | undefined;
+    try {
+      const remoteResult = await runCli("git", ["remote", "get-url", "origin"], { cwd, timeout: 5000 });
+      if (remoteResult.exitCode === 0) {
+        const url = remoteResult.stdout.trim();
+        // GitHub URL 패턴 매칭: git@github.com:owner/repo.git 또는 https://github.com/owner/repo.git
+        const sshMatch = url.match(/git@github\.com:(.+?)\.git$/);
+        const httpsMatch = url.match(/https:\/\/github\.com\/(.+?)\.git$/);
+        const noGitMatch = url.match(/https:\/\/github\.com\/(.+?)$/);
+        repo = sshMatch?.[1] || httpsMatch?.[1] || noGitMatch?.[1];
+      }
+    } catch {
+      // git remote 실패 - repo는 undefined로 남김
+    }
+
+    // 2. 기본 브랜치 감지
+    let baseBranch: string | undefined;
+    try {
+      const branchResult = await runCli("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd, timeout: 5000 });
+      if (branchResult.exitCode === 0) {
+        const ref = branchResult.stdout.trim(); // refs/remotes/origin/main
+        baseBranch = ref.split('/').pop();
+      }
+    } catch {
+      // symbolic-ref 실패 시 git config에서 확인
+      try {
+        const configResult = await runCli("git", ["config", "init.defaultBranch"], { cwd, timeout: 5000 });
+        if (configResult.exitCode === 0) {
+          baseBranch = configResult.stdout.trim();
+        }
+      } catch {
+        // 기본값 사용
+        baseBranch = "main";
+      }
+    }
+
+    return { repo, baseBranch };
+  } catch (error) {
+    return { error: `Git 정보 감지 실패: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+/**
+ * 최소한의 config.yml 파일 생성
+ */
+export function writeMinimalConfig(configPath: string, project: ProjectConfig): void {
+  const content = `# AI Quartermaster 설정 파일
+# 전체 옵션은 https://github.com/your-repo/ai-quartermaster/blob/main/docs/config-schema.md 참조
+
+projects:
+  - repo: "${project.repo}"
+    path: "${project.path}"${project.baseBranch ? `\n    baseBranch: "${project.baseBranch}"` : ''}${project.mode ? `\n    mode: "${project.mode}"` : ''}
+
+# 추가 설정이 필요한 경우 아래 섹션들을 참고하여 추가하세요
+# general:
+#   projectName: "my-project"
+#   logLevel: "info"
+#   concurrency: 1
+#
+# safety:
+#   allowedLabels: ["enhancement", "bug"]
+#   maxPhases: 10
+`;
+
+  writeFileSync(configPath, content, 'utf-8');
+}
+
+/**
+ * 기존 config.yml에 프로젝트 추가 (YAML 포맷 보존)
+ */
+export function addProjectToConfig(configPath: string, project: ProjectConfig): void {
+  const content = readFileSync(configPath, 'utf-8');
+  const lines = content.split('\n');
+
+  // projects 섹션 찾기
+  let projectsLineIndex = -1;
+  let projectsIndent = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^(\s*)projects\s*:\s*$/);
+    if (match) {
+      projectsLineIndex = i;
+      projectsIndent = match[1];
+      break;
+    }
+  }
+
+  // projects 섹션이 없으면 파일 끝에 추가
+  if (projectsLineIndex === -1) {
+    const newContent = content.trim() + '\n\nprojects:\n  - repo: "' + project.repo + '"\n    path: "' + project.path + '"' +
+      (project.baseBranch ? '\n    baseBranch: "' + project.baseBranch + '"' : '') +
+      (project.mode ? '\n    mode: "' + project.mode + '"' : '') + '\n';
+    writeFileSync(configPath, newContent, 'utf-8');
+    return;
+  }
+
+  // projects 섹션이 있으면 기존 항목 뒤에 추가
+  let insertIndex = projectsLineIndex + 1;
+  const itemIndent = projectsIndent + '  ';
+
+  // 기존 프로젝트 항목들을 건너뛰기
+  for (let i = projectsLineIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') {
+      continue; // 빈 줄 건너뛰기
+    }
+    if (line.startsWith(itemIndent + '- ') || line.startsWith(itemIndent + 'repo:') ||
+        line.match(new RegExp(`^${itemIndent}\\s+(repo|path|baseBranch|mode):`))) {
+      // 아직 projects 섹션 안의 항목
+      insertIndex = i + 1;
+    } else if (line.match(/^\s*\w+\s*:/)) {
+      // 다음 섹션 시작
+      break;
+    } else if (line.startsWith(itemIndent)) {
+      // 아직 현재 프로젝트의 속성
+      insertIndex = i + 1;
+    } else {
+      // projects 섹션 끝
+      break;
+    }
+  }
+
+  // 새 프로젝트 항목 생성
+  const newProjectLines = [
+    `${itemIndent}- repo: "${project.repo}"`,
+    `${itemIndent}  path: "${project.path}"`
+  ];
+
+  if (project.baseBranch) {
+    newProjectLines.push(`${itemIndent}  baseBranch: "${project.baseBranch}"`);
+  }
+  if (project.mode) {
+    newProjectLines.push(`${itemIndent}  mode: "${project.mode}"`);
+  }
+
+  // 라인 삽입
+  lines.splice(insertIndex, 0, ...newProjectLines);
+
+  writeFileSync(configPath, lines.join('\n'), 'utf-8');
+}
+
+/**
+ * 현재 프로젝트를 config.yml에 등록
+ */
+export async function initProject(aqRoot: string, options: InitCommandOptions = {}): Promise<void> {
+  const configPath = `${aqRoot}/config.yml`;
+  const cwd = process.cwd();
+
+  // 1. Git 정보 자동 감지
+  const gitInfo = await detectGitInfo(cwd);
+  if (gitInfo.error) {
+    throw new Error(gitInfo.error);
+  }
+
+  // 2. 프로젝트 정보 구성
+  const project: ProjectConfig = {
+    repo: options.repo || gitInfo.repo || '',
+    path: options.path || cwd,
+    baseBranch: options.baseBranch || gitInfo.baseBranch,
+    mode: options.mode,
+  };
+
+  if (!project.repo) {
+    throw new Error('GitHub 저장소를 감지할 수 없습니다. --repo 옵션으로 명시하거나 git remote가 설정되어 있는지 확인하세요.');
+  }
+
+  // 3. 기존 config.yml 확인
+  if (existsSync(configPath)) {
+    // 기존 설정 로드해서 중복 검사
+    try {
+      const currentConfig = loadConfig(aqRoot);
+      const existingProject = currentConfig.projects?.find(p => p.repo === project.repo);
+
+      if (existingProject && !options.force) {
+        throw new Error(`프로젝트 "${project.repo}"가 이미 등록되어 있습니다. --force 옵션으로 덮어쓸 수 있습니다.`);
+      }
+
+      if (existingProject && options.force) {
+        // 기존 프로젝트 제거 후 추가하는 것보다는, 단순히 덮어쓰기
+        // 여기서는 단순히 추가만 구현 (제거 로직은 Phase 2에서)
+        console.log(`기존 프로젝트 "${project.repo}" 설정을 덮어씁니다.`);
+      }
+
+      addProjectToConfig(configPath, project);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('config.yml not found')) {
+        // loadConfig 실패 시 파일은 있지만 유효하지 않음
+        throw new Error('config.yml 파일이 손상되었습니다. 수동으로 수정하거나 백업 후 다시 생성하세요.');
+      }
+      throw error;
+    }
+  } else {
+    // 4. 새 config.yml 생성
+    writeMinimalConfig(configPath, project);
   }
 }

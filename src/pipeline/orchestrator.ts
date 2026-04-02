@@ -232,13 +232,37 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       // === BRANCH_CREATED → WORKTREE_CREATED ===
       // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
       if (input.isRetry && worktreePath && existsSync(worktreePath)) {
+        logger.info(`[RETRY] Attempting to clean up existing worktree: ${worktreePath}`);
+        jl?.log("재시도 작업 - 기존 worktree 정리 시도 중...");
+
+        // Try multiple cleanup approaches, but continue pipeline even if all fail
+        // since branch-manager will handle more comprehensive cleanup later
+        let cleanupSuccess = false;
+
         try {
           await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
-          logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
+          logger.info(`[RETRY] Successfully removed worktree: ${worktreePath}`);
           jl?.log("재시도 작업 - 기존 worktree 정리 완료");
+          cleanupSuccess = true;
         } catch (e) {
-          logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
+          logger.warn(`[RETRY] Primary worktree cleanup failed: ${e}`);
+
+          // Try alternative cleanup methods if primary fails
+          try {
+            // Attempt to prune stale worktree entries
+            await runCli(gitConfig.gitPath, ["worktree", "prune"], { cwd: projectRoot });
+            logger.info(`[RETRY] Pruned stale worktree entries`);
+          } catch (pruneError) {
+            logger.warn(`[RETRY] Worktree prune also failed: ${pruneError}`);
+          }
         }
+
+        if (!cleanupSuccess) {
+          logger.warn(`[RETRY] Worktree cleanup failed, but continuing pipeline. branch-manager will handle comprehensive cleanup.`);
+          jl?.log("워크트리 정리 실패했지만 계속 진행 (branch-manager에서 완전 정리 예정)");
+        }
+
+        // Always reset worktreePath and state to ensure pipeline continues
         worktreePath = undefined;
         state = "BRANCH_CREATED";
       }

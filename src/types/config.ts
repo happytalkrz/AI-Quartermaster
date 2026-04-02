@@ -147,6 +147,22 @@ export interface WizardAnswers {
   serverMode: ServerMode;
 }
 
+/** Options for the init command */
+export interface InitCommandOptions {
+  /** Override auto-detected repository (default: from git remote) */
+  repo?: string;
+  /** Override auto-detected path (default: current directory) */
+  path?: string;
+  /** Override base branch (default: from git config or "main") */
+  baseBranch?: string;
+  /** Pipeline mode for this project */
+  mode?: PipelineMode;
+  /** Force overwrite if project already exists in config */
+  force?: boolean;
+  /** Dry run - show what would be added without writing */
+  dryRun?: boolean;
+}
+
 /** Per-project configuration. Overrides global defaults for a specific repo. */
 export interface ProjectConfig {
   repo: string;           // "owner/repo"

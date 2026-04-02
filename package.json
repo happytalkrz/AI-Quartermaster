@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "tsc",
-    "postbuild": "node -e \"const fs = require('fs'); const path = 'dist/cli.js'; const content = fs.readFileSync(path, 'utf8'); if (!content.startsWith('#!/usr/bin/env node')) { fs.writeFileSync(path, '#!/usr/bin/env node\\n' + content); console.log('Shebang added to dist/cli.js'); } else { console.log('Shebang already present in dist/cli.js'); }\"",
+    "postbuild": "node scripts/add-shebang.cjs",
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test": "vitest run",
     "test:watch": "vitest",

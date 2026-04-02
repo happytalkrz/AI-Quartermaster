@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig, tryLoadConfig } from "../../src/config/loader.js";
-import { writeFileSync, mkdirSync, rmSync } from "fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  loadConfig,
+  tryLoadConfig,
+  detectGitInfo,
+  writeMinimalConfig,
+  addProjectToConfig,
+  initProject
+} from "../../src/config/loader.js";
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import * as cliRunner from "../../src/utils/cli-runner.js";
 
 describe("loadConfig", () => {
   let testDir: string;

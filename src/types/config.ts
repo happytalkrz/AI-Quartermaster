@@ -134,6 +134,18 @@ export interface SafetyConfig {
 
 export type PipelineMode = "code" | "content";
 
+/** Setup wizard options */
+export interface SetupOptions {
+  nonInteractive?: boolean;
+}
+
+/** Wizard answers collected during interactive setup */
+export interface WizardAnswers {
+  repo: string;
+  path: string;
+  mode: PipelineMode;
+}
+
 /** Per-project configuration. Overrides global defaults for a specific repo. */
 export interface ProjectConfig {
   repo: string;           // "owner/repo"

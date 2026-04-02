@@ -60,21 +60,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     api.use("/api/config", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
-    api.use("/api/events", async (c, next) => {
+    const sseTokenAuth = async (c: Context, next: Next) => {
       const token = c.req.query("token");
       if (!token || !isValidSessionToken(token)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       await next();
-    });
+    };
 
-    api.use("/api/jobs/:id/logs/stream", async (c, next) => {
-      const token = c.req.query("token");
-      if (!token || !isValidSessionToken(token)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    });
+    api.use("/api/events", sseTokenAuth);
+    api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
   }
 
   // Get configuration (masked for security)

@@ -142,55 +142,66 @@ function renderPhaseProgress(job) {
 /* ══════════════════════════════════════════════════════════════
    Phase List
    ══════════════════════════════════════════════════════════════ */
+function renderPhaseItem(phase, i, job) {
+  var isComplete = phase.success !== undefined;
+  var isSuccess = phase.success === true;
+  var isFailed = phase.success === false;
+  var isCurrent = !isComplete && job.status === 'running';
+  var dur = phase.durationMs ? fmtDurationMs(phase.durationMs) : '--:--';
+  var phaseName = esc(phase.name || 'Phase ' + (i + 1));
+
+  // Determine state-specific styles and content
+  var containerClass, iconHtml, nameClass, subtitleHtml, durHtml, chevronColor;
+
+  if (isSuccess) {
+    containerClass = 'bg-surface-container-low p-4 flex items-center justify-between';
+    iconHtml = '<span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: \'FILL\' 1;">check_circle</span>';
+    nameClass = 'text-sm font-bold';
+    subtitleHtml = phase.commit ? '<div class="text-[10px] text-outline font-mono">commit: ' + esc(phase.commit) + '</div>' : '';
+    durHtml = '<span class="text-xs font-mono text-outline">' + dur + '</span>';
+    chevronColor = 'text-outline';
+  } else if (isFailed) {
+    containerClass = 'bg-surface-container-low p-4 flex items-center justify-between border-l-2 border-[#f85149]';
+    iconHtml = '<span class="material-symbols-outlined text-[#f85149]" style="font-variation-settings: \'FILL\' 1;">cancel</span>';
+    nameClass = 'text-sm font-bold text-[#f85149]';
+    subtitleHtml = phase.error ? '<div class="text-[10px] text-[#f85149]/60 font-mono">' + esc(phase.error).substring(0, 80) + '</div>' : '';
+    durHtml = '<span class="text-xs font-mono text-[#f85149]">' + dur + '</span>';
+    chevronColor = 'text-[#f85149]';
+  } else if (isCurrent) {
+    containerClass = 'bg-surface-container p-4 flex items-center justify-between ring-1 ring-primary/30 z-10';
+    iconHtml = '<div class="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>';
+    nameClass = 'text-sm font-bold text-primary';
+    subtitleHtml = '';
+    durHtml = '<span class="text-xs font-mono text-primary animate-pulse">Running...</span>';
+    chevronColor = 'text-primary';
+  } else {
+    containerClass = 'bg-surface-container-low p-4 flex items-center justify-between opacity-50';
+    iconHtml = '<span class="material-symbols-outlined text-outline">pending</span>';
+    nameClass = 'text-sm font-bold';
+    subtitleHtml = '';
+    durHtml = '<span class="text-xs font-mono text-outline">--:--</span>';
+    chevronColor = 'text-outline';
+  }
+
+  return '<div class="' + containerClass + '">' +
+    '<div class="flex items-center gap-4">' +
+      iconHtml +
+      '<div><div class="' + nameClass + '">' + phaseName + '</div>' + subtitleHtml + '</div>' +
+    '</div>' +
+    '<div class="flex items-center gap-8">' + durHtml +
+      '<span class="material-symbols-outlined ' + chevronColor + ' text-lg">chevron_right</span>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderPhaseList(job) {
   var phases = job.phaseResults || [];
   if (phases.length === 0) return '';
 
   var html = '<div class="space-y-px bg-outline-variant/10 rounded-xl overflow-hidden mt-6">';
-
   phases.forEach(function(phase, i) {
-    var isComplete = phase.success !== undefined;
-    var isSuccess = phase.success === true;
-    var isFailed = phase.success === false;
-    var isCurrent = !isComplete && job.status === 'running';
-    var dur = phase.durationMs ? fmtDurationMs(phase.durationMs) : '--:--';
-
-    if (isSuccess) {
-      html += '<div class="bg-surface-container-low p-4 flex items-center justify-between">';
-      html += '<div class="flex items-center gap-4">';
-      html += '<span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: \'FILL\' 1;">check_circle</span>';
-      html += '<div><div class="text-sm font-bold">' + esc(phase.name || 'Phase ' + (i + 1)) + '</div>';
-      if (phase.commit) html += '<div class="text-[10px] text-outline font-mono">commit: ' + esc(phase.commit) + '</div>';
-      html += '</div></div>';
-      html += '<div class="flex items-center gap-8"><span class="text-xs font-mono text-outline">' + dur + '</span>';
-      html += '<span class="material-symbols-outlined text-outline text-lg">chevron_right</span></div></div>';
-    } else if (isFailed) {
-      html += '<div class="bg-surface-container-low p-4 flex items-center justify-between border-l-2 border-[#f85149]">';
-      html += '<div class="flex items-center gap-4">';
-      html += '<span class="material-symbols-outlined text-[#f85149]" style="font-variation-settings: \'FILL\' 1;">cancel</span>';
-      html += '<div><div class="text-sm font-bold text-[#f85149]">' + esc(phase.name || 'Phase ' + (i + 1)) + '</div>';
-      if (phase.error) html += '<div class="text-[10px] text-[#f85149]/60 font-mono">' + esc(phase.error).substring(0, 80) + '</div>';
-      html += '</div></div>';
-      html += '<div class="flex items-center gap-8"><span class="text-xs font-mono text-[#f85149]">' + dur + '</span>';
-      html += '<span class="material-symbols-outlined text-[#f85149] text-lg">chevron_right</span></div></div>';
-    } else if (isCurrent) {
-      html += '<div class="bg-surface-container p-4 flex items-center justify-between ring-1 ring-primary/30 z-10">';
-      html += '<div class="flex items-center gap-4">';
-      html += '<div class="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>';
-      html += '<div><div class="text-sm font-bold text-primary">' + esc(phase.name || 'Phase ' + (i + 1)) + '</div>';
-      html += '</div></div>';
-      html += '<div class="flex items-center gap-8"><span class="text-xs font-mono text-primary animate-pulse">Running...</span>';
-      html += '<span class="material-symbols-outlined text-primary text-lg">chevron_right</span></div></div>';
-    } else {
-      html += '<div class="bg-surface-container-low p-4 flex items-center justify-between opacity-50">';
-      html += '<div class="flex items-center gap-4">';
-      html += '<span class="material-symbols-outlined text-outline">pending</span>';
-      html += '<div><div class="text-sm font-bold">' + esc(phase.name || 'Phase ' + (i + 1)) + '</div></div></div>';
-      html += '<div class="flex items-center gap-8"><span class="text-xs font-mono text-outline">--:--</span>';
-      html += '<span class="material-symbols-outlined text-outline text-lg">chevron_right</span></div></div>';
-    }
+    html += renderPhaseItem(phase, i, job);
   });
-
   html += '</div>';
   return html;
 }
@@ -246,7 +257,6 @@ function renderLogsView(job) {
    Main Render
    ══════════════════════════════════════════════════════════════ */
 function handleData(data) {
-  currentJobs = sortJobs(data.jobs || []);
   render(data);
 }
 

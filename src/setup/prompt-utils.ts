@@ -1,4 +1,4 @@
-import { createInterface, Interface } from "readline";
+import { createInterface } from "readline";
 import { Readable, Writable } from "stream";
 
 export interface PromptOptions {
@@ -45,6 +45,7 @@ export async function askChoice(prompt: string, choices: string[], options?: Pro
 
   const fullPrompt = `${prompt}\n${choiceText}\n선택하세요 (1-${choices.length}): `;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const answer = await askQuestion(fullPrompt, options);
     const choice = parseInt(answer, 10);
@@ -72,13 +73,13 @@ export class MockPrompt {
 
   createOptions(): PromptOptions {
     const input = new Readable({
-      read() {
+      read: () => {
         if (this.index < this.responses.length) {
-          this.push(this.responses[this.index++] + "\n");
+          input.push(this.responses[this.index++] + "\n");
         } else {
-          this.push(null);
+          input.push(null);
         }
-      }.bind(this),
+      },
     });
 
     const output = new Writable({

@@ -2,12 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import { createServer } from "http";
 import {
   writePidFile,
   readPidFile,
   isProcessRunning,
   cleanupStalePid,
   removePidFile,
+  findProcessByPort,
 } from "../../src/server/pid-manager.js";
 
 let tmpDir: string;
@@ -94,5 +96,86 @@ describe("removePidFile", () => {
 
   it("does not throw when file does not exist", () => {
     expect(() => removePidFile(join(tmpDir, "ghost.pid"))).not.toThrow();
+  });
+});
+
+describe("findProcessByPort", () => {
+  it("returns null for a port that is not in use", () => {
+    // Use a high port number that is unlikely to be in use
+    const unusedPort = 65432;
+    expect(findProcessByPort(unusedPort)).toBeNull();
+  });
+
+  it("returns null for invalid port numbers", () => {
+    expect(findProcessByPort(-1)).toBeNull();
+    expect(findProcessByPort(0)).toBeNull();
+    expect(findProcessByPort(99999)).toBeNull();
+  });
+
+  it("does not throw for edge cases", () => {
+    expect(() => findProcessByPort(80)).not.toThrow();
+    expect(() => findProcessByPort(443)).not.toThrow();
+    expect(() => findProcessByPort(3000)).not.toThrow();
+  });
+
+  it("returns the correct PID for a process listening on a port", async () => {
+    // Create a test HTTP server
+    const server = createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("test server");
+    });
+
+    // Find an available port by letting the system assign one
+    await new Promise<void>((resolve) => {
+      server.listen(0, () => resolve());
+    });
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("Failed to get server address");
+    }
+
+    const port = address.port;
+
+    try {
+      // Find the process using this port
+      const foundPid = findProcessByPort(port);
+
+      // The found PID should be the current process PID (since this test is running the server)
+      expect(foundPid).toBe(process.pid);
+    } finally {
+      // Clean up the server
+      server.close();
+
+      // Wait a bit for the port to be released
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  });
+
+  it("returns null when lsof command fails or port is freed", async () => {
+    // Test port that was in use but is now free
+    const server = createServer();
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, () => resolve());
+    });
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("Failed to get server address");
+    }
+
+    const port = address.port;
+
+    // Close the server first
+    server.close();
+
+    // Wait for port to be released
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Now the port should be free and findProcessByPort should return null
+    expect(findProcessByPort(port)).toBeNull();
   });
 });

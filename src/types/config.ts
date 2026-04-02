@@ -3,6 +3,13 @@ export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
 export type MergeMethod = "merge" | "squash" | "rebase";
 
+export interface SkillContent {
+  name: string;
+  category: string;
+  description: string;
+  content: string;
+}
+
 export interface GeneralConfig {
   projectName: string;
   logLevel: LogLevel;
@@ -65,6 +72,7 @@ export interface CommandsConfig {
   typecheck: string;
   preInstall: string;
   claudeMdPath: string;
+  skillsPath: string;
 }
 
 export interface ReviewRound {

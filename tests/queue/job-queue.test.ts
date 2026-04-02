@@ -338,4 +338,138 @@ describe("JobQueue", () => {
       expect(updatedJob?.error).toBeUndefined();
     });
   });
+
+  describe("Phase 5: Full integration scenario tests", () => {
+    it("should handle complete pipeline restart scenario: failed job → re-enqueue → cleanup → new execution", async () => {
+      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+
+      let executionCount = 0;
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        executionCount++;
+        if (executionCount === 1) {
+          throw new Error("Simulated pipeline failure");
+        } else {
+          return { prUrl: `https://pr/restart-success-${executionCount}` };
+        }
+      });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Initial job that fails
+      const initialJob = queue.enqueue(555, "test/repo");
+      expect(initialJob?.status).toBe("queued");
+
+      // Wait for initial failure
+      await new Promise(r => setTimeout(r, 50));
+      const failedJob = store.get(initialJob!.id);
+      expect(failedJob?.status).toBe("failure");
+      expect(failedJob?.error).toContain("Simulated pipeline failure");
+
+      // Simulate re-enqueue (as would happen from polling)
+      const newJob = queue.enqueue(555, "test/repo");
+      expect(newJob).toBeDefined();
+      expect(newJob?.id).not.toBe(initialJob?.id);
+
+      // Verify checkpoint cleanup was triggered
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        555
+      );
+
+      // Verify failed job was archived
+      const archivedJob = store.get(initialJob!.id);
+      expect(archivedJob?.status).toBe("archived");
+
+      // Wait for new job to complete successfully
+      await new Promise(r => setTimeout(r, 50));
+      const completedNewJob = store.get(newJob!.id);
+      expect(completedNewJob?.status).toBe("success");
+      expect(completedNewJob?.prUrl).toBe("https://pr/restart-success-2");
+      expect(executionCount).toBe(2);
+    });
+
+    it("should prevent multiple simultaneous re-enqueues for same issue", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("first failure"))
+        .mockResolvedValue({ prUrl: "https://pr/second-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Create failed job
+      const failedJob = queue.enqueue(666, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(failedJob!.id)?.status).toBe("failure");
+
+      // Try to enqueue multiple times simultaneously (simulating multiple polling hits)
+      const results = await Promise.all([
+        Promise.resolve(queue.enqueue(666, "test/repo")),
+        Promise.resolve(queue.enqueue(666, "test/repo")),
+        Promise.resolve(queue.enqueue(666, "test/repo")),
+      ]);
+
+      // Only one should succeed
+      const successful = results.filter(r => r !== undefined);
+      expect(successful).toHaveLength(1);
+
+      // Original job should be archived
+      expect(store.get(failedJob!.id)?.status).toBe("archived");
+
+      // Wait for the successful job to complete
+      await new Promise(r => setTimeout(r, 50));
+      const newJob = store.get(successful[0]!.id);
+      expect(newJob?.status).toBe("success");
+    });
+
+    it("should handle cascading dependency failures and cleanup", async () => {
+      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("dependency failure"))
+        .mockResolvedValue({ prUrl: "https://pr/dep-retry-success" });
+
+      const queue = new JobQueue(store, 2, handler);
+
+      // Enqueue dependency (issue 100) and dependent (issue 101)
+      const depJob = queue.enqueue(100, "test/repo");
+      const dependentJob = queue.enqueue(101, "test/repo", [100]); // depends on issue 100
+
+      // Wait for dependency to fail
+      await new Promise(r => setTimeout(r, 100));
+      expect(store.get(depJob!.id)?.status).toBe("failure");
+
+      // Wait a bit more for dependent to be processed
+      await new Promise(r => setTimeout(r, 100));
+      const dependentState = store.get(dependentJob!.id);
+      expect(dependentState?.status).toBe("failure");
+      expect(dependentState?.error).toContain("의존 이슈 #100");
+
+      // Re-enqueue dependency (simulating re-polling)
+      const newDepJob = queue.enqueue(100, "test/repo");
+      expect(newDepJob).toBeDefined();
+
+      // Verify cleanup occurred
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        100
+      );
+
+      // Original dependency job should be archived
+      expect(store.get(depJob!.id)?.status).toBe("archived");
+
+      // Wait for new dependency to succeed
+      await new Promise(r => setTimeout(r, 50));
+      const completedDepJob = store.get(newDepJob!.id);
+      expect(completedDepJob?.status).toBe("success");
+
+      // Now dependent can be re-enqueued successfully
+      const newDependentJob = queue.enqueue(101, "test/repo", [100]);
+      expect(newDependentJob).toBeDefined();
+
+      await new Promise(r => setTimeout(r, 50));
+      const completedDependentJob = store.get(newDependentJob!.id);
+      expect(completedDependentJob?.status).toBe("success");
+    });
+  });
 });

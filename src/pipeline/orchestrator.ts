@@ -33,6 +33,7 @@ import { PatternStore } from "../learning/pattern-store.js";
 import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import { withRepoLock } from "../git/repo-lock.js";
+import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
 import {
   PROGRESS_ISSUE_VALIDATED,
   PROGRESS_PLAN_GENERATED,
@@ -302,6 +303,21 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       }
     }
 
+    // === Load skills for prompt injection ===
+    let skillsContext = "";
+    const skillsPath = project.commands.skillsPath;
+    if (skillsPath) {
+      // Use original project root (not worktree) for skills
+      const resolvedSkillsPath = resolve(projectRoot, skillsPath);
+      const skills = loadSkills(resolvedSkillsPath);
+      if (skills.length > 0) {
+        skillsContext = formatSkillsForPrompt(skills);
+        logger.info(`Loaded ${skills.length} skills from ${resolvedSkillsPath}`);
+      } else {
+        logger.debug(`No skills found at ${resolvedSkillsPath}`);
+      }
+    }
+
     // === Get repo structure for plan generation (tracked files only) ===
     const structureResult = await runCli(
       gitConfig.gitPath, ["ls-tree", "-r", "--name-only", "HEAD"],
@@ -329,6 +345,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       cwd: worktreePath!,
       modeHint: preset.planHint,
       projectConventions,
+      skillsContext,
       dataDir,
       jobLogger: jl,
       previousPhaseResults: resumeFrom?.phaseResults?.map(r => ({
@@ -420,12 +437,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       plan: { summary: string };
       diff: { full: string };
       config: { testCommand: string; lintCommand: string };
+      skillsContext: string;
     };
     const buildReviewVars = async (): Promise<ReviewVars> => ({
       issue: { number: String(issueNumber), title: issue.title, body: issue.body },
       plan: { summary: coreResult.plan.problemDefinition },
       diff: { full: await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! }) },
       config: { testCommand: project.commands.test, lintCommand: project.commands.lint },
+      skillsContext: skillsContext,
     });
     let reviewVariables: ReviewVars | undefined;
 

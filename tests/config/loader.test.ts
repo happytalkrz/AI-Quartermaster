@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig } from "../../src/config/loader.js";
+import { loadConfig, tryLoadConfig } from "../../src/config/loader.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -371,5 +371,151 @@ safety:
         expect(message).toMatch(/최대 페이즈 수는 1 이상이어야 합니다/);
       }
     });
+  });
+});
+
+describe("tryLoadConfig", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should return config when config.yml exists and is valid", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(result.config?.general.projectName).toBe("test-project");
+  });
+
+  it("should return not_found error when config.yml is missing", () => {
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect(result.error?.type).toBe("not_found");
+    expect(result.error?.message).toContain("config.yml not found");
+  });
+
+  it("should return yaml_syntax error when config.yml has invalid YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+invalid yaml:
+  - unclosed bracket: [
+    missing quote: "test
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect(result.error?.type).toBe("yaml_syntax");
+    expect(result.error?.message).toContain("Failed to parse config.yml");
+  });
+
+  it("should return yaml_syntax error when config.local.yml has invalid YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+    writeFileSync(join(testDir, "config.local.yml"), `
+invalid yaml:
+  - unclosed bracket: [
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect(result.error?.type).toBe("yaml_syntax");
+    expect(result.error?.message).toContain("Failed to parse config.local.yml");
+  });
+
+  it("should return validation error when config is invalid", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: ""  # empty project name should fail validation
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeNull();
+    expect(result.error).toBeTruthy();
+    expect(result.error?.type).toBe("validation");
+    expect(result.error?.message).toContain("설정 파일에 오류가 있습니다");
+    expect(result.error?.details).toBeTruthy();
+  });
+
+  it("should successfully merge config.local.yml overrides", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+  logLevel: "info"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+    writeFileSync(join(testDir, "config.local.yml"), `
+general:
+  logLevel: "debug"
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(result.config?.general.logLevel).toBe("debug");
+    expect(result.config?.general.projectName).toBe("test-project");
+  });
+
+  it("should ignore missing config.local.yml without error", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+    // No config.local.yml file created
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(result.config?.general.projectName).toBe("test-project");
+  });
+
+  it("should work with minimal projects-only config", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo-name"
+    path: "/path/to/local/clone"
+`);
+
+    const result = tryLoadConfig(testDir);
+
+    expect(result.config).toBeTruthy();
+    expect(result.error).toBeUndefined();
+    expect(result.config?.projects).toHaveLength(1);
+    expect(result.config?.projects?.[0].repo).toBe("owner/repo-name");
   });
 });

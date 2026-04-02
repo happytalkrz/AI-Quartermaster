@@ -3,6 +3,7 @@ import { resolve } from "path";
 import * as net from "net";
 import { runCli } from "../utils/cli-runner.js";
 import { AQConfig } from "../types/config.js";
+import { TryLoadConfigResult } from "../config/loader.js";
 
 const MIN_CLAUDE_VERSION = "1.0.0";
 
@@ -240,34 +241,72 @@ function checkDiskWritable(aqRoot: string): void {
   }
 }
 
-export async function runDoctor(config: AQConfig, aqRoot: string): Promise<void> {
+export async function runDoctor(
+  config: AQConfig | null,
+  aqRoot: string,
+  configError?: TryLoadConfigResult['error']
+): Promise<void> {
   console.log("\n=== AI Quartermaster Doctor ===");
 
+  // Always check prerequisites and GitHub auth
   await checkPrerequisites();
   await checkGhAuth();
 
-  const projects = config.projects ?? [];
-  for (const project of projects) {
-    const pathOk = checkProjectPath(project.path, project.repo);
-    if (pathOk) {
-      await checkGitSafeDirectory(project.path, project.repo);
-      await checkGitObjectsPermission(project.path, project.repo);
-      await checkRemoteUrl(project.path, project.repo);
-
-      const projectCommands = project.commands
-        ? { ...config.commands, ...project.commands }
-        : config.commands;
-      checkPackageJsonScripts(project.path, project.repo, {
-        test: projectCommands.test,
-        lint: projectCommands.lint,
-        build: projectCommands.build,
-      });
+  // Show config file status
+  if (configError) {
+    console.log("\n[설정 파일]");
+    switch (configError.type) {
+      case 'not_found':
+        fail("config.yml", configError.message);
+        break;
+      case 'yaml_syntax':
+        fail("YAML 문법", configError.message);
+        break;
+      case 'validation':
+        fail("설정 검증", configError.message);
+        if (configError.details && configError.details.length > 0) {
+          configError.details.forEach(detail => {
+            console.log(`    ${red("ERROR")} ${detail}`);
+          });
+        }
+        break;
     }
+  } else if (config === null) {
+    console.log("\n[설정 파일]");
+    warn("config.yml", "설정 파일을 로드하지 않고 실행 중입니다");
+  } else {
+    console.log("\n[설정 파일]");
+    pass("config.yml 로드 성공");
   }
 
-  if (projects.length === 0) {
+  // Project-specific checks only if config is available
+  if (config) {
+    const projects = config.projects ?? [];
+    for (const project of projects) {
+      const pathOk = checkProjectPath(project.path, project.repo);
+      if (pathOk) {
+        await checkGitSafeDirectory(project.path, project.repo);
+        await checkGitObjectsPermission(project.path, project.repo);
+        await checkRemoteUrl(project.path, project.repo);
+
+        const projectCommands = project.commands
+          ? { ...config.commands, ...project.commands }
+          : config.commands;
+        checkPackageJsonScripts(project.path, project.repo, {
+          test: projectCommands.test,
+          lint: projectCommands.lint,
+          build: projectCommands.build,
+        });
+      }
+    }
+
+    if (projects.length === 0) {
+      console.log("\n[프로젝트]");
+      warn("projects", "config.yml에 등록된 프로젝트가 없습니다");
+    }
+  } else {
     console.log("\n[프로젝트]");
-    warn("projects", "config.yml에 등록된 프로젝트가 없습니다");
+    warn("projects", "설정 파일이 없어 프로젝트별 점검을 건너뜁니다");
   }
 
   const port = 3000; // default; config doesn't store port

@@ -133,6 +133,19 @@ export interface SafetyConfig {
 }
 
 export type PipelineMode = "code" | "content";
+export type ServerMode = "polling" | "webhook";
+
+/** Setup wizard options */
+export interface SetupOptions {
+  nonInteractive?: boolean;
+}
+
+/** Wizard answers collected during interactive setup */
+export interface WizardAnswers {
+  repo: string;
+  path: string;
+  serverMode: ServerMode;
+}
 
 /** Per-project configuration. Overrides global defaults for a specific repo. */
 export interface ProjectConfig {

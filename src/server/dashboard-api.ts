@@ -2,6 +2,8 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
+import { loadConfig } from "../config/loader.js";
+import { maskSensitiveConfig } from "../utils/config-masker.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -55,24 +57,33 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     api.use("/api/jobs", bearerAuth);
     api.use("/api/jobs/*", bearerAuth);
     api.use("/api/stats", bearerAuth);
+    api.use("/api/config", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
-    api.use("/api/events", async (c, next) => {
+    const sseTokenAuth = async (c: Context, next: Next) => {
       const token = c.req.query("token");
       if (!token || !isValidSessionToken(token)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       await next();
-    });
+    };
 
-    api.use("/api/jobs/:id/logs/stream", async (c, next) => {
-      const token = c.req.query("token");
-      if (!token || !isValidSessionToken(token)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    });
+    api.use("/api/events", sseTokenAuth);
+    api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
   }
+
+  // Get configuration (masked for security)
+  api.get("/api/config", (c) => {
+    try {
+      const projectRoot = process.cwd();
+      const config = loadConfig(projectRoot);
+      const maskedConfig = maskSensitiveConfig(config);
+      return c.json({ config: maskedConfig });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+    }
+  });
 
   // List all jobs (exclude archived by default, ?include=archived to show)
   api.get("/api/jobs", (c) => {

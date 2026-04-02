@@ -102,9 +102,8 @@ export class IssuePoller {
     issues.sort((a, b) => a.number - b.number);
 
     for (const issue of issues) {
-      const existing = this.store.findAnyByIssue(issue.number, repo);
-      if (existing) {
-        logger.debug(`이슈 #${issue.number} (${repo}) — 이미 처리됨 (${existing.id}, 상태: ${existing.status}), 건너뜀`);
+      if (this.store.shouldBlockRepickup(issue.number, repo)) {
+        logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (성공한 잡 존재), 건너뜀`);
         continue;
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);

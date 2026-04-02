@@ -17,12 +17,12 @@ const mockRunCli = vi.mocked(runCli);
 // Lightweight in-memory doubles for JobStore and JobQueue
 // ---------------------------------------------------------------------------
 
-function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string }> = []) {
+function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string; status?: string }> = []) {
   const jobs = existingJobs.map((j, i) => ({
     id: `aq-${j.issueNumber}-${i}`,
     issueNumber: j.issueNumber,
     repo: j.repo,
-    status: "queued" as const,
+    status: (j.status || "queued") as const,
     createdAt: new Date().toISOString(),
   }));
 
@@ -37,6 +37,9 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string }>
     }),
     findAnyByIssue: vi.fn((issueNumber: number, repo: string): Job | undefined => {
       return jobs.find(j => j.issueNumber === issueNumber && j.repo === repo);
+    }),
+    shouldBlockRepickup: vi.fn((issueNumber: number, repo: string): boolean => {
+      return jobs.some(j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success");
     }),
     create: vi.fn((issueNumber: number, repo: string): Job => {
       const job: Job = {
@@ -128,17 +131,17 @@ describe("E2E: polling integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Duplicate issues are skipped (already in job store)
+  // 2. Skips issues that have successful jobs (shouldBlockRepickup)
   // -------------------------------------------------------------------------
   it("skips issues that already exist in the job store", async () => {
-    // Issue #10 is already queued
-    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo" }]);
+    // Issue #10 already has a successful job
+    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "success" }]);
     const queue = makeJobQueue();
 
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
-        { number: 10, title: "Add feature A" }, // already exists
-        { number: 12, title: "New issue C" },    // new
+        { number: 10, title: "Add feature A" }, // has successful job - should be blocked
+        { number: 12, title: "New issue C" },    // new - should be enqueued
       ]),
       stderr: "",
       exitCode: 0,
@@ -154,7 +157,31 @@ describe("E2E: polling integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 3. Empty issue list produces no enqueues
+  // 3. Failed jobs should allow re-pickup (do not block)
+  // -------------------------------------------------------------------------
+  it("allows re-pickup of issues with failed jobs", async () => {
+    // Issue #10 has a failed job - should allow re-pickup
+    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "failure" }]);
+    const queue = makeJobQueue();
+
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([
+        { number: 10, title: "Add feature A" }, // has failed job - should be re-enqueued
+      ]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // The failed issue should be re-enqueued
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    expect(queue.enqueue).toHaveBeenCalledWith(10, "test/repo");
+  });
+
+  // -------------------------------------------------------------------------
+  // 4. Empty issue list produces no enqueues
   // -------------------------------------------------------------------------
   it("does nothing when gh returns an empty issue list", async () => {
     const store = makeJobStore();

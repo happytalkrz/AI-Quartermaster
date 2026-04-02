@@ -23,6 +23,8 @@ export class JobQueue {
   private stuckTimeoutMs: number;
   private shuttingDown: boolean = false;
   private stuckAborted: Set<string> = new Set();
+  private isProcessing: boolean = false;
+  private needsReprocess: boolean = false;
 
   constructor(store: JobStore, concurrency: number, handler: JobHandler, stuckTimeoutMs: number = 600000) {
     this.store = store;
@@ -247,63 +249,81 @@ export class JobQueue {
   }
 
   private async processNext(): Promise<void> {
-    // Collect job IDs that are skipped due to unmet dependencies (put back at end)
-    const deferred: string[] = [];
-
-    while (this.running.size < this.concurrency && this.pending.length > 0) {
-      const jobId = this.pending.shift()!;
-
-      if (this.cancelled.has(jobId)) {
-        this.cancelled.delete(jobId);
-        continue;
-      }
-
-      const job = this.store.get(jobId);
-      if (!job) {
-        continue;
-      }
-
-      // Check dependency readiness
-      if (job.dependencies && job.dependencies.length > 0) {
-        const { met, pending } = areDependenciesMet(job.dependencies, job.repo, this.store);
-        if (!met) {
-          // Check if any dependency has permanently failed — fail the dependent job immediately
-          let depFailed = false;
-          for (const depNum of job.dependencies) {
-            const depJob = this.store.findAnyByIssue(depNum, job.repo);
-            if (depJob && (depJob.status === "failure" || depJob.status === "cancelled")) {
-              logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
-              this.store.update(jobId, {
-                status: "failure",
-                completedAt: new Date().toISOString(),
-                error: `의존 이슈 #${depNum}이(가) 실패하여 실행 불가`,
-              });
-              depFailed = true;
-              break;
-            }
-          }
-          if (!depFailed) {
-            logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
-            deferred.push(jobId);
-          }
-          continue;
-        }
-      }
-
-      this.running.add(jobId);
-      this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
-
-      logger.info(`Job started: ${jobId}`);
-
-      // Run async - don't await, let it run in background
-      this.executeJob(job).catch(err => {
-        logger.error(`Job ${jobId} unexpected error: ${err}`);
-      });
+    // Prevent re-entrancy
+    if (this.isProcessing) {
+      this.needsReprocess = true;
+      return;
     }
 
-    // Re-append deferred jobs so they are retried on the next processNext() call
-    for (const jobId of deferred) {
-      this.pending.push(jobId);
+    this.isProcessing = true;
+    this.needsReprocess = false;
+
+    try {
+      // Collect job IDs that are skipped due to unmet dependencies (put back at end)
+      const deferred: string[] = [];
+
+      while (this.running.size < this.concurrency && this.pending.length > 0) {
+        const jobId = this.pending.shift()!;
+
+        if (this.cancelled.has(jobId)) {
+          this.cancelled.delete(jobId);
+          continue;
+        }
+
+        const job = this.store.get(jobId);
+        if (!job) {
+          continue;
+        }
+
+        // Check dependency readiness
+        if (job.dependencies && job.dependencies.length > 0) {
+          const { met, pending } = areDependenciesMet(job.dependencies, job.repo, this.store);
+          if (!met) {
+            // Check if any dependency has permanently failed — fail the dependent job immediately
+            let depFailed = false;
+            for (const depNum of job.dependencies) {
+              const depJob = this.store.findAnyByIssue(depNum, job.repo);
+              if (depJob && (depJob.status === "failure" || depJob.status === "cancelled")) {
+                logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
+                this.store.update(jobId, {
+                  status: "failure",
+                  completedAt: new Date().toISOString(),
+                  error: `의존 이슈 #${depNum}이(가) 실패하여 실행 불가`,
+                });
+                depFailed = true;
+                break;
+              }
+            }
+            if (!depFailed) {
+              logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
+              deferred.push(jobId);
+            }
+            continue;
+          }
+        }
+
+        this.running.add(jobId);
+        this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
+
+        logger.info(`Job started: ${jobId}`);
+
+        // Run async - don't await, let it run in background
+        this.executeJob(job).catch(err => {
+          logger.error(`Job ${jobId} unexpected error: ${err}`);
+        });
+      }
+
+      // Re-append deferred jobs so they are retried on the next processNext() call
+      for (const jobId of deferred) {
+        this.pending.push(jobId);
+      }
+    } finally {
+      this.isProcessing = false;
+
+      // If another call was made while processing, handle it now
+      if (this.needsReprocess) {
+        setTimeout(() => this.processNext(), 0);
+      }
     }
   }
 

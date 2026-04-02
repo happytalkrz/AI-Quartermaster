@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AQConfig } from "../types/config.js";
 
+
 // 에러 메시지 매핑 테이블
 interface ErrorMessageMapping {
   path: string;

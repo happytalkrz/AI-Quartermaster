@@ -117,6 +117,110 @@ git:
     expect(() => loadConfig(testDir)).toThrow(/YAML 설정 파일에 탭 문자가 포함되어 있습니다/);
   });
 
+  it("should load minimal config with only projects array", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo-name"
+    path: "/path/to/local/clone"
+`);
+    const config = loadConfig(testDir);
+
+    // Check that projects are loaded
+    expect(config.projects).toHaveLength(1);
+    expect(config.projects?.[0].repo).toBe("owner/repo-name");
+    expect(config.projects?.[0].path).toBe("/path/to/local/clone");
+
+    // Check that defaults are merged correctly
+    expect(config.general.projectName).toBe("ai-quartermaster");
+    expect(config.general.logLevel).toBe("info");
+    expect(config.git.defaultBaseBranch).toBe("main");
+    expect(config.git.allowedRepos).toEqual([]);
+    expect(config.worktree.cleanupOnSuccess).toBe(true);
+    expect(config.commands.claudeCli.model).toBe("claude-opus-4-5");
+  });
+
+  it("should merge projects config with defaults and local overrides", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "test/repo"
+    path: "/test/path"
+    baseBranch: "develop"
+general:
+  logLevel: "debug"
+`);
+    writeFileSync(join(testDir, "config.local.yml"), `
+general:
+  concurrency: 3
+worktree:
+  cleanupOnFailure: true
+`);
+
+    const config = loadConfig(testDir);
+
+    // Check projects
+    expect(config.projects).toHaveLength(1);
+    expect(config.projects?.[0].repo).toBe("test/repo");
+    expect(config.projects?.[0].path).toBe("/test/path");
+    expect(config.projects?.[0].baseBranch).toBe("develop");
+
+    // Check merged values
+    expect(config.general.logLevel).toBe("debug"); // from config.yml
+    expect(config.general.concurrency).toBe(3); // from config.local.yml
+    expect(config.general.projectName).toBe("ai-quartermaster"); // from defaults
+    expect(config.worktree.cleanupOnFailure).toBe(true); // from config.local.yml
+    expect(config.worktree.cleanupOnSuccess).toBe(true); // from defaults
+  });
+
+  it("should support mixed projects and allowedRepos configuration", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "mixed-project"
+git:
+  allowedRepos:
+    - "legacy/repo"
+projects:
+  - repo: "new/repo"
+    path: "/new/path"
+`);
+
+    const config = loadConfig(testDir);
+
+    // Both should be present
+    expect(config.git.allowedRepos).toEqual(["legacy/repo"]);
+    expect(config.projects).toHaveLength(1);
+    expect(config.projects?.[0].repo).toBe("new/repo");
+    expect(config.projects?.[0].path).toBe("/new/path");
+    expect(config.general.projectName).toBe("mixed-project");
+  });
+
+  it("should throw if both allowedRepos and projects are empty", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos: []
+`);
+    expect(() => loadConfig(testDir)).toThrow(/허용된 리포지토리가 설정되지 않았습니다/);
+  });
+
+  it("should validate projects array structure", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: ""
+    path: "/valid/path"
+`);
+    expect(() => loadConfig(testDir)).toThrow();
+  });
+
+  it("should validate that projects have required fields", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "valid/repo"
+    # missing path field
+`);
+    expect(() => loadConfig(testDir)).toThrow();
+  });
+
   describe("user-friendly validation error messages", () => {
     it("should provide friendly error message for empty projectName", () => {
       writeFileSync(join(testDir, "config.yml"), `

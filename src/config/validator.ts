@@ -1,6 +1,134 @@
 import { z } from "zod";
 import { AQConfig } from "../types/config.js";
 
+
+// 에러 메시지 매핑 테이블
+interface ErrorMessageMapping {
+  path: string;
+  code?: string;
+  message: string;
+  solution: string;
+  example?: string;
+}
+
+const ERROR_MESSAGE_MAP: ErrorMessageMapping[] = [
+  // 필수 필드 누락
+  {
+    path: "general.projectName",
+    code: "too_small",
+    message: "프로젝트 이름을 입력해주세요.",
+    solution: "config.yml의 general.projectName에 의미있는 프로젝트 이름을 설정하세요.",
+    example: 'general:\n  projectName: "my-awesome-project"'
+  },
+  {
+    path: "git.allowedRepos",
+    code: "custom",
+    message: "허용된 리포지토리가 설정되지 않았습니다.",
+    solution: "config.yml의 git.allowedRepos에 작업할 리포지토리를 추가하거나 projects 섹션을 설정하세요.",
+    example: 'git:\n  allowedRepos:\n    - "owner/repository-name"\n\n또는\n\nprojects:\n  - repo: "owner/repository-name"\n    path: "/path/to/local/repo"'
+  },
+
+  // 브랜치 템플릿 오류
+  {
+    path: "git.branchTemplate",
+    message: "브랜치 템플릿에 이슈 번호 플레이스홀더가 없습니다.",
+    solution: "branchTemplate에 {{issueNumber}} 또는 {issueNumber}를 포함해주세요.",
+    example: 'git:\n  branchTemplate: "feature/{{issueNumber}}-{{slug}}"'
+  },
+
+  // 타입 오류
+  {
+    path: "general.concurrency",
+    code: "invalid_type",
+    message: "동시 실행 수는 양의 정수여야 합니다.",
+    solution: "general.concurrency에 1 이상의 정수를 설정하세요.",
+    example: 'general:\n  concurrency: 2'
+  },
+  {
+    path: "safety.maxPhases",
+    code: "too_small",
+    message: "최대 페이즈 수는 1 이상이어야 합니다.",
+    solution: "safety.maxPhases에 1~20 사이의 값을 설정하세요.",
+    example: 'safety:\n  maxPhases: 10'
+  },
+  {
+    path: "safety.maxPhases",
+    code: "too_big",
+    message: "최대 페이즈 수는 20 이하여야 합니다.",
+    solution: "safety.maxPhases에 1~20 사이의 값을 설정하세요.",
+    example: 'safety:\n  maxPhases: 10'
+  },
+
+  // 시간 관련 필드
+  {
+    path: "general.stuckTimeoutMs",
+    code: "too_small",
+    message: "작업 중단 타임아웃은 최소 60초(60000ms) 이상이어야 합니다.",
+    solution: "general.stuckTimeoutMs에 60000 이상의 값을 설정하세요.",
+    example: 'general:\n  stuckTimeoutMs: 600000  # 10분'
+  },
+  {
+    path: "general.pollingIntervalMs",
+    code: "too_small",
+    message: "폴링 주기는 최소 10초(10000ms) 이상이어야 합니다.",
+    solution: "general.pollingIntervalMs에 10000 이상의 값을 설정하세요.",
+    example: 'general:\n  pollingIntervalMs: 60000  # 1분'
+  },
+
+  // 경로/문자열 필드
+  {
+    path: "worktree.rootPath",
+    code: "invalid_type",
+    message: "워크트리 루트 경로는 문자열이어야 합니다.",
+    solution: "worktree.rootPath에 유효한 디렉토리 경로를 설정하세요.",
+    example: 'worktree:\n  rootPath: ".aq-worktrees"'
+  },
+
+  // 배열 관련
+  {
+    path: "safety.allowedLabels",
+    code: "invalid_type",
+    message: "허용된 라벨은 문자열 배열이어야 합니다.",
+    solution: "safety.allowedLabels에 문자열 배열을 설정하세요.",
+    example: 'safety:\n  allowedLabels:\n    - "enhancement"\n    - "bug-fix"'
+  },
+
+  // 프로젝트 설정 오류
+  {
+    path: "projects",
+    message: "프로젝트 설정이 올바르지 않습니다.",
+    solution: "projects 배열의 각 항목에 repo와 path를 정확히 설정하세요.",
+    example: 'projects:\n  - repo: "owner/repository-name"\n    path: "/absolute/path/to/repo"\n    baseBranch: "main"  # optional'
+  }
+];
+
+/**
+ * Zod 에러를 사용자 친화적인 한국어 메시지로 변환
+ */
+function formatValidationError(error: z.ZodError): string {
+  const messages = error.errors.map(issue => {
+    const path = issue.path.join(".");
+    const code = issue.code;
+
+    // 매핑 테이블에서 해당하는 메시지 찾기
+    const mapping = ERROR_MESSAGE_MAP.find(m =>
+      m.path === path && (!m.code || m.code === code)
+    );
+
+    if (!mapping) {
+      return `❌ ${path}: ${issue.message}`;
+    }
+
+    const parts = [`❌ ${mapping.message}`, `   해결방법: ${mapping.solution}`];
+    if (mapping.example) {
+      parts.push(`   예시:\n   ${mapping.example.replace(/\n/g, '\n   ')}`);
+    }
+    return parts.join('\n');
+  });
+
+  return messages.join("\n\n");
+}
+
 const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 const localeSchema = z.enum(["ko", "en"]);
 const reviewFailActionSchema = z.enum(["block", "warn", "retry"]);
@@ -180,10 +308,8 @@ const aqConfigSchema = z.object({
 export function validateConfig(config: unknown): AQConfig {
   const result = aqConfigSchema.safeParse(config);
   if (!result.success) {
-    const messages = result.error.errors
-      .map((e) => `  ${e.path.join(".")}: ${e.message}`)
-      .join("\n");
-    throw new Error(`Invalid configuration:\n${messages}`);
+    const friendlyMessage = formatValidationError(result.error);
+    throw new Error(`설정 파일에 오류가 있습니다:\n\n${friendlyMessage}`);
   }
   return result.data as AQConfig;
 }

@@ -2,8 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { randomBytes } from "crypto";
+import { askQuestion, askConfirm, askChoice } from "./prompt-utils.js";
+import { validateRepoFormat, validateLocalPath, suggestClone, handleValidationError } from "./validators.js";
+import type { SetupOptions, WizardAnswers, PipelineMode } from "../types/config.js";
 
-export async function runSetup(aqRoot: string): Promise<void> {
+export async function runSetup(aqRoot: string, options?: SetupOptions): Promise<void> {
   console.log("\n=== AI Quartermaster Setup ===\n");
 
   // 1. Check prerequisites
@@ -27,10 +30,12 @@ export async function runSetup(aqRoot: string): Promise<void> {
   console.log("2. 설정 파일 생성...");
   const configPath = resolve(aqRoot, "config.yml");
 
-  if (existsSync(configPath)) {
-    console.log("   config.yml 이미 존재 (건너뜀)");
-  } else {
-    const minimalConfig = `# AI 병참부 최소 설정 파일
+  if (options?.nonInteractive) {
+    // 비인터랙티브 모드: 기본 템플릿 생성
+    if (existsSync(configPath)) {
+      console.log("   config.yml 이미 존재 (건너뜀)");
+    } else {
+      const minimalConfig = `# AI 병참부 최소 설정 파일
 # 전체 옵션은 config.reference.yml 참조
 
 projects:
@@ -39,8 +44,29 @@ projects:
 
 # 추가 설정이 필요하면 config.reference.yml을 참조하세요
 `;
-    writeFileSync(configPath, minimalConfig, 'utf-8');
-    console.log("   config.yml 생성됨 (최소 템플릿)");
+      writeFileSync(configPath, minimalConfig, 'utf-8');
+      console.log("   config.yml 생성됨 (최소 템플릿)");
+    }
+  } else {
+    // 인터랙티브 모드: 위자드 실행
+    if (existsSync(configPath)) {
+      const overwrite = await askConfirm("   config.yml이 이미 존재합니다. 덮어쓰시겠습니까?");
+      if (!overwrite) {
+        console.log("   config.yml 건너뜀 (사용자 선택)");
+        return;
+      }
+    }
+
+    const answers = await runInteractiveWizard();
+    const userConfig = `# AI 병참부 프로젝트 설정
+
+projects:
+  - repo: "${answers.repo}"
+    path: "${answers.path}"
+    mode: "${answers.mode}"
+`;
+    writeFileSync(configPath, userConfig, 'utf-8');
+    console.log("   config.yml 생성됨 (사용자 설정)");
   }
 
   // 3. Create .env
@@ -183,4 +209,68 @@ async function checkPrerequisite(cmd: string, args: string[], name: string): Pro
     process.exit(1);
   }
   console.log(`   ${name}`);
+}
+
+/**
+ * 인터랙티브 설정 위자드 실행
+ * @returns Promise<WizardAnswers> 사용자 입력 결과
+ */
+export async function runInteractiveWizard(): Promise<WizardAnswers> {
+  console.log("\n=== 프로젝트 설정 위자드 ===\n");
+
+  // 1. 저장소 입력 및 검증
+  let repo = "";
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    repo = await askQuestion("GitHub 저장소를 입력하세요 (예: octocat/Hello-World): ");
+    const validation = validateRepoFormat(repo);
+
+    if (validation.isValid) {
+      break;
+    }
+
+    handleValidationError(validation, "저장소");
+  }
+
+  // 2. 로컬 경로 입력 및 검증 + 클론 제안
+  let path = "";
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    path = await askQuestion("로컬 경로를 입력하세요 (예: /home/user/projects/my-repo): ");
+    const validation = validateLocalPath(path);
+
+    if (validation.isValid) {
+      break;
+    }
+
+    // 경로가 존재하지 않는 경우 클론 제안
+    if (validation.error?.includes("존재하지 않습니다")) {
+      console.log(`\n❌ ${validation.error}`);
+
+      const cloneSuggestion = await suggestClone(repo);
+      if (cloneSuggestion.isValid && cloneSuggestion.suggestion) {
+        console.log(`\n💡 클론 제안:\n${cloneSuggestion.suggestion}\n`);
+      }
+
+      const shouldContinue = await askConfirm("다른 경로를 입력하시겠습니까?");
+      if (!shouldContinue) {
+        console.log("설정을 중단합니다.");
+        process.exit(0);
+      }
+    } else {
+      handleValidationError(validation, "로컬 경로");
+    }
+  }
+
+  // 3. 파이프라인 모드 선택
+  const modeChoices = ["code (코딩 작업)", "content (문서/콘텐츠 작업)"];
+  const modeIndex = await askChoice("파이프라인 모드를 선택하세요:", modeChoices);
+  const mode: PipelineMode = modeIndex === 0 ? "code" : "content";
+
+  console.log("\n✅ 설정 완료!");
+  console.log(`   저장소: ${repo}`);
+  console.log(`   경로: ${path}`);
+  console.log(`   모드: ${mode}\n`);
+
+  return { repo, path, mode };
 }

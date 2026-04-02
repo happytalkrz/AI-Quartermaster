@@ -164,9 +164,31 @@ export class JobQueue {
       return undefined;
     }
 
-    // Check for duplicate (any status — active, completed, or failed)
+    // Check if success job exists (should block repickup)
+    if (this.store.shouldBlockRepickup(issueNumber, repo)) {
+      const existing = this.store.findAnyByIssue(issueNumber, repo);
+      logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing?.id}`);
+      return undefined;
+    }
+
+    // Check for existing failed/cancelled jobs and auto-archive them
     const existing = this.store.findAnyByIssue(issueNumber, repo);
-    if (existing) {
+    if (existing && (existing.status === "failure" || existing.status === "cancelled")) {
+      logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
+
+      // Remove checkpoint for the failed job
+      const dataDir = resolve(process.cwd(), "data");
+      try {
+        removeCheckpoint(dataDir, issueNumber);
+        logger.info(`Checkpoint removed for issue #${issueNumber}`);
+      } catch (err) {
+        logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+      }
+
+      // Archive the existing job
+      this.store.archive(existing.id);
+    } else if (existing) {
+      // Other statuses (queued, running) should still block
       logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
       return undefined;
     }

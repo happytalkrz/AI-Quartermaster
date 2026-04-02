@@ -75,6 +75,93 @@ describe("JobQueue", () => {
     expect(job2).toBeUndefined();
   });
 
+  it("should auto-archive failed job and create new job on re-enqueue", async () => {
+    const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+
+    const handler: JobHandler = vi.fn()
+      .mockRejectedValueOnce(new Error("initial failure"))
+      .mockResolvedValueOnce({ prUrl: "https://pr/new-success" });
+
+    const queue = new JobQueue(store, 1, handler);
+
+    // Create initial failed job
+    const initialJob = queue.enqueue(123, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+    const failedJob = store.get(initialJob!.id);
+    expect(failedJob?.status).toBe("failure");
+
+    // Re-enqueue same issue - should auto-archive failed job and create new one
+    const newJob = queue.enqueue(123, "test/repo");
+    expect(newJob).toBeDefined();
+    expect(newJob?.id).not.toBe(initialJob?.id);
+
+    // Verify checkpoint was removed
+    expect(removeCheckpointSpy).toHaveBeenCalledWith(
+      expect.stringContaining("data"),
+      123
+    );
+
+    // Verify original job was archived
+    const archivedJob = store.get(initialJob!.id);
+    expect(archivedJob?.status).toBe("archived");
+
+    // Wait for new job to complete successfully
+    await new Promise(r => setTimeout(r, 50));
+    const completedNewJob = store.get(newJob!.id);
+    expect(completedNewJob?.status).toBe("success");
+    expect(completedNewJob?.prUrl).toBe("https://pr/new-success");
+  });
+
+  it("should auto-archive cancelled job and create new job on re-enqueue", async () => {
+    const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+
+    const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/after-cancel" });
+    const queue = new JobQueue(store, 1, handler);
+
+    // Create and immediately cancel a job
+    const initialJob = queue.enqueue(456, "test/repo");
+    queue.cancel(initialJob!.id);
+    const cancelledJob = store.get(initialJob!.id);
+    expect(cancelledJob?.status).toBe("cancelled");
+
+    // Re-enqueue same issue - should auto-archive cancelled job and create new one
+    const newJob = queue.enqueue(456, "test/repo");
+    expect(newJob).toBeDefined();
+    expect(newJob?.id).not.toBe(initialJob?.id);
+
+    // Verify checkpoint was removed
+    expect(removeCheckpointSpy).toHaveBeenCalledWith(
+      expect.stringContaining("data"),
+      456
+    );
+
+    // Verify original job was archived
+    const archivedJob = store.get(initialJob!.id);
+    expect(archivedJob?.status).toBe("archived");
+
+    // Wait for new job to complete
+    await new Promise(r => setTimeout(r, 50));
+    const completedNewJob = store.get(newJob!.id);
+    expect(completedNewJob?.status).toBe("success");
+  });
+
+  it("should prevent re-enqueue when successful job exists", async () => {
+    const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
+    const queue = new JobQueue(store, 1, handler);
+
+    // Create successful job
+    const successJob = queue.enqueue(789, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+    const completed = store.get(successJob!.id);
+    expect(completed?.status).toBe("success");
+
+    // Try to re-enqueue same issue - should be blocked
+    const blockedJob = queue.enqueue(789, "test/repo");
+    expect(blockedJob).toBeUndefined();
+  });
+
   it("should cancel a pending job", () => {
     const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
     const queue = new JobQueue(store, 0, handler); // concurrency 0 so nothing runs

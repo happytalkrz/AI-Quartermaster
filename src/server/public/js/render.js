@@ -257,6 +257,7 @@ function renderLogsView(job) {
    Main Render
    ══════════════════════════════════════════════════════════════ */
 function handleData(data) {
+  currentJobs = sortJobs(data.jobs || []);
   render(data);
 }
 

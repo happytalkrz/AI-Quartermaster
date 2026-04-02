@@ -4,7 +4,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { randomBytes } from "crypto";
 import { askQuestion, askConfirm, askChoice } from "./prompt-utils.js";
 import { validateRepoFormat, validateLocalPath, suggestClone, handleValidationError } from "./validators.js";
-import type { SetupOptions, WizardAnswers, PipelineMode } from "../types/config.js";
+import type { SetupOptions, WizardAnswers, ServerMode } from "../types/config.js";
 
 export async function runSetup(aqRoot: string, options?: SetupOptions): Promise<void> {
   console.log("\n=== AI Quartermaster Setup ===\n");
@@ -63,10 +63,24 @@ projects:
 projects:
   - repo: "${answers.repo}"
     path: "${answers.path}"
-    mode: "${answers.mode}"
 `;
     writeFileSync(configPath, userConfig, 'utf-8');
     console.log("   config.yml 생성됨 (사용자 설정)");
+
+    // 폴링 모드 선택 시 smee/webhook 설정 스킵
+    if (answers.serverMode === "polling") {
+      console.log("\n=== Setup 완료 ===\n");
+      console.log("다음 단계:");
+      console.log("  1. aqm start --mode polling     ← 폴링 모드 시작");
+      console.log("");
+      console.log("사용법:");
+      console.log("  aqm run --issue <번호> --repo <owner/repo>   수동 실행");
+      console.log("  aqm doctor                                   환경 점검");
+      console.log("  aqm status                                   상태 확인");
+      console.log("  aqm help                                     전체 명령어");
+      console.log("");
+      return;
+    }
   }
 
   // 3. Create .env
@@ -262,15 +276,15 @@ export async function runInteractiveWizard(): Promise<WizardAnswers> {
     }
   }
 
-  // 3. 파이프라인 모드 선택
-  const modeChoices = ["code (코딩 작업)", "content (문서/콘텐츠 작업)"];
-  const modeIndex = await askChoice("파이프라인 모드를 선택하세요:", modeChoices);
-  const mode: PipelineMode = modeIndex === 0 ? "code" : "content";
+  // 3. 서버 모드 선택 (폴링/웹훅)
+  const modeChoices = ["폴링 (간편 — webhook 설정 불필요)", "웹훅 (실시간 — smee.io 필요)"];
+  const modeIndex = await askChoice("모드를 선택하세요:", modeChoices);
+  const serverMode: ServerMode = modeIndex === 0 ? "polling" : "webhook";
 
   console.log("\n✅ 설정 완료!");
   console.log(`   저장소: ${repo}`);
   console.log(`   경로: ${path}`);
-  console.log(`   모드: ${mode}\n`);
+  console.log(`   모드: ${serverMode}\n`);
 
-  return { repo, path, mode };
+  return { repo, path, serverMode };
 }

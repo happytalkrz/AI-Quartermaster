@@ -137,7 +137,7 @@ CUSTOM_VAR=example
         const mockWizard = vi.spyOn(setupWizard, "runInteractiveWizard").mockResolvedValue({
           repo: "test-user/test-repo",
           path: "/home/test/projects/test-repo",
-          mode: "code"
+          serverMode: "polling"
         });
 
         await runSetup(aqRoot, {});
@@ -148,7 +148,7 @@ CUSTOM_VAR=example
         const content = readFileSync(configPath, "utf-8");
         expect(content).toContain("test-user/test-repo");
         expect(content).toContain("/home/test/projects/test-repo");
-        expect(content).toContain("mode: \"code\"");
+        expect(content).toContain("test-user/test-repo");
       });
 
       it.skip("should run wizard and create new config when no existing file", async () => {
@@ -156,7 +156,7 @@ CUSTOM_VAR=example
         const mockWizard = vi.spyOn(setupWizard, "runInteractiveWizard").mockResolvedValue({
           repo: "new-user/new-repo",
           path: "/home/new/projects/new-repo",
-          mode: "content"
+          serverMode: "webhook"
         });
 
         await runSetup(aqRoot, {});
@@ -167,7 +167,7 @@ CUSTOM_VAR=example
         const content = readFileSync(configPath, "utf-8");
         expect(content).toContain("new-user/new-repo");
         expect(content).toContain("/home/new/projects/new-repo");
-        expect(content).toContain("mode: \"content\"");
+        expect(content).toContain("new-user/new-repo");
       });
     });
 
@@ -302,14 +302,14 @@ PORT=3000
         .mockResolvedValueOnce(mockPath);               // valid path
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(0); // code mode (index 0)
+        .mockResolvedValue(0); // polling mode (index 0)
 
       const result = await runInteractiveWizard();
 
       expect(result).toEqual({
         repo: "test-user/test-repo",
         path: mockPath,
-        mode: "code"
+        serverMode: "polling"
       });
 
       expect(mockAskQuestion).toHaveBeenCalledTimes(2);
@@ -324,7 +324,7 @@ PORT=3000
         .mockResolvedValueOnce(mockPath);             // valid path
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(0); // code mode
+        .mockResolvedValue(0); // polling mode
 
       // Mock validation functions
       const validateSpy = vi.spyOn(validators, "validateRepoFormat").mockImplementation((input: string) => {
@@ -354,14 +354,14 @@ PORT=3000
         .mockResolvedValueOnce(mockPath);              // valid path
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(1); // content mode (index 1)
+        .mockResolvedValue(1); // webhook mode (index 1)
 
       vi.spyOn(promptUtils, "askConfirm").mockResolvedValue(true); // Continue after error
 
       const result = await runInteractiveWizard();
 
       expect(result.path).toBe(mockPath);
-      expect(result.mode).toBe("content");
+      expect(result.serverMode).toBe("webhook");
     });
 
     it("should suggest clone when path doesn't exist", async () => {
@@ -373,7 +373,7 @@ PORT=3000
         .mockResolvedValueOnce(mockPath);             // valid path (after clone suggestion)
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(0); // code mode
+        .mockResolvedValue(0); // polling mode
 
       vi.spyOn(promptUtils, "askConfirm").mockResolvedValue(true);
 
@@ -405,31 +405,31 @@ PORT=3000
       expect(mockExit).toHaveBeenCalledWith(0);
     });
 
-    it("should handle both mode choices correctly", async () => {
-      // Test code mode (choice 0)
+    it("should handle both server mode choices correctly", async () => {
+      // Test polling mode (choice 0)
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
         .mockResolvedValueOnce(mockPath);
 
       vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(0);  // code mode (index 0)
+        .mockResolvedValue(0);  // polling mode (index 0)
 
       const resultCode = await runInteractiveWizard();
-      expect(resultCode.mode).toBe("code");
+      expect(resultCode.serverMode).toBe("polling");
 
-      // Reset mocks for content mode test
+      // Reset mocks for webhook mode test
       vi.clearAllMocks();
 
-      // Test content mode (choice 1)
+      // Test webhook mode (choice 1)
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
         .mockResolvedValueOnce(mockPath);
 
       vi.spyOn(promptUtils, "askChoice")
-        .mockResolvedValue(1);  // content mode (index 1)
+        .mockResolvedValue(1);  // webhook mode (index 1)
 
       const resultContent = await runInteractiveWizard();
-      expect(resultContent.mode).toBe("content");
+      expect(resultContent.serverMode).toBe("webhook");
     });
   });
 });

@@ -8,13 +8,11 @@ import { getLogger } from "../utils/logger.js";
  * 현재 프로젝트를 AI-Quartermaster에 등록
  */
 export async function runInitCommand(aqRoot: string, options: InitCommandOptions = {}): Promise<void> {
-  const logger = getLogger();
   const cwd = process.cwd();
 
   console.log("\n=== AI Quartermaster Init ===\n");
 
   try {
-    // 1. Git 정보 자동 감지 (dry-run에서도 실행)
     console.log("1. Git 정보 감지...");
     const gitInfo = await detectGitInfo(cwd);
 
@@ -35,44 +33,30 @@ export async function runInitCommand(aqRoot: string, options: InitCommandOptions
       process.exit(1);
     }
 
-    console.log(`   ✓ 저장소: ${detectedRepo}`);
-    console.log(`   ✓ 경로: ${detectedPath}`);
-    console.log(`   ✓ 기본 브랜치: ${detectedBaseBranch}`);
+    // Display detected info
+    const infoLines = [
+      `✓ 저장소: ${detectedRepo}`,
+      `✓ 경로: ${detectedPath}`,
+      `✓ 기본 브랜치: ${detectedBaseBranch}`
+    ];
+    if (options.mode) infoLines.push(`✓ 파이프라인 모드: ${options.mode}`);
+    infoLines.forEach(line => console.log(`   ${line}`));
     console.log("");
 
-    // 2. 설정 정보 표시
-    console.log("2. 등록할 프로젝트 정보:");
-    console.log(`   저장소: ${detectedRepo}`);
-    console.log(`   경로: ${detectedPath}`);
-    if (detectedBaseBranch) {
-      console.log(`   기본 브랜치: ${detectedBaseBranch}`);
-    }
-    if (options.mode) {
-      console.log(`   파이프라인 모드: ${options.mode}`);
-    }
-    console.log("");
-
-    // 3. Dry run 처리
     if (options.dryRun) {
       console.log("🔍 Dry run 모드 - 실제 변경사항은 적용되지 않습니다.");
       console.log("");
       console.log("다음 작업이 수행될 예정입니다:");
       console.log(`   - config.yml에 프로젝트 '${detectedRepo}' 추가`);
       console.log(`   - 경로: ${detectedPath}`);
-      if (detectedBaseBranch) {
-        console.log(`   - 기본 브랜치: ${detectedBaseBranch}`);
-      }
-      if (options.mode) {
-        console.log(`   - 파이프라인 모드: ${options.mode}`);
-      }
+      if (detectedBaseBranch) console.log(`   - 기본 브랜치: ${detectedBaseBranch}`);
+      if (options.mode) console.log(`   - 파이프라인 모드: ${options.mode}`);
       console.log("");
       console.log("실제 적용하려면 --dry-run 옵션을 제거하고 다시 실행하세요.");
       return;
     }
 
-    // 4. 실제 등록 수행
-    console.log("3. config.yml 업데이트...");
-
+    console.log("2. config.yml 업데이트...");
     await initProject(aqRoot, {
       repo: detectedRepo,
       path: detectedPath,
@@ -83,8 +67,6 @@ export async function runInitCommand(aqRoot: string, options: InitCommandOptions
 
     console.log(`   ✓ 프로젝트 '${detectedRepo}' 등록 완료`);
     console.log("");
-
-    // 5. 다음 단계 안내
     console.log("=== Init 완료 ===\n");
     console.log("다음 단계:");
     console.log("  1. aqm doctor                    ← 환경 점검");
@@ -98,8 +80,8 @@ export async function runInitCommand(aqRoot: string, options: InitCommandOptions
     console.log("");
 
   } catch (error) {
-    logger.error(`Init 실패: ${error instanceof Error ? error.message : String(error)}`);
-    console.error(`\n❌ 오류: ${error instanceof Error ? error.message : String(error)}`);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`\n❌ 오류: ${msg}`);
     process.exit(1);
   }
 }
@@ -114,41 +96,21 @@ export function parseInitOptions(args: string[]): InitCommandOptions & { help?: 
     const arg = args[i];
     const nextArg = args[i + 1];
 
-    switch (arg) {
-      case "--repo":
-        if (nextArg) {
-          options.repo = nextArg;
-          i++;
-        }
-        break;
-      case "--path":
-        if (nextArg) {
-          options.path = resolve(nextArg);
-          i++;
-        }
-        break;
-      case "--base-branch":
-        if (nextArg) {
-          options.baseBranch = nextArg;
-          i++;
-        }
-        break;
-      case "--mode":
-        if (nextArg && (nextArg === "code" || nextArg === "content")) {
-          options.mode = nextArg;
-          i++;
-        }
-        break;
-      case "--force":
-        options.force = true;
-        break;
-      case "--dry-run":
-        options.dryRun = true;
-        break;
-      case "--help":
-      case "-h":
-        options.help = true;
-        break;
+    if (arg === "--repo" || arg === "--path" || arg === "--base-branch" || arg === "--mode") {
+      if (!nextArg) continue;
+
+      if (arg === "--repo") options.repo = nextArg;
+      else if (arg === "--path") options.path = resolve(nextArg);
+      else if (arg === "--base-branch") options.baseBranch = nextArg;
+      else if (arg === "--mode" && (nextArg === "code" || nextArg === "content")) options.mode = nextArg;
+
+      i++;
+    } else if (arg === "--force") {
+      options.force = true;
+    } else if (arg === "--dry-run") {
+      options.dryRun = true;
+    } else if (arg === "--help" || arg === "-h") {
+      options.help = true;
     }
   }
 

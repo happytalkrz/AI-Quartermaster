@@ -138,7 +138,7 @@ describe("runInitCommand", () => {
     expect(output).toContain("1. Git 정보 감지");
     expect(output).toContain("✓ 저장소: owner/repo");
     expect(output).toContain("✓ 기본 브랜치: main");
-    expect(output).toContain("3. config.yml 업데이트");
+    expect(output).toContain("2. config.yml 업데이트");
     expect(output).toContain("✓ 프로젝트 'owner/repo' 등록 완료");
     expect(output).toContain("=== Init 완료 ===");
 

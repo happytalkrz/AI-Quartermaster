@@ -169,6 +169,18 @@ export function tryLoadConfig(projectRoot: string): TryLoadConfigResult {
 }
 
 /**
+ * GitHub URL에서 owner/repo 추출
+ */
+function extractRepoFromUrl(url: string): string | undefined {
+  const patterns = [
+    /git@github\.com:(.+?)\.git$/,
+    /https:\/\/github\.com\/(.+?)\.git$/,
+    /https:\/\/github\.com\/(.+?)$/
+  ];
+  return patterns.reduce((match, pattern) => match || url.match(pattern)?.[1], undefined as string | undefined);
+}
+
+/**
  * Git 정보를 현재 디렉토리에서 자동 감지
  */
 export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseBranch?: string; error?: string }> {
@@ -180,12 +192,7 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
     try {
       const remoteResult = await runCli("git", ["remote", "get-url", "origin"], { cwd, timeout: 5000 });
       if (remoteResult.exitCode === 0) {
-        const url = remoteResult.stdout.trim();
-        // GitHub URL 패턴 매칭: git@github.com:owner/repo.git 또는 https://github.com/owner/repo.git
-        const sshMatch = url.match(/git@github\.com:(.+?)\.git$/);
-        const httpsMatch = url.match(/https:\/\/github\.com\/(.+?)\.git$/);
-        const noGitMatch = url.match(/https:\/\/github\.com\/(.+?)$/);
-        repo = sshMatch?.[1] || httpsMatch?.[1] || noGitMatch?.[1];
+        repo = extractRepoFromUrl(remoteResult.stdout.trim());
       }
     } catch {
       // git remote 실패 - repo는 undefined로 남김
@@ -196,8 +203,7 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
     try {
       const branchResult = await runCli("git", ["symbolic-ref", "refs/remotes/origin/HEAD"], { cwd, timeout: 5000 });
       if (branchResult.exitCode === 0) {
-        const ref = branchResult.stdout.trim(); // refs/remotes/origin/main
-        baseBranch = ref.split('/').pop();
+        baseBranch = branchResult.stdout.trim().split('/').pop();
       }
     } catch {
       // symbolic-ref 실패 시 git config에서 확인
@@ -207,7 +213,6 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
           baseBranch = configResult.stdout.trim();
         }
       } catch {
-        // 기본값 사용
         baseBranch = "main";
       }
     }
@@ -222,12 +227,18 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
  * 최소한의 config.yml 파일 생성
  */
 export function writeMinimalConfig(configPath: string, project: ProjectConfig): void {
+  const projectLines = [
+    `  - repo: "${project.repo}"`,
+    `    path: "${project.path}"`
+  ];
+  if (project.baseBranch) projectLines.push(`    baseBranch: "${project.baseBranch}"`);
+  if (project.mode) projectLines.push(`    mode: "${project.mode}"`);
+
   const content = `# AI Quartermaster 설정 파일
 # 전체 옵션은 https://github.com/your-repo/ai-quartermaster/blob/main/docs/config-schema.md 참조
 
 projects:
-  - repo: "${project.repo}"
-    path: "${project.path}"${project.baseBranch ? `\n    baseBranch: "${project.baseBranch}"` : ''}${project.mode ? `\n    mode: "${project.mode}"` : ''}
+${projectLines.join('\n')}
 
 # 추가 설정이 필요한 경우 아래 섹션들을 참고하여 추가하세요
 # general:
@@ -244,6 +255,19 @@ projects:
 }
 
 /**
+ * 프로젝트 정보를 YAML 라인으로 변환
+ */
+function buildProjectLines(indent: string, project: ProjectConfig): string[] {
+  const lines = [
+    `${indent}- repo: "${project.repo}"`,
+    `${indent}  path: "${project.path}"`
+  ];
+  if (project.baseBranch) lines.push(`${indent}  baseBranch: "${project.baseBranch}"`);
+  if (project.mode) lines.push(`${indent}  mode: "${project.mode}"`);
+  return lines;
+}
+
+/**
  * 기존 config.yml에 프로젝트 추가 (YAML 포맷 보존)
  */
 export function addProjectToConfig(configPath: string, project: ProjectConfig): void {
@@ -251,70 +275,34 @@ export function addProjectToConfig(configPath: string, project: ProjectConfig): 
   const lines = content.split('\n');
 
   // projects 섹션 찾기
-  let projectsLineIndex = -1;
-  let projectsIndent = '';
+  const projectsIndex = lines.findIndex(line => line.match(/^(\s*)projects\s*:\s*$/));
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const match = line.match(/^(\s*)projects\s*:\s*$/);
-    if (match) {
-      projectsLineIndex = i;
-      projectsIndent = match[1];
-      break;
-    }
-  }
-
-  // projects 섹션이 없으면 파일 끝에 추가
-  if (projectsLineIndex === -1) {
-    const newContent = content.trim() + '\n\nprojects:\n  - repo: "' + project.repo + '"\n    path: "' + project.path + '"' +
-      (project.baseBranch ? '\n    baseBranch: "' + project.baseBranch + '"' : '') +
-      (project.mode ? '\n    mode: "' + project.mode + '"' : '') + '\n';
+  if (projectsIndex === -1) {
+    // projects 섹션이 없으면 파일 끝에 추가
+    const projectLines = buildProjectLines('  ', project);
+    const newContent = content.trim() + '\n\nprojects:\n' + projectLines.join('\n') + '\n';
     writeFileSync(configPath, newContent, 'utf-8');
     return;
   }
 
-  // projects 섹션이 있으면 기존 항목 뒤에 추가
-  let insertIndex = projectsLineIndex + 1;
+  // 기존 프로젝트 항목 뒤에 추가할 위치 찾기
+  const projectsIndent = lines[projectsIndex].match(/^(\s*)/)![1];
   const itemIndent = projectsIndent + '  ';
+  let insertIndex = projectsIndex + 1;
 
-  // 기존 프로젝트 항목들을 건너뛰기
-  for (let i = projectsLineIndex + 1; i < lines.length; i++) {
+  for (let i = projectsIndex + 1; i < lines.length; i++) {
     const line = lines[i];
-    if (line.trim() === '') {
-      continue; // 빈 줄 건너뛰기
-    }
-    if (line.startsWith(itemIndent + '- ') || line.startsWith(itemIndent + 'repo:') ||
-        line.match(new RegExp(`^${itemIndent}\\s+(repo|path|baseBranch|mode):`))) {
-      // 아직 projects 섹션 안의 항목
-      insertIndex = i + 1;
-    } else if (line.match(/^\s*\w+\s*:/)) {
-      // 다음 섹션 시작
-      break;
-    } else if (line.startsWith(itemIndent)) {
-      // 아직 현재 프로젝트의 속성
-      insertIndex = i + 1;
-    } else {
-      // projects 섹션 끝
-      break;
-    }
+    const isBlanK = line.trim() === '';
+    const isProjectItem = line.startsWith(itemIndent);
+    const isNewSection = !isProjectItem && line.match(/^\s*\w+\s*:/);
+
+    if (isBlanK) continue;
+    if (isNewSection) break;
+    insertIndex = i + 1;
   }
 
-  // 새 프로젝트 항목 생성
-  const newProjectLines = [
-    `${itemIndent}- repo: "${project.repo}"`,
-    `${itemIndent}  path: "${project.path}"`
-  ];
-
-  if (project.baseBranch) {
-    newProjectLines.push(`${itemIndent}  baseBranch: "${project.baseBranch}"`);
-  }
-  if (project.mode) {
-    newProjectLines.push(`${itemIndent}  mode: "${project.mode}"`);
-  }
-
-  // 라인 삽입
+  const newProjectLines = buildProjectLines(itemIndent, project);
   lines.splice(insertIndex, 0, ...newProjectLines);
-
   writeFileSync(configPath, lines.join('\n'), 'utf-8');
 }
 

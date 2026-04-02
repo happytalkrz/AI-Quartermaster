@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { resolveProject, listConfiguredRepos } from "../../src/config/project-resolver.js";
+import { resolveProject, listConfiguredRepos, expandProjectPath, AQM_HOME } from "../../src/config/project-resolver.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
+import { homedir } from "os";
+import { resolve } from "path";
 
 describe("resolveProject", () => {
   it("should resolve project from projects array", () => {
@@ -82,6 +84,54 @@ describe("resolveProject", () => {
     expect(resolved.pr.targetBranch).toBe(DEFAULT_CONFIG.pr.targetBranch); // "main"
     expect(resolved.pr.draft).toBe(DEFAULT_CONFIG.pr.draft);
   });
+
+  it("should expand ~ path in project config", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/home-app",
+        path: "~/projects/my-app",
+      }],
+    };
+    const resolved = resolveProject("myorg/home-app", config);
+    expect(resolved.path).toBe(`${homedir()}/projects/my-app`);
+  });
+
+  it("should expand relative path in project config", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+      projects: [{
+        repo: "myorg/relative-app",
+        path: "projects/my-app",
+      }],
+    };
+    const resolved = resolveProject("myorg/relative-app", config);
+    expect(resolved.path).toBe(`${AQM_HOME}/projects/my-app`);
+  });
+
+  it("should expand ~ path in fallback targetRoot", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: "~/fallback-projects" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: ["org/fallback-repo"] },
+    };
+    const resolved = resolveProject("org/fallback-repo", config);
+    expect(resolved.path).toBe(`${homedir()}/fallback-projects`);
+  });
+
+  it("should expand relative path in fallback targetRoot", () => {
+    const config = {
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: "projects" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: ["org/fallback-repo"] },
+    };
+    const resolved = resolveProject("org/fallback-repo", config);
+    expect(resolved.path).toBe(`${AQM_HOME}/projects`);
+  });
 });
 
 describe("listConfiguredRepos", () => {
@@ -95,5 +145,53 @@ describe("listConfiguredRepos", () => {
     const repos = listConfiguredRepos(config);
     expect(repos).toContain("org/new-repo");
     expect(repos).toContain("org/old-repo");
+  });
+});
+
+describe("expandProjectPath", () => {
+  it("should expand ~ to home directory", () => {
+    const result = expandProjectPath("~/my-project");
+    expect(result).toBe(`${homedir()}/my-project`);
+  });
+
+  it("should expand bare ~ to home directory", () => {
+    const result = expandProjectPath("~");
+    expect(result).toBe(homedir());
+  });
+
+  it("should resolve relative path against AQM_HOME", () => {
+    const result = expandProjectPath("my-project");
+    expect(result).toBe(`${AQM_HOME}/my-project`);
+  });
+
+  it("should resolve relative path with subdirectories", () => {
+    const result = expandProjectPath("projects/my-app");
+    expect(result).toBe(`${AQM_HOME}/projects/my-app`);
+  });
+
+  it("should return absolute path as-is", () => {
+    const absolutePath = "/home/user/absolute-project";
+    const result = expandProjectPath(absolutePath);
+    expect(result).toBe(absolutePath);
+  });
+
+  it("should handle complex relative path with parent directory", () => {
+    const result = expandProjectPath("../projects/my-app");
+    expect(result).toBe(resolve(AQM_HOME, "../projects/my-app"));
+  });
+
+  it("should handle path with trailing slash", () => {
+    const result = expandProjectPath("~/projects/");
+    expect(result).toBe(`${homedir()}/projects`);
+  });
+
+  it("should handle relative path with trailing slash", () => {
+    const result = expandProjectPath("projects/");
+    expect(result).toBe(`${AQM_HOME}/projects`);
+  });
+
+  it("should handle nested home directory reference", () => {
+    const result = expandProjectPath("~/workspace/~/nested");
+    expect(result).toBe(`${homedir()}/workspace/~/nested`);
   });
 });

@@ -1,9 +1,32 @@
-import { resolve } from "path";
+import { resolve, isAbsolute } from "path";
+import { homedir } from "os";
 import type { AQConfig, CommandsConfig, ReviewConfig, PrConfig, SafetyConfig, PipelineMode } from "../types/config.js";
 import { deepMerge } from "./loader.js";
 import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger();
+
+/** AQM 홈 디렉토리 (기본값: ~/.ai-quartermaster) */
+export const AQM_HOME = process.env.AQM_HOME || resolve(homedir(), ".ai-quartermaster");
+
+/**
+ * 프로젝트 경로를 확장합니다.
+ * - ~로 시작하면 홈 디렉토리로 치환
+ * - 상대경로면 AQM_HOME 기준으로 resolve
+ * - 절대경로면 그대로 반환
+ */
+export function expandProjectPath(path: string): string {
+  if (path.startsWith("~/")) {
+    return resolve(homedir(), path.slice(2));
+  }
+  if (path === "~") {
+    return homedir();
+  }
+  if (!isAbsolute(path)) {
+    return resolve(AQM_HOME, path);
+  }
+  return path;
+}
 
 export interface ResolvedProject {
   repo: string;
@@ -29,7 +52,7 @@ export function resolveProject(repo: string, config: AQConfig): ResolvedProject 
     logger.info(`Resolved project config for ${repo}`);
     return {
       repo: project.repo,
-      path: project.path,
+      path: expandProjectPath(project.path),
       baseBranch: project.baseBranch ?? config.git.defaultBaseBranch,
       branchTemplate: project.branchTemplate ?? config.git.branchTemplate,
       mode: project.mode,
@@ -62,7 +85,7 @@ export function resolveProject(repo: string, config: AQConfig): ResolvedProject 
   logger.info(`Using global config for ${repo} (path: ${fallbackPath})`);
   return {
     repo,
-    path: resolve(fallbackPath),
+    path: expandProjectPath(fallbackPath),
     baseBranch: config.git.defaultBaseBranch,
     branchTemplate: config.git.branchTemplate,
     commands: config.commands,

@@ -23,6 +23,7 @@ export interface CoreLoopContext {
   cwd: string;
   modeHint?: string;
   projectConventions?: string;
+  skillsContext?: string;
   dataDir?: string;
   jobLogger?: JobLogger;
   previousPhaseResults?: PhaseResult[];  // from checkpoint resume
@@ -126,6 +127,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         lintCommand: ctx.config.commands.lint,
         gitPath: ctx.config.git.gitPath,
         projectConventions: ctx.projectConventions,
+        skillsContext: ctx.skillsContext,
         pastFailures: pastFailures || undefined,
         jobLogger: jl,
       });

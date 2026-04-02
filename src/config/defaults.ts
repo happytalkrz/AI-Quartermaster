@@ -53,6 +53,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     typecheck: "npm run typecheck",
     preInstall: "",
     claudeMdPath: "CLAUDE.md",
+    skillsPath: ".claude/skills",
   },
   review: {
     enabled: true,

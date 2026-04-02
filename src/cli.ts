@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
-import { loadConfig } from "./config/loader.js";
+import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runPipeline } from "./pipeline/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
@@ -376,8 +376,8 @@ async function statusCommand(args: CliArgs): Promise<void> {
 
 async function doctorCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
-  const config = loadConfig(aqRoot);
-  await runDoctor(config, aqRoot);
+  const result = tryLoadConfig(aqRoot);
+  await runDoctor(result.config, aqRoot, result.error);
 }
 
 async function planCommand(args: CliArgs): Promise<void> {

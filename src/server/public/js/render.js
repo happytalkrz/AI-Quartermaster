@@ -373,3 +373,166 @@ function fetchStats() {
     })
     .catch(function() {});
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Settings Rendering
+   ══════════════════════════════════════════════════════════════ */
+function renderSettings(config) {
+  var html = '';
+
+  // Configuration sections
+  var sections = [
+    { key: 'general', title: 'General', icon: 'settings', data: config.general },
+    { key: 'git', title: 'Git', icon: 'account_tree', data: config.git },
+    { key: 'worktree', title: 'Worktree', icon: 'folder_managed', data: config.worktree },
+    { key: 'commands', title: 'Commands', icon: 'terminal', data: config.commands },
+    { key: 'review', title: 'Review', icon: 'rate_review', data: config.review },
+    { key: 'pr', title: 'Pull Request', icon: 'merge', data: config.pr },
+    { key: 'safety', title: 'Safety', icon: 'security', data: config.safety }
+  ];
+
+  sections.forEach(function(section) {
+    html += renderConfigSection(section.key, section.title, section.icon, section.data);
+  });
+
+  // Projects section
+  if (config.projects && config.projects.length > 0) {
+    html += '<div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/20">';
+    html += '<div class="flex items-center gap-3 p-6 border-b border-outline-variant/20">';
+    html += '<span class="material-symbols-outlined text-primary">inventory_2</span>';
+    html += '<h3 class="text-lg font-headline font-bold text-on-surface">Projects</h3>';
+    html += '<span class="text-xs text-outline bg-surface-container-high px-2 py-1 rounded-full">' + config.projects.length + '</span>';
+    html += '</div>';
+    html += '<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">';
+    config.projects.forEach(function(project) {
+      html += renderProjectCard(project);
+    });
+    html += '</div></div>';
+  }
+
+  return html;
+}
+
+function renderConfigSection(key, title, icon, data) {
+  var sectionId = 'section-' + key;
+  var isExpanded = localStorage.getItem('aqm-section-' + key) !== 'collapsed';
+  var expandClass = isExpanded ? 'expanded' : 'collapsed';
+  var contentClass = isExpanded ? 'block' : 'hidden';
+  var iconClass = isExpanded ? 'rotate-180' : '';
+
+  var html = '<div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/20">';
+  html += '<div class="flex items-center gap-3 p-6 cursor-pointer" onclick="toggleSection(\'' + key + '\')">';
+  html += '<span class="material-symbols-outlined text-primary">' + icon + '</span>';
+  html += '<h3 class="text-lg font-headline font-bold text-on-surface flex-1">' + title + '</h3>';
+  html += '<span class="material-symbols-outlined text-outline transform transition-transform ' + iconClass + '" id="icon-' + key + '">expand_more</span>';
+  html += '</div>';
+
+  html += '<div id="content-' + key + '" class="' + contentClass + ' border-t border-outline-variant/20">';
+  html += '<div class="p-6 space-y-4">';
+
+  // Render key-value pairs
+  if (data && typeof data === 'object') {
+    for (var prop in data) {
+      if (data.hasOwnProperty(prop)) {
+        html += renderConfigProperty(prop, data[prop]);
+      }
+    }
+  }
+
+  html += '</div></div></div>';
+  return html;
+}
+
+function renderConfigProperty(key, value) {
+  var html = '<div class="flex flex-col sm:flex-row sm:items-center gap-3 py-2">';
+  html += '<span class="text-sm font-bold text-on-surface/80 font-mono min-w-[140px]">' + esc(key) + '</span>';
+  html += '<div class="flex-1">';
+
+  if (value === null || value === undefined) {
+    html += '<span class="text-xs text-outline italic">null</span>';
+  } else if (typeof value === 'boolean') {
+    var color = value ? 'text-[#3fb950]' : 'text-outline';
+    html += '<span class="text-sm font-bold ' + color + '">' + String(value) + '</span>';
+  } else if (typeof value === 'number') {
+    html += '<span class="text-sm font-mono text-primary">' + value + '</span>';
+  } else if (Array.isArray(value)) {
+    if (value.length === 0) {
+      html += '<span class="text-xs text-outline italic">empty array</span>';
+    } else {
+      html += '<div class="space-y-1">';
+      value.forEach(function(item, i) {
+        html += '<div class="text-sm font-mono bg-surface-container-low px-2 py-1 rounded border border-outline-variant/20">';
+        html += '<span class="text-outline text-xs mr-2">' + i + ':</span>' + esc(String(item));
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+  } else if (typeof value === 'object') {
+    html += '<div class="bg-surface-container-low p-3 rounded-lg border border-outline-variant/20">';
+    html += '<pre class="text-xs font-mono text-on-surface/80 leading-relaxed">' + esc(JSON.stringify(value, null, 2)) + '</pre>';
+    html += '</div>';
+  } else {
+    var displayValue = String(value);
+    if (displayValue.includes('********')) {
+      html += '<span class="text-sm font-mono bg-[#f85149]/10 text-[#f85149] px-2 py-1 rounded border border-[#f85149]/20">' + esc(displayValue) + '</span>';
+    } else {
+      html += '<span class="text-sm font-mono bg-surface-container-low px-2 py-1 rounded border border-outline-variant/20">' + esc(displayValue) + '</span>';
+    }
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function renderProjectCard(project) {
+  var html = '<div class="bg-surface-container-low p-4 rounded-lg ring-1 ring-outline-variant/10">';
+  html += '<div class="flex items-start justify-between mb-3">';
+  html += '<div class="flex items-center gap-2">';
+  html += '<span class="material-symbols-outlined text-primary text-sm">folder</span>';
+  html += '<span class="text-sm font-bold text-on-surface">' + esc(project.repo) + '</span>';
+  html += '</div>';
+  if (project.mode) {
+    html += '<span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold">' + esc(project.mode) + '</span>';
+  }
+  html += '</div>';
+
+  html += '<div class="text-xs text-outline font-mono mb-2">' + esc(project.path) + '</div>';
+
+  if (project.baseBranch) {
+    html += '<div class="text-xs text-outline flex items-center gap-1 mb-1">';
+    html += '<span class="material-symbols-outlined text-xs">account_tree</span>';
+    html += 'Base: ' + esc(project.baseBranch);
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function toggleSection(key) {
+  var content = document.getElementById('content-' + key);
+  var icon = document.getElementById('icon-' + key);
+  var isCollapsed = content.classList.contains('hidden');
+
+  if (isCollapsed) {
+    content.classList.remove('hidden');
+    content.classList.add('block');
+    icon.classList.add('rotate-180');
+    localStorage.setItem('aqm-section-' + key, 'expanded');
+  } else {
+    content.classList.remove('block');
+    content.classList.add('hidden');
+    icon.classList.remove('rotate-180');
+    localStorage.setItem('aqm-section-' + key, 'collapsed');
+  }
+}
+
+function renderSettingsView(config) {
+  var container = document.getElementById('settings-content');
+  if (!config) {
+    container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러올 수 없습니다.</div>';
+    return;
+  }
+
+  container.innerHTML = renderSettings(config);
+}

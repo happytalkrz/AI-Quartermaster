@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
+import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
 import { runPipeline } from "./pipeline/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
 import { JobStore } from "./queue/job-store.js";
@@ -342,6 +343,25 @@ async function setupCommand(args: CliArgs): Promise<void> {
   await runSetup(aqRoot, { nonInteractive: args.nonInteractive });
 }
 
+async function initCommand(args: CliArgs, rawArgs: string[]): Promise<void> {
+  const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
+
+  // Parse init-specific options from raw args
+  const initOptions = parseInitOptions(rawArgs);
+
+  if (initOptions.help) {
+    printInitHelp();
+    return;
+  }
+
+  // Use global dry-run if specified
+  if (args.dryRun) {
+    initOptions.dryRun = true;
+  }
+
+  await runInitCommand(aqRoot, initOptions);
+}
+
 async function statusCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
@@ -536,6 +556,8 @@ async function main() {
     await startCommand(args);
   } else if (command === "setup") {
     await setupCommand(args);
+  } else if (command === "init") {
+    await initCommand(args, process.argv.slice(2));
   } else if (command === "setup-webhook") {
     if (!args.repo) {
       console.error("Usage: aqm setup-webhook --repo <owner/repo>");
@@ -589,6 +611,7 @@ Monitoring:
   aqm doctor                                      환경 점검
 
 Management:
+  aqm init [options]                              현재 프로젝트를 config.yml에 등록
   aqm setup                                       초기 설정 (인터랙티브)
   aqm setup --non-interactive                    초기 설정 (자동 생성)
   aqm setup-webhook --repo <owner/repo>           GitHub webhook 등록

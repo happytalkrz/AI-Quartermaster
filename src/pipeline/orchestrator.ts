@@ -232,13 +232,24 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       // === BRANCH_CREATED → WORKTREE_CREATED ===
       // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
       if (input.isRetry && worktreePath && existsSync(worktreePath)) {
+        jl?.log("재시도 작업 - 기존 worktree 정리 시도 중...");
+
         try {
           await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
           logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
           jl?.log("재시도 작업 - 기존 worktree 정리 완료");
         } catch (e) {
-          logger.warn(`Failed to remove existing worktree ${worktreePath}: ${e}`);
+          logger.warn(`[RETRY] Primary cleanup failed: ${e}`);
+          try {
+            await runCli(gitConfig.gitPath, ["worktree", "prune"], { cwd: projectRoot });
+            logger.info(`[RETRY] Pruned stale entries`);
+          } catch (pruneError) {
+            logger.warn(`[RETRY] Prune failed: ${pruneError}`);
+          }
+          logger.warn(`[RETRY] Cleanup failed; continuing (branch-manager handles full cleanup)`);
+          jl?.log("워크트리 정리 실패했지만 계속 진행 (branch-manager에서 완전 정리 예정)");
         }
+
         worktreePath = undefined;
         state = "BRANCH_CREATED";
       }

@@ -44,8 +44,8 @@ const ctx = {
     stopConditions: [],
   },
   phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: true, commitHash: "abc12345", durationMs: 1000 }],
-  branch: "aq/42-fix-login",
-  worktreePath: "/tmp/wt",
+  branchName: "aq/42-fix-login",
+  baseBranch: "main",
 };
 
 describe("createDraftPR", () => {

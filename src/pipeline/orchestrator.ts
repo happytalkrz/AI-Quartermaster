@@ -34,6 +34,8 @@ import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import { withRepoLock } from "../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
+import { runValidationPhase } from "./pipeline-validation.js";
+import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "./pipeline-publish.js";
 import {
   PROGRESS_ISSUE_VALIDATED,
   PROGRESS_PLAN_GENERATED,
@@ -690,246 +692,111 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     // === FINAL_VALIDATING ===
-    if (!preset.skipFinalValidation) {
-      if (isPastState(state, "FINAL_VALIDATING")) {
-        logger.info(`[SKIP] → FINAL_VALIDATING (already done)`);
-      } else {
-        timer.assertNotExpired("final-validation");
-        state = "FINAL_VALIDATING";
-        logger.info("[FINAL_VALIDATING] Running final validation...");
-        jl?.setStep("최종 검증 중...");
-        jl?.setProgress(PROGRESS_VALIDATION_START);
-        let validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
-        for (const check of validation.checks) {
-          jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
-        }
-        if (!validation.success) {
-          const maxRetries = project.safety.maxRetries;
-          let retrySuccess = false;
-
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            const failedChecks = validation.checks.filter(c => !c.passed);
-            const failedNames = failedChecks.map(c => c.name).join(", ");
-            logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${maxRetries} — fixing: ${failedNames}`);
-            jl?.log(`검증 실패 수정 시도 ${attempt}/${maxRetries}: ${failedNames}`);
-            jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
-
-            const errorDetails = failedChecks
-              .map(c => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
-              .join("\n\n");
-
-            const fixPrompt = [
-              "The following validation checks failed. Fix the errors only — do not add new features or refactor unrelated code.",
-              "",
-              errorDetails,
-            ].join("\n");
-
-            const claudeConfig = configForTask(project.commands.claudeCli, "fallback");
-            await runClaude({
-              prompt: fixPrompt,
-              cwd: worktreePath!,
-              config: claudeConfig,
-            });
-
-            await autoCommitIfDirty(gitConfig.gitPath, worktreePath!, `fix: validation 오류 수정 (retry ${attempt})`);
-
-            validation = await runFinalValidation(project.commands, { cwd: worktreePath! }, gitConfig.gitPath);
-            for (const check of validation.checks) {
-              jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name} (retry ${attempt})`);
-            }
-
-            if (validation.success) {
-              logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
-              jl?.log(`검증 통과 (retry ${attempt})`);
-              retrySuccess = true;
-              break;
-            }
-          }
-
-          if (!retrySuccess) {
-            const failedChecks = validation.checks.filter(c => !c.passed).map(c => c.name).join(", ");
-            logger.error(`[FINAL_VALIDATING] Failed after ${maxRetries} retries: ${failedChecks}`);
-            jl?.log(`실패: Final validation failed after ${maxRetries} retries: ${failedChecks}`);
-            jl?.setStep("실패");
-            checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-            const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
-            printResult(report);
-            saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-            return { success: false, state: "FAILED", error: `Final validation failed after ${maxRetries} retries: ${failedChecks}`, report };
-          }
-        }
-
-        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-      }
-    }
-
-    // === Safety: validate before push (sensitive paths, change limits, base branch) ===
-    await validateBeforePush({
-      safetyConfig: project.safety,
-      gitConfig,
-      cwd: worktreePath!,
-      baseBranch: project.baseBranch,
-    });
-
-    // === Conflict detection before push ===
-    {
-      // Fetch latest base branch to ensure we're comparing against current remote
-      const fetchResult = await runCli(
-        gitConfig.gitPath,
-        ["fetch", gitConfig.remoteAlias, project.baseBranch],
-        { cwd: worktreePath! }
-      );
-      if (fetchResult.exitCode !== 0) {
-        logger.warn(`Failed to fetch ${project.baseBranch} for conflict check: ${fetchResult.stderr}`);
-      } else {
-        const conflictCheck = await checkConflicts(gitConfig, project.baseBranch, { cwd: worktreePath! });
-        if (conflictCheck.hasConflicts) {
-          logger.warn(`Conflicts detected with ${project.baseBranch}: ${conflictCheck.conflictFiles.join(", ") || "(unknown files)"}`);
-          jl?.log(`충돌 감지됨, rebase 시도 중...`);
-          const rebaseResult = await attemptRebase(gitConfig, project.baseBranch, { cwd: worktreePath! });
-          if (rebaseResult.success) {
-            logger.info(`Rebase succeeded — branch is now conflict-free`);
-            jl?.log(`Rebase 성공`);
-          } else {
-            logger.warn(`Rebase failed — PR will show conflicts. Files: ${conflictCheck.conflictFiles.join(", ") || "(unknown)"}`);
-            jl?.log(`Rebase 실패 (충돌 있음): ${conflictCheck.conflictFiles.join(", ") || "unknown files"}`);
-            // Non-blocking: continue with push and let humans resolve
-          }
-        }
-      }
-    }
-
-    // === Push branch to remote ===
-    timer.assertNotExpired("push");
-    jl?.setStep("Push 중...");
-    if (!config.general.dryRun) {
-      await pushBranch(gitConfig, branchName!, { cwd: worktreePath! });
-    }
-
-    // === Create Draft PR ===
-    state = "DRAFT_PR_CREATED";
-    jl?.setProgress(PROGRESS_PR_CREATED);
-    const prResult = await createDraftPR(
-      project.pr,
-      project.commands.ghCli,
-      {
-        issueNumber,
-        issueTitle: issue.title,
-        repo,
-        plan: coreResult.plan,
-        phaseResults: coreResult.phaseResults,
-        branchName: branchName!,
-        baseBranch: project.baseBranch,
+    const validationContext = {
+      commands: {
+        claudeCli: project.commands.claudeCli,
       },
-      { cwd: worktreePath!, promptsDir, dryRun: config.general.dryRun }
+      cwd: worktreePath!,
+      gitPath: gitConfig.gitPath,
+      maxRetries: project.safety.maxRetries,
+      plan: coreResult.plan,
+      phaseResults: coreResult.phaseResults,
+      jl,
+    };
+
+    const validationResult = await runValidationPhase(
+      validationContext,
+      timer,
+      (checkState: string) => isPastState(state, checkState as PipelineState),
+      preset.skipFinalValidation,
+      (overrides?: any) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
+      issueNumber,
+      repo,
+      startTime,
+      config,
+      project.commands,
+      aqRoot,
+      projectRoot
     );
-    const prUrl = prResult.url;
-    logger.info(`[DRAFT_PR_CREATED] PR: ${prUrl}`);
-    jl?.log(`PR: ${prUrl}`);
 
-    // === Enable auto-merge if configured ===
-    if (project.pr.autoMerge && prResult.number > 0) {
-      jl?.setStep("Auto-merge 설정 중...");
-      const merged = await enableAutoMerge(
-        prResult.number,
-        repo,
-        project.pr.mergeMethod,
-        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun, isDraft: project.pr.draft }
-      );
-      if (merged) {
-        jl?.log(`Auto-merge 활성화 (${project.pr.mergeMethod})`);
-      } else {
-        jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
-      }
+    if (!validationResult.success) {
+      return { success: false, state: "FAILED", error: validationResult.error, report: validationResult.report };
     }
 
-    // === Close the issue since PR is created ===
-    try {
-      jl?.setStep("이슈 닫는 중...");
-      const closed = await closeIssue(
-        issueNumber,
-        repo,
-        { ghPath: project.commands.ghCli.path, dryRun: config.general.dryRun }
-      );
-      if (closed) {
-        jl?.log(`이슈 #${issueNumber} 닫음`);
-      } else {
-        jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
-      }
-    } catch (e) {
-      logger.warn(`Failed to close issue #${issueNumber}: ${e}`);
-      jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
+    if (!preset.skipFinalValidation && !isPastState(state, "FINAL_VALIDATING")) {
+      state = "FINAL_VALIDATING";
     }
 
-    jl?.setStep("완료");
+    // === Push branch, create PR, and handle post-PR tasks ===
+    timer.assertNotExpired("push");
 
-    // === Cleanup worktree on success ===
-    if (config.worktree.cleanupOnSuccess && worktreePath) {
-      try {
-        await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot });
-        logger.info(`Worktree cleaned up`);
-      } catch (e) {
-        logger.warn(`Failed to cleanup worktree: ${e}`);
-      }
+    const publishContext = {
+      issueNumber,
+      repo,
+      issue,
+      plan: coreResult.plan,
+      phaseResults: coreResult.phaseResults,
+      branchName: branchName!,
+      baseBranch: project.baseBranch,
+      worktreePath: worktreePath!,
+      gitConfig,
+      projectConfig: project,
+      promptsDir,
+      dryRun: config.general.dryRun,
+      jl,
+    };
+
+    const publishResult = await pushAndCreatePR(publishContext);
+
+    if (!publishResult.success) {
+      return { success: false, state: "FAILED", error: publishResult.error };
     }
+
+    const prUrl = publishResult.prUrl;
+    state = "DRAFT_PR_CREATED";
+
+    // === Cleanup on success and finalize ===
+    const cleanupContext = {
+      worktreePath,
+      gitConfig,
+      projectRoot,
+      cleanupOnSuccess: config.worktree.cleanupOnSuccess,
+      cleanupOnFailure: config.worktree.cleanupOnFailure,
+      issueNumber,
+      repo,
+      plan: coreResult.plan,
+      phaseResults: coreResult.phaseResults,
+      startTime,
+      prUrl,
+      config,
+      aqRoot,
+      dataDir,
+    };
+
+    await cleanupOnSuccess(cleanupContext);
 
     state = "DONE";
     jl?.setProgress(PROGRESS_DONE);
-    // Record success pattern
-    try {
-      patternStore.add({
-        issueNumber,
-        repo,
-        type: "success",
-        tags: [],
-      });
-    } catch { /* non-fatal */ }
-    const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl);
-    printResult(report);
-    saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-    removeCheckpoint(dataDir, issueNumber);
 
-    return { success: true, state, prUrl, report };
+    return { success: true, state, prUrl, report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl) };
 
   } catch (error) {
-    const errMsg = errorMessage(error);
-    logger.error(`[FAILED] Pipeline failed at state ${state}: ${errMsg}`);
-    jl?.log(`실패: ${errMsg}`);
-    jl?.setStep("실패");
+    const failureContext = {
+      error,
+      state,
+      worktreePath,
+      branchName,
+      rollbackHash,
+      rollbackStrategy,
+      gitConfig,
+      projectRoot,
+      cleanupOnFailure: config.worktree.cleanupOnFailure,
+      jl,
+    };
 
-    // === Rollback on exception ===
-    let rollbackInfo: string | undefined;
-    const exceptionRollbackStrategy = rollbackStrategy;
-    if (worktreePath && exceptionRollbackStrategy !== "none" && rollbackHash) {
-      try {
-        await doRollback(rollbackHash, { cwd: worktreePath, gitPath: gitConfig.gitPath });
-        rollbackInfo = `Rolled back to ${rollbackHash.slice(0, 8)} (strategy: ${exceptionRollbackStrategy})`;
-        logger.info(rollbackInfo);
-      } catch (rbErr) {
-        logger.warn(`Rollback failed: ${rbErr}`);
-      }
-    }
+    const finalErrorMessage = await handlePipelineFailure(failureContext);
 
-    // Cleanup worktree on failure if configured
-    if (worktreePath && config.worktree.cleanupOnFailure) {
-      try {
-        await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
-      } catch {
-        // ignore cleanup errors
-      }
-    }
-
-    // Cleanup orphaned branch on failure if configured
-    if (branchName && config.worktree.cleanupOnFailure) {
-      try {
-        await runCli(gitConfig.gitPath, ["branch", "-D", branchName], { cwd: projectRoot });
-        logger.info(`Cleaned up branch: ${branchName}`);
-      } catch {
-        // ignore — branch may not exist
-      }
-    }
-
-    return { success: false, state: "FAILED", error: rollbackInfo ? `${errMsg}. ${rollbackInfo}` : errMsg };
+    return { success: false, state: "FAILED", error: finalErrorMessage };
   }
 }
 

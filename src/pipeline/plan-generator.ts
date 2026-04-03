@@ -305,7 +305,9 @@ async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanR
     // 이슈 코멘트 알림
     logger.info(`Posting retry context comment to issue #${ctx.issue.number}`);
     const repo = `${ctx.repo.owner}/${ctx.repo.name}`;
-    await notifyPlanRetryContext(repo, ctx.issue.number, retryContext, contextInfo);
+    // retryContext의 deep copy를 전달하여 이후 수정으로부터 보호
+    const retryContextSnapshot = JSON.parse(JSON.stringify(retryContext));
+    await notifyPlanRetryContext(repo, ctx.issue.number, retryContextSnapshot, contextInfo);
 
     logger.info("Retry context collection and notification completed");
   } catch (contextError) {

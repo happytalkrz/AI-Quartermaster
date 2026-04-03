@@ -72,7 +72,7 @@ export async function createWorkBranch(
   const checkRemote = await runCli(gitConfig.gitPath, ["ls-remote", "--heads", gitConfig.remoteAlias, workBranch], { cwd: options.cwd });
   if (checkRemote.stdout.trim()) {
     logger.warn(`Branch ${workBranch} already exists on remote, deleting...`);
-    await runCli(gitConfig.gitPath, ["push", gitConfig.remoteAlias, "--delete", workBranch], { cwd: options.cwd });
+    await deleteRemoteBranch(gitConfig, workBranch, options);
   }
 
   // Create branch from remote base
@@ -177,6 +177,25 @@ export async function attemptRebase(
   const error = rebaseResult.stderr || rebaseResult.stdout;
   logger.warn(`Rebase failed: ${error}`);
   return { success: false, error };
+}
+
+/**
+ * Deletes a remote branch.
+ */
+export async function deleteRemoteBranch(
+  gitConfig: GitConfig,
+  branchName: string,
+  options: { cwd: string }
+): Promise<void> {
+  const result = await runCli(
+    gitConfig.gitPath,
+    ["push", gitConfig.remoteAlias, "--delete", branchName],
+    { cwd: options.cwd }
+  );
+  if (result.exitCode !== 0) {
+    throw new Error(`Failed to delete remote branch ${branchName}: ${result.stderr}`);
+  }
+  logger.info(`Deleted remote branch ${branchName} from ${gitConfig.remoteAlias}`);
 }
 
 /**

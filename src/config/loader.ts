@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, writeFileSync } from "fs";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
@@ -422,4 +422,24 @@ export async function initProject(aqRoot: string, options: InitCommandOptions = 
     // 4. 새 config.yml 생성
     writeMinimalConfig(configPath, project);
   }
+}
+
+/**
+ * Config 섹션 업데이트 및 저장 (partial update 지원)
+ * @param projectRoot - 프로젝트 루트 경로
+ * @param updates - 업데이트할 config 섹션들
+ */
+export function updateConfigSection(projectRoot: string, updates: Partial<AQConfig>): void {
+  const configPath = `${projectRoot}/config.yml`;
+
+  if (!existsSync(configPath)) {
+    throw new Error(`config.yml not found at ${configPath}`);
+  }
+
+  const currentRaw = parseYamlSafely(readFileSync(configPath, "utf-8"), configPath);
+  const updatedConfig = deepMerge(currentRaw, updates);
+  const validatedConfig = validateConfig(updatedConfig);
+  const yamlContent = stringifyYaml(validatedConfig);
+
+  writeFileSync(configPath, yamlContent, 'utf-8');
 }

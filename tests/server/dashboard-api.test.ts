@@ -8,6 +8,7 @@ import type { JobQueue } from "../../src/queue/job-queue.js";
 // Mock the config loader and masker
 vi.mock("../../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
+  updateConfigSection: vi.fn(),
   addProjectToConfig: vi.fn(),
   removeProjectFromConfig: vi.fn(),
 }));
@@ -22,6 +23,7 @@ vi.mock("../../src/config/validator.js", () => ({
 
 // Mock imports
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
+const mockUpdateConfigSection = vi.mocked(await import("../../src/config/loader.js")).updateConfigSection;
 const mockAddProjectToConfig = vi.mocked(await import("../../src/config/loader.js")).addProjectToConfig;
 const mockRemoveProjectFromConfig = vi.mocked(await import("../../src/config/loader.js")).removeProjectFromConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
@@ -182,6 +184,247 @@ describe("Dashboard API - /api/config", () => {
       expect(response.status).toBe(500);
       const result = await response.json();
       expect(result.error).toBe("Failed to load configuration: Unknown error");
+    });
+  });
+});
+
+describe("Dashboard API - PUT /api/config", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("without API key", () => {
+    beforeEach(() => {
+      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    });
+
+    it("should update config section successfully", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const, concurrency: 2 },
+        safety: { maxPhases: 15 }
+      };
+
+      mockUpdateConfigSection.mockReturnValue(undefined);
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result).toEqual({
+        success: true,
+        message: "Configuration updated successfully"
+      });
+      expect(mockUpdateConfigSection).toHaveBeenCalledWith(process.cwd(), updates);
+    });
+
+    it("should return 400 for invalid request body", async () => {
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: "invalid json string",
+      });
+
+      expect(response.status).toBe(500); // JSON parsing error is caught and returns 500
+      const result = await response.json();
+      expect(result.error).toContain("Failed to update configuration");
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for null request body", async () => {
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(null),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for validation errors", async () => {
+      const updates = {
+        general: { logLevel: "invalid-level" },
+      };
+
+      mockUpdateConfigSection.mockImplementation(() => {
+        throw new Error("Configuration validation failed: Invalid log level");
+      });
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Configuration validation failed: Configuration validation failed: Invalid log level");
+    });
+
+    it("should return 400 for config file not found", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
+      mockUpdateConfigSection.mockImplementation(() => {
+        throw new Error("config.yml not found at /path/to/config.yml");
+      });
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Configuration validation failed: config.yml not found at /path/to/config.yml");
+    });
+
+    it("should return 500 for file system errors", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
+      mockUpdateConfigSection.mockImplementation(() => {
+        throw new Error("Permission denied: unable to write config file");
+      });
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toBe("Failed to update configuration: Permission denied: unable to write config file");
+    });
+
+    it("should handle non-Error exceptions", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
+      mockUpdateConfigSection.mockImplementation(() => {
+        throw "String error";
+      });
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toBe("Failed to update configuration: Unknown error");
+    });
+  });
+
+  describe("with API key", () => {
+    const apiKey = "test-api-key-123";
+
+    beforeEach(() => {
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+    });
+
+    it("should require Bearer token authentication", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(401);
+      const result = await response.json();
+      expect(result.error).toBe("Unauthorized");
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should update config with valid Bearer token", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const, projectName: "test-project-updated" },
+        safety: { maxPhases: 8, requireTests: true }
+      };
+
+      mockUpdateConfigSection.mockReturnValue(undefined);
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result).toEqual({
+        success: true,
+        message: "Configuration updated successfully"
+      });
+      expect(mockUpdateConfigSection).toHaveBeenCalledWith(process.cwd(), updates);
+    });
+
+    it("should return 401 with invalid Bearer token", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer invalid-token",
+        },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(401);
+      const result = await response.json();
+      expect(result.error).toBe("Unauthorized");
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should handle validation errors with authentication", async () => {
+      const updates = {
+        safety: { maxPhases: 100 }, // Too big, should trigger validation error
+      };
+
+      mockUpdateConfigSection.mockImplementation(() => {
+        throw new Error("설정 파일에 오류가 있습니다: 최대 페이즈 수는 20 이하여야 합니다.");
+      });
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(500); // Korean validation error doesn't contain "validation" word
+      const result = await response.json();
+      expect(result.error).toBe("Failed to update configuration: 설정 파일에 오류가 있습니다: 최대 페이즈 수는 20 이하여야 합니다.");
     });
   });
 });

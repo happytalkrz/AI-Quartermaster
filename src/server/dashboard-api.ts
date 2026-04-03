@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig, addProjectToConfig, removeProjectFromConfig } from "../config/loader.js";
+import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig } from "../types/config.js";
@@ -135,6 +135,26 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
 
   const projectRoot = process.cwd();
   const configPath = `${projectRoot}/config.yml`;
+
+  // Update configuration
+  api.put("/api/config", async (c) => {
+    try {
+      const body = await c.req.json();
+
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+
+      updateConfigSection(process.cwd(), body);
+      return c.json({ success: true, message: "Configuration updated successfully" });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const isValidationError = message.includes("validation") || message.includes("Invalid") || message.includes("not found");
+      const status = isValidationError ? 400 : 500;
+      const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
+      return c.json({ error: `${prefix}: ${message}` }, status);
+    }
+  });
 
   // Add project to configuration
   api.post("/api/projects", async (c) => {

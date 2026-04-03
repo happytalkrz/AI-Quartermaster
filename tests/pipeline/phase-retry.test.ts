@@ -146,6 +146,7 @@ describe("retryPhase", () => {
           errorCategory: "TS_ERROR",
           errorMessage: "Previous error message",
           errorHistory: undefined,
+          lastOutput: "",
         },
         config: {
           testCommand: "npm test",

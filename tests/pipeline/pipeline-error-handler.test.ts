@@ -163,6 +163,9 @@ describe("pipeline-error-handler", () => {
       const { rollbackToCheckpoint } = await import("../../src/safety/rollback-manager.js");
       (rollbackToCheckpoint as any).mockRejectedValueOnce(new Error("Rollback failed"));
 
+      // Set rollbackStrategy to none to avoid rollback attempt
+      mockContext.rollbackStrategy = "none";
+
       const result = await handleCoreLoopFailure(mockContext);
 
       expect(result.success).toBe(false);

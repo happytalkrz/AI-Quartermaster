@@ -306,6 +306,68 @@ export function addProjectToConfig(configPath: string, project: ProjectConfig): 
   writeFileSync(configPath, lines.join('\n'), 'utf-8');
 }
 
+export function removeProjectFromConfig(configPath: string, targetRepo: string): void {
+  const content = readFileSync(configPath, 'utf-8');
+  const lines = content.split('\n');
+
+  const projectsIndex = lines.findIndex(line => line.match(/^(\s*)projects\s*:\s*$/));
+
+  if (projectsIndex === -1) {
+    return;
+  }
+
+  const projectsIndent = lines[projectsIndex].match(/^(\s*)/)![1];
+  const itemIndent = projectsIndent + '  ';
+  let removeStartIndex = -1;
+  let removeEndIndex = -1;
+
+  for (let i = projectsIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    if (trimmedLine === '') continue;
+
+    if (!line.startsWith(itemIndent) && trimmedLine.match(/^\w+\s*:/)) {
+      break;
+    }
+
+    if (line.startsWith(itemIndent) && line.includes('- repo:')) {
+      const repoMatch = line.match(/- repo:\s*["'](.+?)["']/);
+      if (repoMatch && repoMatch[1] === targetRepo) {
+        removeStartIndex = i;
+        removeEndIndex = i;
+
+        for (let j = i + 1; j < lines.length; j++) {
+          const nextLine = lines[j];
+          const nextTrimmed = nextLine.trim();
+
+          if (nextTrimmed === '') continue;
+
+          if (nextLine.startsWith(itemIndent) && nextLine.includes('- repo:')) {
+            break;
+          }
+
+          if (!nextLine.startsWith(itemIndent) && nextTrimmed.match(/^\w+\s*:/)) {
+            break;
+          }
+
+          if (nextLine.startsWith(itemIndent + '  ')) {
+            removeEndIndex = j;
+          } else {
+            break;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  if (removeStartIndex !== -1 && removeEndIndex !== -1) {
+    lines.splice(removeStartIndex, removeEndIndex - removeStartIndex + 1);
+    writeFileSync(configPath, lines.join('\n'), 'utf-8');
+  }
+}
+
 /**
  * 현재 프로젝트를 config.yml에 등록
  */

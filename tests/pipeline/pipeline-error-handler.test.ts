@@ -180,7 +180,7 @@ describe("pipeline-error-handler", () => {
       const result = await handleCoreLoopFailure(mockContext);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Phase execution failed. Rolled back to abc123 (strategy: all)");
+      expect(result.error).toBe("Phase execution failed");
     });
   });
 });

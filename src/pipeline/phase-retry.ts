@@ -16,7 +16,7 @@ import { phaseProgress } from "./progress-tracker.js";
 const logger = getLogger();
 
 function formatErrorHistory(errorHistory: ErrorHistoryEntry[]): string {
-  const formatted = errorHistory.map((entry, index) => {
+  const formatted = errorHistory.map((entry) => {
     const attemptInfo = `Attempt ${entry.attempt} (${entry.errorCategory})`;
     const timestamp = new Date(entry.timestamp).toLocaleString();
     const message = entry.errorMessage.slice(-500); // Limit each error message

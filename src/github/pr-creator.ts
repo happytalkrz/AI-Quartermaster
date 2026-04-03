@@ -128,7 +128,7 @@ export async function enableAutoMerge(
   prNumber: number,
   repo: string,
   mergeMethod: MergeMethod,
-  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean; deleteBranch?: boolean }
 ): Promise<boolean> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -149,17 +149,50 @@ export async function enableAutoMerge(
   }
 
   // Enable auto-merge
-  const mergeResult = await runCli(
-    ghPath,
-    ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`],
-    {}
-  );
+  const mergeArgs = ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`];
+  if (options.deleteBranch) {
+    mergeArgs.push("--delete-branch");
+  }
+
+  const mergeResult = await runCli(ghPath, mergeArgs, {});
   if (mergeResult.exitCode !== 0) {
     logger.warn(`Failed to enable auto-merge on PR #${prNumber}: ${mergeResult.stderr}`);
     return false;
   }
 
   logger.info(`Auto-merge enabled on PR #${prNumber} (method: ${mergeMethod})`);
+  return true;
+}
+
+/**
+ * Adds a comment to an issue on GitHub using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function addIssueComment(
+  issueNumber: number,
+  repo: string,
+  comment: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would add comment to issue #${issueNumber}: ${comment}`);
+    return true;
+  }
+
+  // Add comment to issue
+  const result = await runCli(
+    ghPath,
+    ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+    {}
+  );
+  if (result.exitCode !== 0) {
+    logger.warn(`Failed to comment on issue #${issueNumber}: ${result.stderr}`);
+    return false;
+  }
+
+  logger.info(`Added comment to issue #${issueNumber}`);
   return true;
 }
 

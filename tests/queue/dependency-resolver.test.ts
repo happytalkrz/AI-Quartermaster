@@ -1,13 +1,28 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+
+// Mock runCli for checkDependencyPRsMerged tests
+vi.mock("../../src/utils/cli-runner.js", () => ({
+  runCli: vi.fn(),
+}));
+vi.mock("../../src/utils/logger.js", () => ({
+  getLogger: vi.fn(() => ({
+    warn: vi.fn(),
+    info: vi.fn(),
+  })),
+}));
 import {
   parseDependencies,
   checkCircularDependency,
   areDependenciesMet,
+  checkDependencyPRsMerged,
 } from "../../src/queue/dependency-resolver.js";
 import { JobStore } from "../../src/queue/job-store.js";
+import { runCli } from "../../src/utils/cli-runner.js";
+
+const mockRunCli = vi.mocked(runCli);
 
 // ─── parseDependencies ───────────────────────────────────────────────────────
 
@@ -156,5 +171,173 @@ describe("areDependenciesMet", () => {
     store.update(job.id, { status: "success", completedAt: new Date().toISOString() });
     const result = areDependenciesMet([11], "test/repo", store);
     expect(result.met).toBe(false);
+  });
+});
+
+// ─── checkDependencyPRsMerged ────────────────────────────────────────────────
+
+describe("checkDependencyPRsMerged", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns merged: true for empty dependencies", async () => {
+    const result = await checkDependencyPRsMerged([], "test/repo");
+    expect(result).toEqual({ merged: true, unmerged: [], notFound: [] });
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("returns merged: true when all dependency PRs are merged", async () => {
+    // Mock timeline response for issue #11 - has linked PR #101
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: "101\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      // Mock PR merge status - merged
+      .mockResolvedValueOnce({
+        stdout: "true\n",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo", "gh");
+
+    expect(result).toEqual({ merged: true, unmerged: [], notFound: [] });
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      [
+        "api",
+        "repos/test/repo/issues/11/timeline",
+        "--jq",
+        '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number'
+      ]
+    );
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      ["api", "repos/test/repo/pulls/101", "--jq", ".merged"]
+    );
+  });
+
+  it("returns merged: false when dependency PR is not merged", async () => {
+    // Mock timeline response for issue #11 - has linked PR #101
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: "101\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      // Mock PR merge status - not merged
+      .mockResolvedValueOnce({
+        stdout: "false\n",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo");
+
+    expect(result).toEqual({ merged: false, unmerged: [11], notFound: [] });
+  });
+
+  it("handles multiple dependencies correctly", async () => {
+    // Issue #11 - has merged PR #101
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: "101\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        stdout: "true\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      // Issue #12 - has unmerged PR #102
+      .mockResolvedValueOnce({
+        stdout: "102\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        stdout: "false\n",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = await checkDependencyPRsMerged([11, 12], "test/repo");
+
+    expect(result).toEqual({ merged: false, unmerged: [12], notFound: [] });
+  });
+
+  it("handles issues with no linked PRs", async () => {
+    // Mock timeline response for issue #11 - no PRs
+    mockRunCli.mockResolvedValueOnce({
+      stdout: "\n",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo");
+
+    expect(result).toEqual({ merged: false, unmerged: [], notFound: [11] });
+  });
+
+  it("handles issues with multiple PRs where one is merged", async () => {
+    // Mock timeline response for issue #11 - has PRs #101 and #102
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: "101\n102\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      // PR #101 not merged
+      .mockResolvedValueOnce({
+        stdout: "false\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      // PR #102 merged
+      .mockResolvedValueOnce({
+        stdout: "true\n",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo");
+
+    expect(result).toEqual({ merged: true, unmerged: [], notFound: [] });
+  });
+
+  it("handles API errors gracefully", async () => {
+    // Mock timeline API failure
+    mockRunCli.mockResolvedValueOnce({
+      stdout: "",
+      stderr: "API Error",
+      exitCode: 1,
+    });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo");
+
+    expect(result).toEqual({ merged: false, unmerged: [], notFound: [11] });
+  });
+
+  it("handles PR API errors gracefully", async () => {
+    // Mock successful timeline but failed PR check
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: "101\n",
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        stdout: "",
+        stderr: "PR not found",
+        exitCode: 1,
+      });
+
+    const result = await checkDependencyPRsMerged([11], "test/repo");
+
+    expect(result).toEqual({ merged: false, unmerged: [11], notFound: [] });
   });
 });

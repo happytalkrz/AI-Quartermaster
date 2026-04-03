@@ -70,7 +70,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       },
     ],
     simplify: {
-      enabled: false,
+      enabled: true,
       promptTemplate:
         "Simplify the following implementation while preserving all functionality:\n\n{diff}",
     },

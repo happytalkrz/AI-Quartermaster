@@ -108,13 +108,24 @@ function loadSettings() {
 function setSettingsTab(tabName) {
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
     var isActive = btn.dataset.tab === tabName;
-    btn.classList.toggle('bg-primary/10 text-primary', isActive);
-    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
+    if (isActive) {
+      // 활성 탭: 활성 스타일 추가, 비활성 스타일 제거
+      btn.classList.add('bg-primary/10', 'text-primary');
+      btn.classList.remove('text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high');
+    } else {
+      // 비활성 탭: 비활성 스타일 추가, 활성 스타일 제거
+      btn.classList.remove('bg-primary/10', 'text-primary');
+      btn.classList.add('text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high');
+    }
   });
 
   document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {
     var isActive = panel.id === 'settings-tab-' + tabName;
-    panel.classList.toggle('hidden', !isActive);
+    if (isActive) {
+      panel.classList.remove('hidden');
+    } else {
+      panel.classList.add('hidden');
+    }
   });
 
   localStorage.setItem('aqm-selected-tab', tabName);

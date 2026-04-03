@@ -5,6 +5,7 @@ import type { AQConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
+import { progressForState } from "./progress-tracker.js";
 import { getLogger } from "../utils/logger.js";
 
 export interface OrchestratorInput {
@@ -92,7 +93,6 @@ export async function initializePipelineState(
 
   if (resumeFrom) {
     logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
-    const { progressForState } = await import("./progress-tracker.js");
     input.jobLogger?.setProgress(progressForState(resumeFrom.state));
   }
 

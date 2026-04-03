@@ -3,7 +3,7 @@ import { rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.j
 import { saveResult } from "./pipeline-context.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
-import type { PipelineState, PhaseResult } from "../types/pipeline.js";
+import type { PipelineState } from "../types/pipeline.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { CoreLoopResult } from "./core-loop.js";

@@ -7,7 +7,7 @@ import { getLogger } from "../utils/logger.js";
 import { handleCoreLoopFailure } from "./pipeline-error-handler.js";
 import { runReviewPhase, runSimplifyPhase, type ReviewContext, type SimplifyContext } from "./pipeline-review.js";
 import { runValidationPhase } from "./pipeline-validation.js";
-import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "./pipeline-publish.js";
+import { pushAndCreatePR, cleanupOnSuccess } from "./pipeline-publish.js";
 import { setupGitEnvironment, prepareWorkEnvironment } from "./pipeline-git-setup.js";
 import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "./pipeline-setup.js";
 import { PipelineTimer } from "../safety/timeout-manager.js";
@@ -18,7 +18,7 @@ import {
   PROGRESS_DONE
 } from "./progress-tracker.js";
 import type { AQConfig, PipelineMode } from "../types/config.js";
-import type { OrchestratorInput, OrchestratorResult } from "./pipeline-context.js";
+import type { OrchestratorInput } from "./pipeline-context.js";
 import type { CoreLoopResult } from "./core-loop.js";
 
 const logger = getLogger();

@@ -220,7 +220,7 @@ describe("pushAndCreatePR", () => {
       1,
       "test/repo",
       "squash",
-      { ghPath: "gh", dryRun: false, isDraft: true }
+      { ghPath: "gh", dryRun: false, isDraft: true, deleteBranch: false }
     );
     expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", { ghPath: "gh", dryRun: false });
   });
@@ -370,7 +370,7 @@ describe("pushAndCreatePR", () => {
       1,
       "test/repo",
       "squash",
-      { ghPath: "gh", dryRun: false, isDraft: true }
+      { ghPath: "gh", dryRun: false, isDraft: true, deleteBranch: false }
     );
   });
 
@@ -389,7 +389,7 @@ describe("pushAndCreatePR", () => {
       1,
       "test/repo",
       "squash",
-      { ghPath: "gh", dryRun: false, isDraft: true }
+      { ghPath: "gh", dryRun: false, isDraft: true, deleteBranch: false }
     );
     expect(context.jl?.log).toHaveBeenCalledWith("Auto-merge 활성화 (squash, 의존성 확인 완료)");
   });
@@ -444,7 +444,7 @@ describe("pushAndCreatePR", () => {
       1,
       "test/repo",
       "squash",
-      { ghPath: "gh", dryRun: false, isDraft: true }
+      { ghPath: "gh", dryRun: false, isDraft: true, deleteBranch: false }
     );
     expect(context.jl?.log).toHaveBeenCalledWith("의존성 확인 실패, auto-merge 계속 진행");
   });

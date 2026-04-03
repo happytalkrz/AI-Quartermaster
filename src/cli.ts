@@ -17,6 +17,7 @@ import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
 import { PatternStore } from "./learning/pattern-store.js";
+import { SelfUpdater } from "./update/self-updater.js";
 
 interface CliArgs {
   command?: string;
@@ -261,10 +262,48 @@ async function startCommand(args: CliArgs): Promise<void> {
   // Prune old completed/failed jobs to prevent unbounded accumulation
   store.prune(effectiveConfig.general.maxJobs);
 
+  // === Graceful restart callback ===
+  const performGracefulRestart = async (): Promise<void> => {
+    logger.info("업데이트 감지됨 — graceful restart 시작...");
+
+    try {
+      // Stop poller to prevent new issues from being picked up
+      poller?.stop();
+
+      // Wait for running jobs to complete
+      logger.info("실행 중인 job 완료 대기...");
+      await queue.shutdown(300000); // 5분 타임아웃
+
+      // Apply updates
+      const selfUpdater = new SelfUpdater(effectiveConfig.git, { cwd: aqRoot });
+      const updateResult = await selfUpdater.performSelfUpdate();
+
+      if (updateResult.updated && updateResult.needsRestart) {
+        logger.info("업데이트 완료 — 프로세스 재시작 중...");
+
+        // Restart with same arguments
+        const { spawn } = await import("child_process");
+        const child = spawn(process.execPath, process.argv.slice(1), {
+          detached: true,
+          stdio: "inherit",
+        });
+
+        child.unref();
+        process.exit(0);
+      }
+    } catch (err) {
+      logger.error(`graceful restart 실패: ${err}`);
+      // Continue running without restart
+      if (poller && !poller.isRunning()) {
+        poller.start();
+      }
+    }
+  };
+
   // === Polling mode ===
   let poller: IssuePoller | undefined;
   if (isPollingMode) {
-    poller = new IssuePoller(effectiveConfig, store, queue);
+    poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
     poller.start();
   }
 

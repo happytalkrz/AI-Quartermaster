@@ -21,6 +21,7 @@ export interface GeneralConfig {
   stuckTimeoutMs: number;
   pollingIntervalMs: number;
   maxJobs: number;
+  autoUpdate: boolean;
 }
 
 export interface GitConfig {

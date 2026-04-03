@@ -785,6 +785,18 @@ describe("runCoreLoop", () => {
     });
 
     it("should pass correct context to generatePlan on retry scenarios", async () => {
+      const phases = [makePhase(0, "Frontend"), makePhase(1, "Backend")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Add costUsd to match expected total
+      const frontendResult = { ...makeSuccessResult(0, "Frontend"), costUsd: 0.035 };
+      const backendResult = { ...makeSuccessResult(1, "Backend"), costUsd: 0.030 };
 
       mockExecutePhase
         .mockResolvedValueOnce(frontendResult)

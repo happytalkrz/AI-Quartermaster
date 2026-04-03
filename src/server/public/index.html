@@ -361,29 +361,28 @@
       <div class="p-6">
         <form id="add-project-form" class="space-y-4">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <!-- Repository Path Field -->
+            <!-- GitHub Repository Field -->
             <div class="space-y-2">
-              <label for="repo-path" class="text-sm font-bold text-on-surface/80" data-i18n="repositoryPath">저장소 경로</label>
+              <label for="project-repo" class="text-sm font-bold text-on-surface/80" data-i18n="repository">저장소</label>
               <input
                 type="text"
-                id="repo-path"
+                id="project-repo"
                 name="repo"
                 class="w-full px-4 py-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors font-mono text-sm"
-                data-i18n-placeholder="repositoryPlaceholder"
-                placeholder="예: /home/user/my-project"
+                placeholder="owner/repo"
                 required
               />
             </div>
-            <!-- Trigger Label Field -->
+            <!-- Local Path Field -->
             <div class="space-y-2">
-              <label for="trigger-label" class="text-sm font-bold text-on-surface/80" data-i18n="triggerLabel">트리거 라벨</label>
+              <label for="project-path" class="text-sm font-bold text-on-surface/80" data-i18n="repositoryPath">로컬 경로</label>
               <input
                 type="text"
-                id="trigger-label"
-                name="label"
+                id="project-path"
+                name="path"
                 class="w-full px-4 py-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors font-mono text-sm"
-                data-i18n-placeholder="labelPlaceholder"
-                placeholder="예: implement"
+                data-i18n-placeholder="repositoryPlaceholder"
+                placeholder="예: /home/user/my-project"
                 required
               />
             </div>

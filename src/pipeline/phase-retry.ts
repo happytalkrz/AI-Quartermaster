@@ -21,33 +21,37 @@ interface ErrorHistoryForTemplate {
   errorSummary: string;
 }
 
+const ERROR_SUMMARY_MAX_LENGTH = 3000;
+const ERROR_MESSAGE_FIRST_PART = 200;
+const ERROR_MESSAGE_LAST_PART = 100;
+const ERROR_MESSAGE_THRESHOLD = 300;
+const ENTRY_SIZE_ESTIMATE = 50;
+
+function truncateErrorMessage(message: string): string {
+  if (message.length <= ERROR_MESSAGE_THRESHOLD) {
+    return message;
+  }
+  const first = message.slice(0, ERROR_MESSAGE_FIRST_PART).trim();
+  const last = message.slice(-ERROR_MESSAGE_LAST_PART).trim();
+  return `${first}...${last}`;
+}
+
 function prepareErrorHistoryForTemplate(errorHistory: ErrorHistoryEntry[]): ErrorHistoryForTemplate[] {
-  // Calculate total allowed length for error summaries (leave space for table structure)
-  const maxTotalLength = 3000;
   let currentLength = 0;
   const processedEntries = [];
 
   for (const entry of errorHistory) {
-    // Create summary from error message (first and last parts for context)
-    let errorSummary = entry.errorMessage.trim();
+    let errorSummary = truncateErrorMessage(entry.errorMessage.trim());
+    const entryLength = errorSummary.length + ENTRY_SIZE_ESTIMATE;
 
-    // If message is too long, show first 200 chars + "..." + last 100 chars
-    if (errorSummary.length > 300) {
-      const firstPart = errorSummary.slice(0, 200).trim();
-      const lastPart = errorSummary.slice(-100).trim();
-      errorSummary = `${firstPart}...${lastPart}`;
-    }
-
-    // Check if adding this entry would exceed the limit
-    const entryLength = errorSummary.length + 50; // Extra space for table formatting
-    if (currentLength + entryLength > maxTotalLength && processedEntries.length > 0) {
-      break; // Stop adding entries to stay within limit
+    if (currentLength + entryLength > ERROR_SUMMARY_MAX_LENGTH && processedEntries.length > 0) {
+      break;
     }
 
     processedEntries.push({
       attempt: entry.attempt,
       errorCategory: entry.errorCategory,
-      errorSummary: errorSummary.replace(/\|/g, '\\|') // Escape pipes for table formatting
+      errorSummary: errorSummary.replace(/\|/g, '\\|'),
     });
 
     currentLength += entryLength;
@@ -82,15 +86,11 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 
-    // Prepare error information for template
     const hasErrorHistory = ctx.errorHistory && ctx.errorHistory.length > 0;
     const errorMessage = hasErrorHistory
       ? `최근 에러: ${ctx.previousError.slice(-500)}`
       : ctx.previousError.slice(-1500);
-
-    const errorHistory = hasErrorHistory
-      ? prepareErrorHistoryForTemplate(ctx.errorHistory!)
-      : undefined;
+    const errorHistory = hasErrorHistory ? prepareErrorHistoryForTemplate(ctx.errorHistory!) : undefined;
 
     const rendered = renderTemplate(template, {
       issue: {

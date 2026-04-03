@@ -13,6 +13,24 @@ import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 
 const logger = getLogger();
 
+function addErrorToHistory(
+  historyMap: Map<number, ErrorHistoryEntry[]>,
+  phaseIndex: number,
+  attempt: number,
+  errorCategory: string | undefined,
+  error: string | undefined,
+): ErrorHistoryEntry[] {
+  const history = historyMap.get(phaseIndex) || [];
+  history.push({
+    attempt,
+    errorCategory: (errorCategory ?? "UNKNOWN") as any,
+    errorMessage: error ?? "Unknown error",
+    timestamp: new Date().toISOString(),
+  });
+  historyMap.set(phaseIndex, history);
+  return history;
+}
+
 export interface CoreLoopContext {
   issue: GitHubIssue;
   repo: { owner: string; name: string };
@@ -137,15 +155,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
       if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION") {
-        // Add initial failure to error history
-        const errorHistory: ErrorHistoryEntry[] = phaseErrorHistories.get(phase.index) || [];
-        errorHistory.push({
-          attempt: 0, // Initial execution (not a retry)
-          errorCategory: result.errorCategory ?? "UNKNOWN",
-          errorMessage: result.error ?? "Unknown error",
-          timestamp: new Date().toISOString(),
-        });
-        phaseErrorHistories.set(phase.index, errorHistory);
+        let errorHistory = addErrorToHistory(phaseErrorHistories, phase.index, 0, result.errorCategory, result.error);
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
@@ -157,7 +167,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             phase,
             previousError: result.error ?? "Unknown error",
             errorCategory: result.errorCategory ?? "UNKNOWN",
-            errorHistory: [...errorHistory], // Pass copy of current error history
+            errorHistory: [...errorHistory],
             attempt,
             maxRetries,
             claudeConfig: ctx.config.commands.claudeCli,
@@ -172,19 +182,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           if (result.success) {
             logger.info(`Phase ${phase.index + 1} succeeded on retry ${attempt}`);
             jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt} 성공`);
-            // Clear error history on success
             phaseErrorHistories.delete(phase.index);
             break;
-          } else {
-            // Add retry failure to error history
-            errorHistory.push({
-              attempt,
-              errorCategory: result.errorCategory ?? "UNKNOWN",
-              errorMessage: result.error ?? "Unknown error",
-              timestamp: new Date().toISOString(),
-            });
-            phaseErrorHistories.set(phase.index, errorHistory);
           }
+
+          errorHistory = addErrorToHistory(phaseErrorHistories, phase.index, attempt, result.errorCategory, result.error);
         }
       }
 

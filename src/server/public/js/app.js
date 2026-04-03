@@ -138,6 +138,113 @@ function clearAllJobs() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Project Actions
+   ══════════════════════════════════════════════════════════════ */
+function addProject() {
+  var form = document.getElementById('add-project-form');
+  if (!form) return;
+
+  var formData = new FormData(form);
+  var projectData = {
+    repo: formData.get('repo'),
+    label: formData.get('label')
+  };
+
+  // Validate form data
+  if (!projectData.repo || !projectData.label) {
+    showProjectMessage('저장소 경로와 트리거 라벨을 모두 입력해주세요.', 'error');
+    return;
+  }
+
+  // Show loading state on submit button
+  var submitButton = form.querySelector('button[type="submit"]');
+  var originalButtonContent = submitButton.innerHTML;
+  submitButton.disabled = true;
+  submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>추가 중...</span>';
+
+  // Send API request
+  apiFetch('/api/projects', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(projectData)
+  })
+    .then(function(response) {
+      if (response.ok) {
+        // Success - clear form and reload settings
+        form.reset();
+        loadSettings();
+        showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
+      } else {
+        return response.json().then(function(errorData) {
+          throw new Error(errorData.error || '프로젝트 추가에 실패했습니다.');
+        });
+      }
+    })
+    .catch(function(error) {
+      showProjectMessage(error.message || '프로젝트 추가 중 오류가 발생했습니다.', 'error');
+    })
+    .finally(function() {
+      // Restore submit button
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalButtonContent;
+    });
+}
+
+function showProjectMessage(message, type) {
+  var messageId = 'add-project-' + type;
+  var existingEl = document.getElementById(messageId);
+
+  // Remove existing message if any
+  if (existingEl) {
+    existingEl.remove();
+  }
+
+  // Create message element
+  var messageEl = document.createElement('div');
+  messageEl.id = messageId;
+
+  if (type === 'error') {
+    messageEl.className = 'mt-4 p-3 bg-[#f85149]/10 border border-[#f85149]/30 rounded-lg text-[#f85149] text-sm flex items-center gap-2';
+    messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">error</span>' + message;
+  } else if (type === 'success') {
+    messageEl.className = 'mt-4 p-3 bg-[#3fb950]/10 border border-[#3fb950]/30 rounded-lg text-[#3fb950] text-sm flex items-center gap-2';
+    messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">check_circle</span>' + message;
+  }
+
+  // Append to form
+  var form = document.getElementById('add-project-form');
+  if (form) {
+    form.appendChild(messageEl);
+  }
+
+  // Auto-hide after some time
+  var hideTimeout = type === 'error' ? 5000 : 3000;
+  setTimeout(function() {
+    if (messageEl && messageEl.parentNode) {
+      messageEl.remove();
+    }
+  }, hideTimeout);
+}
+
+function deleteProject(id) {
+  showConfirm(t('deleteProjectConfirm'), currentLang === 'ko' ? '이 프로젝트를 삭제하시겠습니까?' : 'Are you sure you want to delete this project?').then(function(ok) {
+    if (!ok) return;
+    apiFetch('/api/projects/' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(function(r) {
+        if (r.ok) {
+          // Reload settings to refresh project list
+          if (currentView === 'settings') {
+            loadSettings();
+          }
+        }
+      })
+      .catch(function() {});
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
    SSE Connection
    ══════════════════════════════════════════════════════════════ */
 var es = null;

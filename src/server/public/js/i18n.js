@@ -9,7 +9,7 @@ var i18n = {
     logs: "로그",
     repositories: "저장소",
     automations: "자동화",
-    settings: "설정",
+    settings: { _: "설정", general: "일반", safety: "안전", review: "리뷰" },
     totalJobs: "전체 작업",
     successRate: "성공률",
     active: "실행 중",
@@ -62,7 +62,7 @@ var i18n = {
     logs: "Logs",
     repositories: "Repositories",
     automations: "Automations",
-    settings: "Settings",
+    settings: { _: "Settings", general: "General", safety: "Safety", review: "Review" },
     totalJobs: "Total Jobs",
     successRate: "Success Rate",
     active: "Active",
@@ -118,6 +118,7 @@ function t(key) {
   var keys = key.split('.');
   var val = i18n[currentLang];
   for (var i = 0; i < keys.length; i++) val = val ? val[keys[i]] : undefined;
+  if (val !== undefined && val !== null && typeof val === 'object' && val._) return val._;
   return val !== undefined && val !== null ? val : key;
 }
 

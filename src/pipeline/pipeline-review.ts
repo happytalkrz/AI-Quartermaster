@@ -28,7 +28,7 @@ const logger = getLogger();
 
 export interface ReviewContext {
   issue: GitHubIssue;
-  coreResult: { plan: Plan; phaseResults: any[] };
+  coreResult: { plan: Plan; phaseResults: unknown[] };
   gitConfig: GitConfig;
   project: ProjectConfig;
   worktreePath: string;
@@ -36,7 +36,7 @@ export interface ReviewContext {
   skillsContext: string;
   jl?: JobLogger;
   timer: PipelineTimer;
-  checkpoint: (data: any) => void;
+  checkpoint: (data: unknown) => void;
 }
 
 export interface SimplifyContext {
@@ -47,7 +47,7 @@ export interface SimplifyContext {
   gitConfig: GitConfig;
   jl?: JobLogger;
   timer: PipelineTimer;
-  checkpoint: (data: any) => void;
+  checkpoint: (data: unknown) => void;
 }
 
 function toTemplateVariables(vars: ReviewVariables): TemplateVariables {
@@ -135,7 +135,7 @@ export async function runReviewPhase(
         throw new Error("Claude CLI configuration not found");
       }
       let reviewResult: ReviewPipelineResult = await runReviews({
-        reviewConfig: ctx.project.review as any,
+        reviewConfig: ctx.project.review as Required<typeof ctx.project.review>,
         claudeConfig: ctx.project.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.worktreePath,
@@ -218,7 +218,7 @@ export async function runReviewPhase(
             }
 
             const retryReviewResult = await runReviews({
-              reviewConfig: ctx.project.review as any,
+              reviewConfig: ctx.project.review as Required<typeof ctx.project.review>,
               claudeConfig: ctx.project.commands.claudeCli,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,

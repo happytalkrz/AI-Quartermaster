@@ -73,3 +73,70 @@ export interface PipelineResult {
   completedAt?: string;
   error?: string;
 }
+
+export interface ValidationPhaseContext {
+  commands: {
+    claudeCli: any;
+  };
+  cwd: string;
+  gitPath: string;
+  maxRetries: number;
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  jl?: any;
+}
+
+export interface PublishPhaseContext {
+  issueNumber: number;
+  repo: string;
+  issue: {
+    title: string;
+  };
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  branchName: string;
+  baseBranch: string;
+  worktreePath: string;
+  gitConfig: any;
+  projectConfig: {
+    safety: any;
+    pr: any;
+    commands: {
+      ghCli: any;
+    };
+  };
+  promptsDir: string;
+  dryRun: boolean;
+  jl?: any;
+}
+
+export interface CleanupContext {
+  worktreePath?: string;
+  branchName?: string;
+  gitConfig: any;
+  projectRoot: string;
+  cleanupOnSuccess: boolean;
+  cleanupOnFailure: boolean;
+  issueNumber: number;
+  repo: string;
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  startTime: Date;
+  prUrl?: string;
+  config: any;
+  aqRoot?: string;
+  dataDir: string;
+}
+
+export interface FailureHandlerContext {
+  error: unknown;
+  state: PipelineState;
+  worktreePath?: string;
+  branchName?: string;
+  rollbackHash?: string;
+  rollbackStrategy: string;
+  gitConfig: any;
+  projectRoot: string;
+  cleanupOnFailure: boolean;
+  jl?: any;
+}

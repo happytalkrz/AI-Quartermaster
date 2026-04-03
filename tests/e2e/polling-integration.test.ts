@@ -65,6 +65,21 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string; s
     shouldBlockRepickup: vi.fn((issueNumber: number, repo: string): boolean => {
       return jobs.some(j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success");
     }),
+    findFailedJobsForRetry: vi.fn((): Job[] => {
+      const now = Date.now();
+      const RETRY_DELAY_MS = 10 * 60 * 1000; // 10분 대기 후 재시도
+
+      return jobs.filter(job => {
+        // failed 상태이고 retry가 아닌 job만
+        if (job.status !== "failure" || job.isRetry === true) {
+          return false;
+        }
+
+        // 최근 실패한 job은 제외 (10분 대기)
+        const completedAt = job.completedAt ? new Date(job.completedAt).getTime() : 0;
+        return completedAt > 0 && (now - completedAt) > RETRY_DELAY_MS;
+      });
+    }),
     create: vi.fn((issueNumber: number, repo: string): Job => {
       const job: Job = {
         id: `aq-${issueNumber}-${Date.now()}`,
@@ -591,7 +606,6 @@ describe("E2E: polling integration", () => {
     const config = makeConfig();
     config.general.autoUpdate = true;
 
-    // Mock SelfUpdater to return update info
     const mockCheckForUpdates = vi.fn().mockResolvedValue({
       hasUpdates: true,
       currentHash: "abc123def456",
@@ -599,25 +613,15 @@ describe("E2E: polling integration", () => {
       packageLockChanged: false,
     } as UpdateInfo);
 
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return no issues (focus on update check)
-    mockRunCli.mockResolvedValue({
-      stdout: makeGhIssueListResponse([]),
-      stderr: "",
-      exitCode: 0,
-    });
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
 
     poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
     await (poller as any).poll();
 
-    // Update check should have been called
     expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
-
-    // Callback should have been called with update info
     expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
     expect(onUpdateAvailable).toHaveBeenCalledWith({
       hasUpdates: true,
@@ -635,7 +639,6 @@ describe("E2E: polling integration", () => {
     const config = makeConfig();
     config.general.autoUpdate = true;
 
-    // Mock SelfUpdater to return no updates
     const mockCheckForUpdates = vi.fn().mockResolvedValue({
       hasUpdates: false,
       currentHash: "abc123def456",
@@ -643,25 +646,15 @@ describe("E2E: polling integration", () => {
       packageLockChanged: false,
     } as UpdateInfo);
 
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return no issues
-    mockRunCli.mockResolvedValue({
-      stdout: makeGhIssueListResponse([]),
-      stderr: "",
-      exitCode: 0,
-    });
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
 
     poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
     await (poller as any).poll();
 
-    // Update check should have been called
     expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
-
-    // Callback should NOT have been called since no updates
     expect(onUpdateAvailable).not.toHaveBeenCalled();
   });
 
@@ -671,29 +664,18 @@ describe("E2E: polling integration", () => {
     const onUpdateAvailable = vi.fn();
 
     const config = makeConfig();
-    config.general.autoUpdate = false; // Disabled
+    config.general.autoUpdate = false;
 
-    // Mock SelfUpdater
     const mockCheckForUpdates = vi.fn();
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return no issues
-    mockRunCli.mockResolvedValue({
-      stdout: makeGhIssueListResponse([]),
-      stderr: "",
-      exitCode: 0,
-    });
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
 
     poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
     await (poller as any).poll();
 
-    // Update check should NOT have been called
     expect(mockCheckForUpdates).not.toHaveBeenCalled();
-
-    // Callback should NOT have been called
     expect(onUpdateAvailable).not.toHaveBeenCalled();
   });
 
@@ -704,25 +686,15 @@ describe("E2E: polling integration", () => {
     const config = makeConfig();
     config.general.autoUpdate = true;
 
-    // Mock SelfUpdater
     const mockCheckForUpdates = vi.fn();
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return no issues
-    mockRunCli.mockResolvedValue({
-      stdout: makeGhIssueListResponse([]),
-      stderr: "",
-      exitCode: 0,
-    });
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
 
-    // No callback provided
     poller = new IssuePoller(config, store as any, queue as any);
     await (poller as any).poll();
 
-    // Update check should NOT have been called when no callback provided
     expect(mockCheckForUpdates).not.toHaveBeenCalled();
   });
 
@@ -734,14 +706,10 @@ describe("E2E: polling integration", () => {
     const config = makeConfig();
     config.general.autoUpdate = true;
 
-    // Mock SelfUpdater to throw error
     const mockCheckForUpdates = vi.fn().mockRejectedValue(new Error("git fetch failed"));
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return issues (should still be processed)
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
         { number: 100, title: "Test issue", labels: ["aq-task"] },
@@ -752,16 +720,9 @@ describe("E2E: polling integration", () => {
 
     poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
 
-    // Should not throw despite update check failure
     await expect((poller as any).poll()).resolves.toBeUndefined();
-
-    // Update check should have been attempted
     expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
-
-    // Callback should NOT have been called due to error
     expect(onUpdateAvailable).not.toHaveBeenCalled();
-
-    // Issue polling should still work normally
     expect(queue.enqueue).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).toHaveBeenCalledWith(100, "test/repo");
   });
@@ -774,33 +735,22 @@ describe("E2E: polling integration", () => {
     const config = makeConfig();
     config.general.autoUpdate = true;
 
-    // Mock SelfUpdater to return update with package-lock changes
     const mockCheckForUpdates = vi.fn().mockResolvedValue({
       hasUpdates: true,
       currentHash: "old123hash456",
       remoteHash: "new456hash789",
-      packageLockChanged: true, // Package-lock was modified
+      packageLockChanged: true,
     } as UpdateInfo);
 
-    const mockSelfUpdaterInstance = {
-      checkForUpdates: mockCheckForUpdates,
-    };
+    const mockSelfUpdaterInstance = { checkForUpdates: mockCheckForUpdates };
     mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
 
-    // Mock GitHub to return no issues
-    mockRunCli.mockResolvedValue({
-      stdout: makeGhIssueListResponse([]),
-      stderr: "",
-      exitCode: 0,
-    });
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
 
     poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
     await (poller as any).poll();
 
-    // Update check should have been called
     expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
-
-    // Callback should have been called with package-lock change info
     expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
     expect(onUpdateAvailable).toHaveBeenCalledWith({
       hasUpdates: true,
@@ -808,5 +758,129 @@ describe("E2E: polling integration", () => {
       remoteHash: "new456hash789",
       packageLockChanged: true,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // 16. Failed job polling: detects failed jobs and re-enqueues them
+  // -------------------------------------------------------------------------
+  it("detects failed jobs during polling and re-enqueues them", async () => {
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 60, repo: "test/repo", status: "failure" }
+    ]);
+
+    const failedJob = store.get("aq-60-0");
+    if (failedJob) {
+      failedJob.completedAt = oldFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    expect(queue.enqueue).toHaveBeenCalledWith(60, "test/repo", undefined, true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 17. Failed job polling: skips retry jobs that failed
+  // -------------------------------------------------------------------------
+  it("does not re-enqueue failed retry jobs", async () => {
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 70, repo: "test/repo", status: "failure" }
+    ]);
+
+    const failedRetryJob = store.get("aq-70-0");
+    if (failedRetryJob) {
+      failedRetryJob.isRetry = true;
+      failedRetryJob.completedAt = oldFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 18. Failed job polling: skips recently failed jobs
+  // -------------------------------------------------------------------------
+  it("does not re-enqueue recently failed jobs", async () => {
+    const recentFailureTime = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 80, repo: "test/repo", status: "failure" }
+    ]);
+
+    const failedJob = store.get("aq-80-0");
+    if (failedJob) {
+      failedJob.completedAt = recentFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 19. Failed job polling: handles multiple failed jobs
+  // -------------------------------------------------------------------------
+  it("handles multiple failed jobs during polling", async () => {
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 90, repo: "test/repo", status: "failure" },
+      { issueNumber: 91, repo: "test/repo", status: "failure" },
+      { issueNumber: 92, repo: "test/repo", status: "failure" }
+    ]);
+
+    const jobs = ["aq-90-0", "aq-91-1", "aq-92-2"];
+    jobs.forEach(jobId => {
+      const job = store.get(jobId);
+      if (job) {
+        job.completedAt = oldFailureTime;
+      }
+    });
+
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    expect(queue.enqueue).toHaveBeenCalledTimes(3);
+    expect(queue.enqueue).toHaveBeenCalledWith(90, "test/repo", undefined, true);
+    expect(queue.enqueue).toHaveBeenCalledWith(91, "test/repo", undefined, true);
+    expect(queue.enqueue).toHaveBeenCalledWith(92, "test/repo", undefined, true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 20. Failed job polling: no failed jobs to process
+  // -------------------------------------------------------------------------
+  it("handles empty failed jobs list gracefully", async () => {
+    const store = makeJobStore([
+      { issueNumber: 100, repo: "test/repo", status: "success" },
+      { issueNumber: 101, repo: "test/repo", status: "running" }
+    ]);
+
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 });

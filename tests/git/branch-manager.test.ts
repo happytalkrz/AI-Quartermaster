@@ -4,7 +4,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-import { syncBaseBranch, createWorkBranch } from "../../src/git/branch-manager.js";
+import { syncBaseBranch, createWorkBranch, deleteRemoteBranch } from "../../src/git/branch-manager.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -78,5 +78,20 @@ describe("createWorkBranch", () => {
     await createWorkBranch(defaultGitConfig, 42, "Fix bug", { cwd: "/tmp" });
     // 3rd call should be git branch ax/42-fix-bug origin/master
     expect(mockRunCli).toHaveBeenCalledWith("git", ["branch", "ax/42-fix-bug", "origin/master"], { cwd: "/tmp" });
+  });
+});
+
+describe("deleteRemoteBranch", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should delete remote branch successfully", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await deleteRemoteBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["push", "origin", "--delete", "feature-branch"], { cwd: "/tmp" });
+  });
+
+  it("should throw on delete failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "permission denied", exitCode: 1 });
+    await expect(deleteRemoteBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" })).rejects.toThrow("Failed to delete remote branch feature-branch");
   });
 });

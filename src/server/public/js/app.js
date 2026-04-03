@@ -150,7 +150,7 @@ function saveSettings() {
   apiFetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config: collectFormData() })
+    body: JSON.stringify(collectFormData())
   })
     .then(function(r) {
       if (r.ok) {
@@ -270,12 +270,12 @@ function addProject() {
   var formData = new FormData(form);
   var projectData = {
     repo: formData.get('repo'),
-    label: formData.get('label')
+    path: formData.get('path')
   };
 
   // Validate form data
-  if (!projectData.repo || !projectData.label) {
-    showProjectMessage('저장소 경로와 트리거 라벨을 모두 입력해주세요.', 'error');
+  if (!projectData.repo || !projectData.path) {
+    showProjectMessage('저장소(owner/repo)와 로컬 경로를 모두 입력해주세요.', 'error');
     return;
   }
 

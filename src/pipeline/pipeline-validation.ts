@@ -1,7 +1,5 @@
 import { runFinalValidation } from "./final-validator.js";
-import { runClaude } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
-import { autoCommitIfDirty } from "../git/commit-helper.js";
+import { retryWithClaudeFix } from "./retry-with-fix.js";
 import { formatResult, printResult } from "./result-reporter.js";
 import { PROGRESS_VALIDATION_START } from "./progress-tracker.js";
 import type { CommandsConfig, AQConfig } from "../types/config.js";
@@ -106,46 +104,70 @@ async function retryValidationWithFixes(
   _projectRoot?: string
 ): Promise<boolean> {
 
-  for (let attempt = 1; attempt <= context.maxRetries; attempt++) {
-    const failedChecks = validation.checks.filter((c: any) => !c.passed);
-    const failedNames = failedChecks.map((c: any) => c.name).join(", ");
-
-    logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${context.maxRetries} — fixing: ${failedNames}`);
-    context.jl?.log(`검증 실패 수정 시도 ${attempt}/${context.maxRetries}: ${failedNames}`);
-    context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${context.maxRetries})...`);
-
+  const buildFixPromptFn = (validationResult: any) => {
+    const failedChecks = validationResult.checks.filter((c: any) => !c.passed);
     const errorDetails = failedChecks
       .map((c: any) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
       .join("\n\n");
 
-    const fixPrompt = [
+    return [
       "The following validation checks failed. Fix the errors only — do not add new features or refactor unrelated code.",
       "",
       errorDetails,
     ].join("\n");
+  };
 
-    const claudeConfig = configForTask(context.commands.claudeCli, "fallback");
-    await runClaude({
-      prompt: fixPrompt,
-      cwd: context.cwd,
-      config: claudeConfig,
-    });
+  const revalidateFn = async () => {
+    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
 
-    await autoCommitIfDirty(context.gitPath, context.cwd, `fix: validation 오류 수정 (retry ${attempt})`);
-
-    validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
-    for (const check of validation.checks) {
-      context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name} (retry ${attempt})`);
+    // Log validation results
+    for (const check of result.checks) {
+      context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
     }
 
-    if (validation.success) {
-      logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
-      context.jl?.log(`검증 통과 (retry ${attempt})`);
-      return true;
-    }
-  }
+    return {
+      success: result.success,
+      result
+    };
+  };
 
-  return false;
+  const checkFn = async () => {
+    return {
+      success: validation.success,
+      result: validation
+    };
+  };
+
+  const onAttempt = (attempt: number, maxRetries: number, description: string) => {
+    const failedNames = validation.checks
+      .filter((c: any) => !c.passed)
+      .map((c: any) => c.name)
+      .join(", ");
+
+    logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${maxRetries} — fixing: ${failedNames}`);
+    context.jl?.log(`검증 실패 수정 시도 ${attempt}/${maxRetries}: ${failedNames}`);
+    context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
+  };
+
+  const onSuccess = (attempt: number, result: any) => {
+    logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
+    context.jl?.log(`검증 통과 (retry ${attempt})`);
+  };
+
+  const retryResult = await retryWithClaudeFix({
+    checkFn,
+    buildFixPromptFn,
+    revalidateFn,
+    maxRetries: context.maxRetries,
+    claudeConfig: context.commands.claudeCli,
+    cwd: context.cwd,
+    gitPath: context.gitPath,
+    commitMessageTemplate: "fix: validation 오류 수정 (retry {attempt})",
+    onAttempt,
+    onSuccess
+  });
+
+  return retryResult.success;
 }
 
 export function saveResult(config: AQConfig, projectRoot: string, issueNumber: number, report: PipelineReport): void {

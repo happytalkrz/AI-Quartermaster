@@ -398,6 +398,9 @@ function renderProjectCard(project) {
   html += '</div>';
   html += '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">';
   if (project.repo) {
+    html += '<button onclick="editProject(\'' + esc(project.repo) + '\')" class="p-1 hover:text-primary transition-colors" title="' + (t('edit') || 'Edit') + '">';
+    html += '<span class="material-symbols-outlined text-sm">edit</span>';
+    html += '</button>';
     html += '<button onclick="deleteProject(\'' + esc(project.repo) + '\')" class="p-1 hover:text-error transition-colors" title="' + t('delete') + '">';
     html += '<span class="material-symbols-outlined text-sm">delete</span>';
     html += '</button>';

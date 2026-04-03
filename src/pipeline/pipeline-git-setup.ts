@@ -85,6 +85,8 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
     };
   }
 
+  const slug = createSlugWithFallback(input.issueTitle);
+
   // Serialize git operations per-repo to prevent concurrent branch/worktree conflicts
   await withRepoLock(input.repo, async () => {
     // === VALIDATED → BASE_SYNCED ===
@@ -119,7 +121,6 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
     } else {
       // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
       if (input.isRetry) {
-        const slug = createSlugWithFallback(input.issueTitle);
         const expectedPath = resolve(input.worktreeConfig.rootPath, `${input.issueNumber}-${slug}`);
 
         if (existsSync(expectedPath)) {
@@ -143,7 +144,6 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
         }
       }
 
-      const slug = createSlugWithFallback(input.issueTitle);
       const worktreeInfo = await createWorktree(
         input.gitConfig,
         input.worktreeConfig,

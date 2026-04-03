@@ -23,9 +23,14 @@ import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { TemplateVariables } from "../prompt/template-renderer.js";
 
 const logger = getLogger();
+
+function hasCriticalAnalystIssues(result: AnalystResult | undefined): boolean {
+  return result?.findings.some(f =>
+    f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+  ) || false;
+}
 
 export interface ReviewContext {
   issue: GitHubIssue;
@@ -51,9 +56,6 @@ export interface SimplifyContext {
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
-function toTemplateVariables(vars: ReviewVariables): TemplateVariables {
-  return vars as unknown as TemplateVariables;
-}
 
 export async function buildReviewVars(ctx: ReviewContext): Promise<ReviewVariables> {
   if (!ctx.project.commands?.test) {
@@ -120,7 +122,7 @@ export async function runReviewPhase(
           promptsDir: ctx.promptsDir,
           claudeConfig: ctx.project.commands.claudeCli,
           cwd: ctx.worktreePath,
-          variables: toTemplateVariables(reviewVariables),
+          variables: reviewVariables as any,
         });
         ctx.jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
       } else {
@@ -140,7 +142,7 @@ export async function runReviewPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.worktreePath,
-        variables: toTemplateVariables(reviewVariables),
+        variables: reviewVariables as any,
       });
 
       if (analystResult) {
@@ -151,11 +153,9 @@ export async function runReviewPhase(
         ctx.jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
       }
 
-      const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
-        f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-      ) || false;
+      const hasCritical = hasCriticalAnalystIssues(analystResult);
 
-      if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
+      if (hasCritical || !reviewResult.allPassed) {
         if (!ctx.project.safety?.maxRetries) {
           throw new Error("Safety configuration not found");
         }
@@ -181,7 +181,7 @@ export async function runReviewPhase(
 
           // Prepare fix prompt
           const details = [];
-          if (hasCriticalAnalystIssues) {
+          if (hasCritical) {
             details.push("=== Requirements Analysis Issues ===");
             details.push(...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`));
           }
@@ -223,7 +223,7 @@ export async function runReviewPhase(
               claudeConfig: ctx.project.commands.claudeCli,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,
-              variables: toTemplateVariables(reviewVariables),
+              variables: reviewVariables as any,
             });
 
             let retryAnalystResult: AnalystResult | undefined;
@@ -232,7 +232,7 @@ export async function runReviewPhase(
                 promptsDir: ctx.promptsDir,
                 claudeConfig: ctx.project.commands.claudeCli,
                 cwd: ctx.worktreePath,
-                variables: toTemplateVariables(reviewVariables),
+                variables: reviewVariables as any,
               });
             }
 
@@ -352,7 +352,7 @@ export async function runSimplifyPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         cwd: ctx.worktreePath,
         testCommand: ctx.project.commands.test,
-        variables: toTemplateVariables(ctx.reviewVariables),
+        variables: ctx.reviewVariables as any,
         gitPath: ctx.gitConfig.gitPath,
       });
 

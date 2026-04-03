@@ -75,6 +75,11 @@ function toggleTheme() {
    ══════════════════════════════════════════════════════════════ */
 var currentConfig = null; // 현재 설정 데이터 저장
 
+function showErrorMessage(message) {
+  var container = document.getElementById('settings-content');
+  container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
+}
+
 function loadSettings() {
   var container = document.getElementById('settings-content');
   if (!container) return;
@@ -88,13 +93,20 @@ function loadSettings() {
     .then(function(data) {
       if (data.config) {
         currentConfig = data.config;
-        renderSettingsView(data.config);
+        // Clear loading state from settings-content
+        container.innerHTML = '';
+        // Try to render settings view with error handling
+        try {
+          renderSettingsView(data.config);
+        } catch (renderError) {
+          showErrorMessage('설정을 렌더링하는데 실패했습니다.');
+        }
       } else {
-        container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정 데이터가 없습니다.</div>';
+        showErrorMessage('설정 데이터가 없습니다.');
       }
     })
     .catch(function(error) {
-      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러오는데 실패했습니다.</div>';
+      showErrorMessage('설정을 불러오는데 실패했습니다.');
     });
 }
 

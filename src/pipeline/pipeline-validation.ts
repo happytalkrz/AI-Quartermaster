@@ -2,7 +2,6 @@ import { runFinalValidation } from "./final-validator.js";
 import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
-import { saveCheckpoint } from "./checkpoint.js";
 import { formatResult, printResult } from "./result-reporter.js";
 import { PROGRESS_VALIDATION_START } from "./progress-tracker.js";
 import type { CommandsConfig, AQConfig } from "../types/config.js";
@@ -32,8 +31,8 @@ export async function runValidationPhase(
   startTime: number,
   config: any,
   fullCommands: CommandsConfig,
-  aqRoot?: string,
-  projectRoot?: string
+  _aqRoot?: string,
+  _projectRoot?: string
 ): Promise<ValidationPhaseResult> {
 
   if (skipFinalValidation) {
@@ -51,7 +50,7 @@ export async function runValidationPhase(
   context.jl?.setStep("최종 검증 중...");
   context.jl?.setProgress(PROGRESS_VALIDATION_START);
 
-  let validation = await runFinalValidation(context.commands, { cwd: context.cwd }, context.gitPath);
+  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
 
   for (const check of validation.checks) {
     context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
@@ -66,6 +65,7 @@ export async function runValidationPhase(
       startTime,
       checkpoint,
       config,
+      fullCommands,
       aqRoot,
       projectRoot
     );
@@ -79,7 +79,7 @@ export async function runValidationPhase(
       checkpoint({ plan: context.plan, phaseResults: context.phaseResults });
       const report = formatResult(issueNumber, repo, context.plan, context.phaseResults, startTime);
       printResult(report);
-      saveResultToFile(config, aqRoot ?? projectRoot ?? process.cwd(), issueNumber, report);
+      saveResultToFile(config, _aqRoot ?? _projectRoot ?? process.cwd(), issueNumber, report);
 
       return {
         success: false,
@@ -101,8 +101,9 @@ async function retryValidationWithFixes(
   startTime: number,
   checkpoint: (overrides?: any) => void,
   config: any,
-  aqRoot?: string,
-  projectRoot?: string
+  fullCommands: CommandsConfig,
+  _aqRoot?: string,
+  _projectRoot?: string
 ): Promise<boolean> {
 
   for (let attempt = 1; attempt <= context.maxRetries; attempt++) {

@@ -60,6 +60,11 @@ export async function createDraftPR(
         base: ctx.baseBranch,
         work: ctx.branchName,
       },
+      stats: {
+        totalCostUsd: ctx.totalCostUsd?.toFixed(4) || '0.0000',
+        phaseCount: ctx.phaseResults.length,
+        successCount: ctx.phaseResults.filter(r => r.success).length,
+      },
     });
   } catch {
     // Fallback body if template fails

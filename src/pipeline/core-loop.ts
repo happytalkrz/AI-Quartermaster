@@ -224,6 +224,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);
   }
 
+  // Calculate total cost from phase results
+  const totalCostUsd = phaseResults
+    .filter(result => result.costUsd !== undefined)
+    .reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);
-  return { plan, phaseResults, success: true };
+  logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)}`);
+
+  return { plan, phaseResults, success: true, totalCostUsd };
 }

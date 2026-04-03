@@ -287,7 +287,7 @@ function renderFromState() {
   var filtered = filterJobs(allJobs);
 
   // Update filter counts
-  document.getElementById('cnt-all').textContent = allJobs.length;
+  document.getElementById('cnt-all').textContent = allJobs.filter(function(j) { return j.status !== 'archived'; }).length;
   document.getElementById('cnt-running').textContent = allJobs.filter(function(j) { return j.status === 'running'; }).length;
   document.getElementById('cnt-success').textContent = allJobs.filter(function(j) { return j.status === 'success'; }).length;
   document.getElementById('cnt-failure').textContent = allJobs.filter(function(j) { return j.status === 'failure'; }).length;

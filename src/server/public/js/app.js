@@ -201,5 +201,4 @@ apiFetch('/api/jobs')
   .then(handleData)
   .catch(function() {});
 
-fetchStats();
 connectSSE();

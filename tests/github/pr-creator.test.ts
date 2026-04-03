@@ -8,7 +8,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   loadTemplate: vi.fn(() => "mock template"),
 }));
 
-import { createDraftPR, closeIssue, enableAutoMerge } from "../../src/github/pr-creator.js";
+import { createDraftPR, closeIssue, enableAutoMerge, addIssueComment } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -172,5 +172,34 @@ describe("enableAutoMerge", () => {
     mockRunCli.mockClear();
     await enableAutoMerge(42, "test/repo", "rebase", {});
     expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--rebase"], {});
+  });
+});
+
+describe("addIssueComment", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should add comment to issue successfully", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const result = await addIssueComment(42, "test/repo", "Test comment", {});
+    expect(result).toBe(true);
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["issue", "comment", "42", "--repo", "test/repo", "--body", "Test comment"], {});
+  });
+
+  it("should return false on failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Comment failed", exitCode: 1 });
+    const result = await addIssueComment(42, "test/repo", "Test comment", {});
+    expect(result).toBe(false);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await addIssueComment(42, "test/repo", "Test comment", { dryRun: true });
+    expect(result).toBe(true);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("should use custom gh path", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await addIssueComment(42, "test/repo", "Test comment", { ghPath: "/custom/gh" });
+    expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "comment", "42", "--repo", "test/repo", "--body", "Test comment"], {});
   });
 });

@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync } from "fs";
-import { createDraftPR, enableAutoMerge, closeIssue } from "../github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../github/pr-creator.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { removeWorktree } from "../git/worktree-manager.js";
 import { formatResult, printResult } from "./result-reporter.js";
@@ -70,6 +70,39 @@ export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ s
           } else {
             logger.warn(`Rebase failed — PR will show conflicts. Files: ${conflictCheck.conflictFiles.join(", ") || "(unknown)"}`);
             jl?.log(`Rebase 실패 (충돌 있음): ${conflictCheck.conflictFiles.join(", ") || "unknown files"}`);
+
+            // Add issue comment about rebase failure
+            const conflictFilesList = conflictCheck.conflictFiles.length > 0
+              ? conflictCheck.conflictFiles.map(f => `- \`${f}\``).join("\n")
+              : "- (unknown files)";
+
+            const commentBody = `## 🔄 자동 Rebase 실패
+
+브랜치를 \`${baseBranch}\`에 자동으로 rebase하는데 실패했습니다. 다음 파일들에서 충돌이 감지되었습니다:
+
+${conflictFilesList}
+
+**수동 해결 방법:**
+1. 로컬에서 브랜치를 체크아웃: \`git checkout ${branchName}\`
+2. 수동으로 rebase: \`git rebase ${baseBranch}\`
+3. 충돌 해결 후 커밋: \`git add . && git commit\`
+4. 강제 푸시: \`git push --force-with-lease\`
+
+PR이 생성되었지만 충돌이 해결될 때까지 머지할 수 없습니다.`;
+
+            try {
+              await addIssueComment(
+                issueNumber,
+                repo,
+                commentBody,
+                { ghPath: projectConfig.commands.ghCli.path, dryRun }
+              );
+              jl?.log(`충돌 알림 코멘트 추가됨`);
+            } catch (commentErr) {
+              logger.warn(`Failed to add issue comment: ${commentErr}`);
+              jl?.log(`이슈 코멘트 실패 (경고만, 계속 진행)`);
+            }
+
             // Non-blocking: continue with push and let humans resolve
           }
         }

@@ -5,6 +5,7 @@ vi.mock("../../src/github/pr-creator.js", () => ({
   createDraftPR: vi.fn(),
   enableAutoMerge: vi.fn(),
   closeIssue: vi.fn(),
+  addIssueComment: vi.fn(),
 }));
 vi.mock("../../src/git/branch-manager.js", () => ({
   pushBranch: vi.fn(),
@@ -55,7 +56,7 @@ vi.mock("path", () => ({
 }));
 
 import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "../../src/pipeline/pipeline-publish.js";
-import { createDraftPR, enableAutoMerge, closeIssue } from "../../src/github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../../src/github/pr-creator.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { removeWorktree } from "../../src/git/worktree-manager.js";
 import { validateBeforePush } from "../../src/safety/safety-checker.js";
@@ -70,6 +71,7 @@ import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 const mockCreateDraftPR = vi.mocked(createDraftPR);
 const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
 const mockCloseIssue = vi.mocked(closeIssue);
+const mockAddIssueComment = vi.mocked(addIssueComment);
 const mockPushBranch = vi.mocked(pushBranch);
 const mockCheckConflicts = vi.mocked(checkConflicts);
 const mockAttemptRebase = vi.mocked(attemptRebase);
@@ -188,6 +190,7 @@ describe("pushAndCreatePR", () => {
     mockCreateDraftPR.mockResolvedValue({ url: "https://github.com/test/repo/pull/1", number: 1 });
     mockEnableAutoMerge.mockResolvedValue(true);
     mockCloseIssue.mockResolvedValue(true);
+    mockAddIssueComment.mockResolvedValue(true);
   });
 
   it("should successfully push and create PR", async () => {
@@ -257,6 +260,47 @@ describe("pushAndCreatePR", () => {
 
     expect(result.success).toBe(true); // Should continue despite rebase failure
     expect(context.jl?.log).toHaveBeenCalledWith("Rebase 실패 (충돌 있음): src/conflict.ts");
+  });
+
+  it("should add issue comment when rebase fails", async () => {
+    const context = makePublishContext();
+    mockCheckConflicts.mockResolvedValue({
+      hasConflicts: true,
+      conflictFiles: ["src/conflict.ts", "src/another.ts"],
+    });
+    mockAttemptRebase.mockResolvedValue({ success: false });
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockAddIssueComment).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      expect.stringContaining("## 🔄 자동 Rebase 실패"),
+      { ghPath: "gh", dryRun: false }
+    );
+    expect(mockAddIssueComment).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      expect.stringContaining("- `src/conflict.ts`"),
+      { ghPath: "gh", dryRun: false }
+    );
+    expect(context.jl?.log).toHaveBeenCalledWith("충돌 알림 코멘트 추가됨");
+  });
+
+  it("should continue when issue comment fails", async () => {
+    const context = makePublishContext();
+    mockCheckConflicts.mockResolvedValue({
+      hasConflicts: true,
+      conflictFiles: ["src/conflict.ts"],
+    });
+    mockAttemptRebase.mockResolvedValue({ success: false });
+    mockAddIssueComment.mockRejectedValue(new Error("Comment failed"));
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(context.jl?.log).toHaveBeenCalledWith("이슈 코멘트 실패 (경고만, 계속 진행)");
   });
 
   it("should skip auto-merge when disabled", async () => {

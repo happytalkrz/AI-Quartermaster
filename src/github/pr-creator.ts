@@ -165,6 +165,38 @@ export async function enableAutoMerge(
 }
 
 /**
+ * Adds a comment to an issue on GitHub using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function addIssueComment(
+  issueNumber: number,
+  repo: string,
+  comment: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would add comment to issue #${issueNumber}: ${comment}`);
+    return true;
+  }
+
+  // Add comment to issue
+  const result = await runCli(
+    ghPath,
+    ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+    {}
+  );
+  if (result.exitCode !== 0) {
+    logger.warn(`Failed to comment on issue #${issueNumber}: ${result.stderr}`);
+    return false;
+  }
+
+  logger.info(`Added comment to issue #${issueNumber}`);
+  return true;
+}
+
+/**
  * Closes an issue on GitHub using gh CLI.
  * Best-effort: returns false (with a warning) instead of throwing on failure.
  */

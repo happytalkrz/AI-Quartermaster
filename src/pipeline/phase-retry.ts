@@ -109,7 +109,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
         errorMessage,
-        errorHistory,
+        errorHistory: errorHistory as any, // Type assertion for template compatibility
       },
       config: {
         testCommand: ctx.testCommand,

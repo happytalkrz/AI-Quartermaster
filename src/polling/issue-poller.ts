@@ -56,6 +56,10 @@ export class IssuePoller {
     logger.info("폴링 모드 중지");
   }
 
+  isRunning(): boolean {
+    return this.running;
+  }
+
   private scheduleNext(): void {
     if (!this.running) return;
     this.timer = setTimeout(async () => {

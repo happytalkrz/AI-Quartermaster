@@ -121,7 +121,7 @@ export interface CleanupContext {
   repo: string;
   plan: Plan;
   phaseResults: PhaseResult[];
-  startTime: Date;
+  startTime: number;
   prUrl?: string;
   config: any;
   aqRoot?: string;

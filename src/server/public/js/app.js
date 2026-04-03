@@ -361,8 +361,9 @@ function deleteProject(id) {
    ══════════════════════════════════════════════════════════════ */
 var es = null;
 var reconnectTimer = null;
+var countdownInterval = null;
 
-function setConnState(state) {
+function setConnState(state, seconds) {
   var dot = document.getElementById('conn-dot');
   var label = document.getElementById('conn-label');
   if (state === 'connected') {
@@ -371,6 +372,13 @@ function setConnState(state) {
   } else if (state === 'connecting') {
     dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-pulse';
     label.textContent = currentLang === 'ko' ? '연결 중...' : 'Connecting...';
+  } else if (state === 'reconnecting') {
+    dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-pulse';
+    if (seconds !== undefined) {
+      label.textContent = t('reconnectCountdown') + ' ' + seconds + 's';
+    } else {
+      label.textContent = t('reconnecting');
+    }
   } else {
     dot.className = 'w-2 h-2 rounded-full bg-outline';
     label.textContent = 'Disconnected';
@@ -386,6 +394,9 @@ function connectSSE() {
   es.onopen = function() {
     setConnState('connected');
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    // Refresh data after reconnection
+    apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
   };
   es.onmessage = function(e) {
     try { handleData(JSON.parse(e.data)); } catch (_) {}
@@ -393,6 +404,21 @@ function connectSSE() {
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+
+    var remainingSeconds = 4;
+    setConnState('reconnecting', remainingSeconds);
+
+    countdownInterval = setInterval(function() {
+      remainingSeconds--;
+      if (remainingSeconds > 0) {
+        setConnState('reconnecting', remainingSeconds);
+      } else {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    }, 1000);
+
     reconnectTimer = setTimeout(connectSSE, 4000);
   };
 }

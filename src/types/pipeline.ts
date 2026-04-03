@@ -56,6 +56,14 @@ export interface PhaseResult {
   durationMs: number;
 }
 
+export interface PhaseRetryErrorContext {
+  errorMessage: string;
+  lastOutput: string;
+  attempt: number;
+  maxAttempts: number;
+  errorCategory: ErrorCategory;
+}
+
 export interface PipelineResult {
   issueNumber: number;
   repo: string;

@@ -45,6 +45,21 @@ export type ErrorCategory =
   | "SAFETY_VIOLATION"
   | "UNKNOWN";
 
+export type MergeStateStatus =
+  | "CLEAN"
+  | "DIRTY"
+  | "UNKNOWN"
+  | "BEHIND"
+  | "CONFLICTED";
+
+export interface PrConflictInfo {
+  prNumber: number;
+  repo: string;
+  conflictFiles: string[];
+  detectedAt: string;
+  mergeStatus: MergeStateStatus;
+}
+
 export interface ErrorHistoryEntry {
   attempt: number;
   errorCategory: ErrorCategory;

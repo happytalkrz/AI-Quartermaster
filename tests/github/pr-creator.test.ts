@@ -8,7 +8,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   loadTemplate: vi.fn(() => "mock template"),
 }));
 
-import { createDraftPR, closeIssue, checkPrConflict, commentOnIssue } from "../../src/github/pr-creator.js";
+import { createDraftPR, closeIssue, checkPrConflict, commentOnIssue, listOpenPrs } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -184,6 +184,64 @@ describe("commentOnIssue", () => {
     await commentOnIssue(42, "test/repo", "Test comment", { ghPath: "/custom/gh" });
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", [
       "issue", "comment", "42", "--repo", "test/repo", "--body", "Test comment"
+    ], {});
+  });
+});
+
+describe("listOpenPrs", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should list open PRs successfully", async () => {
+    const prData = [
+      { number: 123, title: "Fix bug in auth" },
+      { number: 124, title: "Add new feature" },
+    ];
+    mockRunCli.mockResolvedValue({
+      stdout: JSON.stringify(prData),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const result = await listOpenPrs("test/repo", {});
+    expect(result).toEqual(prData);
+    expect(mockRunCli).toHaveBeenCalledWith("gh", [
+      "pr", "list", "--repo", "test/repo", "--state", "open", "--json", "number,title", "--limit", "100"
+    ], {});
+  });
+
+  it("should return empty array when no PRs exist", async () => {
+    mockRunCli.mockResolvedValue({
+      stdout: JSON.stringify([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const result = await listOpenPrs("test/repo", {});
+    expect(result).toEqual([]);
+  });
+
+  it("should return null on gh CLI failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Repository not found", exitCode: 1 });
+    const result = await listOpenPrs("test/repo", {});
+    expect(result).toBe(null);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await listOpenPrs("test/repo", { dryRun: true });
+    expect(result).toEqual([]);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("should use custom gh path", async () => {
+    mockRunCli.mockResolvedValue({
+      stdout: JSON.stringify([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await listOpenPrs("test/repo", { ghPath: "/custom/gh" });
+    expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", [
+      "pr", "list", "--repo", "test/repo", "--state", "open", "--json", "number,title", "--limit", "100"
     ], {});
   });
 });

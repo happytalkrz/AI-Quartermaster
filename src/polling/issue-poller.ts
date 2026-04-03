@@ -3,6 +3,8 @@ import { runCli } from "../utils/cli-runner.js";
 import { JobStore } from "../queue/job-store.js";
 import { JobQueue } from "../queue/job-queue.js";
 import { AQConfig } from "../types/config.js";
+import { checkPrConflict, commentOnIssue, listOpenPrs } from "../github/pr-creator.js";
+import type { PrConflictInfo } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -18,6 +20,7 @@ export class IssuePoller {
   private queue: JobQueue;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
+  private notifiedPrs = new Set<string>(); // 알림한 PR 추적 (repo:prNumber 형식)
 
   constructor(config: AQConfig, store: JobStore, queue: JobQueue) {
     this.config = config;
@@ -58,10 +61,15 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
-    const tasks = projects.flatMap(p =>
+    // 기존 이슈 폴링
+    const issueTasks = projects.flatMap(p =>
       triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
     );
-    await Promise.allSettled(tasks);
+    await Promise.allSettled(issueTasks);
+
+    // PR 충돌 체크
+    const prTasks = projects.map(p => this.checkProjectPrConflicts(p.repo, ghPath));
+    await Promise.allSettled(prTasks);
   }
 
   private async pollProjectLabel(
@@ -109,5 +117,84 @@ export class IssuePoller {
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
       this.queue.enqueue(issue.number, repo);
     }
+  }
+
+  private async checkProjectPrConflicts(repo: string, ghPath: string): Promise<void> {
+    try {
+      // 오픈 PR 목록 조회
+      const prs = await listOpenPrs(repo, { ghPath });
+      if (!prs || prs.length === 0) {
+        logger.debug(`${repo} — 체크할 오픈 PR 없음`);
+        return;
+      }
+
+      logger.debug(`${repo} — 오픈 PR ${prs.length}개 충돌 체크 시작`);
+
+      // 각 PR에 대해 충돌 체크
+      for (const pr of prs) {
+        const prKey = `${repo}:${pr.number}`;
+
+        // 이미 알림한 PR은 스킵
+        if (this.notifiedPrs.has(prKey)) {
+          logger.debug(`PR #${pr.number} (${repo}) — 이미 알림함, 건너뜀`);
+          continue;
+        }
+
+        // 충돌 체크
+        const conflictInfo = await checkPrConflict(pr.number, repo, { ghPath });
+        if (conflictInfo) {
+          // 충돌 감지 시 이슈에 코멘트 작성
+          const conflictMessage = this.buildConflictMessage(conflictInfo);
+
+          // PR과 연결된 이슈 번호 추출 시도 (제목에서 #123 패턴 찾기)
+          const issueNumberMatch = pr.title.match(/#(\d+)/);
+          const issueNumber = issueNumberMatch ? parseInt(issueNumberMatch[1], 10) : null;
+
+          if (issueNumber) {
+            const commentSuccess = await commentOnIssue(
+              issueNumber,
+              repo,
+              conflictMessage,
+              { ghPath }
+            );
+
+            if (commentSuccess) {
+              logger.info(`PR #${pr.number} 충돌 알림 완료 — 이슈 #${issueNumber}에 코멘트 작성`);
+              this.notifiedPrs.add(prKey);
+            } else {
+              logger.warn(`PR #${pr.number} 충돌 알림 실패 — 이슈 #${issueNumber} 코멘트 작성 실패`);
+            }
+          } else {
+            logger.warn(`PR #${pr.number} 충돌 감지되었지만 연결된 이슈 번호를 찾을 수 없음: "${pr.title}"`);
+          }
+        } else {
+          logger.debug(`PR #${pr.number} (${repo}) — 충돌 없음`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`${repo} PR 충돌 체크 중 오류: ${error}`);
+    }
+  }
+
+  private buildConflictMessage(conflictInfo: PrConflictInfo): string {
+    const { prNumber, conflictFiles, detectedAt, mergeStatus } = conflictInfo;
+
+    let message = `🚨 **PR #${prNumber} 머지 충돌 감지**\n\n`;
+    message += `**상태**: ${mergeStatus}\n`;
+    message += `**감지 시간**: ${detectedAt}\n\n`;
+
+    if (conflictFiles.length > 0) {
+      message += `**충돌 파일(들)**:\n`;
+      for (const file of conflictFiles) {
+        message += `- \`${file}\`\n`;
+      }
+      message += `\n`;
+    }
+
+    message += `베이스 브랜치의 변경으로 인해 이 PR에서 머지 충돌이 발생했습니다. `;
+    message += `충돌을 해결한 후 PR을 업데이트해 주세요.\n\n`;
+    message += `_자동 생성된 알림 — AQM PR 모니터링_`;
+
+    return message;
   }
 }

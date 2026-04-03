@@ -314,8 +314,8 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(config, store as any, queue as any);
     await (poller as any).poll();
 
-    // One runCli call per project×label combination
-    expect(mockRunCli).toHaveBeenCalledTimes(2);
+    // One runCli call per project×label combination + one PR list call per project
+    expect(mockRunCli).toHaveBeenCalledTimes(4);
 
     const reposPolled = mockRunCli.mock.calls.map(call => {
       const args = call[1] as string[];

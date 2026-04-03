@@ -228,7 +228,7 @@ export async function checkPrConflict(
     const mergeable = prInfo.mergeable;
 
     // If status is DIRTY or not mergeable, get conflict files
-    let conflictFiles: string[] = [];
+    const conflictFiles: string[] = [];
     if (mergeStateStatus === "DIRTY" || mergeable === false) {
       try {
         // Get diff to identify conflict files
@@ -310,5 +310,40 @@ export async function commentOnIssue(
   } catch (error) {
     logger.warn(`Error commenting on issue #${issueNumber}: ${error}`);
     return false;
+  }
+}
+
+/**
+ * Lists open PRs for a repository using gh CLI.
+ */
+export async function listOpenPrs(
+  repo: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<Array<{ number: number; title: string }> | null> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would list open PRs for ${repo}`);
+    return [];
+  }
+
+  try {
+    const result = await runCli(
+      ghPath,
+      ["pr", "list", "--repo", repo, "--state", "open", "--json", "number,title", "--limit", "100"],
+      {}
+    );
+
+    if (result.exitCode !== 0) {
+      logger.warn(`Failed to list PRs for ${repo}: ${result.stderr}`);
+      return null;
+    }
+
+    const prs = JSON.parse(result.stdout.trim()) as Array<{ number: number; title: string }>;
+    logger.debug(`Found ${prs.length} open PRs in ${repo}`);
+    return prs;
+  } catch (error) {
+    logger.warn(`Error listing PRs for ${repo}: ${error}`);
+    return null;
   }
 }

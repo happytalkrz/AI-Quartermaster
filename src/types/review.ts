@@ -47,9 +47,24 @@ export interface AnalystResult {
   durationMs: number;
 }
 
+export interface ReviewFixAttempt {
+  attempt: number;
+  findingsSnapshot: {
+    analystFindings?: AnalystFinding[];
+    reviewFindings: ReviewFinding[];
+  };
+  fixResult: {
+    success: boolean;
+    filesModified: string[];
+    summary: string;
+    error?: string;
+  };
+}
+
 export interface ReviewPipelineResult {
   analyst?: AnalystResult;
   rounds: ReviewResult[];
   simplify?: SimplifyResult;
+  fixAttempts?: ReviewFixAttempt[];
   allPassed: boolean;
 }

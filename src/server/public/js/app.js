@@ -112,10 +112,12 @@ function loadSettings() {
 }
 
 function setSettingsTab(tabName) {
+  var activeClasses = ['bg-primary/10', 'text-primary'];
+  var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
     var isActive = btn.dataset.tab === tabName;
-    btn.classList.toggle('bg-primary/10 text-primary', isActive);
-    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
+    activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
+    inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
   });
 
   document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {

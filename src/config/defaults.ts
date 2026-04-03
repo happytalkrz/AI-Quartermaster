@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     stuckTimeoutMs: 600000,
     pollingIntervalMs: 60000,
     maxJobs: 500,
+    autoUpdate: false,
   },
   git: {
     defaultBaseBranch: "main",

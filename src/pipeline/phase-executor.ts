@@ -5,7 +5,7 @@ import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ProgressCallback } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
@@ -30,6 +30,7 @@ export interface PhaseExecutorContext {
   skillsContext?: string;
   pastFailures?: string;
   jobLogger?: JobLogger;
+  progressCallback?: ProgressCallback;  // CLI용 진행률 콜백
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {

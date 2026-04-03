@@ -14,10 +14,8 @@ import type { AQConfig } from "../types/config.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../types/pipeline.js";
 import { removeCheckpoint } from "./checkpoint.js";
 import { PatternStore } from "../learning/pattern-store.js";
-import {
-  PROGRESS_PR_CREATED,
-  PROGRESS_DONE,
-} from "./progress-tracker.js";
+import { PROGRESS_PR_CREATED } from "./progress-tracker.js";
+import { saveResult } from "./pipeline-validation.js";
 
 const logger = getLogger();
 
@@ -251,15 +249,3 @@ export async function handlePipelineFailure(context: FailureHandlerContext): Pro
   return rollbackInfo ? `${errMsg}. ${rollbackInfo}` : errMsg;
 }
 
-function saveResult(config: AQConfig, projectRoot: string, issueNumber: number, report: PipelineReport): void {
-  try {
-    const logDir = resolve(projectRoot, config.general.logDir);
-    mkdirSync(logDir, { recursive: true });
-    writeFileSync(
-      resolve(logDir, `issue-${issueNumber}-result.json`),
-      JSON.stringify(report, null, 2)
-    );
-  } catch {
-    // non-fatal
-  }
-}

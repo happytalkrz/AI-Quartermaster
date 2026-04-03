@@ -79,7 +79,7 @@ export async function runValidationPhase(
       checkpoint({ plan: context.plan, phaseResults: context.phaseResults });
       const report = formatResult(issueNumber, repo, context.plan, context.phaseResults, startTime);
       printResult(report);
-      saveResultToFile(config, _aqRoot ?? _projectRoot ?? process.cwd(), issueNumber, report);
+      saveResult(config, _aqRoot ?? _projectRoot ?? process.cwd(), issueNumber, report);
 
       return {
         success: false,
@@ -148,7 +148,7 @@ async function retryValidationWithFixes(
   return false;
 }
 
-function saveResultToFile(config: AQConfig, projectRoot: string, issueNumber: number, report: PipelineReport): void {
+export function saveResult(config: AQConfig, projectRoot: string, issueNumber: number, report: PipelineReport): void {
   try {
     const logDir = resolve(projectRoot, config.general.logDir);
     mkdirSync(logDir, { recursive: true });
@@ -156,7 +156,7 @@ function saveResultToFile(config: AQConfig, projectRoot: string, issueNumber: nu
       resolve(logDir, `issue-${issueNumber}-result.json`),
       JSON.stringify(report, null, 2)
     );
-  } catch (error) {
-    logger.warn(`Failed to save result: ${error}`);
+  } catch {
+    // non-fatal
   }
 }

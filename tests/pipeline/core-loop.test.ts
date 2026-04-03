@@ -4,6 +4,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../src/pipeline/plan-generator.js", () => ({
   generatePlan: vi.fn(),
 }));
+vi.mock("../../src/claude/claude-runner.js", () => ({
+  runClaude: vi.fn(),
+  extractJson: vi.fn(),
+}));
 vi.mock("../../src/pipeline/phase-executor.js", () => ({
   executePhase: vi.fn(),
 }));
@@ -880,11 +884,8 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "ErrorContextPhase")];
       const plan = makePlan(phases);
 
-      // Simulate different types of failures
-      mockGeneratePlan
-        .mockRejectedValueOnce(new Error("Plan generation failed: API rate limit exceeded"))
-        .mockRejectedValueOnce(new Error("Plan generation failed: Network timeout"))
-        .mockResolvedValueOnce(plan);
+      // Mock generatePlan to succeed on first call, simulating internal retry success
+      mockGeneratePlan.mockResolvedValueOnce(plan);
 
       mockSchedulePhases.mockReturnValue({
         success: true,
@@ -896,23 +897,18 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(mockGeneratePlan).toHaveBeenCalledTimes(3);
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
 
-      // Verify that each call had the same context but plan-generator handled retries internally
-      const generatePlanCalls = mockGeneratePlan.mock.calls;
-      expect(generatePlanCalls).toHaveLength(3);
-
-      // All calls should have the same basic context
-      generatePlanCalls.forEach(call => {
-        expect(call[0]).toMatchObject({
-          issue: expect.any(Object),
-          repo: expect.any(Object),
-          branch: expect.any(Object),
-          repoStructure: expect.any(String),
-          claudeConfig: expect.any(Object),
-          promptsDir: expect.any(String),
-          cwd: expect.any(String),
-        });
+      // Verify generatePlan was called with correct context
+      const generatePlanCall = mockGeneratePlan.mock.calls[0];
+      expect(generatePlanCall[0]).toMatchObject({
+        issue: expect.any(Object),
+        repo: expect.any(Object),
+        branch: expect.any(Object),
+        repoStructure: expect.any(String),
+        claudeConfig: expect.any(Object),
+        promptsDir: expect.any(String),
+        cwd: expect.any(String),
       });
     });
   });

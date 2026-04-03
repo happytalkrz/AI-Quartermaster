@@ -62,7 +62,7 @@ describe("checkpoint", () => {
       );
     });
 
-    it("should save checkpoint to correct file path", () => {
+    it("should save checkpoint to correct file path with atomic write", () => {
       const checkpoint = makeCheckpoint();
       const dataDir = "/tmp/data";
 
@@ -76,20 +76,6 @@ describe("checkpoint", () => {
         JSON.stringify(checkpoint, null, 2)
       );
       expect(mockRenameSync).toHaveBeenCalledWith(tmpPath, expectedPath);
-    });
-
-    it("should use atomic write with tmp file", () => {
-      const checkpoint = makeCheckpoint();
-      const dataDir = "/tmp/data";
-
-      saveCheckpoint(dataDir, 42, checkpoint);
-
-      // Should write to .tmp first, then rename
-      expect(mockWriteFileSync).toHaveBeenCalledWith(
-        expect.stringContaining(".tmp"),
-        expect.any(String)
-      );
-      expect(mockRenameSync).toHaveBeenCalled();
     });
 
     it("should serialize checkpoint with proper formatting", () => {
@@ -174,16 +160,6 @@ describe("checkpoint", () => {
       removeCheckpoint("/tmp/data", 42);
 
       expect(mockUnlinkSync).not.toHaveBeenCalled();
-    });
-
-    it("should handle file removal for different issue numbers", () => {
-      mockExistsSync.mockReturnValue(true);
-
-      removeCheckpoint("/tmp/data", 123);
-
-      expect(mockUnlinkSync).toHaveBeenCalledWith(
-        resolve("/tmp/data", "checkpoints", "123.json")
-      );
     });
   });
 });

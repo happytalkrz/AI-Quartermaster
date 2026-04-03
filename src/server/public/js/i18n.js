@@ -57,6 +57,7 @@ var i18n = {
     branch: "브랜치",
     enabled: "활성",
     disabled: "비활성",
+    noSettings: "이 탭에는 설정할 항목이 없습니다",
     config: {
       tabs: { general: "일반", safety: "안전", review: "리뷰" },
       saveState: { saving: "저장 중...", saved: "저장됨", saveFailed: "저장 실패" },
@@ -116,6 +117,7 @@ var i18n = {
     branch: "Branch",
     enabled: "Enabled",
     disabled: "Disabled",
+    noSettings: "No settings available in this tab",
     config: {
       tabs: { general: "General", safety: "Safety", review: "Review" },
       saveState: { saving: "Saving...", saved: "Saved", saveFailed: "Save Failed" },

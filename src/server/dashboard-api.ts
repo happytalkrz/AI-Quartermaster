@@ -130,12 +130,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     }
   });
 
+  const getErrorMessage = (error: unknown): string =>
+    error instanceof Error ? error.message : "Unknown error";
+
+  const projectRoot = process.cwd();
+  const configPath = `${projectRoot}/config.yml`;
+
   // Add project to configuration
   api.post("/api/projects", async (c) => {
     try {
       const body = await c.req.json();
 
-      // Validate project config structure
       if (!body || typeof body !== "object") {
         return c.json({ error: "Invalid request body" }, 400);
       }
@@ -157,29 +162,21 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         mode: mode as "code" | "content" | undefined,
       };
 
-      const projectRoot = process.cwd();
-      const configPath = `${projectRoot}/config.yml`;
-
-      // Check if project already exists
       try {
         const currentConfig = loadConfig(projectRoot);
-        const existingProject = currentConfig.projects?.find(p => p.repo === project.repo);
-        if (existingProject) {
+        if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
       } catch {
-        // If config doesn't exist or can't be loaded, we'll create/update it anyway
+        // Config doesn't exist yet, proceed
       }
 
-      // Add project to config
       addProjectToConfig(configPath, project);
 
-      // Validate the updated config
       try {
         validateConfig(loadConfig(projectRoot));
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown validation error";
-        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
+        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
       }
 
       return c.json({
@@ -187,8 +184,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         project
       }, 201);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return c.json({ error: `Failed to add project: ${message}` }, 500);
+      return c.json({ error: `Failed to add project: ${getErrorMessage(error)}` }, 500);
     }
   });
 
@@ -201,30 +197,21 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         return c.json({ error: "repo parameter is required" }, 400);
       }
 
-      const projectRoot = process.cwd();
-      const configPath = `${projectRoot}/config.yml`;
-
-      // Check if project exists
       try {
         const currentConfig = loadConfig(projectRoot);
-        const existingProject = currentConfig.projects?.find(p => p.repo === repo);
-        if (!existingProject) {
+        if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+        return c.json({ error: `Failed to load configuration: ${getErrorMessage(error)}` }, 500);
       }
 
-      // Remove project from config
       removeProjectFromConfig(configPath, repo);
 
-      // Validate the updated config
       try {
         validateConfig(loadConfig(projectRoot));
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown validation error";
-        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
+        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
       }
 
       return c.json({
@@ -232,8 +219,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         repo
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return c.json({ error: `Failed to remove project: ${message}` }, 500);
+      return c.json({ error: `Failed to remove project: ${getErrorMessage(error)}` }, 500);
     }
   });
 

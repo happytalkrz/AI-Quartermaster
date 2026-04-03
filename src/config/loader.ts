@@ -306,18 +306,13 @@ export function addProjectToConfig(configPath: string, project: ProjectConfig): 
   writeFileSync(configPath, lines.join('\n'), 'utf-8');
 }
 
-/**
- * 기존 config.yml에서 프로젝트 제거 (YAML 포맷 보존)
- */
 export function removeProjectFromConfig(configPath: string, targetRepo: string): void {
   const content = readFileSync(configPath, 'utf-8');
   const lines = content.split('\n');
 
-  // projects 섹션 찾기
   const projectsIndex = lines.findIndex(line => line.match(/^(\s*)projects\s*:\s*$/));
 
   if (projectsIndex === -1) {
-    // projects 섹션이 없으면 제거할 것도 없음
     return;
   }
 
@@ -326,49 +321,39 @@ export function removeProjectFromConfig(configPath: string, targetRepo: string):
   let removeStartIndex = -1;
   let removeEndIndex = -1;
 
-  // 제거할 프로젝트 항목 찾기
   for (let i = projectsIndex + 1; i < lines.length; i++) {
     const line = lines[i];
     const trimmedLine = line.trim();
 
-    // 빈 줄은 건너뛰기
     if (trimmedLine === '') continue;
 
-    // 새로운 섹션이 시작되면 검색 종료 (projects 레벨과 같은 들여쓰기)
     if (!line.startsWith(itemIndent) && trimmedLine.match(/^\w+\s*:/)) {
       break;
     }
 
-    // 프로젝트 항목 시작점 찾기 (- repo: "target/repo" 형태)
     if (line.startsWith(itemIndent) && line.includes('- repo:')) {
       const repoMatch = line.match(/- repo:\s*["'](.+?)["']/);
       if (repoMatch && repoMatch[1] === targetRepo) {
         removeStartIndex = i;
-        removeEndIndex = i; // 일단 현재 라인으로 설정
+        removeEndIndex = i;
 
-        // 이 프로젝트에 속한 추가 속성들 찾기 (path, baseBranch, mode 등)
         for (let j = i + 1; j < lines.length; j++) {
           const nextLine = lines[j];
           const nextTrimmed = nextLine.trim();
 
-          // 빈 줄은 건너뛰기
           if (nextTrimmed === '') continue;
 
-          // 다음 프로젝트 항목 (- repo:)이 시작되면 종료
           if (nextLine.startsWith(itemIndent) && nextLine.includes('- repo:')) {
             break;
           }
 
-          // 새로운 섹션 (projects와 같은 레벨의 들여쓰기)이 시작되면 종료
           if (!nextLine.startsWith(itemIndent) && nextTrimmed.match(/^\w+\s*:/)) {
             break;
           }
 
-          // 현재 프로젝트의 속성인지 확인 (더 깊은 들여쓰기)
           if (nextLine.startsWith(itemIndent + '  ')) {
             removeEndIndex = j;
           } else {
-            // itemIndent와 같거나 더 얕은 레벨이면 이 프로젝트에 속하지 않음
             break;
           }
         }
@@ -377,7 +362,6 @@ export function removeProjectFromConfig(configPath: string, targetRepo: string):
     }
   }
 
-  // 찾은 항목 제거
   if (removeStartIndex !== -1 && removeEndIndex !== -1) {
     lines.splice(removeStartIndex, removeEndIndex - removeStartIndex + 1);
     writeFileSync(configPath, lines.join('\n'), 'utf-8');

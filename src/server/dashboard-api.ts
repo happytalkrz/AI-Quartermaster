@@ -1,6 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
-import type { JobStore } from "../queue/job-store.js";
+import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig } from "../config/loader.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
@@ -8,6 +8,34 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
 const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+// SSE client management
+interface SSEClient {
+  id: string;
+  controller: ReadableStreamDefaultController<Uint8Array>;
+}
+
+const sseClients = new Map<string, SSEClient>();
+const encoder = new TextEncoder();
+
+function broadcastToAllClients(event: string, data: any): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    try {
+      client.controller.enqueue(encoder.encode(message));
+    } catch {
+      // Client disconnected, mark for removal
+      clientsToRemove.push(clientId);
+    }
+  }
+
+  // Clean up disconnected clients
+  for (const clientId of clientsToRemove) {
+    sseClients.delete(clientId);
+  }
+}
 
 function pruneExpiredTokens(): void {
   const now = Date.now();
@@ -31,6 +59,19 @@ function isValidSessionToken(token: string): boolean {
  */
 export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?: string): Hono {
   const api = new Hono();
+
+  // Subscribe to JobStore events for real-time broadcasts
+  store.on('jobDeleted', (job: Job) => {
+    broadcastToAllClients('jobDeleted', { id: job.id, job });
+  });
+
+  store.on('jobUpdated', (job: Job) => {
+    broadcastToAllClients('jobUpdated', { id: job.id, job });
+  });
+
+  store.on('jobCreated', (job: Job) => {
+    broadcastToAllClients('jobCreated', { id: job.id, job });
+  });
 
   if (apiKey) {
     // POST /api/auth — exchange Bearer key for a short-lived session token
@@ -226,12 +267,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
 
   // SSE endpoint for real-time updates
   api.get("/api/events", (c) => {
-    // Simple SSE - send current state every 2 seconds
+    const clientId = randomUUID();
     let intervalId: ReturnType<typeof setInterval> | undefined;
+
     const stream = new ReadableStream({
       start(controller) {
-        const encoder = new TextEncoder();
-        const send = () => {
+        // Register client
+        sseClients.set(clientId, { id: clientId, controller });
+
+        // Send initial state
+        const sendInitialState = () => {
           try {
             const jobs = store.list();
             const status = queue.getStatus();
@@ -241,17 +286,22 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
             // stream closed
           }
         };
-        send();
-        intervalId = setInterval(send, 2000);
-        // Clean up when client disconnects
-        // Note: in practice, Hono handles this
+
+        sendInitialState();
+
+        // Send periodic updates for fallback (reduced frequency since real-time events handle most updates)
+        intervalId = setInterval(sendInitialState, 10000); // 10 seconds instead of 2
+
+        // Auto-cleanup after 5 minutes
         setTimeout(() => {
           clearInterval(intervalId);
+          sseClients.delete(clientId);
           try { controller.close(); } catch { /* already closed */ }
-        }, 300000); // 5 min max
+        }, 300000);
       },
       cancel() {
         clearInterval(intervalId);
+        sseClients.delete(clientId);
       },
     });
 

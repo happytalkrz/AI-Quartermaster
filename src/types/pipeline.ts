@@ -73,3 +73,60 @@ export interface PipelineResult {
   completedAt?: string;
   error?: string;
 }
+
+/** Context information for pipeline setup phase - contains resolved config and issue data */
+export interface PipelineSetupContext {
+  /** Basic pipeline input */
+  issueNumber: number;
+  repo: string; // "owner/repo"
+
+  /** Resolved project configuration (global config + project overrides) */
+  config: import("./config.js").AQConfig;
+  projectConfig: import("./config.js").ProjectConfig;
+
+  /** File system paths */
+  projectRoot: string;
+  promptsDir: string;
+  dataDir: string;
+
+  /** Issue information fetched from GitHub */
+  issue: import("../github/issue-fetcher.js").GitHubIssue;
+
+  /** Pipeline mode determined from labels/config */
+  mode: import("./config.js").PipelineMode;
+
+  /** Git configuration (with project-specific overrides applied) */
+  gitConfig: import("./config.js").GitConfig;
+
+  /** Branch and worktree information (if already created) */
+  branchName?: string;
+  worktreePath?: string;
+
+  /** Duplicate PR check result */
+  existingPrUrl?: string;
+
+  /** Pipeline timing constraints */
+  maxTotalDurationMs: number;
+
+  /** Resume information for retries */
+  isRetry?: boolean;
+  resumeFromState?: PipelineState;
+}
+
+/** Result of pipeline setup phase */
+export interface PipelineSetupResult {
+  /** Whether setup completed successfully */
+  success: boolean;
+
+  /** The setup context if successful */
+  context?: PipelineSetupContext;
+
+  /** Current pipeline state after setup */
+  state: PipelineState;
+
+  /** Error information if setup failed */
+  error?: string;
+
+  /** If an existing PR was found, return early with this URL */
+  existingPrUrl?: string;
+}

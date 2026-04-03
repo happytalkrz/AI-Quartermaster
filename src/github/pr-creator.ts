@@ -68,7 +68,7 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan?.problemDefinition || "Issue resolution"}\n\n## Phases\n\n${ctx.phaseResults?.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n") || "No phases completed"}`;
   }
 
   // Add issue link

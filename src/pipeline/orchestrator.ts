@@ -31,6 +31,7 @@ import { removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import { withRepoLock } from "../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
+import { setupGitEnvironment, prepareWorkEnvironment } from "./pipeline-git-setup.js";
 import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "./pipeline-setup.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -128,145 +129,50 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     state = "VALIDATED";
     let preset = getModePreset(mode);
 
-    // === VALIDATED → BASE_SYNCED → BRANCH_CREATED → WORKTREE_CREATED ===
-    // Serialize git operations per-repo to prevent concurrent branch/worktree conflicts
-    await withRepoLock(repo, async () => {
-      if (isPastState(state, "BASE_SYNCED")) {
-        logger.info(`[SKIP] VALIDATED → BASE_SYNCED (already done)`);
-      } else {
-        await syncBaseBranch(gitConfig, { cwd: projectRoot });
-        state = "BASE_SYNCED";
-        logger.info(`[BASE_SYNCED] Base branch ${project.baseBranch} synced`);
-        jl?.setStep("브랜치 생성 중...");
-
-        checkpoint();
-      }
-
-      // === BASE_SYNCED → BRANCH_CREATED ===
-      if (isPastState(state, "BRANCH_CREATED")) {
-        logger.info(`[SKIP] BASE_SYNCED → BRANCH_CREATED (already done, branch: ${branchName})`);
-      } else {
-        const branchInfo = await createWorkBranch(
-          gitConfig,
-          issueNumber,
-          issue.title,
-          { cwd: projectRoot }
-        );
-        branchName = branchInfo.workBranch;
-        state = "BRANCH_CREATED";
-        logger.info(`[BRANCH_CREATED] Branch: ${branchName}`);
-        jl?.log(`브랜치: ${branchName}`);
-
-        checkpoint();
-      }
-
-      // === BRANCH_CREATED → WORKTREE_CREATED ===
-      // For retry jobs, clean up existing worktree to remove dirty state from previous failed attempts
-      if (input.isRetry && worktreePath && existsSync(worktreePath)) {
-        jl?.log("재시도 작업 - 기존 worktree 정리 시도 중...");
-
-        try {
-          await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
-          logger.info(`[RETRY] Removed worktree: ${worktreePath}`);
-          jl?.log("재시도 작업 - 기존 worktree 정리 완료");
-        } catch (e) {
-          logger.warn(`[RETRY] Primary cleanup failed: ${e}`);
-          try {
-            await runCli(gitConfig.gitPath, ["worktree", "prune"], { cwd: projectRoot });
-            logger.info(`[RETRY] Pruned stale entries`);
-          } catch (pruneError) {
-            logger.warn(`[RETRY] Prune failed: ${pruneError}`);
-          }
-          logger.warn(`[RETRY] Cleanup failed; continuing (branch-manager handles full cleanup)`);
-          jl?.log("워크트리 정리 실패했지만 계속 진행 (branch-manager에서 완전 정리 예정)");
-        }
-
-        worktreePath = undefined;
-        state = "BRANCH_CREATED";
-      }
-
-      if (isPastState(state, "WORKTREE_CREATED") && !input.isRetry) {
-        logger.info(`[SKIP] BRANCH_CREATED → WORKTREE_CREATED (already done, worktree: ${worktreePath})`);
-        // Verify worktree still exists
-        if (worktreePath && !existsSync(worktreePath)) {
-          throw new Error(`Resume failed: worktree path no longer exists: ${worktreePath}`);
-        }
-      } else {
-        const slug = createSlugWithFallback(issue.title);
-        const worktreeInfo = await createWorktree(
-          gitConfig,
-          config.worktree,
-          branchName!,
-          issueNumber,
-          slug,
-          { cwd: projectRoot }
-        );
-        worktreePath = worktreeInfo.path;
-        state = "WORKTREE_CREATED";
-        logger.info(`[WORKTREE_CREATED] Worktree: ${worktreePath}`);
-
-        checkpoint();
-      }
+    // === Setup Git Environment: VALIDATED → WORKTREE_CREATED ===
+    const gitSetupResult = await setupGitEnvironment({
+      issueNumber,
+      issueTitle: issue.title,
+      repo,
+      projectRoot,
+      gitConfig,
+      worktreeConfig: config.worktree,
+      state,
+      isRetry: input.isRetry || false,
+      jl,
     });
 
-    // === Create rollback checkpoint (before any phase commits) ===
+    branchName = gitSetupResult.branchName;
+    worktreePath = gitSetupResult.worktreePath;
+    state = gitSetupResult.state;
+
+    checkpoint({ branchName, worktreePath });
+
+    // === Prepare Work Environment ===
     rollbackStrategy = project.safety.rollbackStrategy;
-    if (rollbackStrategy !== "none" && worktreePath) {
-      try {
-        const hash = await createCheckpoint({ cwd: worktreePath, gitPath: gitConfig.gitPath });
-        rollbackHash = hash;
-        logger.info(`Rollback checkpoint set: ${hash.slice(0, 8)}`);
-      } catch (e) {
-        logger.warn(`Failed to create rollback checkpoint: ${e}`);
-      }
+    let envPrepResult: any;
+    if (worktreePath) {
+      envPrepResult = await prepareWorkEnvironment({
+        projectRoot,
+        worktreePath,
+        gitConfig,
+        project,
+        rollbackStrategy,
+        jl,
+      });
+    } else {
+      envPrepResult = {
+        rollbackHash: undefined,
+        projectConventions: "",
+        skillsContext: "",
+        repoStructure: "",
+      };
     }
 
-    // === Install dependencies in worktree ===
-    if (project.commands.preInstall) {
-      jl?.setStep("의존성 설치 중...");
-      await installDependencies(project.commands.preInstall, { cwd: worktreePath! });
-    }
-
-    // === Read CLAUDE.md for project conventions ===
-    let projectConventions = "";
-    const claudeMdPath = project.commands.claudeMdPath;
-    if (claudeMdPath) {
-      // Check worktree first (committed CLAUDE.md), then project root
-      const worktreeMd = resolve(worktreePath!, claudeMdPath);
-      const rootMd = resolve(projectRoot, claudeMdPath);
-      if (existsSync(worktreeMd)) {
-        projectConventions = readFileSync(worktreeMd, "utf-8");
-        logger.info(`CLAUDE.md loaded from worktree`);
-      } else if (existsSync(rootMd)) {
-        projectConventions = readFileSync(rootMd, "utf-8");
-        logger.info(`CLAUDE.md loaded from project root`);
-      } else {
-        logger.debug(`No CLAUDE.md found at ${claudeMdPath}`);
-      }
-    }
-
-    // === Load skills for prompt injection ===
-    let skillsContext = "";
-    const skillsPath = project.commands.skillsPath;
-    if (skillsPath) {
-      // Use original project root (not worktree) for skills
-      const resolvedSkillsPath = resolve(projectRoot, skillsPath);
-      const skills = loadSkills(resolvedSkillsPath);
-      if (skills.length > 0) {
-        skillsContext = formatSkillsForPrompt(skills);
-        logger.info(`Loaded ${skills.length} skills from ${resolvedSkillsPath}`);
-      } else {
-        logger.debug(`No skills found at ${resolvedSkillsPath}`);
-      }
-    }
-
-    // === Get repo structure for plan generation (tracked files only) ===
-    const structureResult = await runCli(
-      gitConfig.gitPath, ["ls-tree", "-r", "--name-only", "HEAD"],
-      { cwd: worktreePath! }
-    );
-    // Limit output so prompt stays manageable
-    structureResult.stdout = structureResult.stdout.split("\n").slice(0, 200).join("\n");
+    rollbackHash = envPrepResult.rollbackHash;
+    const projectConventions = envPrepResult.projectConventions;
+    const skillsContext = envPrepResult.skillsContext;
+    const repoStructure = envPrepResult.repoStructure;
 
     // === WORKTREE_CREATED → PLAN_GENERATED → PHASE_IN_PROGRESS ===
     jl?.setStep("Plan 생성 중...");
@@ -281,7 +187,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       issue,
       repo: { owner, name },
       branch: { base: project.baseBranch, work: branchName! },
-      repoStructure: structureResult.stdout,
+      repoStructure: repoStructure,
       config: projectConfig,
       promptsDir,
       cwd: worktreePath!,

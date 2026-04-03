@@ -66,8 +66,8 @@ export async function runValidationPhase(
       checkpoint,
       config,
       fullCommands,
-      aqRoot,
-      projectRoot
+      _aqRoot,
+      _projectRoot
     );
 
     if (!retrySuccess) {

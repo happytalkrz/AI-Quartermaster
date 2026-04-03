@@ -6,7 +6,8 @@ import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo } from "../types/pipeline.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger();
@@ -25,34 +26,13 @@ export interface PlanGeneratorContext {
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
-  const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-  const template = loadTemplate(templatePath);
-
-  const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
-
-  const rendered = renderTemplate(template, {
-    issue: {
-      number: String(ctx.issue.number),
-      title: ctx.issue.title,
-      body: sanitizedBody,
-      labels: ctx.issue.labels,
-    },
-    repo: {
-      owner: ctx.repo.owner,
-      name: ctx.repo.name,
-      structure: ctx.repoStructure,
-    },
-    branch: ctx.branch,
-    config: {
-      maxPhases: String(ctx.maxPhases ?? 10),
-      sensitivePaths: ctx.sensitivePaths ?? "",
-    },
-  });
-
-  let finalPrompt = rendered;
-  if (ctx.modeHint) {
-    finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
-  }
+  const maxRetries = 2;
+  const retryContext: PlanRetryContext = {
+    currentAttempt: 0,
+    maxRetries,
+    generationHistory: [],
+    canRetry: true,
+  };
 
   const planSchema = JSON.stringify({
     type: "object",
@@ -86,9 +66,104 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     required: ["mode", "issueNumber", "title", "problemDefinition", "phases"],
   });
 
-  const maxRetries = 2;
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    retryContext.currentAttempt = attempt - 1;
+    const startTime = Date.now();
+
+    let templatePath: string;
+    let templateData: any;
+
+    // 첫 시도는 일반 템플릿, 재시도는 retry 템플릿 사용
+    if (attempt === 1) {
+      templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+      templateData = {
+        issue: {
+          number: String(ctx.issue.number),
+          title: ctx.issue.title,
+          body: `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`,
+          labels: ctx.issue.labels,
+        },
+        repo: {
+          owner: ctx.repo.owner,
+          name: ctx.repo.name,
+          structure: ctx.repoStructure,
+        },
+        branch: ctx.branch,
+        config: {
+          maxPhases: String(ctx.maxPhases ?? 10),
+          sensitivePaths: ctx.sensitivePaths ?? "",
+        },
+      };
+    } else {
+      // 재시도 템플릿 사용 (없으면 일반 템플릿으로 폴백)
+      const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
+      const useRetryTemplate = existsSync(retryTemplatePath);
+      templatePath = useRetryTemplate ? retryTemplatePath : resolve(ctx.promptsDir, "plan-generation.md");
+
+      // 이전 실패 정보
+      const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
+
+      if (useRetryTemplate) {
+        templateData = {
+          retry: {
+            attempt,
+            maxRetries,
+            failureReason: lastFailure.errorCategory || "UNKNOWN",
+            errorMessage: lastFailure.error || "Unknown error",
+            previousAttempts: retryContext.generationHistory.map((h, i) => ({
+              attempt: i + 1,
+              failureReason: h.errorCategory || "UNKNOWN",
+              problemSummary: h.error?.slice(0, 100) || "Unknown",
+            })),
+          },
+          context: retryContext.contextualization || {},
+          issue: {
+            number: String(ctx.issue.number),
+            title: ctx.issue.title,
+            body: ctx.issue.body,
+            labels: ctx.issue.labels,
+          },
+          repo: {
+            owner: ctx.repo.owner,
+            name: ctx.repo.name,
+            structure: ctx.repoStructure,
+          },
+          branch: ctx.branch,
+          config: {
+            maxPhases: String(ctx.maxPhases ?? 10),
+            sensitivePaths: ctx.sensitivePaths ?? "",
+          },
+        };
+      } else {
+        // 일반 템플릿 사용 시에도 기본 데이터 구조 유지
+        templateData = {
+          issue: {
+            number: String(ctx.issue.number),
+            title: ctx.issue.title,
+            body: `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`,
+            labels: ctx.issue.labels,
+          },
+          repo: {
+            owner: ctx.repo.owner,
+            name: ctx.repo.name,
+            structure: ctx.repoStructure,
+          },
+          branch: ctx.branch,
+          config: {
+            maxPhases: String(ctx.maxPhases ?? 10),
+            sensitivePaths: ctx.sensitivePaths ?? "",
+          },
+        };
+      }
+    }
+
+    const template = loadTemplate(templatePath);
+    let finalPrompt = renderTemplate(template, templateData);
+
+    if (ctx.modeHint) {
+      finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+    }
+
     logger.info(`Sending plan generation prompt (${finalPrompt.length} chars)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
 
     const result = await runClaude({
@@ -99,28 +174,144 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       enableAgents: true,
     });
 
+    const duration = Date.now() - startTime;
+    let errorCategory: ErrorCategory | undefined;
+    let errorMessage: string | undefined;
+
     if (!result.success) {
+      errorCategory = "CLI_CRASH";
+      errorMessage = result.output.slice(0, 200);
+
+      // 히스토리 기록
+      retryContext.generationHistory.push({
+        success: false,
+        error: errorMessage,
+        errorCategory,
+        attempt,
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+
       if (attempt < maxRetries) {
-        logger.warn(`Plan generation Claude call failed (attempt ${attempt}), retrying...`);
+        logger.warn(`Plan generation Claude call failed (attempt ${attempt}), collecting context for retry...`);
+        await handleRetryContext(ctx, retryContext);
         continue;
       }
-      throw new Error(`Plan generation failed after ${maxRetries} attempts: ${result.output.slice(0, 200)}`);
+
+      throw new Error(`Plan generation failed after ${maxRetries} attempts: ${errorMessage}`);
     }
 
     try {
       const plan = extractJson<Plan>(result.output);
       validatePlan(plan);
+
+      // 성공 기록
+      retryContext.generationHistory.push({
+        success: true,
+        plan,
+        attempt,
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+
+      logger.info(`Plan generation succeeded on attempt ${attempt}`);
       return plan;
     } catch (parseError) {
+      errorCategory = "UNKNOWN";
+      errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+
+      // 히스토리 기록
+      retryContext.generationHistory.push({
+        success: false,
+        error: errorMessage,
+        errorCategory,
+        attempt,
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+
       if (attempt < maxRetries) {
-        logger.warn(`Plan JSON parsing failed (attempt ${attempt}), retrying... Output preview: ${result.output.slice(0, 100)}`);
+        logger.warn(`Plan JSON parsing failed (attempt ${attempt}), collecting context for retry...`);
+        await handleRetryContext(ctx, retryContext);
         continue;
       }
+
       throw new Error(`Plan generation failed: JSON 파싱 실패 (${maxRetries}회 시도). Claude 응답: ${result.output.slice(0, 300)}`);
     }
   }
 
   throw new Error("Plan generation failed: unexpected exit");
+}
+
+/**
+ * 이슈 본문에서 파일 경로를 추출합니다.
+ */
+function extractFilePathsFromIssue(issueBody: string): string[] {
+  const filePaths: string[] = [];
+
+  // 일반적인 파일 경로 패턴들
+  const patterns = [
+    // src/path/to/file.ts 형태
+    /(?:^|\s)([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
+    // `src/path/to/file.ts` 형태 (백틱으로 감싸진)
+    /`([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)`/g,
+    // ./src/path/to/file.ts 형태
+    /(?:^|\s)(\.[\/][a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(issueBody)) !== null) {
+      const filePath = match[1];
+      // 중복 제거 및 유효성 검사
+      if (!filePaths.includes(filePath) && isValidFilePath(filePath)) {
+        filePaths.push(filePath);
+      }
+    }
+  }
+
+  return filePaths;
+}
+
+/**
+ * 파일 경로가 유효한지 검사합니다.
+ */
+function isValidFilePath(filePath: string): boolean {
+  // 기본적인 유효성 검사
+  if (!filePath || filePath.length === 0) return false;
+  if (filePath.includes('..')) return false; // 상위 디렉토리 접근 방지
+  if (filePath.includes('//')) return false; // 이중 슬래시 방지
+
+  // 프로그래밍 관련 파일 확장자 확인
+  const validExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.md', '.yml', '.yaml', '.toml'];
+  return validExtensions.some(ext => filePath.endsWith(ext));
+}
+
+/**
+ * 재시도 컨텍스트 처리: 컨텍스트 수집 및 이슈 코멘트 알림
+ */
+async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanRetryContext): Promise<void> {
+  try {
+    // 컨텍스트 수집
+    logger.info("Collecting contextualization info for plan retry...");
+
+    // 이슈 본문에서 파일 경로 추출
+    const extractedFiles = extractFilePathsFromIssue(ctx.issue.body);
+
+    const contextInfo = collectContextualizationInfo(extractedFiles, ctx.cwd);
+    retryContext.contextualization = contextInfo;
+    retryContext.lastFailureAt = new Date().toISOString();
+
+    // 이슈 코멘트 알림
+    logger.info(`Posting retry context comment to issue #${ctx.issue.number}`);
+    const repo = `${ctx.repo.owner}/${ctx.repo.name}`;
+    await notifyPlanRetryContext(repo, ctx.issue.number, retryContext, contextInfo);
+
+    logger.info("Retry context collection and notification completed");
+  } catch (contextError) {
+    logger.warn(`Failed to collect retry context: ${contextError instanceof Error ? contextError.message : String(contextError)}`);
+    // 컨텍스트 수집 실패는 치명적이지 않음, 재시도는 계속 진행
+  }
 }
 
 function validatePlan(plan: Plan): void {

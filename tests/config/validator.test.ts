@@ -1,0 +1,337 @@
+import { describe, it, expect } from "vitest";
+import { validateConfig } from "../../src/config/validator.js";
+import type { AQConfig } from "../../src/types/config.js";
+
+const updateNested = <T extends object, K extends keyof T>(
+  obj: T,
+  key: K,
+  updates: Partial<T[K]>
+): T => ({
+  ...obj,
+  [key]: { ...(obj[key] as object), ...updates },
+});
+
+describe("validateConfig", () => {
+  // 기본 유효한 설정 템플릿
+  const validConfig: AQConfig = {
+    general: {
+      projectName: "test-project",
+      logLevel: "info",
+      logDir: "logs",
+      dryRun: false,
+      locale: "ko",
+      concurrency: 2,
+      stuckTimeoutMs: 600000,
+      pollingIntervalMs: 60000,
+      maxJobs: 100,
+    },
+    git: {
+      defaultBaseBranch: "main",
+      branchTemplate: "feature/{{issueNumber}}-{{slug}}",
+      commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
+      remoteAlias: "origin",
+      allowedRepos: ["owner/test-repo"],
+      gitPath: "git",
+      fetchDepth: 1,
+      signCommits: false,
+    },
+    worktree: {
+      rootPath: ".aq-worktrees",
+      cleanupOnSuccess: true,
+      cleanupOnFailure: false,
+      maxAge: "24h",
+      dirTemplate: "{{issueNumber}}-{{slug}}",
+    },
+    commands: {
+      claudeCli: {
+        path: "claude",
+        model: "claude-sonnet-4-20250514",
+        models: {
+          plan: "claude-opus-4-5",
+          phase: "claude-sonnet-4-20250514",
+          review: "claude-haiku-4-5-20251001",
+          fallback: "claude-sonnet-4-20250514",
+        },
+        maxTurns: 50,
+        timeout: 600000,
+        additionalArgs: [],
+      },
+      ghCli: {
+        path: "gh",
+        timeout: 30000,
+      },
+      test: "npm test",
+      lint: "npm run lint",
+      build: "npm run build",
+      typecheck: "npm run typecheck",
+      preInstall: "",
+      claudeMdPath: "CLAUDE.md",
+    },
+    review: {
+      enabled: true,
+      rounds: [
+        {
+          name: "code-review",
+          promptTemplate: "Review the following code changes: {diff}",
+          failAction: "warn",
+          maxRetries: 2,
+          model: null,
+        },
+      ],
+      simplify: {
+        enabled: false,
+        promptTemplate: "Simplify the following implementation: {diff}",
+      },
+    },
+    pr: {
+      targetBranch: "main",
+      draft: true,
+      titleTemplate: "[AQ-#{{issueNumber}}] {{title}}",
+      bodyTemplate: "## Summary\n\n{summary}\n\nCloses #{issueNumber}",
+      labels: [],
+      assignees: [],
+      reviewers: [],
+      linkIssue: true,
+      autoMerge: false,
+      mergeMethod: "squash",
+    },
+    safety: {
+      sensitivePaths: [".env", "*.key"],
+      maxPhases: 10,
+      maxRetries: 3,
+      maxTotalDurationMs: 3600000,
+      maxFileChanges: 50,
+      maxInsertions: 2000,
+      maxDeletions: 1000,
+      requireTests: false,
+      blockDirectBasePush: true,
+      timeouts: {
+        planGeneration: 120000,
+        phaseImplementation: 600000,
+        reviewRound: 180000,
+        prCreation: 60000,
+      },
+      stopConditions: ["STOP", "ABORT"],
+      allowedLabels: ["bug", "feature"],
+      rollbackStrategy: "none",
+    },
+  };
+
+  it("should validate and return a valid config", () => {
+    const result = validateConfig(validConfig);
+    expect(result).toEqual(validConfig);
+    expect(result.general.projectName).toBe("test-project");
+    expect(result.git.allowedRepos).toContain("owner/test-repo");
+  });
+
+  it("should throw error for empty projectName", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      projectName: "",
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "프로젝트 이름을 입력해주세요"
+    );
+  });
+
+  it("should throw error when both allowedRepos and projects are empty", () => {
+    const invalidConfig = {
+      ...validConfig,
+      git: {
+        ...validConfig.git,
+        allowedRepos: [],
+      },
+      projects: undefined,
+    };
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "허용된 리포지토리가 설정되지 않았습니다"
+    );
+  });
+
+  it("should throw error for negative concurrency", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      concurrency: -1,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "Number must be greater than 0"
+    );
+  });
+
+  it("should throw error for zero concurrency", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      concurrency: 0,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "Number must be greater than 0"
+    );
+  });
+
+  it("should throw error for stuckTimeoutMs less than 60000", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      stuckTimeoutMs: 59999,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "작업 중단 타임아웃은 최소 60초(60000ms) 이상이어야 합니다"
+    );
+  });
+
+  it("should throw error for pollingIntervalMs less than 10000", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      pollingIntervalMs: 9999,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "폴링 주기는 최소 10초(10000ms) 이상이어야 합니다"
+    );
+  });
+
+  it("should throw error for maxPhases equal to 0", () => {
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxPhases: 0,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "최대 페이즈 수는 1 이상이어야 합니다"
+    );
+  });
+
+  it("should throw error for maxPhases greater than 20", () => {
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxPhases: 21,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "최대 페이즈 수는 20 이하여야 합니다"
+    );
+  });
+
+  it("should throw error for branchTemplate without issueNumber placeholder", () => {
+    const invalidConfig = updateNested(validConfig, "git", {
+      branchTemplate: "feature/{{slug}}",
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow(
+      "브랜치 템플릿에 이슈 번호 플레이스홀더가 없습니다"
+    );
+  });
+
+  it("should accept branchTemplate with {issueNumber} format", () => {
+    const configWithAltPlaceholder = updateNested(validConfig, "git", {
+      branchTemplate: "feature/{issueNumber}-{slug}",
+    });
+
+    const result = validateConfig(configWithAltPlaceholder);
+    expect(result.git.branchTemplate).toBe("feature/{issueNumber}-{slug}");
+  });
+
+  it("should throw error for invalid logLevel", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      logLevel: "invalid" as any,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for invalid locale", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      locale: "fr" as any,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for invalid mergeMethod", () => {
+    const invalidConfig = updateNested(validConfig, "pr", {
+      mergeMethod: "invalid" as any,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for invalid reviewFailAction", () => {
+    const invalidConfig = updateNested(validConfig, "review", {
+      rounds: [
+        {
+          name: "test-review",
+          promptTemplate: "Review: {diff}",
+          failAction: "invalid" as any,
+          maxRetries: 1,
+          model: null,
+        },
+      ],
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should validate config with projects array instead of allowedRepos", () => {
+    const configWithProjects = {
+      ...updateNested(validConfig, "git", {
+        allowedRepos: [],
+      }),
+      projects: [
+        {
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          baseBranch: "main",
+        },
+      ],
+    };
+
+    const result = validateConfig(configWithProjects);
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects![0].repo).toBe("owner/test-repo");
+  });
+
+  it("should throw error for negative fetchDepth", () => {
+    const invalidConfig = updateNested(validConfig, "git", {
+      fetchDepth: -1,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for non-positive maxTurns", () => {
+    const invalidConfig = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: { ...validConfig.commands.claudeCli, maxTurns: 0 },
+      },
+    };
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for non-positive timeout", () => {
+    const invalidConfig = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: { ...validConfig.commands.claudeCli, timeout: -1000 },
+      },
+    };
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for maxRetries outside valid range (too small)", () => {
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxRetries: 0,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("should throw error for maxRetries outside valid range (too large)", () => {
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxRetries: 11,
+    });
+
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+});

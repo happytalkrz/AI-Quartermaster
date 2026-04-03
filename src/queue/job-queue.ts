@@ -6,6 +6,7 @@ import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 import { removeWorktree } from "../git/worktree-manager.js";
+import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 
 const logger = getLogger();
@@ -186,6 +187,63 @@ export class JobQueue {
   }
 
   /**
+   * Cleanup failed job artifacts including worktree, remote branch, and checkpoint.
+   * Each step is attempted independently and failures are logged but don't stop the process.
+   */
+  private cleanupFailedJobArtifacts(issueNumber: number): void {
+    const dataDir = resolve(process.cwd(), "data");
+    const projectRoot = process.cwd();
+
+    let checkpoint = null;
+    try {
+      checkpoint = loadCheckpoint(dataDir, issueNumber);
+      if (!checkpoint) {
+        logger.info(`No checkpoint found for issue #${issueNumber}, skipping cleanup`);
+        return;
+      }
+    } catch (checkpointErr) {
+      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${checkpointErr}`);
+      return;
+    }
+
+    const config = loadConfig(projectRoot);
+
+    // Step 1: Remove worktree if exists
+    if (checkpoint.worktreePath) {
+      try {
+        logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
+        removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true })
+          .catch(worktreeErr => {
+            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
+          });
+      } catch (err) {
+        logger.warn(`Error during worktree cleanup for ${checkpoint.worktreePath}: ${err}`);
+      }
+    }
+
+    // Step 2: Delete remote branch if exists
+    if (checkpoint.branchName) {
+      try {
+        logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
+        deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot })
+          .catch(branchErr => {
+            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${branchErr}`);
+          });
+      } catch (err) {
+        logger.warn(`Error during remote branch deletion for ${checkpoint.branchName}: ${err}`);
+      }
+    }
+
+    // Step 3: Remove checkpoint
+    try {
+      logger.info(`Removing checkpoint for issue #${issueNumber}`);
+      removeCheckpoint(dataDir, issueNumber);
+    } catch (err) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    }
+  }
+
+  /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
   enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job | undefined {
@@ -204,7 +262,7 @@ export class JobQueue {
 
       if (existing.status === "failure" || existing.status === "cancelled") {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
-        this.cleanupForIssue(issueNumber);
+        this.cleanupFailedJobArtifacts(issueNumber);
         this.store.archive(existing.id);
       } else {
         // queued/running statuses should still block
@@ -243,7 +301,7 @@ export class JobQueue {
     }
 
     const { issueNumber, repo } = oldJob;
-    this.cleanupForIssue(issueNumber);
+    this.cleanupFailedJobArtifacts(issueNumber);
     this.store.archive(jobId);
     return this.enqueue(issueNumber, repo, undefined, true);
   }

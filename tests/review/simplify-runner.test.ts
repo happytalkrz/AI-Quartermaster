@@ -100,7 +100,7 @@ describe("runSimplify", () => {
       durationMs: 100,
     });
     mockRunCli.mockResolvedValue({
-      stdout: "", // Empty diff means no changes
+      stdout: "",
       stderr: "",
       exitCode: 0,
     });
@@ -128,14 +128,14 @@ describe("runSimplify", () => {
       durationMs: 100,
     });
     mockRunCli.mockResolvedValue({
-      stdout: "2\t1\tsrc/test.ts\n", // Has changes
+      stdout: "2\t1\tsrc/test.ts\n",
       stderr: "",
       exitCode: 0,
     });
     mockRunShell.mockResolvedValue({
       stdout: "Test failed",
       stderr: "Error in tests",
-      exitCode: 1, // Test failure
+      exitCode: 1,
     });
 
     const result = await runSimplify(mockContext);
@@ -168,14 +168,14 @@ describe("runSimplify", () => {
       durationMs: 100,
     });
     mockRunCli.mockResolvedValue({
-      stdout: "3\t5\tsrc/test.ts\n2\t1\tsrc/utils.ts\n", // Has changes
+      stdout: "3\t5\tsrc/test.ts\n2\t1\tsrc/utils.ts\n",
       stderr: "",
       exitCode: 0,
     });
     mockRunShell.mockResolvedValue({
       stdout: "All tests passed",
       stderr: "",
-      exitCode: 0, // Test success
+      exitCode: 0,
     });
     mockParseNumstat.mockReturnValue({
       insertions: 5,
@@ -210,7 +210,7 @@ describe("runSimplify", () => {
       durationMs: 100,
     });
     mockRunCli.mockResolvedValue({
-      stdout: "", // No changes
+      stdout: "",
       stderr: "",
       exitCode: 0,
     });
@@ -252,7 +252,7 @@ describe("runSimplify", () => {
       durationMs: 100,
     });
     mockRunCli.mockResolvedValue({
-      stdout: "0\t0\t\n", // Empty file changes
+      stdout: "0\t0\t\n",
       stderr: "",
       exitCode: 0,
     });

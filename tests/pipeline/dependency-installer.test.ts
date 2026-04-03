@@ -3,9 +3,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runShell: vi.fn(),
 }));
-vi.mock("../../src/utils/logger.js", () => ({
-  getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
 
 import { installDependencies } from "../../src/pipeline/dependency-installer.js";
 import { runShell } from "../../src/utils/cli-runner.js";
@@ -28,7 +25,7 @@ describe("installDependencies", () => {
       stdout: "Dependencies installed",
       stderr: "",
       exitCode: 0,
-    });
+    } as any);
 
     await installDependencies("   ", { cwd: "/test/dir" });
 

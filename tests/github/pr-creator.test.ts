@@ -8,7 +8,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   loadTemplate: vi.fn(() => "mock template"),
 }));
 
-import { createDraftPR, closeIssue } from "../../src/github/pr-creator.js";
+import { createDraftPR, closeIssue, checkPrConflict, commentOnIssue } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -103,5 +103,87 @@ describe("closeIssue", () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     await closeIssue(42, "test/repo", { ghPath: "/custom/gh" });
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "close", "42", "--repo", "test/repo"], {});
+  });
+});
+
+describe("checkPrConflict", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should return null when PR has no conflicts", async () => {
+    mockRunCli.mockResolvedValue({
+      stdout: JSON.stringify({ mergeStateStatus: "CLEAN", mergeable: true }),
+      stderr: "",
+      exitCode: 0,
+    });
+    const result = await checkPrConflict(123, "test/repo", {});
+    expect(result).toBe(null);
+  });
+
+  it("should return conflict info when PR has DIRTY status", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({ mergeStateStatus: "DIRTY", mergeable: false }),
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        stdout: "diff --git a/src/file1.ts b/src/file1.ts\n--- a/src/file1.ts\n+++ b/src/file1.ts",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    const result = await checkPrConflict(123, "test/repo", {});
+    expect(result).toMatchObject({
+      prNumber: 123,
+      repo: "test/repo",
+      conflictFiles: ["src/file1.ts"],
+      mergeStatus: "DIRTY",
+    });
+    expect(result?.detectedAt).toBeDefined();
+  });
+
+  it("should return null on gh pr view failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "PR not found", exitCode: 1 });
+    const result = await checkPrConflict(123, "test/repo", {});
+    expect(result).toBe(null);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await checkPrConflict(123, "test/repo", { dryRun: true });
+    expect(result).toBe(null);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+});
+
+describe("commentOnIssue", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should post comment successfully", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const result = await commentOnIssue(42, "test/repo", "Test comment", {});
+    expect(result).toBe(true);
+    expect(mockRunCli).toHaveBeenCalledWith("gh", [
+      "issue", "comment", "42", "--repo", "test/repo", "--body", "Test comment"
+    ], {});
+  });
+
+  it("should return false on failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Issue not found", exitCode: 1 });
+    const result = await commentOnIssue(42, "test/repo", "Test comment", {});
+    expect(result).toBe(false);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await commentOnIssue(42, "test/repo", "Test comment", { dryRun: true });
+    expect(result).toBe(true);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("should use custom gh path", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await commentOnIssue(42, "test/repo", "Test comment", { ghPath: "/custom/gh" });
+    expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", [
+      "issue", "comment", "42", "--repo", "test/repo", "--body", "Test comment"
+    ], {});
   });
 });

@@ -3,7 +3,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
-import type { Plan, PhaseResult } from "../types/pipeline.js";
+import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -192,4 +192,123 @@ export async function closeIssue(
 
   logger.info(`Closed issue #${issueNumber}`);
   return true;
+}
+
+/**
+ * Checks PR conflict status and returns detailed conflict information.
+ * Uses gh pr view to check merge status and gh pr diff to identify conflict files.
+ */
+export async function checkPrConflict(
+  prNumber: number,
+  repo: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<PrConflictInfo | null> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would check PR #${prNumber} for conflicts`);
+    return null;
+  }
+
+  try {
+    // Check PR merge status using gh pr view
+    const viewResult = await runCli(
+      ghPath,
+      ["pr", "view", String(prNumber), "--repo", repo, "--json", "mergeStateStatus,mergeable"],
+      {}
+    );
+
+    if (viewResult.exitCode !== 0) {
+      logger.warn(`Failed to check PR #${prNumber} status: ${viewResult.stderr}`);
+      return null;
+    }
+
+    const prInfo = JSON.parse(viewResult.stdout.trim());
+    const mergeStateStatus: MergeStateStatus = prInfo.mergeStateStatus || "UNKNOWN";
+    const mergeable = prInfo.mergeable;
+
+    // If status is DIRTY or not mergeable, get conflict files
+    let conflictFiles: string[] = [];
+    if (mergeStateStatus === "DIRTY" || mergeable === false) {
+      try {
+        // Get diff to identify conflict files
+        const diffResult = await runCli(
+          ghPath,
+          ["pr", "diff", String(prNumber), "--repo", repo],
+          {}
+        );
+
+        if (diffResult.exitCode === 0) {
+          // Parse diff output to extract conflict files
+          const diffLines = diffResult.stdout.split("\n");
+          const filePattern = /^diff --git a\/(.+) b\/(.+)$/;
+
+          for (const line of diffLines) {
+            const match = line.match(filePattern);
+            if (match) {
+              const filePath = match[1];
+              if (!conflictFiles.includes(filePath)) {
+                conflictFiles.push(filePath);
+              }
+            }
+          }
+        }
+      } catch (diffError) {
+        logger.warn(`Failed to get diff for PR #${prNumber}: ${diffError}`);
+      }
+    }
+
+    // Return conflict info if there are issues
+    if (mergeStateStatus === "DIRTY" || mergeable === false || conflictFiles.length > 0) {
+      return {
+        prNumber,
+        repo,
+        conflictFiles,
+        detectedAt: new Date().toISOString(),
+        mergeStatus: mergeStateStatus,
+      };
+    }
+
+    return null; // No conflicts detected
+  } catch (error) {
+    logger.warn(`Error checking PR #${prNumber} conflicts: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Posts a comment on a GitHub issue using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function commentOnIssue(
+  issueNumber: number,
+  repo: string,
+  comment: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would comment on issue #${issueNumber}: ${comment.slice(0, 100)}...`);
+    return true;
+  }
+
+  try {
+    const result = await runCli(
+      ghPath,
+      ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+      {}
+    );
+
+    if (result.exitCode !== 0) {
+      logger.warn(`Failed to comment on issue #${issueNumber}: ${result.stderr}`);
+      return false;
+    }
+
+    logger.info(`Added comment to issue #${issueNumber}`);
+    return true;
+  } catch (error) {
+    logger.warn(`Error commenting on issue #${issueNumber}: ${error}`);
+    return false;
+  }
 }

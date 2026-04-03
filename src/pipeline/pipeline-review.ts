@@ -19,6 +19,7 @@ import type {
   ProjectConfig
 } from "../types/config.js";
 import type { PipelineState, Plan } from "../types/pipeline.js";
+import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
@@ -36,7 +37,7 @@ export interface ReviewContext {
   skillsContext: string;
   jl?: JobLogger;
   timer: PipelineTimer;
-  checkpoint: (data: unknown) => void;
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
 export interface SimplifyContext {
@@ -47,7 +48,7 @@ export interface SimplifyContext {
   gitConfig: GitConfig;
   jl?: JobLogger;
   timer: PipelineTimer;
-  checkpoint: (data: unknown) => void;
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
 function toTemplateVariables(vars: ReviewVariables): TemplateVariables {
@@ -305,7 +306,7 @@ export async function runReviewPhase(
         }
       }
 
-      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults });
+      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults as any });
 
       return {
         success: true,
@@ -355,7 +356,7 @@ export async function runSimplifyPhase(
         gitPath: ctx.gitConfig.gitPath,
       });
 
-      ctx.checkpoint({ plan: "placeholder", phaseResults: [] });
+      ctx.checkpoint();
     }
   }
 

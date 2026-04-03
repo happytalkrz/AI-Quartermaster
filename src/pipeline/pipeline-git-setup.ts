@@ -29,8 +29,8 @@ export interface GitSetupInput {
 }
 
 export interface GitSetupResult {
-  branchName: string;
-  worktreePath: string;
+  branchName: string | undefined;
+  worktreePath: string | undefined;
   state: PipelineState;
 }
 

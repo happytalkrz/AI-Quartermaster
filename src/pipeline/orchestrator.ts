@@ -219,14 +219,24 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     // === Prepare Work Environment ===
     rollbackStrategy = project.safety.rollbackStrategy;
-    const envPrepResult = await prepareWorkEnvironment({
-      projectRoot,
-      worktreePath,
-      gitConfig,
-      project,
-      rollbackStrategy,
-      jl,
-    });
+    let envPrepResult: any;
+    if (worktreePath) {
+      envPrepResult = await prepareWorkEnvironment({
+        projectRoot,
+        worktreePath,
+        gitConfig,
+        project,
+        rollbackStrategy,
+        jl,
+      });
+    } else {
+      envPrepResult = {
+        rollbackHash: undefined,
+        projectConventions: "",
+        skillsContext: "",
+        repoStructure: "",
+      };
+    }
 
     rollbackHash = envPrepResult.rollbackHash;
     const projectConventions = envPrepResult.projectConventions;

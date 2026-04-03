@@ -101,56 +101,56 @@ export async function notifyPlanRetryContext(
   if (contextualizationInfo) {
     message += `\n## 추가된 컨텍스트 정보\n\n`;
     message += `다음 정보를 바탕으로 Plan을 재생성합니다:\n\n`;
-
-    // 함수 시그니처
-    if (Object.keys(contextualizationInfo.functionSignatures).length > 0) {
-      message += `### 🔧 함수 시그니처\n\n`;
-      for (const [filePath, signatures] of Object.entries(contextualizationInfo.functionSignatures)) {
-        if (signatures.length > 0) {
-          message += `**${filePath}**:\n`;
-          message += `\`\`\`typescript\n`;
-          signatures.forEach(sig => {
-            message += `${sig}\n`;
-          });
-          message += `\`\`\`\n\n`;
-        }
-      }
-    }
-
-    // Import 관계
-    if (Object.keys(contextualizationInfo.importRelations).length > 0) {
-      message += `### 📦 Import 관계\n\n`;
-      for (const [filePath, relations] of Object.entries(contextualizationInfo.importRelations)) {
-        if (relations.imports.length > 0 || relations.exports.length > 0) {
-          message += `**${filePath}**:\n`;
-          if (relations.imports.length > 0) {
-            message += `- Imports: ${relations.imports.join(', ')}\n`;
-          }
-          if (relations.exports.length > 0) {
-            message += `- Exports: ${relations.exports.join(', ')}\n`;
-          }
-          message += `\n`;
-        }
-      }
-    }
-
-    // 타입 정의
-    if (Object.keys(contextualizationInfo.typeDefinitions).length > 0) {
-      message += `### 📋 타입 정의\n\n`;
-      for (const [filePath, types] of Object.entries(contextualizationInfo.typeDefinitions)) {
-        if (types.length > 0) {
-          message += `**${filePath}**:\n`;
-          message += `\`\`\`typescript\n`;
-          types.forEach(type => {
-            message += `${type}\n`;
-          });
-          message += `\`\`\`\n\n`;
-        }
-      }
-    }
+    message += formatContextSection("🔧 함수 시그니처", contextualizationInfo.functionSignatures);
+    message += formatImportSection(contextualizationInfo.importRelations);
+    message += formatContextSection("📋 타입 정의", contextualizationInfo.typeDefinitions);
   }
 
   message += `\n---\n\n구체화된 정보를 바탕으로 Plan 재생성을 시도합니다.`;
 
   await notifyIssue(repo, issueNumber, message, options);
+}
+
+/**
+ * 컨텍스트 섹션 (함수, 타입)을 포맷합니다.
+ */
+function formatContextSection(
+  title: string,
+  data: { [filePath: string]: string[] }
+): string {
+  if (Object.keys(data).length === 0) return "";
+
+  let section = `### ${title}\n\n`;
+  for (const [filePath, items] of Object.entries(data)) {
+    if (items.length > 0) {
+      section += `**${filePath}**:\n\`\`\`typescript\n`;
+      section += items.join("\n") + "\n";
+      section += `\`\`\`\n\n`;
+    }
+  }
+  return section;
+}
+
+/**
+ * Import 관계 섹션을 포맷합니다.
+ */
+function formatImportSection(
+  data: { [filePath: string]: { imports: string[]; exports: string[] } }
+): string {
+  if (Object.keys(data).length === 0) return "";
+
+  let section = `### 📦 Import 관계\n\n`;
+  for (const [filePath, relations] of Object.entries(data)) {
+    if (relations.imports.length > 0 || relations.exports.length > 0) {
+      section += `**${filePath}**:\n`;
+      if (relations.imports.length > 0) {
+        section += `- Imports: ${relations.imports.join(", ")}\n`;
+      }
+      if (relations.exports.length > 0) {
+        section += `- Exports: ${relations.exports.join(", ")}\n`;
+      }
+      section += "\n";
+    }
+  }
+  return section;
 }

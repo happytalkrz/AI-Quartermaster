@@ -66,6 +66,9 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     required: ["mode", "issueNumber", "title", "problemDefinition", "phases"],
   });
 
+  const maxPhases = String(ctx.maxPhases ?? 10);
+  const sensitivePaths = ctx.sensitivePaths ?? "";
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     retryContext.currentAttempt = attempt - 1;
     const startTime = Date.now();
@@ -73,88 +76,50 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     let templatePath: string;
     let templateData: any;
 
+    // 기본 데이터 구조
+    const baseData = {
+      issue: {
+        number: String(ctx.issue.number),
+        title: ctx.issue.title,
+        body: attempt === 1 ? `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>` : ctx.issue.body,
+        labels: ctx.issue.labels,
+      },
+      repo: {
+        owner: ctx.repo.owner,
+        name: ctx.repo.name,
+        structure: ctx.repoStructure,
+      },
+      branch: ctx.branch,
+      config: { maxPhases, sensitivePaths },
+    };
+
     // 첫 시도는 일반 템플릿, 재시도는 retry 템플릿 사용
     if (attempt === 1) {
       templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-      templateData = {
-        issue: {
-          number: String(ctx.issue.number),
-          title: ctx.issue.title,
-          body: `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`,
-          labels: ctx.issue.labels,
-        },
-        repo: {
-          owner: ctx.repo.owner,
-          name: ctx.repo.name,
-          structure: ctx.repoStructure,
-        },
-        branch: ctx.branch,
-        config: {
-          maxPhases: String(ctx.maxPhases ?? 10),
-          sensitivePaths: ctx.sensitivePaths ?? "",
-        },
-      };
+      templateData = baseData;
     } else {
-      // 재시도 템플릿 사용 (없으면 일반 템플릿으로 폴백)
       const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
       const useRetryTemplate = existsSync(retryTemplatePath);
       templatePath = useRetryTemplate ? retryTemplatePath : resolve(ctx.promptsDir, "plan-generation.md");
 
-      // 이전 실패 정보
       const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
-
-      if (useRetryTemplate) {
-        templateData = {
-          retry: {
-            attempt,
-            maxRetries,
-            failureReason: lastFailure.errorCategory || "UNKNOWN",
-            errorMessage: lastFailure.error || "Unknown error",
-            previousAttempts: retryContext.generationHistory.map((h, i) => ({
-              attempt: i + 1,
-              failureReason: h.errorCategory || "UNKNOWN",
-              problemSummary: h.error?.slice(0, 100) || "Unknown",
-            })),
-          },
-          context: retryContext.contextualization || {},
-          issue: {
-            number: String(ctx.issue.number),
-            title: ctx.issue.title,
-            body: ctx.issue.body,
-            labels: ctx.issue.labels,
-          },
-          repo: {
-            owner: ctx.repo.owner,
-            name: ctx.repo.name,
-            structure: ctx.repoStructure,
-          },
-          branch: ctx.branch,
-          config: {
-            maxPhases: String(ctx.maxPhases ?? 10),
-            sensitivePaths: ctx.sensitivePaths ?? "",
-          },
-        };
-      } else {
-        // 일반 템플릿 사용 시에도 기본 데이터 구조 유지
-        templateData = {
-          issue: {
-            number: String(ctx.issue.number),
-            title: ctx.issue.title,
-            body: `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`,
-            labels: ctx.issue.labels,
-          },
-          repo: {
-            owner: ctx.repo.owner,
-            name: ctx.repo.name,
-            structure: ctx.repoStructure,
-          },
-          branch: ctx.branch,
-          config: {
-            maxPhases: String(ctx.maxPhases ?? 10),
-            sensitivePaths: ctx.sensitivePaths ?? "",
-          },
-        };
-      }
+      templateData = useRetryTemplate
+        ? {
+            retry: {
+              attempt,
+              maxRetries,
+              failureReason: lastFailure.errorCategory || "UNKNOWN",
+              errorMessage: lastFailure.error || "Unknown error",
+              previousAttempts: retryContext.generationHistory.map((h, i) => ({
+                attempt: i + 1,
+                failureReason: h.errorCategory || "UNKNOWN",
+                problemSummary: h.error?.slice(0, 100) || "Unknown",
+              })),
+            },
+            context: retryContext.contextualization || {},
+            ...baseData,
+          }
+        : baseData;
     }
 
     const template = loadTemplate(templatePath);

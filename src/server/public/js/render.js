@@ -596,14 +596,19 @@ function renderFormField(key, value, configPath) {
   return html;
 }
 
+function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
+  var classes = baseClasses;
+  if (isReadonly) classes += ' opacity-60 cursor-not-allowed';
+  if (additionalClasses) classes += ' ' + additionalClasses;
+  return classes;
+}
+
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
-  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none';
-  if (isReadonly) {
-    classes += ' opacity-60 cursor-not-allowed';
-  }
-  if (isMasked) {
-    classes += ' bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]';
-  }
+  var classes = buildInputClasses(
+    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none',
+    isReadonly,
+    isMasked ? 'bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]' : ''
+  );
 
   return '<input type="text" id="' + fieldId + '" ' +
          'data-config-path="' + esc(configPath) + '" ' +
@@ -613,10 +618,10 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
 }
 
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
-  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none';
-  if (isReadonly) {
-    classes += ' opacity-60 cursor-not-allowed';
-  }
+  var classes = buildInputClasses(
+    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none',
+    isReadonly
+  );
 
   return '<input type="number" id="' + fieldId + '" ' +
          'data-config-path="' + esc(configPath) + '" ' +
@@ -642,11 +647,10 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
 }
 
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
-  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono';
-  if (isReadonly) {
-    classes += ' opacity-60 cursor-not-allowed';
-  }
-
+  var classes = buildInputClasses(
+    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono',
+    isReadonly
+  );
   var arrayText = JSON.stringify(value, null, 2);
 
   return '<textarea id="' + fieldId + '" ' +
@@ -660,11 +664,10 @@ function renderArrayInput(fieldId, value, configPath, isReadonly) {
 }
 
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
-  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono';
-  if (isReadonly) {
-    classes += ' opacity-60 cursor-not-allowed';
-  }
-
+  var classes = buildInputClasses(
+    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono',
+    isReadonly
+  );
   var objectText = JSON.stringify(value, null, 2);
 
   return '<textarea id="' + fieldId + '" ' +

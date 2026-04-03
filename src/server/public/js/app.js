@@ -99,71 +99,53 @@ function loadSettings() {
 }
 
 function setSettingsTab(tabName) {
-  // 탭 버튼 상태 업데이트
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
-    if (btn.dataset.tab === tabName) {
-      btn.className = 'settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors bg-primary/10 text-primary flex items-center gap-2';
-    } else {
-      btn.className = 'settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high flex items-center gap-2';
-    }
+    var isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('bg-primary/10 text-primary', isActive);
+    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
   });
 
-  // 탭 패널 표시/숨김
   document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {
-    if (panel.id === 'settings-tab-' + tabName) {
-      panel.classList.remove('hidden');
-      panel.classList.add('block');
-    } else {
-      panel.classList.remove('block');
-      panel.classList.add('hidden');
-    }
+    var isActive = panel.id === 'settings-tab-' + tabName;
+    panel.classList.toggle('hidden', !isActive);
   });
 
-  // localStorage에 선택된 탭 저장
   localStorage.setItem('aqm-selected-tab', tabName);
+}
+
+function showButtonState(btn, icon, message, colorClass) {
+  var originalContent = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base' + (icon === 'sync' ? ' animate-spin' : '') + '">' + icon + '</span><span>' + message + '</span>';
+  btn.classList.replace('bg-primary', colorClass);
+
+  setTimeout(function() {
+    btn.disabled = false;
+    btn.innerHTML = originalContent;
+    btn.classList.replace(colorClass, 'bg-primary');
+  }, 2000);
 }
 
 function saveSettings() {
   var saveBtn = document.getElementById('save-settings-btn');
   if (!saveBtn || !currentConfig) return;
 
-  // 버튼 상태를 "저장 중..."으로 변경
-  saveBtn.disabled = true;
-  var originalContent = saveBtn.innerHTML;
-  saveBtn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">sync</span><span>' + t('config.saveState.saving') + '</span>';
+  showButtonState(saveBtn, 'sync', t('config.saveState.saving'), 'bg-primary');
 
-  // 폼 데이터 수집
-  var updatedConfig = collectFormData();
-
-  // PUT /api/config 호출
   apiFetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ config: updatedConfig })
+    body: JSON.stringify({ config: collectFormData() })
   })
     .then(function(r) {
       if (r.ok) {
-        // 성공
-        saveBtn.innerHTML = '<span class="material-symbols-outlined text-base">check</span><span>' + t('config.saveState.saved') + '</span>';
-        saveBtn.className = saveBtn.className.replace('bg-primary', 'bg-[#3fb950]');
-        setTimeout(function() {
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = originalContent;
-          saveBtn.className = saveBtn.className.replace('bg-[#3fb950]', 'bg-primary');
-        }, 2000);
+        showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
       } else {
         throw new Error('Save failed');
       }
     })
-    .catch(function(error) {
-      // 실패
-      saveBtn.innerHTML = '<span class="material-symbols-outlined text-base">error</span><span>' + t('config.saveState.saveFailed') + '</span>';
-      saveBtn.className = saveBtn.className.replace('bg-primary', 'bg-[#f85149]');
-      setTimeout(function() {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = originalContent;
-        saveBtn.className = saveBtn.className.replace('bg-[#f85149]', 'bg-primary');
-      }, 2000);
+    .catch(function() {
+      showButtonState(saveBtn, 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
     });
 }
 

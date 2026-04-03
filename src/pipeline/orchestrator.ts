@@ -25,7 +25,7 @@ import { errorMessage } from "../types/errors.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
-import type { ReviewPipelineResult, AnalystResult } from "../types/review.js";
+import type { ReviewPipelineResult, AnalystResult, ReviewFixAttempt } from "../types/review.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -489,7 +489,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
         // === Phase 2: Code Review Rounds ===
         jl?.setStep("리뷰 진행 중...");
-        const reviewResult: ReviewPipelineResult = await runReviews({
+        let reviewResult: ReviewPipelineResult = await runReviews({
           reviewConfig: project.review,
           claudeConfig: project.commands.claudeCli,
           promptsDir,
@@ -510,17 +510,154 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         ) || false;
 
         if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
-          const errorMsg = hasCriticalAnalystIssues
-            ? "[REVIEWING] Analyst found critical issues"
-            : "[REVIEWING] Review pipeline failed";
-          logger.error(errorMsg);
-          jl?.log(`실패: ${hasCriticalAnalystIssues ? "Critical requirements analysis issues found" : "Review pipeline failed"}`);
-          jl?.setStep("실패");
-          checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-          const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
-          printResult(report);
-          saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-          return { success: false, state: "FAILED", error: "Review or requirements analysis failed", report };
+          const maxRetries = project.safety.maxRetries;
+          let retrySuccess = false;
+          const fixAttempts: ReviewFixAttempt[] = [];
+
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            // Extract findings for this attempt
+            const analystFindings = analystResult?.findings.filter(f =>
+              f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+            ) || [];
+            const reviewFindings = reviewResult.rounds.flatMap(round =>
+              round.findings.filter(f => f.severity === "error")
+            );
+
+            const allFindings = [...analystFindings, ...reviewFindings];
+            const findingsSummary = allFindings.map(f => f.message).join(", ");
+
+            logger.info(`[REVIEWING] Retry ${attempt}/${maxRetries} — fixing: ${findingsSummary}`);
+            jl?.log(`리뷰 실패 수정 시도 ${attempt}/${maxRetries}: ${findingsSummary}`);
+            jl?.setStep(`리뷰 오류 수정 중 (${attempt}/${maxRetries})...`);
+
+            // Prepare fix prompt
+            const errorDetails = [
+              hasCriticalAnalystIssues ? "=== Requirements Analysis Issues ===" : "",
+              ...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`),
+              !reviewResult.allPassed ? "=== Code Review Issues ===" : "",
+              ...reviewFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`),
+            ].filter(Boolean).join("\n");
+
+            const fixPrompt = [
+              "The following review issues were found. Fix the errors only — do not add new features or refactor unrelated code.",
+              "",
+              errorDetails,
+            ].join("\n");
+
+            // Run Claude with fallback model
+            const claudeConfig = configForTask(project.commands.claudeCli, "fallback");
+            try {
+              await runClaude({
+                prompt: fixPrompt,
+                cwd: worktreePath!,
+                config: claudeConfig,
+              });
+
+              await autoCommitIfDirty(gitConfig.gitPath, worktreePath!, `fix: review 오류 수정 (retry ${attempt})`);
+
+              // Re-run reviews
+              if (!reviewVariables) {
+                reviewVariables = await buildReviewVars();
+              }
+
+              const retryReviewResult = await runReviews({
+                reviewConfig: project.review,
+                claudeConfig: project.commands.claudeCli,
+                promptsDir,
+                cwd: worktreePath!,
+                variables: reviewVariables,
+              });
+
+              let retryAnalystResult: AnalystResult | undefined;
+              if (analystResult) {
+                retryAnalystResult = await runAnalyst({
+                  promptsDir,
+                  claudeConfig: project.commands.claudeCli,
+                  cwd: worktreePath!,
+                  variables: reviewVariables,
+                });
+              }
+
+              const retryHasCriticalAnalystIssues = retryAnalystResult?.findings.some(f =>
+                f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+              ) || false;
+
+              // Record fix attempt
+              fixAttempts.push({
+                attempt,
+                findingsSnapshot: {
+                  analystFindings,
+                  reviewFindings,
+                },
+                fixResult: {
+                  success: !retryHasCriticalAnalystIssues && retryReviewResult.allPassed,
+                  filesModified: [], // TODO: Could track this if needed
+                  summary: `Fixed ${allFindings.length} issues`,
+                },
+              });
+
+              if (!retryHasCriticalAnalystIssues && retryReviewResult.allPassed) {
+                logger.info(`[REVIEWING] Passed after retry ${attempt}`);
+                jl?.log(`리뷰 통과 (retry ${attempt})`);
+                reviewResult = { ...retryReviewResult, fixAttempts };
+                if (retryAnalystResult) {
+                  reviewResult.analyst = retryAnalystResult;
+                }
+                retrySuccess = true;
+                break;
+              } else {
+                // Update for next iteration
+                reviewResult = retryReviewResult;
+                analystResult = retryAnalystResult;
+                for (const round of reviewResult.rounds) {
+                  jl?.log(`리뷰 "${round.roundName}": ${round.verdict} (retry ${attempt})`);
+                }
+              }
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error);
+              logger.error(`[REVIEWING] Fix attempt ${attempt} failed: ${errorMsg}`);
+
+              fixAttempts.push({
+                attempt,
+                findingsSnapshot: {
+                  analystFindings,
+                  reviewFindings,
+                },
+                fixResult: {
+                  success: false,
+                  filesModified: [],
+                  summary: `Fix failed: ${errorMsg}`,
+                  error: errorMsg,
+                },
+              });
+            }
+          }
+
+          if (!retrySuccess) {
+            const finalFindings = [
+              ...(analystResult?.findings.filter(f => f.severity === "error") || []),
+              ...reviewResult.rounds.flatMap(round => round.findings.filter(f => f.severity === "error"))
+            ];
+            const finalSummary = finalFindings.map(f => f.message).join(", ");
+
+            logger.error(`[REVIEWING] Failed after ${maxRetries} retries: ${finalSummary}`);
+            jl?.log(`실패: Review failed after ${maxRetries} retries: ${finalSummary}`);
+            jl?.setStep("실패");
+
+            // Add fix attempts to final result
+            reviewResult.fixAttempts = fixAttempts;
+
+            checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
+            const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+            printResult(report);
+            saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
+            return {
+              success: false,
+              state: "FAILED",
+              error: `Review failed after ${maxRetries} retries: ${finalSummary}`,
+              report
+            };
+          }
         }
 
         checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });

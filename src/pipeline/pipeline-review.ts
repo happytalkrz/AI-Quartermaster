@@ -1,8 +1,5 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { runClaude } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
-import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getDiffContent } from "../git/diff-collector.js";
 import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";

@@ -109,11 +109,10 @@ export async function retryWithClaudeFix<T>(
 
     try {
       // Claude를 이용한 수정
-      const claudeConfigForFallback = configForTask(claudeConfig, "fallback");
       await runClaude({
         prompt: fixPrompt,
         cwd,
-        config: claudeConfigForFallback,
+        config: configForTask(claudeConfig, "fallback"),
       });
 
       // 변경사항 커밋
@@ -171,16 +170,11 @@ export async function retryWithClaudeFix<T>(
  * @returns 첫 번째 줄 또는 요약된 설명
  */
 function extractDescriptionFromPrompt(prompt: string): string {
-  const lines = prompt.split('\n').filter(line => line.trim());
-  if (lines.length === 0) {
+  const firstLine = prompt.split('\n').find(line => line.trim());
+  if (!firstLine) {
     return "unknown issues";
   }
 
-  // 첫 번째 의미 있는 줄을 찾아서 50자로 제한
-  const firstLine = lines[0].trim();
-  if (firstLine.length <= 50) {
-    return firstLine;
-  }
-
-  return firstLine.substring(0, 47) + "...";
+  const trimmed = firstLine.trim();
+  return trimmed.length <= 50 ? trimmed : trimmed.substring(0, 47) + "...";
 }

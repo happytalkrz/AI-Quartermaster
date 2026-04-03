@@ -208,36 +208,39 @@ function extractFunctionSignatures(filePath: string, content: string): string[] 
       filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     );
 
-    function visit(node: ts.Node) {
-      if (ts.isFunctionDeclaration(node) && node.name) {
-        const signature = getFunctionSignature(node);
-        if (signature) {
-          signatures.push(signature);
-        }
-      } else if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
-        const signature = getMethodSignature(node);
-        if (signature) {
-          signatures.push(signature);
-        }
-      } else if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-        // 변수에 할당된 화살표 함수나 함수 표현식 처리
-        const parent = node.parent;
-        if (ts.isVariableDeclaration(parent) && parent.name && ts.isIdentifier(parent.name)) {
-          const signature = `${parent.name.text}: ${node.getText().substring(0, 100)}...`;
-          signatures.push(signature);
-        }
-      }
-
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    visitNodeForSignatures(sourceFile, signatures);
   } catch (error) {
     // TypeScript 파싱 실패 시 정규식으로 폴백
     return extractFunctionSignaturesRegex(content);
   }
 
   return signatures;
+}
+
+/**
+ * AST 노드를 순회하여 함수 시그니처 수집
+ */
+function visitNodeForSignatures(node: ts.Node, signatures: string[]): void {
+  if (ts.isFunctionDeclaration(node) && node.name) {
+    const signature = getFunctionSignature(node);
+    if (signature) {
+      signatures.push(signature);
+    }
+  } else if (ts.isMethodDeclaration(node) || ts.isMethodSignature(node)) {
+    const signature = getMethodSignature(node);
+    if (signature) {
+      signatures.push(signature);
+    }
+  } else if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+    // 변수에 할당된 화살표 함수나 함수 표현식 처리
+    const parent = node.parent;
+    if (ts.isVariableDeclaration(parent) && parent.name && ts.isIdentifier(parent.name)) {
+      const signature = `${parent.name.text}: ${node.getText().substring(0, 100)}...`;
+      signatures.push(signature);
+    }
+  }
+
+  ts.forEachChild(node, (child) => visitNodeForSignatures(child, signatures));
 }
 
 /**
@@ -317,29 +320,32 @@ function extractImportRelations(filePath: string, content: string): { imports: s
       filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     );
 
-    function visit(node: ts.Node) {
-      if (ts.isImportDeclaration(node)) {
-        const importText = node.getText();
-        imports.push(importText);
-      } else if (ts.isExportDeclaration(node) || ts.isExportAssignment(node)) {
-        const exportText = node.getText();
-        exports.push(exportText);
-      } else if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.ExportKeyword)) {
-        // export 키워드가 있는 선언들
-        const exportText = node.getText().substring(0, 100) + '...';
-        exports.push(exportText);
-      }
-
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    visitNodeForImports(sourceFile, imports, exports);
   } catch (error) {
     // 파싱 실패 시 정규식으로 폴백
     return extractImportRelationsRegex(content);
   }
 
   return { imports, exports };
+}
+
+/**
+ * AST 노드를 순회하여 import/export 관계 수집
+ */
+function visitNodeForImports(node: ts.Node, imports: string[], exports: string[]): void {
+  if (ts.isImportDeclaration(node)) {
+    const importText = node.getText();
+    imports.push(importText);
+  } else if (ts.isExportDeclaration(node) || ts.isExportAssignment(node)) {
+    const exportText = node.getText();
+    exports.push(exportText);
+  } else if (ts.canHaveModifiers(node) && ts.getModifiers(node)?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    // export 키워드가 있는 선언들
+    const exportText = node.getText().substring(0, 100) + '...';
+    exports.push(exportText);
+  }
+
+  ts.forEachChild(node, (child) => visitNodeForImports(child, imports, exports));
 }
 
 /**
@@ -380,29 +386,32 @@ function extractTypeDefinitions(filePath: string, content: string): string[] {
       filePath.endsWith('.tsx') || filePath.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     );
 
-    function visit(node: ts.Node) {
-      if (ts.isTypeAliasDeclaration(node)) {
-        typeDefinitions.push(node.getText());
-      } else if (ts.isInterfaceDeclaration(node)) {
-        typeDefinitions.push(node.getText());
-      } else if (ts.isEnumDeclaration(node)) {
-        typeDefinitions.push(node.getText());
-      } else if (ts.isClassDeclaration(node)) {
-        const className = node.name?.text || 'Unknown';
-        const classSignature = `class ${className}${node.heritageClauses ? ' extends/implements...' : ''}`;
-        typeDefinitions.push(classSignature);
-      }
-
-      ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
+    visitNodeForTypes(sourceFile, typeDefinitions);
   } catch (error) {
     // 파싱 실패 시 정규식으로 폴백
     return extractTypeDefinitionsRegex(content);
   }
 
   return typeDefinitions;
+}
+
+/**
+ * AST 노드를 순회하여 타입 정의 수집
+ */
+function visitNodeForTypes(node: ts.Node, typeDefinitions: string[]): void {
+  if (ts.isTypeAliasDeclaration(node)) {
+    typeDefinitions.push(node.getText());
+  } else if (ts.isInterfaceDeclaration(node)) {
+    typeDefinitions.push(node.getText());
+  } else if (ts.isEnumDeclaration(node)) {
+    typeDefinitions.push(node.getText());
+  } else if (ts.isClassDeclaration(node)) {
+    const className = node.name?.text || 'Unknown';
+    const classSignature = `class ${className}${node.heritageClauses ? ' extends/implements...' : ''}`;
+    typeDefinitions.push(classSignature);
+  }
+
+  ts.forEachChild(node, (child) => visitNodeForTypes(child, typeDefinitions));
 }
 
 /**

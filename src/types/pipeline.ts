@@ -140,3 +140,30 @@ export interface FailureHandlerContext {
   cleanupOnFailure: boolean;
   jl?: any;
 }
+
+export interface PipelineSetupContext {
+  issueNumber: number;
+  repo: string;
+  config: import("./config.js").AQConfig;
+  projectConfig: import("./config.js").ProjectConfig;
+  projectRoot: string;
+  promptsDir: string;
+  dataDir: string;
+  issue: import("../github/issue-fetcher.js").GitHubIssue;
+  mode: import("./config.js").PipelineMode;
+  gitConfig: import("./config.js").GitConfig;
+  branchName?: string;
+  worktreePath?: string;
+  existingPrUrl?: string;
+  maxTotalDurationMs: number;
+  isRetry?: boolean;
+  resumeFromState?: PipelineState;
+}
+
+export interface PipelineSetupResult {
+  success: boolean;
+  context?: PipelineSetupContext;
+  state: PipelineState;
+  error?: string;
+  existingPrUrl?: string;
+}

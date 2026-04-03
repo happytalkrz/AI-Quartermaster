@@ -58,6 +58,11 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 vi.mock("../../src/claude/claude-runner.js", () => ({
   runClaude: vi.fn(),
 }));
+vi.mock("../../src/pipeline/pipeline-setup.js", () => ({
+  resolveResolvedProject: vi.fn(),
+  checkDuplicatePR: vi.fn(),
+  fetchAndValidateIssue: vi.fn(),
+}));
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
@@ -73,6 +78,7 @@ import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
+import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "../../src/pipeline/pipeline-setup.js";
 
 const mockFetchIssue = vi.mocked(fetchIssue);
 const mockCreateDraftPR = vi.mocked(createDraftPR);
@@ -94,6 +100,9 @@ const mockRunSimplify = vi.mocked(runSimplify);
 const mockFinalValidation = vi.mocked(runFinalValidation);
 const mockGetDiffContent = vi.mocked(getDiffContent);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
+const mockResolveResolvedProject = vi.mocked(resolveResolvedProject);
+const mockCheckDuplicatePR = vi.mocked(checkDuplicatePR);
+const mockFetchAndValidateIssue = vi.mocked(fetchAndValidateIssue);
 
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 
@@ -135,6 +144,23 @@ function setupSuccessMocks() {
   mockRunSimplify.mockResolvedValue({ applied: false, linesRemoved: 0, linesAdded: 0, filesModified: [], testsPassed: true, rolledBack: false, summary: "No changes" });
   mockFinalValidation.mockResolvedValue({ success: true, checks: [{ name: "test", passed: true }] });
   mockValidateBeforePush.mockResolvedValue(undefined);
+  mockResolveResolvedProject.mockReturnValue({
+    projectRoot: "/tmp/project",
+    promptsDir: "/tmp/project/prompts",
+    gitConfig: {
+      gitPath: "git",
+      allowedRepos: ["test/repo"],
+      autoCreateBranch: true,
+      defaultBaseBranch: "main",
+      branchTemplate: "ax/{issue-number}-{slug}",
+    },
+  });
+  mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
+  mockFetchAndValidateIssue.mockResolvedValue({
+    issue: { number: 42, title: "Fix bug", body: "Fix it", labels: [] },
+    mode: "code",
+    checkpoint: vi.fn(),
+  });
 }
 
 describe("runPipeline", () => {
@@ -199,7 +225,7 @@ describe("runPipeline", () => {
       projectRoot: "/tmp/project",
     });
     // Verify call order via invocationCallOrder
-    const fetchOrder = mockFetchIssue.mock.invocationCallOrder[0];
+    const fetchOrder = mockFetchAndValidateIssue.mock.invocationCallOrder[0];
     const syncOrder = mockSyncBase.mock.invocationCallOrder[0];
     const createBranchOrder = mockCreateBranch.mock.invocationCallOrder[0];
     const createWorktreeOrder = mockCreateWorktree.mock.invocationCallOrder[0];

@@ -51,6 +51,7 @@ export interface CoreLoopResult {
   plan: Plan;
   phaseResults: PhaseResult[];
   success: boolean;
+  totalCostUsd?: number;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {

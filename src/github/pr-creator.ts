@@ -20,6 +20,7 @@ export interface PrContext {
   phaseResults: PhaseResult[];
   branchName: string;
   baseBranch: string;
+  totalCostUsd?: number;
 }
 
 /**

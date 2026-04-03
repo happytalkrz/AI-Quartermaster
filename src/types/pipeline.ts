@@ -61,6 +61,7 @@ export interface PhaseResult {
   errorCategory?: ErrorCategory;
   lastOutput?: string;
   durationMs: number;
+  costUsd?: number;
 }
 
 export interface PipelineResult {
@@ -72,6 +73,7 @@ export interface PipelineResult {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  totalCostUsd?: number;
 }
 
 export interface ValidationPhaseContext {

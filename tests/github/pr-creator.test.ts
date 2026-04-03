@@ -112,52 +112,32 @@ describe("closeIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "close", "42", "--repo", "test/repo"], {});
   });
 
-  it("should include totalCostUsd in stats when provided", async () => {
-    const ctxWithCost = { ...ctx, totalCostUsd: 0.1234 };
+  it("should handle totalCostUsd in both provided and default cases", async () => {
+    const testCases = [
+      { ctx: { ...ctx, totalCostUsd: 0.1234 }, prNumber: 3 },
+      { ctx: { ...ctx }, prNumber: 4 }, // totalCostUsd is undefined
+    ];
 
-    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/3\n", stderr: "", exitCode: 0 });
-
-    const result = await createDraftPR(prConfig, ghConfig, ctxWithCost, { cwd: "/tmp", promptsDir: "/prompts" });
-
-    expect(result).toEqual({ url: "https://github.com/test/repo/pull/3", number: 3 });
-    expect(mockRunCli).toHaveBeenCalledWith(
-      "gh",
-      expect.arrayContaining([
-        "pr", "create",
-        "--repo", "test/repo",
-        "--head", "aq/42-fix-login",
-        "--base", "master",
-        "--title", "[AQ-#{issueNumber}] {title}",
-        "--body", expect.stringContaining("Closes #42"),
-        "--draft",
-        "--label", "ai-quartermaster",
-      ]),
-      { cwd: "/tmp", timeout: 30000 }
-    );
-  });
-
-  it("should use default totalCostUsd when not provided", async () => {
-    const ctxWithoutCost = { ...ctx }; // totalCostUsd is undefined
-
-    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/4\n", stderr: "", exitCode: 0 });
-
-    const result = await createDraftPR(prConfig, ghConfig, ctxWithoutCost, { cwd: "/tmp", promptsDir: "/prompts" });
-
-    expect(result).toEqual({ url: "https://github.com/test/repo/pull/4", number: 4 });
-    expect(mockRunCli).toHaveBeenCalledWith(
-      "gh",
-      expect.arrayContaining([
-        "pr", "create",
-        "--repo", "test/repo",
-        "--head", "aq/42-fix-login",
-        "--base", "master",
-        "--title", "[AQ-#{issueNumber}] {title}",
-        "--body", expect.stringContaining("Closes #42"),
-        "--draft",
-        "--label", "ai-quartermaster",
-      ]),
-      { cwd: "/tmp", timeout: 30000 }
-    );
+    for (const { ctx: testCtx, prNumber } of testCases) {
+      mockRunCli.mockResolvedValue({ stdout: `https://github.com/test/repo/pull/${prNumber}\n`, stderr: "", exitCode: 0 });
+      const result = await createDraftPR(prConfig, ghConfig, testCtx, { cwd: "/tmp", promptsDir: "/prompts" });
+      expect(result).toEqual({ url: `https://github.com/test/repo/pull/${prNumber}`, number: prNumber });
+      expect(mockRunCli).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining([
+          "pr", "create",
+          "--repo", "test/repo",
+          "--head", "aq/42-fix-login",
+          "--base", "master",
+          "--title", "[AQ-#{issueNumber}] {title}",
+          "--body", expect.stringContaining("Closes #42"),
+          "--draft",
+          "--label", "ai-quartermaster",
+        ]),
+        { cwd: "/tmp", timeout: 30000 }
+      );
+      vi.clearAllMocks();
+    }
   });
 });
 

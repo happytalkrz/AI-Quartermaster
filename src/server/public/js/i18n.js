@@ -41,6 +41,15 @@ var i18n = {
     commandHQ: "커맨드 HQ",
     jobDetail: "작업 상세",
     phaseProgress: "단계 진행률",
+    projects: "프로젝트",
+    addProject: "프로젝트 추가",
+    repository: "저장소",
+    repositoryPath: "저장소 경로",
+    repositoryPlaceholder: "예: /home/user/my-project",
+    label: "라벨",
+    triggerLabel: "트리거 라벨",
+    labelPlaceholder: "예: implement",
+    add: "추가",
   },
   en: {
     dashboard: "Dashboard",
@@ -79,6 +88,15 @@ var i18n = {
     commandHQ: "Command HQ",
     jobDetail: "Job Detail",
     phaseProgress: "Phase Progress",
+    projects: "Projects",
+    addProject: "Add Project",
+    repository: "Repository",
+    repositoryPath: "Repository Path",
+    repositoryPlaceholder: "e.g. /home/user/my-project",
+    label: "Label",
+    triggerLabel: "Trigger Label",
+    labelPlaceholder: "e.g. implement",
+    add: "Add",
   }
 };
 

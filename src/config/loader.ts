@@ -363,29 +363,20 @@ export async function initProject(aqRoot: string, options: InitCommandOptions = 
 }
 
 /**
- * Config 섹션 업데이트 및 저장
- * 현재 config를 로드하고, 지정된 섹션을 업데이트하고, 검증 후 config.yml에 저장
- *
+ * Config 섹션 업데이트 및 저장 (partial update 지원)
  * @param projectRoot - 프로젝트 루트 경로
- * @param updates - 업데이트할 config 섹션들 (partial update 지원)
+ * @param updates - 업데이트할 config 섹션들
  */
 export function updateConfigSection(projectRoot: string, updates: Partial<AQConfig>): void {
   const configPath = `${projectRoot}/config.yml`;
 
-  // 1. 현재 config 로드
   if (!existsSync(configPath)) {
     throw new Error(`config.yml not found at ${configPath}`);
   }
 
   const currentRaw = parseYamlSafely(readFileSync(configPath, "utf-8"), configPath);
-
-  // 2. deepMerge로 업데이트 적용
   const updatedConfig = deepMerge(currentRaw, updates);
-
-  // 3. validateConfig로 검증
   const validatedConfig = validateConfig(updatedConfig);
-
-  // 4. config.yml 파일에 저장
   const yamlContent = stringifyYaml(validatedConfig);
 
   writeFileSync(configPath, yamlContent, 'utf-8');

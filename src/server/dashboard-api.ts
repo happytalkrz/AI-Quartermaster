@@ -130,31 +130,18 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
   api.put("/api/config", async (c) => {
     try {
       const body = await c.req.json();
-      const projectRoot = process.cwd();
-
-      // Validate request body structure
       if (!body || typeof body !== "object") {
         return c.json({ error: "Invalid request body" }, 400);
       }
 
-      // Extract updates from request body
-      // Body should contain config sections to update (e.g., { general: {...}, safety: {...} })
-      const updates = body;
-
-      // Update config using the utility function
-      updateConfigSection(projectRoot, updates);
-
-      // Return success response
+      updateConfigSection(process.cwd(), body);
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
-
-      // Check if it's a validation error (400) or file system error (500)
-      if (message.includes("validation") || message.includes("Invalid") || message.includes("not found")) {
-        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
-      }
-
-      return c.json({ error: `Failed to update configuration: ${message}` }, 500);
+      const isValidationError = message.includes("validation") || message.includes("Invalid") || message.includes("not found");
+      const status = isValidationError ? 400 : 500;
+      const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
+      return c.json({ error: `${prefix}: ${message}` }, status);
     }
   });
 

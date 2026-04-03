@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync } from "fs";
 import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../github/pr-creator.js";
+import { parseDependencies, checkDependencyPRsMerged } from "../queue/dependency-resolver.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { removeWorktree } from "../git/worktree-manager.js";
 import { formatResult, printResult } from "./result-reporter.js";
@@ -135,19 +136,111 @@ PR이 생성되었지만 충돌이 해결될 때까지 머지할 수 없습니�
     logger.info(`[DRAFT_PR_CREATED] PR: ${prUrl}`);
     jl?.log(`PR: ${prUrl}`);
 
-    // === Enable auto-merge if configured ===
+    // === Check dependency PRs before enabling auto-merge ===
     if (projectConfig.pr.autoMerge && prResult.number > 0) {
-      jl?.setStep("Auto-merge 설정 중...");
-      const merged = await enableAutoMerge(
-        prResult.number,
-        repo,
-        projectConfig.pr.mergeMethod,
-        { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
-      );
-      if (merged) {
-        jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod})`);
+      jl?.setStep("의존성 PR 머지 상태 확인 중...");
+
+      // Parse dependencies from issue body
+      const dependencies = parseDependencies(issue.body || "");
+
+      if (dependencies.length > 0) {
+        try {
+          const dependencyCheck = await checkDependencyPRsMerged(
+            dependencies,
+            repo,
+            projectConfig.commands.ghCli.path
+          );
+
+          if (!dependencyCheck.merged) {
+            // Skip auto-merge and add issue comment
+            const unmergedList = dependencyCheck.unmerged
+              .map(num => `- #${num}`)
+              .join("\n");
+            const notFoundList = dependencyCheck.notFound
+              .map(num => `- #${num} (PR을 찾을 수 없음)`)
+              .join("\n");
+
+            const commentParts = [];
+            if (dependencyCheck.unmerged.length > 0) {
+              commentParts.push(`**미머지된 의존성 PR:**\n${unmergedList}`);
+            }
+            if (dependencyCheck.notFound.length > 0) {
+              commentParts.push(`**PR을 찾을 수 없는 의존성:**\n${notFoundList}`);
+            }
+
+            const commentBody = `## ⏳ Auto-merge 대기 중
+
+의존성 이슈들의 PR이 아직 머지되지 않아 auto-merge를 활성화하지 않았습니다.
+
+${commentParts.join("\n\n")}
+
+모든 의존성 PR이 머지되면 수동으로 auto-merge를 활성화하거나 PR을 직접 머지해주세요.
+
+\`\`\`bash
+gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
+\`\`\``;
+
+            try {
+              await addIssueComment(
+                issueNumber,
+                repo,
+                commentBody,
+                { ghPath: projectConfig.commands.ghCli.path, dryRun }
+              );
+              jl?.log(`의존성 PR 미머지로 auto-merge 스킵, 코멘트 추가됨`);
+            } catch (commentErr) {
+              logger.warn(`Failed to add dependency comment: ${commentErr}`);
+              jl?.log(`의존성 코멘트 추가 실패 (경고만, 계속 진행)`);
+            }
+
+            logger.info(`Auto-merge skipped due to unmerged dependencies: ${dependencyCheck.unmerged.concat(dependencyCheck.notFound).join(", ")}`);
+          } else {
+            // All dependencies merged, proceed with auto-merge
+            jl?.setStep("Auto-merge 설정 중...");
+            const merged = await enableAutoMerge(
+              prResult.number,
+              repo,
+              projectConfig.pr.mergeMethod,
+              { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+            );
+            if (merged) {
+              jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod}, 의존성 확인 완료)`);
+            } else {
+              jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
+            }
+          }
+        } catch (depErr) {
+          // Fallback: enable auto-merge anyway if dependency check fails
+          logger.warn(`Dependency check failed, proceeding with auto-merge: ${depErr}`);
+          jl?.log(`의존성 확인 실패, auto-merge 계속 진행`);
+
+          jl?.setStep("Auto-merge 설정 중...");
+          const merged = await enableAutoMerge(
+            prResult.number,
+            repo,
+            projectConfig.pr.mergeMethod,
+            { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+          );
+          if (merged) {
+            jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod})`);
+          } else {
+            jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
+          }
+        }
       } else {
-        jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
+        // No dependencies, proceed with auto-merge
+        jl?.setStep("Auto-merge 설정 중...");
+        const merged = await enableAutoMerge(
+          prResult.number,
+          repo,
+          projectConfig.pr.mergeMethod,
+          { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+        );
+        if (merged) {
+          jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod})`);
+        } else {
+          jl?.log(`Auto-merge 활성화 실패 (경고만, 계속 진행)`);
+        }
       }
     }
 

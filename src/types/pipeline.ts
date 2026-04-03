@@ -89,9 +89,7 @@ export interface ValidationPhaseContext {
 export interface PublishPhaseContext {
   issueNumber: number;
   repo: string;
-  issue: {
-    title: string;
-  };
+  issue: import("../github/issue-fetcher.js").GitHubIssue;
   plan: Plan;
   phaseResults: PhaseResult[];
   branchName: string;

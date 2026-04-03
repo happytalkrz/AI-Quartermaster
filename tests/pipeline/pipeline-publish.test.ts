@@ -7,6 +7,10 @@ vi.mock("../../src/github/pr-creator.js", () => ({
   closeIssue: vi.fn(),
   addIssueComment: vi.fn(),
 }));
+vi.mock("../../src/queue/dependency-resolver.js", () => ({
+  parseDependencies: vi.fn(),
+  checkDependencyPRsMerged: vi.fn(),
+}));
 vi.mock("../../src/git/branch-manager.js", () => ({
   pushBranch: vi.fn(),
   checkConflicts: vi.fn(),
@@ -57,6 +61,7 @@ vi.mock("path", () => ({
 
 import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "../../src/pipeline/pipeline-publish.js";
 import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../../src/github/pr-creator.js";
+import { parseDependencies, checkDependencyPRsMerged } from "../../src/queue/dependency-resolver.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { removeWorktree } from "../../src/git/worktree-manager.js";
 import { validateBeforePush } from "../../src/safety/safety-checker.js";
@@ -72,6 +77,8 @@ const mockCreateDraftPR = vi.mocked(createDraftPR);
 const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
 const mockCloseIssue = vi.mocked(closeIssue);
 const mockAddIssueComment = vi.mocked(addIssueComment);
+const mockParseDependencies = vi.mocked(parseDependencies);
+const mockCheckDependencyPRsMerged = vi.mocked(checkDependencyPRsMerged);
 const mockPushBranch = vi.mocked(pushBranch);
 const mockCheckConflicts = vi.mocked(checkConflicts);
 const mockAttemptRebase = vi.mocked(attemptRebase);
@@ -88,7 +95,7 @@ function makePublishContext(): PublishPhaseContext {
   return {
     issueNumber: 42,
     repo: "test/repo",
-    issue: { title: "Fix bug" },
+    issue: { number: 42, title: "Fix bug", body: "", labels: [] },
     plan: {
       issueNumber: 42,
       title: "Fix bug",
@@ -191,6 +198,8 @@ describe("pushAndCreatePR", () => {
     mockEnableAutoMerge.mockResolvedValue(true);
     mockCloseIssue.mockResolvedValue(true);
     mockAddIssueComment.mockResolvedValue(true);
+    mockParseDependencies.mockReturnValue([]);
+    mockCheckDependencyPRsMerged.mockResolvedValue({ merged: true, unmerged: [], notFound: [] });
   });
 
   it("should successfully push and create PR", async () => {
@@ -345,6 +354,116 @@ describe("pushAndCreatePR", () => {
       expect.any(Object),
       expect.objectContaining({ dryRun: true })
     );
+  });
+
+  it("should enable auto-merge when no dependencies exist", async () => {
+    const context = makePublishContext();
+    context.issue.body = "This is a regular issue with no dependencies";
+    mockParseDependencies.mockReturnValue([]);
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockParseDependencies).toHaveBeenCalledWith("This is a regular issue with no dependencies");
+    expect(mockCheckDependencyPRsMerged).not.toHaveBeenCalled();
+    expect(mockEnableAutoMerge).toHaveBeenCalledWith(
+      1,
+      "test/repo",
+      "squash",
+      { ghPath: "gh", dryRun: false, isDraft: true }
+    );
+  });
+
+  it("should enable auto-merge when all dependency PRs are merged", async () => {
+    const context = makePublishContext();
+    context.issue.body = "depends: #11, #12";
+    mockParseDependencies.mockReturnValue([11, 12]);
+    mockCheckDependencyPRsMerged.mockResolvedValue({ merged: true, unmerged: [], notFound: [] });
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockParseDependencies).toHaveBeenCalledWith("depends: #11, #12");
+    expect(mockCheckDependencyPRsMerged).toHaveBeenCalledWith([11, 12], "test/repo", "gh");
+    expect(mockEnableAutoMerge).toHaveBeenCalledWith(
+      1,
+      "test/repo",
+      "squash",
+      { ghPath: "gh", dryRun: false, isDraft: true }
+    );
+    expect(context.jl?.log).toHaveBeenCalledWith("Auto-merge 활성화 (squash, 의존성 확인 완료)");
+  });
+
+  it("should skip auto-merge when dependency PRs are not merged", async () => {
+    const context = makePublishContext();
+    context.issue.body = "depends: #11, #12";
+    mockParseDependencies.mockReturnValue([11, 12]);
+    mockCheckDependencyPRsMerged.mockResolvedValue({
+      merged: false,
+      unmerged: [11],
+      notFound: [12]
+    });
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockCheckDependencyPRsMerged).toHaveBeenCalledWith([11, 12], "test/repo", "gh");
+    expect(mockEnableAutoMerge).not.toHaveBeenCalled();
+    expect(mockAddIssueComment).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      expect.stringContaining("⏳ Auto-merge 대기 중"),
+      { ghPath: "gh", dryRun: false }
+    );
+    expect(mockAddIssueComment).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      expect.stringContaining("- #11"),
+      { ghPath: "gh", dryRun: false }
+    );
+    expect(mockAddIssueComment).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      expect.stringContaining("- #12 (PR을 찾을 수 없음)"),
+      { ghPath: "gh", dryRun: false }
+    );
+    expect(context.jl?.log).toHaveBeenCalledWith("의존성 PR 미머지로 auto-merge 스킵, 코멘트 추가됨");
+  });
+
+  it("should enable auto-merge as fallback when dependency check fails", async () => {
+    const context = makePublishContext();
+    context.issue.body = "depends: #11";
+    mockParseDependencies.mockReturnValue([11]);
+    mockCheckDependencyPRsMerged.mockRejectedValue(new Error("API Error"));
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockCheckDependencyPRsMerged).toHaveBeenCalledWith([11], "test/repo", "gh");
+    expect(mockEnableAutoMerge).toHaveBeenCalledWith(
+      1,
+      "test/repo",
+      "squash",
+      { ghPath: "gh", dryRun: false, isDraft: true }
+    );
+    expect(context.jl?.log).toHaveBeenCalledWith("의존성 확인 실패, auto-merge 계속 진행");
+  });
+
+  it("should continue when dependency comment fails", async () => {
+    const context = makePublishContext();
+    context.issue.body = "depends: #11";
+    mockParseDependencies.mockReturnValue([11]);
+    mockCheckDependencyPRsMerged.mockResolvedValue({
+      merged: false,
+      unmerged: [11],
+      notFound: []
+    });
+    mockAddIssueComment.mockRejectedValue(new Error("Comment failed"));
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(context.jl?.log).toHaveBeenCalledWith("의존성 코멘트 추가 실패 (경고만, 계속 진행)");
   });
 });
 

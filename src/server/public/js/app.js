@@ -99,7 +99,8 @@ function loadSettings() {
         try {
           renderSettingsView(data.config);
         } catch (renderError) {
-          showErrorMessage('설정을 렌더링하는데 실패했습니다.');
+          console.error('Settings render error:', renderError);
+          showErrorMessage('설정을 렌더링하는데 실패했습니다: ' + renderError.message);
         }
       } else {
         showErrorMessage('설정 데이터가 없습니다.');

@@ -2,8 +2,10 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig } from "../config/loader.js";
+import { loadConfig, addProjectToConfig, removeProjectFromConfig } from "../config/loader.js";
+import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
+import type { ProjectConfig } from "../types/config.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -99,6 +101,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     api.use("/api/jobs/*", bearerAuth);
     api.use("/api/stats", bearerAuth);
     api.use("/api/config", bearerAuth);
+    api.use("/api/projects", bearerAuth);
+    api.use("/api/projects/*", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -123,6 +127,113 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+    }
+  });
+
+  // Add project to configuration
+  api.post("/api/projects", async (c) => {
+    try {
+      const body = await c.req.json();
+
+      // Validate project config structure
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+
+      const { repo, path, baseBranch, mode } = body;
+
+      if (!repo || typeof repo !== "string" || repo.trim() === "") {
+        return c.json({ error: "repo is required and must be a non-empty string" }, 400);
+      }
+
+      if (!path || typeof path !== "string" || path.trim() === "") {
+        return c.json({ error: "path is required and must be a non-empty string" }, 400);
+      }
+
+      const project: ProjectConfig = {
+        repo: repo.trim(),
+        path: path.trim(),
+        baseBranch: baseBranch?.trim() || undefined,
+        mode: mode as "code" | "content" | undefined,
+      };
+
+      const projectRoot = process.cwd();
+      const configPath = `${projectRoot}/config.yml`;
+
+      // Check if project already exists
+      try {
+        const currentConfig = loadConfig(projectRoot);
+        const existingProject = currentConfig.projects?.find(p => p.repo === project.repo);
+        if (existingProject) {
+          return c.json({ error: `Project "${project.repo}" already exists` }, 409);
+        }
+      } catch {
+        // If config doesn't exist or can't be loaded, we'll create/update it anyway
+      }
+
+      // Add project to config
+      addProjectToConfig(configPath, project);
+
+      // Validate the updated config
+      try {
+        validateConfig(loadConfig(projectRoot));
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown validation error";
+        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
+      }
+
+      return c.json({
+        message: "Project added successfully",
+        project
+      }, 201);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: `Failed to add project: ${message}` }, 500);
+    }
+  });
+
+  // Remove project from configuration
+  api.delete("/api/projects/:repo", (c) => {
+    try {
+      const repo = decodeURIComponent(c.req.param("repo"));
+
+      if (!repo || repo.trim() === "") {
+        return c.json({ error: "repo parameter is required" }, 400);
+      }
+
+      const projectRoot = process.cwd();
+      const configPath = `${projectRoot}/config.yml`;
+
+      // Check if project exists
+      try {
+        const currentConfig = loadConfig(projectRoot);
+        const existingProject = currentConfig.projects?.find(p => p.repo === repo);
+        if (!existingProject) {
+          return c.json({ error: `Project "${repo}" not found` }, 404);
+        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+      }
+
+      // Remove project from config
+      removeProjectFromConfig(configPath, repo);
+
+      // Validate the updated config
+      try {
+        validateConfig(loadConfig(projectRoot));
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown validation error";
+        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
+      }
+
+      return c.json({
+        message: "Project removed successfully",
+        repo
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: `Failed to remove project: ${message}` }, 500);
     }
   });
 

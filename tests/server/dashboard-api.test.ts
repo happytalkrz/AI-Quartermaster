@@ -8,15 +8,24 @@ import type { JobQueue } from "../../src/queue/job-queue.js";
 // Mock the config loader and masker
 vi.mock("../../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
+  addProjectToConfig: vi.fn(),
+  removeProjectFromConfig: vi.fn(),
 }));
 
 vi.mock("../../src/utils/config-masker.js", () => ({
   maskSensitiveConfig: vi.fn(),
 }));
 
+vi.mock("../../src/config/validator.js", () => ({
+  validateConfig: vi.fn(),
+}));
+
 // Mock imports
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
+const mockAddProjectToConfig = vi.mocked(await import("../../src/config/loader.js")).addProjectToConfig;
+const mockRemoveProjectFromConfig = vi.mocked(await import("../../src/config/loader.js")).removeProjectFromConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
+const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -262,5 +271,159 @@ describe("Dashboard API - SSE broadcast", () => {
     expect(() => {
       mockStore.emit("jobCreated", mockJob);
     }).not.toThrow();
+  });
+});
+
+describe("Dashboard API - Projects Management", () => {
+  let app: Hono;
+  const apiKey = "test-api-key-123";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+  });
+
+  describe("POST /api/projects", () => {
+    it("should add a new project successfully", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockValidateConfig.mockReturnValue(projectConfig as any);
+
+      const newProject = {
+        repo: "owner/test-repo",
+        path: "/path/to/repo",
+        baseBranch: "main"
+      };
+
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(newProject)
+      });
+
+      expect(response.status).toBe(201);
+      const result = await response.json();
+      expect(result.message).toBe("Project added successfully");
+      expect(result.project.repo).toBe("owner/test-repo");
+      expect(mockAddProjectToConfig).toHaveBeenCalledWith(
+        `${process.cwd()}/config.yml`,
+        expect.objectContaining({
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          baseBranch: "main"
+        })
+      );
+    });
+
+    it("should return 409 if project already exists", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/existing/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const newProject = {
+        repo: "owner/test-repo",
+        path: "/path/to/repo"
+      };
+
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(newProject)
+      });
+
+      expect(response.status).toBe(409);
+      const result = await response.json();
+      expect(result.error).toContain("already exists");
+    });
+
+    it("should return 400 for invalid request body", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ invalid: "data" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toContain("repo is required");
+    });
+
+    it("should return 401 without proper authentication", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: "test/repo", path: "/path" })
+      });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("DELETE /api/projects/:repo", () => {
+    it("should remove an existing project successfully", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path/to/repo" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockValidateConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${apiKey}` }
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.message).toBe("Project removed successfully");
+      expect(result.repo).toBe("owner/test-repo");
+      expect(mockRemoveProjectFromConfig).toHaveBeenCalledWith(
+        `${process.cwd()}/config.yml`,
+        "owner/test-repo"
+      );
+    });
+
+    it("should return 404 if project does not exist", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects/owner%2Fnonexistent-repo", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${apiKey}` }
+      });
+
+      expect(response.status).toBe(404);
+      const result = await response.json();
+      expect(result.error).toContain("not found");
+    });
+
+    it("should return 401 without proper authentication", async () => {
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "DELETE"
+      });
+
+      expect(response.status).toBe(401);
+    });
   });
 });

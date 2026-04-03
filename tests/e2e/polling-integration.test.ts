@@ -9,16 +9,25 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 // Mock checkpoint removal for integration tests
 vi.mock("../../src/pipeline/checkpoint.js", () => ({
   removeCheckpoint: vi.fn(),
+  loadCheckpoint: vi.fn(),
+}));
+
+// Mock worktree management for integration tests
+vi.mock("../../src/git/worktree-manager.js", () => ({
+  removeWorktree: vi.fn(),
 }));
 
 import { runCli } from "../../src/utils/cli-runner.js";
-import { removeCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { removeCheckpoint, loadCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { removeWorktree } from "../../src/git/worktree-manager.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import type { AQConfig } from "../../src/types/config.js";
 import type { Job } from "../../src/queue/job-store.js";
 
 const mockRunCli = vi.mocked(runCli);
 const mockRemoveCheckpoint = vi.mocked(removeCheckpoint);
+const mockLoadCheckpoint = vi.mocked(loadCheckpoint);
+const mockRemoveWorktree = vi.mocked(removeWorktree);
 
 // ---------------------------------------------------------------------------
 // Lightweight in-memory doubles for JobStore and JobQueue
@@ -84,8 +93,31 @@ function makeJobQueue(store: ReturnType<typeof makeJobStore>) {
       // Check for existing failed/cancelled jobs and auto-archive them
       const existing = store.findAnyByIssue(issueNumber, repo);
       if (existing && (existing.status === "failure" || existing.status === "cancelled")) {
-        // Remove checkpoint for the failed job
-        mockRemoveCheckpoint();
+        // Simulate the actual JobQueue logic for worktree cleanup
+        const dataDir = "/tmp/test-data"; // Mock data directory
+
+        try {
+          // Load checkpoint to check for worktree before removing
+          const checkpoint = mockLoadCheckpoint(dataDir, issueNumber);
+          if (checkpoint?.worktreePath) {
+            // Simulate worktree removal call
+            mockRemoveWorktree(
+              { gitPath: "git" }, // Mock git config
+              checkpoint.worktreePath,
+              { cwd: "/tmp/project", force: true }
+            );
+          }
+        } catch (checkpointErr) {
+          // Simulate error handling
+        }
+
+        try {
+          // Remove checkpoint
+          mockRemoveCheckpoint(dataDir, issueNumber);
+        } catch (err) {
+          // Simulate error handling
+        }
+
         // Archive the existing job
         store.archive(existing.id);
       } else if (existing) {
@@ -135,6 +167,10 @@ describe("E2E: polling integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Setup default mock implementations
+    mockLoadCheckpoint.mockReturnValue(null); // Default: no checkpoint found
+    mockRemoveWorktree.mockResolvedValue(undefined); // Default: successful removal
   });
 
   afterEach(() => {
@@ -298,6 +334,20 @@ describe("E2E: polling integration", () => {
     const store = makeJobStore([{ issueNumber: 20, repo: "test/repo", status: "failure" }]);
     const queue = makeJobQueue(store);
 
+    // Mock checkpoint with worktree to simulate cleanup scenario
+    mockLoadCheckpoint.mockReturnValue({
+      jobId: "aq-20-0",
+      issueNumber: 20,
+      repo: "test/repo",
+      state: "failed",
+      worktreePath: "/tmp/test-worktree-20",
+      branchName: "aq/20-fix-critical-bug",
+      projectRoot: "/tmp/project",
+      phaseResults: [],
+      mode: "auto",
+      savedAt: new Date().toISOString(),
+    });
+
     // Mock GitHub returning the same issue again (simulating re-pickup)
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
@@ -317,14 +367,24 @@ describe("E2E: polling integration", () => {
     expect(queue.enqueue).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).toHaveBeenCalledWith(20, "test/repo");
 
-    // 2. Checkpoint removal should have been triggered
-    expect(mockRemoveCheckpoint).toHaveBeenCalled();
+    // 2. Checkpoint should be loaded to check for worktree
+    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 20);
 
-    // 3. Original failed job should be archived
+    // 3. Worktree cleanup should have been triggered
+    expect(mockRemoveWorktree).toHaveBeenCalledWith(
+      expect.any(Object), // gitConfig
+      "/tmp/test-worktree-20",
+      expect.objectContaining({ force: true })
+    );
+
+    // 4. Checkpoint removal should have been triggered
+    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 20);
+
+    // 5. Original failed job should be archived
     const originalJob = store.get("aq-20-0"); // First job created in makeJobStore
     expect(originalJob?.status).toBe("archived");
 
-    // 4. New job should be created
+    // 6. New job should be created
     expect(store.create).toHaveBeenCalledWith(20, "test/repo");
   });
 
@@ -338,6 +398,33 @@ describe("E2E: polling integration", () => {
       { issueNumber: 31, repo: "test/repo", status: "cancelled" },
     ]);
     const queue = makeJobQueue(store);
+
+    // Mock checkpoints with worktrees for both issues
+    mockLoadCheckpoint
+      .mockReturnValueOnce({
+        jobId: "aq-30-0",
+        issueNumber: 30,
+        repo: "test/repo",
+        state: "failed",
+        worktreePath: "/tmp/test-worktree-30",
+        branchName: "aq/30-failed-feature-a",
+        projectRoot: "/tmp/project",
+        phaseResults: [],
+        mode: "auto",
+        savedAt: new Date().toISOString(),
+      })
+      .mockReturnValueOnce({
+        jobId: "aq-31-1",
+        issueNumber: 31,
+        repo: "test/repo",
+        state: "cancelled",
+        worktreePath: "/tmp/test-worktree-31",
+        branchName: "aq/31-cancelled-feature-b",
+        projectRoot: "/tmp/project",
+        phaseResults: [],
+        mode: "auto",
+        savedAt: new Date().toISOString(),
+      });
 
     // Mock GitHub returning both issues again
     mockRunCli.mockResolvedValue({
@@ -357,13 +444,125 @@ describe("E2E: polling integration", () => {
     expect(queue.enqueue).toHaveBeenCalledWith(30, "test/repo");
     expect(queue.enqueue).toHaveBeenCalledWith(31, "test/repo");
 
+    // Checkpoint should be loaded for both issues
+    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 30);
+    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 31);
+
+    // Worktree cleanup should be called for both failed jobs
+    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
+    expect(mockRemoveWorktree).toHaveBeenCalledWith(
+      expect.any(Object),
+      "/tmp/test-worktree-30",
+      expect.objectContaining({ force: true })
+    );
+    expect(mockRemoveWorktree).toHaveBeenCalledWith(
+      expect.any(Object),
+      "/tmp/test-worktree-31",
+      expect.objectContaining({ force: true })
+    );
+
     // Checkpoint removal should be called twice (once per failed job)
     expect(mockRemoveCheckpoint).toHaveBeenCalledTimes(2);
+    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 30);
+    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 31);
 
     // Both original jobs should be archived
     const failedJob = store.get("aq-30-0");
     const cancelledJob = store.get("aq-31-1");
     expect(failedJob?.status).toBe("archived");
     expect(cancelledJob?.status).toBe("archived");
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. Verifies that worktree cleanup is not called when no checkpoint or worktree exists
+  // -------------------------------------------------------------------------
+  it("skips worktree cleanup when no checkpoint or worktree path exists", async () => {
+    // Start with a failed job but no checkpoint/worktree
+    const store = makeJobStore([{ issueNumber: 40, repo: "test/repo", status: "failure" }]);
+    const queue = makeJobQueue(store);
+
+    // Mock loadCheckpoint to return null (no checkpoint found)
+    mockLoadCheckpoint.mockReturnValue(null);
+
+    // Mock GitHub returning the issue again
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([
+        { number: 40, title: "Simple failed job" },
+      ]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // Issue should trigger re-pickup
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    expect(queue.enqueue).toHaveBeenCalledWith(40, "test/repo");
+
+    // Checkpoint should be loaded
+    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 40);
+
+    // Worktree cleanup should NOT be called since no checkpoint was found
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+
+    // Checkpoint removal should still be called (even if no checkpoint exists)
+    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 40);
+
+    // Original job should be archived
+    const failedJob = store.get("aq-40-0");
+    expect(failedJob?.status).toBe("archived");
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Verifies that worktree cleanup is not called when checkpoint exists but has no worktree path
+  // -------------------------------------------------------------------------
+  it("skips worktree cleanup when checkpoint exists but has no worktree path", async () => {
+    // Start with a failed job
+    const store = makeJobStore([{ issueNumber: 50, repo: "test/repo", status: "failure" }]);
+    const queue = makeJobQueue(store);
+
+    // Mock checkpoint without worktree path
+    mockLoadCheckpoint.mockReturnValue({
+      jobId: "aq-50-0",
+      issueNumber: 50,
+      repo: "test/repo",
+      state: "failed",
+      // No worktreePath field
+      branchName: "aq/50-no-worktree",
+      projectRoot: "/tmp/project",
+      phaseResults: [],
+      mode: "auto",
+      savedAt: new Date().toISOString(),
+    });
+
+    // Mock GitHub returning the issue again
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([
+        { number: 50, title: "Failed job without worktree" },
+      ]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // Issue should trigger re-pickup
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    expect(queue.enqueue).toHaveBeenCalledWith(50, "test/repo");
+
+    // Checkpoint should be loaded
+    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 50);
+
+    // Worktree cleanup should NOT be called since checkpoint has no worktree path
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+
+    // Checkpoint removal should still be called
+    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 50);
+
+    // Original job should be archived
+    const failedJob = store.get("aq-50-0");
+    expect(failedJob?.status).toBe("archived");
   });
 });

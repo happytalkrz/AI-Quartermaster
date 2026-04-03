@@ -3,8 +3,10 @@ import { getLogger } from "../utils/logger.js";
 import { errorMessage } from "../types/errors.js";
 import { JobStore, Job } from "./job-store.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
-import { removeCheckpoint } from "../pipeline/checkpoint.js";
+import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
+import { removeWorktree } from "../git/worktree-manager.js";
+import { loadConfig } from "../config/loader.js";
 
 const logger = getLogger();
 
@@ -156,6 +158,34 @@ export class JobQueue {
   }
 
   /**
+   * Cleanup worktree and checkpoint for an issue (fire-and-forget, errors logged but not thrown).
+   */
+  private cleanupForIssue(issueNumber: number): void {
+    const dataDir = resolve(process.cwd(), "data");
+    const projectRoot = process.cwd();
+
+    try {
+      const checkpoint = loadCheckpoint(dataDir, issueNumber);
+      if (checkpoint?.worktreePath) {
+        logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
+        const config = loadConfig(projectRoot);
+        removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true })
+          .catch(worktreeErr => {
+            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
+          });
+      }
+    } catch (checkpointErr) {
+      logger.warn(`Failed to load checkpoint for worktree cleanup: ${checkpointErr}`);
+    }
+
+    try {
+      removeCheckpoint(dataDir, issueNumber);
+    } catch (err) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    }
+  }
+
+  /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
   enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job | undefined {
@@ -174,12 +204,7 @@ export class JobQueue {
 
       if (existing.status === "failure" || existing.status === "cancelled") {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
-        const dataDir = resolve(process.cwd(), "data");
-        try {
-          removeCheckpoint(dataDir, issueNumber);
-        } catch (err) {
-          logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
-        }
+        this.cleanupForIssue(issueNumber);
         this.store.archive(existing.id);
       } else {
         // queued/running statuses should still block
@@ -218,14 +243,7 @@ export class JobQueue {
     }
 
     const { issueNumber, repo } = oldJob;
-    const dataDir = resolve(process.cwd(), "data");
-
-    try {
-      removeCheckpoint(dataDir, issueNumber);
-    } catch (err) {
-      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
-    }
-
+    this.cleanupForIssue(issueNumber);
     this.store.archive(jobId);
     return this.enqueue(issueNumber, repo, undefined, true);
   }

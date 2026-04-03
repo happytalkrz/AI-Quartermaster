@@ -73,6 +73,8 @@ function toggleTheme() {
 /* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
+var currentConfig = null; // 현재 설정 데이터 저장
+
 function loadSettings() {
   var container = document.getElementById('settings-content');
   if (!container) return;
@@ -85,6 +87,7 @@ function loadSettings() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.config) {
+        currentConfig = data.config;
         renderSettingsView(data.config);
       } else {
         container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정 데이터가 없습니다.</div>';
@@ -93,6 +96,111 @@ function loadSettings() {
     .catch(function(error) {
       container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러오는데 실패했습니다.</div>';
     });
+}
+
+function setSettingsTab(tabName) {
+  document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
+    var isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('bg-primary/10 text-primary', isActive);
+    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
+  });
+
+  document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {
+    var isActive = panel.id === 'settings-tab-' + tabName;
+    panel.classList.toggle('hidden', !isActive);
+  });
+
+  localStorage.setItem('aqm-selected-tab', tabName);
+}
+
+function showButtonState(btn, icon, message, colorClass) {
+  var originalContent = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base' + (icon === 'sync' ? ' animate-spin' : '') + '">' + icon + '</span><span>' + message + '</span>';
+  btn.classList.replace('bg-primary', colorClass);
+
+  setTimeout(function() {
+    btn.disabled = false;
+    btn.innerHTML = originalContent;
+    btn.classList.replace(colorClass, 'bg-primary');
+  }, 2000);
+}
+
+function saveSettings() {
+  var saveBtn = document.getElementById('save-settings-btn');
+  if (!saveBtn || !currentConfig) return;
+
+  showButtonState(saveBtn, 'sync', t('config.saveState.saving'), 'bg-primary');
+
+  apiFetch('/api/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config: collectFormData() })
+  })
+    .then(function(r) {
+      if (r.ok) {
+        showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
+      } else {
+        throw new Error('Save failed');
+      }
+    })
+    .catch(function() {
+      showButtonState(saveBtn, 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
+    });
+}
+
+function collectFormData() {
+  if (!currentConfig) return null;
+
+  var updatedConfig = JSON.parse(JSON.stringify(currentConfig)); // deep copy
+
+  // 각 폼에서 데이터 수집
+  ['general', 'safety', 'review'].forEach(function(section) {
+    var form = document.getElementById(section + '-settings-form');
+    if (!form) return;
+
+    var inputs = form.querySelectorAll('input, select, textarea');
+    inputs.forEach(function(input) {
+      var path = input.dataset.configPath;
+      if (!path) return;
+
+      var value = getInputValue(input);
+      setNestedValue(updatedConfig, path, value);
+    });
+  });
+
+  return updatedConfig;
+}
+
+function getInputValue(input) {
+  switch (input.type) {
+    case 'checkbox':
+      return input.checked;
+    case 'number':
+      return parseInt(input.value, 10) || 0;
+    default:
+      // textarea이고 JSON 데이터인 경우 파싱 시도
+      if (input.tagName.toLowerCase() === 'textarea') {
+        try {
+          return JSON.parse(input.value);
+        } catch (e) {
+          return input.value; // JSON 파싱 실패 시 문자열로 반환
+        }
+      }
+      return input.value;
+  }
+}
+
+function setNestedValue(obj, path, value) {
+  var keys = path.split('.');
+  var current = obj;
+
+  for (var i = 0; i < keys.length - 1; i++) {
+    if (!current[keys[i]]) current[keys[i]] = {};
+    current = current[keys[i]];
+  }
+
+  current[keys[keys.length - 1]] = value;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -134,6 +242,102 @@ function clearAllJobs() {
       selectedJobId = null;
       apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
     });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Project Actions
+   ══════════════════════════════════════════════════════════════ */
+function addProject() {
+  var form = document.getElementById('add-project-form');
+  if (!form) return;
+
+  var formData = new FormData(form);
+  var projectData = {
+    repo: formData.get('repo'),
+    label: formData.get('label')
+  };
+
+  // Validate form data
+  if (!projectData.repo || !projectData.label) {
+    showProjectMessage('저장소 경로와 트리거 라벨을 모두 입력해주세요.', 'error');
+    return;
+  }
+
+  // Show loading state on submit button
+  var submitButton = form.querySelector('button[type="submit"]');
+  var originalButtonContent = submitButton.innerHTML;
+  submitButton.disabled = true;
+  submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>추가 중...</span>';
+
+  // Send API request
+  apiFetch('/api/projects', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(projectData)
+  })
+    .then(function(response) {
+      if (response.ok) {
+        // Success - clear form and reload settings
+        form.reset();
+        loadSettings();
+        showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
+      } else {
+        return response.json().then(function(errorData) {
+          throw new Error(errorData.error || '프로젝트 추가에 실패했습니다.');
+        });
+      }
+    })
+    .catch(function(error) {
+      showProjectMessage(error.message || '프로젝트 추가 중 오류가 발생했습니다.', 'error');
+    })
+    .finally(function() {
+      // Restore submit button
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalButtonContent;
+    });
+}
+
+function showProjectMessage(message, type) {
+  var messageId = 'add-project-' + type;
+  var existing = document.getElementById(messageId);
+  if (existing) existing.remove();
+
+  var config = type === 'error'
+    ? { icon: 'error', color: '#f85149', timeout: 5000 }
+    : { icon: 'check_circle', color: '#3fb950', timeout: 3000 };
+
+  var messageEl = document.createElement('div');
+  messageEl.id = messageId;
+  messageEl.className = 'mt-4 p-3 rounded-lg text-sm flex items-center gap-2 border transition-opacity';
+  messageEl.style.backgroundColor = config.color + '10';
+  messageEl.style.borderColor = config.color + '4d';
+  messageEl.style.color = config.color;
+  messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">' + config.icon + '</span>' + message;
+
+  var form = document.getElementById('add-project-form');
+  if (form) form.appendChild(messageEl);
+
+  setTimeout(function() {
+    if (messageEl && messageEl.parentNode) messageEl.remove();
+  }, config.timeout);
+}
+
+function deleteProject(id) {
+  showConfirm(t('deleteProjectConfirm'), currentLang === 'ko' ? '이 프로젝트를 삭제하시겠습니까?' : 'Are you sure you want to delete this project?').then(function(ok) {
+    if (!ok) return;
+    apiFetch('/api/projects/' + encodeURIComponent(id), { method: 'DELETE' })
+      .then(function(r) {
+        if (r.ok) {
+          // Reload settings to refresh project list
+          if (currentView === 'settings') {
+            loadSettings();
+          }
+        }
+      })
+      .catch(function() {});
   });
 }
 
@@ -195,6 +399,14 @@ applyTranslations();
   initArchivedToggle();
 })();
 
+// Bind project form submit event
+document.addEventListener('submit', function(e) {
+  if (e.target.id === 'add-project-form') {
+    e.preventDefault();
+    addProject();
+  }
+});
+
 // Initial data fetch
 apiFetch('/api/jobs')
   .then(function(r) { return r.json(); })
@@ -202,3 +414,7 @@ apiFetch('/api/jobs')
   .catch(function() {});
 
 connectSSE();
+
+// 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
+window.setSettingsTab = setSettingsTab;
+window.saveSettings = saveSettings;

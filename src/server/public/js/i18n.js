@@ -24,6 +24,7 @@ var i18n = {
     clearAll: "전체 삭제",
     clearAllConfirm: "완료/실패된 모든 작업을 삭제하시겠습니까?",
     cancelConfirm: "이 작업을 취소하시겠습니까?",
+    deleteProjectConfirm: "프로젝트 삭제",
     confirm: "확인",
     hideArchived: "아카이브 숨기기",
     filter: { all: "전체", running: "실행 중", success: "성공", failure: "실패", queued: "대기" },
@@ -41,6 +42,20 @@ var i18n = {
     commandHQ: "커맨드 HQ",
     jobDetail: "작업 상세",
     phaseProgress: "단계 진행률",
+    projects: "프로젝트",
+    addProject: "프로젝트 추가",
+    repository: "저장소",
+    repositoryPath: "저장소 경로",
+    repositoryPlaceholder: "예: /home/user/my-project",
+    label: "라벨",
+    triggerLabel: "트리거 라벨",
+    labelPlaceholder: "예: implement",
+    add: "추가",
+    config: {
+      tabs: { general: "일반", safety: "안전", review: "리뷰" },
+      saveState: { saving: "저장 중...", saved: "저장됨", saveFailed: "저장 실패" },
+      form: { edit: "편집", reset: "초기화", resetConfirm: "설정을 초기화하시겠습니까?", saveChanges: "변경사항 저장", discardChanges: "변경사항 취소" }
+    },
   },
   en: {
     dashboard: "Dashboard",
@@ -62,6 +77,7 @@ var i18n = {
     clearAll: "Clear All",
     clearAllConfirm: "Delete all completed/failed jobs?",
     cancelConfirm: "Cancel this job?",
+    deleteProjectConfirm: "Delete Project",
     confirm: "Confirm",
     hideArchived: "Hide Archived",
     filter: { all: "All", running: "Running", success: "Success", failure: "Failed", queued: "Queued" },
@@ -79,6 +95,20 @@ var i18n = {
     commandHQ: "Command HQ",
     jobDetail: "Job Detail",
     phaseProgress: "Phase Progress",
+    projects: "Projects",
+    addProject: "Add Project",
+    repository: "Repository",
+    repositoryPath: "Repository Path",
+    repositoryPlaceholder: "e.g. /home/user/my-project",
+    label: "Label",
+    triggerLabel: "Trigger Label",
+    labelPlaceholder: "e.g. implement",
+    add: "Add",
+    config: {
+      tabs: { general: "General", safety: "Safety", review: "Review" },
+      saveState: { saving: "Saving...", saved: "Saved", saveFailed: "Save Failed" },
+      form: { edit: "Edit", reset: "Reset", resetConfirm: "Reset all settings to default?", saveChanges: "Save Changes", discardChanges: "Discard Changes" }
+    },
   }
 };
 

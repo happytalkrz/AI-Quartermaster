@@ -82,6 +82,7 @@ export interface PhaseRetryContext {
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
+  let result: any;
 
   try {
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
@@ -122,7 +123,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     jl?.log(`Claude 수정 중: ${ctx.phase.name} (retry ${ctx.attempt})`);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
-    const result = await runClaude({
+    result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "fallback"),
@@ -166,6 +167,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       success: true,
       commitHash,
       durationMs: Date.now() - startTime,
+      costUsd: result.costUsd,
     };
   } catch (error) {
     const errMsg = errorMessage(error);
@@ -177,6 +179,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
+      costUsd: result?.costUsd,
     };
   }
 }

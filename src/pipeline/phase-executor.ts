@@ -35,6 +35,7 @@ export interface PhaseExecutorContext {
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
+  let result: any;
 
   try {
     // 1. Load and render phase implementation template
@@ -77,7 +78,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     const phaseIdx = ctx.phase.index;
 
     const config = configForTask(ctx.claudeConfig, "phase");
-    const result = await runClaude({
+    result = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
       config,
@@ -124,6 +125,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       success: true,
       commitHash,
       durationMs: Date.now() - startTime,
+      costUsd: result.costUsd,
     };
   } catch (error) {
     const errMsg = errorMessage(error);
@@ -135,6 +137,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
+      costUsd: result?.costUsd,
     };
   }
 }

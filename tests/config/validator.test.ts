@@ -2,6 +2,15 @@ import { describe, it, expect } from "vitest";
 import { validateConfig } from "../../src/config/validator.js";
 import type { AQConfig } from "../../src/types/config.js";
 
+const updateNested = <T extends object, K extends keyof T>(
+  obj: T,
+  key: K,
+  updates: Partial<T[K]>
+): T => ({
+  ...obj,
+  [key]: { ...(obj[key] as object), ...updates },
+});
+
 describe("validateConfig", () => {
   // 기본 유효한 설정 템플릿
   const validConfig: AQConfig = {
@@ -116,13 +125,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for empty projectName", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        projectName: "",
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      projectName: "",
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "프로젝트 이름을 입력해주세요"
@@ -145,13 +150,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for negative concurrency", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        concurrency: -1,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      concurrency: -1,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "Number must be greater than 0"
@@ -159,13 +160,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for zero concurrency", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        concurrency: 0,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      concurrency: 0,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "Number must be greater than 0"
@@ -173,13 +170,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for stuckTimeoutMs less than 60000", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        stuckTimeoutMs: 59999,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      stuckTimeoutMs: 59999,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "작업 중단 타임아웃은 최소 60초(60000ms) 이상이어야 합니다"
@@ -187,13 +180,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for pollingIntervalMs less than 10000", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        pollingIntervalMs: 9999,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      pollingIntervalMs: 9999,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "폴링 주기는 최소 10초(10000ms) 이상이어야 합니다"
@@ -201,13 +190,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for maxPhases equal to 0", () => {
-    const invalidConfig = {
-      ...validConfig,
-      safety: {
-        ...validConfig.safety,
-        maxPhases: 0,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxPhases: 0,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "최대 페이즈 수는 1 이상이어야 합니다"
@@ -215,13 +200,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for maxPhases greater than 20", () => {
-    const invalidConfig = {
-      ...validConfig,
-      safety: {
-        ...validConfig.safety,
-        maxPhases: 21,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxPhases: 21,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "최대 페이즈 수는 20 이하여야 합니다"
@@ -229,13 +210,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for branchTemplate without issueNumber placeholder", () => {
-    const invalidConfig = {
-      ...validConfig,
-      git: {
-        ...validConfig.git,
-        branchTemplate: "feature/{{slug}}", // issueNumber 플레이스홀더 누락
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "git", {
+      branchTemplate: "feature/{{slug}}",
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow(
       "브랜치 템플릿에 이슈 번호 플레이스홀더가 없습니다"
@@ -243,81 +220,59 @@ describe("validateConfig", () => {
   });
 
   it("should accept branchTemplate with {issueNumber} format", () => {
-    const configWithAltPlaceholder = {
-      ...validConfig,
-      git: {
-        ...validConfig.git,
-        branchTemplate: "feature/{issueNumber}-{slug}",
-      },
-    };
+    const configWithAltPlaceholder = updateNested(validConfig, "git", {
+      branchTemplate: "feature/{issueNumber}-{slug}",
+    });
 
     const result = validateConfig(configWithAltPlaceholder);
     expect(result.git.branchTemplate).toBe("feature/{issueNumber}-{slug}");
   });
 
   it("should throw error for invalid logLevel", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        logLevel: "invalid" as any,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      logLevel: "invalid" as any,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
   it("should throw error for invalid locale", () => {
-    const invalidConfig = {
-      ...validConfig,
-      general: {
-        ...validConfig.general,
-        locale: "fr" as any,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "general", {
+      locale: "fr" as any,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
   it("should throw error for invalid mergeMethod", () => {
-    const invalidConfig = {
-      ...validConfig,
-      pr: {
-        ...validConfig.pr,
-        mergeMethod: "invalid" as any,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "pr", {
+      mergeMethod: "invalid" as any,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
   it("should throw error for invalid reviewFailAction", () => {
-    const invalidConfig = {
-      ...validConfig,
-      review: {
-        ...validConfig.review,
-        rounds: [
-          {
-            name: "test-review",
-            promptTemplate: "Review: {diff}",
-            failAction: "invalid" as any,
-            maxRetries: 1,
-            model: null,
-          },
-        ],
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "review", {
+      rounds: [
+        {
+          name: "test-review",
+          promptTemplate: "Review: {diff}",
+          failAction: "invalid" as any,
+          maxRetries: 1,
+          model: null,
+        },
+      ],
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
   it("should validate config with projects array instead of allowedRepos", () => {
     const configWithProjects = {
-      ...validConfig,
-      git: {
-        ...validConfig.git,
+      ...updateNested(validConfig, "git", {
         allowedRepos: [],
-      },
+      }),
       projects: [
         {
           repo: "owner/test-repo",
@@ -333,13 +288,9 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for negative fetchDepth", () => {
-    const invalidConfig = {
-      ...validConfig,
-      git: {
-        ...validConfig.git,
-        fetchDepth: -1,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "git", {
+      fetchDepth: -1,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
@@ -349,10 +300,7 @@ describe("validateConfig", () => {
       ...validConfig,
       commands: {
         ...validConfig.commands,
-        claudeCli: {
-          ...validConfig.commands.claudeCli,
-          maxTurns: 0,
-        },
+        claudeCli: { ...validConfig.commands.claudeCli, maxTurns: 0 },
       },
     };
 
@@ -364,10 +312,7 @@ describe("validateConfig", () => {
       ...validConfig,
       commands: {
         ...validConfig.commands,
-        claudeCli: {
-          ...validConfig.commands.claudeCli,
-          timeout: -1000,
-        },
+        claudeCli: { ...validConfig.commands.claudeCli, timeout: -1000 },
       },
     };
 
@@ -375,25 +320,17 @@ describe("validateConfig", () => {
   });
 
   it("should throw error for maxRetries outside valid range (too small)", () => {
-    const invalidConfig = {
-      ...validConfig,
-      safety: {
-        ...validConfig.safety,
-        maxRetries: 0,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxRetries: 0,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
   it("should throw error for maxRetries outside valid range (too large)", () => {
-    const invalidConfig = {
-      ...validConfig,
-      safety: {
-        ...validConfig.safety,
-        maxRetries: 11,
-      },
-    };
+    const invalidConfig = updateNested(validConfig, "safety", {
+      maxRetries: 11,
+    });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });

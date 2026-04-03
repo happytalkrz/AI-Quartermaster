@@ -17,17 +17,25 @@ vi.mock("../../src/git/worktree-manager.js", () => ({
   removeWorktree: vi.fn(),
 }));
 
+// Mock SelfUpdater for integration tests
+vi.mock("../../src/update/self-updater.js", () => ({
+  SelfUpdater: vi.fn(),
+}));
+
 import { runCli } from "../../src/utils/cli-runner.js";
 import { removeCheckpoint, loadCheckpoint } from "../../src/pipeline/checkpoint.js";
 import { removeWorktree } from "../../src/git/worktree-manager.js";
+import { SelfUpdater } from "../../src/update/self-updater.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import type { AQConfig } from "../../src/types/config.js";
 import type { Job } from "../../src/queue/job-store.js";
+import type { UpdateInfo } from "../../src/update/self-updater.js";
 
 const mockRunCli = vi.mocked(runCli);
 const mockRemoveCheckpoint = vi.mocked(removeCheckpoint);
 const mockLoadCheckpoint = vi.mocked(loadCheckpoint);
 const mockRemoveWorktree = vi.mocked(removeWorktree);
+const mockSelfUpdater = vi.mocked(SelfUpdater);
 
 // ---------------------------------------------------------------------------
 // Lightweight in-memory doubles for JobStore and JobQueue
@@ -171,6 +179,12 @@ describe("E2E: polling integration", () => {
     // Setup default mock implementations
     mockLoadCheckpoint.mockReturnValue(null); // Default: no checkpoint found
     mockRemoveWorktree.mockResolvedValue(undefined); // Default: successful removal
+
+    // Setup SelfUpdater mock instance
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: vi.fn(),
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
   });
 
   afterEach(() => {
@@ -564,5 +578,235 @@ describe("E2E: polling integration", () => {
     // Original job should be archived
     const failedJob = store.get("aq-50-0");
     expect(failedJob?.status).toBe("archived");
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Update detection and callback invocation tests
+  // -------------------------------------------------------------------------
+  it("detects updates and calls onUpdateAvailable callback when autoUpdate is enabled", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+    const onUpdateAvailable = vi.fn();
+
+    const config = makeConfig();
+    config.general.autoUpdate = true;
+
+    // Mock SelfUpdater to return update info
+    const mockCheckForUpdates = vi.fn().mockResolvedValue({
+      hasUpdates: true,
+      currentHash: "abc123def456",
+      remoteHash: "def456ghi789",
+      packageLockChanged: false,
+    } as UpdateInfo);
+
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return no issues (focus on update check)
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
+    await (poller as any).poll();
+
+    // Update check should have been called
+    expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
+
+    // Callback should have been called with update info
+    expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
+    expect(onUpdateAvailable).toHaveBeenCalledWith({
+      hasUpdates: true,
+      currentHash: "abc123def456",
+      remoteHash: "def456ghi789",
+      packageLockChanged: false,
+    });
+  });
+
+  it("does not call onUpdateAvailable callback when no updates are available", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+    const onUpdateAvailable = vi.fn();
+
+    const config = makeConfig();
+    config.general.autoUpdate = true;
+
+    // Mock SelfUpdater to return no updates
+    const mockCheckForUpdates = vi.fn().mockResolvedValue({
+      hasUpdates: false,
+      currentHash: "abc123def456",
+      remoteHash: "abc123def456",
+      packageLockChanged: false,
+    } as UpdateInfo);
+
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return no issues
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
+    await (poller as any).poll();
+
+    // Update check should have been called
+    expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
+
+    // Callback should NOT have been called since no updates
+    expect(onUpdateAvailable).not.toHaveBeenCalled();
+  });
+
+  it("does not check for updates when autoUpdate is disabled", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+    const onUpdateAvailable = vi.fn();
+
+    const config = makeConfig();
+    config.general.autoUpdate = false; // Disabled
+
+    // Mock SelfUpdater
+    const mockCheckForUpdates = vi.fn();
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return no issues
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
+    await (poller as any).poll();
+
+    // Update check should NOT have been called
+    expect(mockCheckForUpdates).not.toHaveBeenCalled();
+
+    // Callback should NOT have been called
+    expect(onUpdateAvailable).not.toHaveBeenCalled();
+  });
+
+  it("does not check for updates when onUpdateAvailable callback is not provided", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+
+    const config = makeConfig();
+    config.general.autoUpdate = true;
+
+    // Mock SelfUpdater
+    const mockCheckForUpdates = vi.fn();
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return no issues
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    // No callback provided
+    poller = new IssuePoller(config, store as any, queue as any);
+    await (poller as any).poll();
+
+    // Update check should NOT have been called when no callback provided
+    expect(mockCheckForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("continues polling gracefully when update check fails", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+    const onUpdateAvailable = vi.fn();
+
+    const config = makeConfig();
+    config.general.autoUpdate = true;
+
+    // Mock SelfUpdater to throw error
+    const mockCheckForUpdates = vi.fn().mockRejectedValue(new Error("git fetch failed"));
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return issues (should still be processed)
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([
+        { number: 100, title: "Test issue", labels: ["aq-task"] },
+      ]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
+
+    // Should not throw despite update check failure
+    await expect((poller as any).poll()).resolves.toBeUndefined();
+
+    // Update check should have been attempted
+    expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
+
+    // Callback should NOT have been called due to error
+    expect(onUpdateAvailable).not.toHaveBeenCalled();
+
+    // Issue polling should still work normally
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    expect(queue.enqueue).toHaveBeenCalledWith(100, "test/repo");
+  });
+
+  it("calls onUpdateAvailable callback with package-lock changes detected", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+    const onUpdateAvailable = vi.fn();
+
+    const config = makeConfig();
+    config.general.autoUpdate = true;
+
+    // Mock SelfUpdater to return update with package-lock changes
+    const mockCheckForUpdates = vi.fn().mockResolvedValue({
+      hasUpdates: true,
+      currentHash: "old123hash456",
+      remoteHash: "new456hash789",
+      packageLockChanged: true, // Package-lock was modified
+    } as UpdateInfo);
+
+    const mockSelfUpdaterInstance = {
+      checkForUpdates: mockCheckForUpdates,
+    };
+    mockSelfUpdater.mockReturnValue(mockSelfUpdaterInstance as any);
+
+    // Mock GitHub to return no issues
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(config, store as any, queue as any, onUpdateAvailable);
+    await (poller as any).poll();
+
+    // Update check should have been called
+    expect(mockCheckForUpdates).toHaveBeenCalledTimes(1);
+
+    // Callback should have been called with package-lock change info
+    expect(onUpdateAvailable).toHaveBeenCalledTimes(1);
+    expect(onUpdateAvailable).toHaveBeenCalledWith({
+      hasUpdates: true,
+      currentHash: "old123hash456",
+      remoteHash: "new456hash789",
+      packageLockChanged: true,
+    });
   });
 });

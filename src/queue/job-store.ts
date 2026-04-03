@@ -30,6 +30,8 @@ export interface Job {
   }>;
   progress?: number;  // 0-100 overall pipeline progress
   isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
+  costUsd?: number;
+  totalCostUsd?: number;
 }
 
 export class JobStore extends EventEmitter {

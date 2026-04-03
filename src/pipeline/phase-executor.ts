@@ -35,6 +35,7 @@ export interface PhaseExecutorContext {
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
+  let claudeResult: any;
 
   try {
     // 1. Load and render phase implementation template
@@ -77,7 +78,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     const phaseIdx = ctx.phase.index;
 
     const config = configForTask(ctx.claudeConfig, "phase");
-    const result = await runClaude({
+    claudeResult = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
       config,
@@ -94,8 +95,8 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       } : undefined,
     });
 
-    if (!result.success) {
-      throw new Error(`Phase implementation failed: ${result.output}`);
+    if (!claudeResult.success) {
+      throw new Error(`Phase implementation failed: ${claudeResult.output}`);
     }
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
@@ -124,6 +125,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       success: true,
       commitHash,
       durationMs: Date.now() - startTime,
+      costUsd: claudeResult.costUsd,
     };
   } catch (error) {
     const errMsg = errorMessage(error);
@@ -135,6 +137,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
+      costUsd: claudeResult?.costUsd,
     };
   }
 }

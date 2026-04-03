@@ -169,4 +169,39 @@ describe("executePhase", () => {
     expect(typeof result.durationMs).toBe("number");
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
+
+  it("includes costUsd when Claude returns cost information", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done", costUsd: 0.025 });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBe(0.025);
+  });
+
+  it("includes costUsd in failure result when available", async () => {
+    mockRunClaude.mockResolvedValue({ success: false, output: "Claude failed", costUsd: 0.015 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(false);
+    expect(result.costUsd).toBe(0.015);
+  });
+
+  it("costUsd is undefined when Claude does not provide cost", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" }); // no costUsd field
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBeUndefined();
+  });
 });

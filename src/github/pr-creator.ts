@@ -20,6 +20,7 @@ export interface PrContext {
   phaseResults: PhaseResult[];
   branchName: string;
   baseBranch: string;
+  totalCostUsd?: number;
 }
 
 /**
@@ -58,6 +59,11 @@ export async function createDraftPR(
       branch: {
         base: ctx.baseBranch,
         work: ctx.branchName,
+      },
+      stats: {
+        totalCostUsd: ctx.totalCostUsd?.toFixed(4) || '0.0000',
+        phaseCount: ctx.phaseResults.length,
+        successCount: ctx.phaseResults.filter(r => r.success).length,
       },
     });
   } catch {

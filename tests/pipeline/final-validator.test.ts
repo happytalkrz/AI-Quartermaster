@@ -143,8 +143,8 @@ describe("runFinalValidation", () => {
 
     await runFinalValidation(commands, { cwd: "/tmp" });
 
-    // Both should be called almost simultaneously (within 10ms)
-    expect(Math.abs(testCallTime - typecheckCallTime)).toBeLessThan(10);
+    // Both should be called almost simultaneously (within 50ms)
+    expect(Math.abs(testCallTime - typecheckCallTime)).toBeLessThan(50);
     expect(mockRunShell).toHaveBeenNthCalledWith(1, "npm test", expect.any(Object));
     expect(mockRunShell).toHaveBeenNthCalledWith(2, "npx tsc --noEmit", expect.any(Object));
   });

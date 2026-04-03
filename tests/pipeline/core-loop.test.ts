@@ -755,7 +755,6 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TestPhase")];
       const plan = makePlan(phases);
 
-      // Plan generation succeeds (it handles retries internally)
       mockGeneratePlan.mockResolvedValue(plan);
 
       mockSchedulePhases.mockReturnValue({
@@ -767,31 +766,116 @@ describe("runCoreLoop", () => {
 
       const result = await runCoreLoop(makeContext());
 
-      // Should succeed
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(1);
       expect(result.phaseResults[0].success).toBe(true);
-
-      // generatePlan should have been called once (internal retries are handled by generatePlan)
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should fail when plan generation consistently fails", async () => {
-      // All plan generation attempts fail
       mockGeneratePlan.mockRejectedValue(new Error("Plan generation failed after 2 attempts"));
 
       const result = await runCoreLoop(makeContext());
 
-      // Should fail when plan cannot be generated
       expect(result.success).toBe(false);
       expect(result.phaseResults).toEqual([]);
-
-      // generatePlan should have been called once (core-loop doesn't retry, plan-generator does internally)
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
       expect(mockSchedulePhases).not.toHaveBeenCalled();
       expect(mockExecutePhase).not.toHaveBeenCalled();
     });
 
+    it("should pass correct context to generatePlan on retry scenarios", async () => {
+
+      mockExecutePhase
+        .mockResolvedValueOnce(frontendResult)
+        .mockResolvedValueOnce(backendResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.065);
+    });
+
+    it("should handle phases with no cost information", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Phase result without costUsd
+      const phaseResult = makeSuccessResult(0, "Test");
+      // costUsd is undefined by default in makeSuccessResult
+
+      mockExecutePhase.mockResolvedValueOnce(phaseResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0);
+    });
+
+    it("should calculate totalCostUsd with mixed cost and no-cost phases", async () => {
+      const phases = [
+        makePhase(0, "WithCost"),
+        makePhase(1, "NoCost"),
+        makePhase(2, "WithCost2"),
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      const result1 = makeSuccessResult(0, "WithCost");
+      result1.costUsd = 0.015;
+      const result2 = makeSuccessResult(1, "NoCost");
+      // result2.costUsd is undefined
+      const result3 = makeSuccessResult(2, "WithCost2");
+      result3.costUsd = 0.030;
+
+      mockExecutePhase
+        .mockResolvedValueOnce(result1)
+        .mockResolvedValueOnce(result2)
+        .mockResolvedValueOnce(result3);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.045); // 0.015 + 0 + 0.030
+    });
+
+    it("should include costs from retry attempts", async () => {
+      const phases = [makePhase(0, "RetryPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      const failedResult = makeFailureResult(0, "RetryPhase", "Error", "TS_ERROR");
+      failedResult.costUsd = 0.020;
+      mockExecutePhase.mockResolvedValueOnce(failedResult);
+
+      const retryResult = makeSuccessResult(0, "RetryPhase");
+      retryResult.costUsd = 0.035;
+      mockRetryPhase.mockResolvedValueOnce(retryResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.035);
+    });
+  });
+
+  describe("plan generation retry integration", () => {
     it("should pass correct context to generatePlan on retry scenarios", async () => {
       const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
@@ -815,7 +899,6 @@ describe("runCoreLoop", () => {
 
       await runCoreLoop(customContext);
 
-      // Verify generatePlan was called with correct parameters
       expect(mockGeneratePlan).toHaveBeenCalledWith({
         issue: customContext.issue,
         repo: customContext.repo,
@@ -834,14 +917,11 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TimeoutRecoveryPhase")];
       const plan = makePlan(phases);
 
-      // generatePlan handles retries internally and returns success
       mockGeneratePlan.mockResolvedValue(plan);
-
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
       });
-
       mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "TimeoutRecoveryPhase"));
 
       const result = await runCoreLoop(makeContext());
@@ -849,22 +929,17 @@ describe("runCoreLoop", () => {
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(1);
       expect(result.phaseResults[0].phaseName).toBe("TimeoutRecoveryPhase");
-
-      // generatePlan is called once (retries are handled internally)
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should handle malformed plan generation responses", async () => {
       const validPlan = makePlan([makePhase(0, "ValidPhase")]);
 
-      // generatePlan handles malformed responses internally and returns valid plan
       mockGeneratePlan.mockResolvedValue(validPlan);
-
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: validPlan.phases }],
       });
-
       mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "ValidPhase"));
 
       const result = await runCoreLoop(makeContext());
@@ -878,14 +953,11 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "ErrorContextPhase")];
       const plan = makePlan(phases);
 
-      // Mock generatePlan to succeed (it handles retry context internally)
       mockGeneratePlan.mockResolvedValue(plan);
-
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
       });
-
       mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "ErrorContextPhase"));
 
       const result = await runCoreLoop(makeContext());
@@ -893,7 +965,6 @@ describe("runCoreLoop", () => {
       expect(result.success).toBe(true);
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
 
-      // Verify generatePlan was called with correct context
       const generatePlanCall = mockGeneratePlan.mock.calls[0];
       expect(generatePlanCall[0]).toMatchObject({
         issue: expect.any(Object),

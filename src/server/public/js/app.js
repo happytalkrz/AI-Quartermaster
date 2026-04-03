@@ -155,6 +155,8 @@ function saveSettings() {
     .then(function(r) {
       if (r.ok) {
         showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
+        // Reload settings to reflect changes immediately in UI
+        loadSettings();
       } else {
         throw new Error('Save failed');
       }

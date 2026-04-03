@@ -9,9 +9,11 @@ export interface OrchestratorInput {
   issueNumber: number;
   repo: string; // "owner/repo"
   config: AQConfig;
-  aqRoot?: string;
-  isRetry?: boolean;
+  projectRoot?: string;  // optional override; falls back to project config
+  aqRoot?: string;       // AI Quartermaster root (where prompts/ lives)
   jobLogger?: JobLogger;
+  resumeFrom?: import("./checkpoint.js").PipelineCheckpoint;
+  isRetry?: boolean;     // true if this is a retry of a previously failed job
 }
 
 export interface OrchestratorResult {
@@ -22,7 +24,7 @@ export interface OrchestratorResult {
   error?: string;
 }
 
-const STATE_ORDER: PipelineState[] = [
+export const STATE_ORDER: PipelineState[] = [
   "RECEIVED",
   "VALIDATED",
   "BASE_SYNCED",

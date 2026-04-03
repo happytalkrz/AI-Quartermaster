@@ -194,38 +194,27 @@ function addProject() {
 
 function showProjectMessage(message, type) {
   var messageId = 'add-project-' + type;
-  var existingEl = document.getElementById(messageId);
+  var existing = document.getElementById(messageId);
+  if (existing) existing.remove();
 
-  // Remove existing message if any
-  if (existingEl) {
-    existingEl.remove();
-  }
+  var config = type === 'error'
+    ? { icon: 'error', color: '#f85149', timeout: 5000 }
+    : { icon: 'check_circle', color: '#3fb950', timeout: 3000 };
 
-  // Create message element
   var messageEl = document.createElement('div');
   messageEl.id = messageId;
+  messageEl.className = 'mt-4 p-3 rounded-lg text-sm flex items-center gap-2 border transition-opacity';
+  messageEl.style.backgroundColor = config.color + '10';
+  messageEl.style.borderColor = config.color + '4d';
+  messageEl.style.color = config.color;
+  messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">' + config.icon + '</span>' + message;
 
-  if (type === 'error') {
-    messageEl.className = 'mt-4 p-3 bg-[#f85149]/10 border border-[#f85149]/30 rounded-lg text-[#f85149] text-sm flex items-center gap-2';
-    messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">error</span>' + message;
-  } else if (type === 'success') {
-    messageEl.className = 'mt-4 p-3 bg-[#3fb950]/10 border border-[#3fb950]/30 rounded-lg text-[#3fb950] text-sm flex items-center gap-2';
-    messageEl.innerHTML = '<span class="material-symbols-outlined text-sm">check_circle</span>' + message;
-  }
-
-  // Append to form
   var form = document.getElementById('add-project-form');
-  if (form) {
-    form.appendChild(messageEl);
-  }
+  if (form) form.appendChild(messageEl);
 
-  // Auto-hide after some time
-  var hideTimeout = type === 'error' ? 5000 : 3000;
   setTimeout(function() {
-    if (messageEl && messageEl.parentNode) {
-      messageEl.remove();
-    }
-  }, hideTimeout);
+    if (messageEl && messageEl.parentNode) messageEl.remove();
+  }, config.timeout);
 }
 
 function deleteProject(id) {

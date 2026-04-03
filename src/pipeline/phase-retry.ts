@@ -15,16 +15,45 @@ import { phaseProgress } from "./progress-tracker.js";
 
 const logger = getLogger();
 
-function formatErrorHistory(errorHistory: ErrorHistoryEntry[]): string {
-  const formatted = errorHistory.map((entry) => {
-    const attemptInfo = `Attempt ${entry.attempt} (${entry.errorCategory})`;
-    const timestamp = new Date(entry.timestamp).toLocaleString();
-    const message = entry.errorMessage.slice(-500); // Limit each error message
-    return `${attemptInfo} [${timestamp}]:\n${message}`;
-  }).join('\n\n---\n\n');
+interface ErrorHistoryForTemplate {
+  attempt: number;
+  errorCategory: ErrorCategory;
+  errorSummary: string;
+}
 
-  // Limit total length to prevent prompt bloat
-  return formatted.length > 2000 ? formatted.slice(-2000) : formatted;
+function prepareErrorHistoryForTemplate(errorHistory: ErrorHistoryEntry[]): ErrorHistoryForTemplate[] {
+  // Calculate total allowed length for error summaries (leave space for table structure)
+  const maxTotalLength = 3000;
+  let currentLength = 0;
+  const processedEntries = [];
+
+  for (const entry of errorHistory) {
+    // Create summary from error message (first and last parts for context)
+    let errorSummary = entry.errorMessage.trim();
+
+    // If message is too long, show first 200 chars + "..." + last 100 chars
+    if (errorSummary.length > 300) {
+      const firstPart = errorSummary.slice(0, 200).trim();
+      const lastPart = errorSummary.slice(-100).trim();
+      errorSummary = `${firstPart}...${lastPart}`;
+    }
+
+    // Check if adding this entry would exceed the limit
+    const entryLength = errorSummary.length + 50; // Extra space for table formatting
+    if (currentLength + entryLength > maxTotalLength && processedEntries.length > 0) {
+      break; // Stop adding entries to stay within limit
+    }
+
+    processedEntries.push({
+      attempt: entry.attempt,
+      errorCategory: entry.errorCategory,
+      errorSummary: errorSummary.replace(/\|/g, '\\|') // Escape pipes for table formatting
+    });
+
+    currentLength += entryLength;
+  }
+
+  return processedEntries;
 }
 
 export interface PhaseRetryContext {
@@ -53,10 +82,15 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 
-    // Use errorHistory if available, fallback to previousError for compatibility
-    const errorMessage = ctx.errorHistory && ctx.errorHistory.length > 0
-      ? formatErrorHistory(ctx.errorHistory)
+    // Prepare error information for template
+    const hasErrorHistory = ctx.errorHistory && ctx.errorHistory.length > 0;
+    const errorMessage = hasErrorHistory
+      ? `최근 에러: ${ctx.previousError.slice(-500)}`
       : ctx.previousError.slice(-1500);
+
+    const errorHistory = hasErrorHistory
+      ? prepareErrorHistoryForTemplate(ctx.errorHistory!)
+      : undefined;
 
     const rendered = renderTemplate(template, {
       issue: {
@@ -75,6 +109,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
         errorMessage,
+        errorHistory,
       },
       config: {
         testCommand: ctx.testCommand,

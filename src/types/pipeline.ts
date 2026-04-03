@@ -74,59 +74,96 @@ export interface PipelineResult {
   error?: string;
 }
 
-/** Context information for pipeline setup phase - contains resolved config and issue data */
-export interface PipelineSetupContext {
-  /** Basic pipeline input */
-  issueNumber: number;
-  repo: string; // "owner/repo"
+export interface ValidationPhaseContext {
+  commands: {
+    claudeCli: any;
+  };
+  cwd: string;
+  gitPath: string;
+  maxRetries: number;
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  jl?: any;
+}
 
-  /** Resolved project configuration (global config + project overrides) */
+export interface PublishPhaseContext {
+  issueNumber: number;
+  repo: string;
+  issue: {
+    title: string;
+  };
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  branchName: string;
+  baseBranch: string;
+  worktreePath: string;
+  gitConfig: any;
+  projectConfig: {
+    safety: any;
+    pr: any;
+    commands: {
+      ghCli: any;
+    };
+  };
+  promptsDir: string;
+  dryRun: boolean;
+  jl?: any;
+}
+
+export interface CleanupContext {
+  worktreePath?: string;
+  branchName?: string;
+  gitConfig: any;
+  projectRoot: string;
+  cleanupOnSuccess: boolean;
+  cleanupOnFailure: boolean;
+  issueNumber: number;
+  repo: string;
+  plan: Plan;
+  phaseResults: PhaseResult[];
+  startTime: number;
+  prUrl?: string;
+  config: any;
+  aqRoot?: string;
+  dataDir: string;
+}
+
+export interface FailureHandlerContext {
+  error: unknown;
+  state: PipelineState;
+  worktreePath?: string;
+  branchName?: string;
+  rollbackHash?: string;
+  rollbackStrategy: string;
+  gitConfig: any;
+  projectRoot: string;
+  cleanupOnFailure: boolean;
+  jl?: any;
+}
+
+export interface PipelineSetupContext {
+  issueNumber: number;
+  repo: string;
   config: import("./config.js").AQConfig;
   projectConfig: import("./config.js").ProjectConfig;
-
-  /** File system paths */
   projectRoot: string;
   promptsDir: string;
   dataDir: string;
-
-  /** Issue information fetched from GitHub */
   issue: import("../github/issue-fetcher.js").GitHubIssue;
-
-  /** Pipeline mode determined from labels/config */
   mode: import("./config.js").PipelineMode;
-
-  /** Git configuration (with project-specific overrides applied) */
   gitConfig: import("./config.js").GitConfig;
-
-  /** Branch and worktree information (if already created) */
   branchName?: string;
   worktreePath?: string;
-
-  /** Duplicate PR check result */
   existingPrUrl?: string;
-
-  /** Pipeline timing constraints */
   maxTotalDurationMs: number;
-
-  /** Resume information for retries */
   isRetry?: boolean;
   resumeFromState?: PipelineState;
 }
 
-/** Result of pipeline setup phase */
 export interface PipelineSetupResult {
-  /** Whether setup completed successfully */
   success: boolean;
-
-  /** The setup context if successful */
   context?: PipelineSetupContext;
-
-  /** Current pipeline state after setup */
   state: PipelineState;
-
-  /** Error information if setup failed */
   error?: string;
-
-  /** If an existing PR was found, return early with this URL */
   existingPrUrl?: string;
 }

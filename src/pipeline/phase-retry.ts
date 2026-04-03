@@ -69,6 +69,7 @@ export interface PhaseRetryContext {
   errorHistory?: ErrorHistoryEntry[];
   attempt: number;
   maxRetries: number;
+  lastOutput?: string;
   claudeConfig: ClaudeCliConfig;
   promptsDir: string;
   cwd: string;
@@ -110,6 +111,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         errorCategory: ctx.errorCategory,
         errorMessage,
         errorHistory: errorHistory as any, // Type assertion for template compatibility
+        lastOutput: ctx.lastOutput || "",
       },
       config: {
         testCommand: ctx.testCommand,

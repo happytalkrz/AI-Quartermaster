@@ -57,20 +57,47 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   // Step 1: Generate plan
   logger.info(`Generating plan for issue #${ctx.issue.number}...`);
 
-  const plan = await generatePlan({
-    issue: ctx.issue,
-    repo: ctx.repo,
-    branch: ctx.branch,
-    repoStructure: ctx.repoStructure,
-    claudeConfig: ctx.config.commands.claudeCli,
-    promptsDir: ctx.promptsDir,
-    cwd: ctx.cwd,
-    modeHint: ctx.modeHint,
-    maxPhases: ctx.config.safety.maxPhases,
-    sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
-  });
+  let plan: Plan;
+  try {
+    plan = await generatePlan({
+      issue: ctx.issue,
+      repo: ctx.repo,
+      branch: ctx.branch,
+      repoStructure: ctx.repoStructure,
+      claudeConfig: ctx.config.commands.claudeCli,
+      promptsDir: ctx.promptsDir,
+      cwd: ctx.cwd,
+      modeHint: ctx.modeHint,
+      maxPhases: ctx.config.safety.maxPhases,
+      sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
+    });
 
-  logger.info(`Plan generated: ${plan.phases.length} phases`);
+    logger.info(`Plan generated: ${plan.phases.length} phases`);
+    ctx.jobLogger?.log(`Plan 생성 완료: ${plan.phases.length}개 Phase`);
+  } catch (planError) {
+    const errorMessage = planError instanceof Error ? planError.message : String(planError);
+    logger.error(`Plan generation failed for issue #${ctx.issue.number}: ${errorMessage}`);
+    ctx.jobLogger?.log(`Plan 생성 실패: ${errorMessage}`);
+
+    // Plan 생성 실패 시 빈 결과 반환 (상위에서 적절한 실패 처리)
+    return {
+      plan: {
+        mode: "code",
+        issueNumber: ctx.issue.number,
+        title: ctx.issue.title,
+        problemDefinition: "Plan 생성 실패",
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [],
+        verificationPoints: [],
+        stopConditions: [],
+      },
+      phaseResults: [],
+      success: false,
+    };
+  }
+
   checkPhaseLimit(plan.phases.length, ctx.config.safety.maxPhases);
 
   // Step 2: Execute phases sequentially with retry

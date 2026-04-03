@@ -9,7 +9,7 @@ vi.mock("../../src/pipeline/result-reporter.js", () => ({
 }));
 
 vi.mock("../../src/safety/rollback-manager.js", () => ({
-  rollbackToCheckpoint: vi.fn(),
+  rollbackToCheckpoint: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../src/pipeline/pipeline-context.js", () => ({
@@ -163,17 +163,17 @@ describe("pipeline-error-handler", () => {
       const { rollbackToCheckpoint } = await import("../../src/safety/rollback-manager.js");
       (rollbackToCheckpoint as any).mockRejectedValueOnce(new Error("Rollback failed"));
 
-      // Set rollbackStrategy to none to avoid rollback attempt
-      mockContext.rollbackStrategy = "none";
+      // Create a local context copy to avoid affecting other tests
+      const localContext = { ...mockContext, rollbackStrategy: "none" as const };
 
-      const result = await handleCoreLoopFailure(mockContext);
+      const result = await handleCoreLoopFailure(localContext);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Phase execution failed");
     });
 
     it("should handle pattern store failure gracefully", async () => {
-      mockPatternStore.add = vi.fn().mockImplementationOnce(() => {
+      mockContext.patternStore.add = vi.fn().mockImplementationOnce(() => {
         throw new Error("Pattern store error");
       });
 

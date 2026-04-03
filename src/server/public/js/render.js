@@ -463,19 +463,19 @@ function renderTabForm(tabName, data) {
   var container = document.getElementById(tabName + '-settings-form');
   if (!container) return;
 
-  var html = '';
-
   if (!data || Object.keys(data).length === 0) {
     // 빈 설정 탭에 대한 안내 메시지 표시
-    html = '<div class="flex flex-col items-center justify-center py-16 text-center">';
-    html += '<span class="material-symbols-outlined text-outline text-3xl mb-4">settings</span>';
-    html += '<span class="text-outline text-sm">' + t('noSettings') + '</span>';
-    html += '</div>';
-  } else {
-    for (var key in data) {
-      if (data.hasOwnProperty(key)) {
-        html += renderFormField(key, data[key], tabName + '.' + key);
-      }
+    container.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-center">' +
+      '<span class="material-symbols-outlined text-outline text-3xl mb-4">settings</span>' +
+      '<span class="text-outline text-sm">' + t('noSettings') + '</span>' +
+      '</div>';
+    return;
+  }
+
+  var html = '';
+  for (var key in data) {
+    if (data.hasOwnProperty(key)) {
+      html += renderFormField(key, data[key], tabName + '.' + key);
     }
   }
 

@@ -1,5 +1,6 @@
 import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync } from "fs";
 import { resolve } from "path";
+import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 
 const logger = getLogger();
@@ -31,11 +32,12 @@ export interface Job {
   isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
 }
 
-export class JobStore {
+export class JobStore extends EventEmitter {
   private dataDir: string;
   private cache: Map<string, Job> = new Map();
 
   constructor(dataDir: string) {
+    super();
     this.dataDir = resolve(dataDir, "jobs");
     mkdirSync(this.dataDir, { recursive: true });
     this.loadAll();
@@ -70,6 +72,7 @@ export class JobStore {
     };
     this.save(job);
     logger.info(`Job created: ${id}`);
+    this.emit('jobCreated', job);
     return job;
   }
 
@@ -80,8 +83,10 @@ export class JobStore {
   update(id: string, updates: Partial<Job>): Job | undefined {
     const job = this.get(id);
     if (!job) return undefined;
+    const previousJob = { ...job };
     Object.assign(job, updates);
     this.save(job);
+    this.emit('jobUpdated', job, previousJob);
     return job;
   }
 
@@ -129,9 +134,11 @@ export class JobStore {
   archive(id: string): boolean {
     const job = this.get(id);
     if (!job) return false;
+    const previousJob = { ...job };
     job.status = "archived";
     this.save(job);
     logger.info(`Job archived: ${id}`);
+    this.emit('jobArchived', job, previousJob);
     return true;
   }
 
@@ -162,10 +169,14 @@ export class JobStore {
   }
 
   remove(id: string): boolean {
+    const job = this.cache.get(id);
     try {
       unlinkSync(this.jobPath(id));
       this.cache.delete(id);
       logger.info(`Job deleted: ${id}`);
+      if (job) {
+        this.emit('jobDeleted', job);
+      }
       return true;
     } catch (err: any) {
       if (err?.code === "ENOENT") return false;

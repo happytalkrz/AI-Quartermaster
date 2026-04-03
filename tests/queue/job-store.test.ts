@@ -18,6 +18,85 @@ describe("JobStore", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
+  describe("Event Emission", () => {
+    it("should emit jobCreated event when a job is created", () => {
+      let emittedJob: any = null;
+      store.on('jobCreated', (job) => {
+        emittedJob = job;
+      });
+
+      const job = store.create(42, "test/repo");
+
+      expect(emittedJob).toBeTruthy();
+      expect(emittedJob.id).toBe(job.id);
+      expect(emittedJob.issueNumber).toBe(42);
+      expect(emittedJob.repo).toBe("test/repo");
+    });
+
+    it("should emit jobUpdated event when a job is updated", () => {
+      let emittedJob: any = null;
+      let emittedPreviousJob: any = null;
+
+      store.on('jobUpdated', (job, previousJob) => {
+        emittedJob = job;
+        emittedPreviousJob = previousJob;
+      });
+
+      const job = store.create(42, "test/repo");
+      store.update(job.id, { status: "running" });
+
+      expect(emittedJob).toBeTruthy();
+      expect(emittedJob.status).toBe("running");
+      expect(emittedPreviousJob.status).toBe("queued");
+    });
+
+    it("should emit jobDeleted event when a job is removed", () => {
+      let emittedJob: any = null;
+
+      store.on('jobDeleted', (job) => {
+        emittedJob = job;
+      });
+
+      const job = store.create(42, "test/repo");
+      const removed = store.remove(job.id);
+
+      expect(removed).toBe(true);
+      expect(emittedJob).toBeTruthy();
+      expect(emittedJob.id).toBe(job.id);
+    });
+
+    it("should emit jobArchived event when a job is archived", () => {
+      let emittedJob: any = null;
+      let emittedPreviousJob: any = null;
+
+      store.on('jobArchived', (job, previousJob) => {
+        emittedJob = job;
+        emittedPreviousJob = previousJob;
+      });
+
+      const job = store.create(42, "test/repo");
+      const archived = store.archive(job.id);
+
+      expect(archived).toBe(true);
+      expect(emittedJob).toBeTruthy();
+      expect(emittedJob.status).toBe("archived");
+      expect(emittedPreviousJob.status).toBe("queued");
+    });
+
+    it("should not emit jobDeleted event when removing non-existent job", () => {
+      let emittedJob: any = null;
+
+      store.on('jobDeleted', (job) => {
+        emittedJob = job;
+      });
+
+      const removed = store.remove("non-existent-id");
+
+      expect(removed).toBe(false);
+      expect(emittedJob).toBe(null);
+    });
+  });
+
   describe("shouldBlockRepickup", () => {
     it("should return false when no jobs exist for the issue", () => {
       const result = store.shouldBlockRepickup(42, "test/repo");

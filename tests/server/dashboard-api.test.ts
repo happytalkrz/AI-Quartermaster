@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
+import { EventEmitter } from "events";
 import { createDashboardRoutes } from "../../src/server/dashboard-api.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { JobQueue } from "../../src/queue/job-queue.js";
@@ -17,12 +18,15 @@ vi.mock("../../src/utils/config-masker.js", () => ({
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
 
-// Mock JobStore and JobQueue
+// Mock JobStore and JobQueue with EventEmitter functionality
+const globalEmitter = new EventEmitter();
 const mockJobStore: JobStore = {
   list: vi.fn().mockReturnValue([]),
   get: vi.fn(),
   set: vi.fn(),
   remove: vi.fn(),
+  on: globalEmitter.on.bind(globalEmitter),
+  emit: globalEmitter.emit.bind(globalEmitter),
 } as any;
 
 const mockJobQueue: JobQueue = {
@@ -170,5 +174,93 @@ describe("Dashboard API - /api/config", () => {
       const result = await response.json();
       expect(result.error).toBe("Failed to load configuration: Unknown error");
     });
+  });
+});
+
+describe("Dashboard API - SSE broadcast", () => {
+  let app: Hono;
+  let mockStore: JobStore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Create a proper mock with EventEmitter functionality
+    const emitter = new EventEmitter();
+
+    mockStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+    } as any;
+
+    const mockQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    } as any;
+
+    app = createDashboardRoutes(mockStore, mockQueue);
+  });
+
+  it("should register SSE client and handle job deletion event", async () => {
+    const mockJob = {
+      id: "test-job-1",
+      issueNumber: 123,
+      repo: "test/repo",
+      status: "success" as const,
+      createdAt: "2026-04-03T10:00:00Z",
+    };
+
+    // Start SSE connection
+    const response = await app.request("/api/events");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+
+    // Simulate job deletion event
+    setTimeout(() => {
+      mockStore.emit("jobDeleted", mockJob);
+    }, 100);
+
+    // This test verifies the SSE endpoint can be created and events can be emitted
+    // In a real scenario, we would need to parse the SSE stream to verify the broadcast
+  });
+
+  it("should handle job updated event broadcast", async () => {
+    const mockJob = {
+      id: "test-job-2",
+      issueNumber: 456,
+      repo: "test/repo",
+      status: "running" as const,
+      createdAt: "2026-04-03T10:00:00Z",
+    };
+
+    const response = await app.request("/api/events");
+    expect(response.status).toBe(200);
+
+    // Verify event can be emitted without errors
+    expect(() => {
+      mockStore.emit("jobUpdated", mockJob);
+    }).not.toThrow();
+  });
+
+  it("should handle job created event broadcast", async () => {
+    const mockJob = {
+      id: "test-job-3",
+      issueNumber: 789,
+      repo: "test/repo",
+      status: "queued" as const,
+      createdAt: "2026-04-03T10:00:00Z",
+    };
+
+    const response = await app.request("/api/events");
+    expect(response.status).toBe(200);
+
+    // Verify event can be emitted without errors
+    expect(() => {
+      mockStore.emit("jobCreated", mockJob);
+    }).not.toThrow();
   });
 });

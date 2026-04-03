@@ -352,6 +352,58 @@
       <span data-i18n="settings">Settings</span>
     </h2>
 
+    <!-- Add Project Form -->
+    <div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/20 mb-6">
+      <div class="flex items-center gap-3 p-6 border-b border-outline-variant/20">
+        <span class="material-symbols-outlined text-primary">add_circle</span>
+        <h3 class="text-lg font-headline font-bold text-on-surface" data-i18n="addProject">프로젝트 추가</h3>
+      </div>
+      <div class="p-6">
+        <form id="add-project-form" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Repository Path Field -->
+            <div class="space-y-2">
+              <label for="repo-path" class="text-sm font-bold text-on-surface/80" data-i18n="repositoryPath">저장소 경로</label>
+              <input
+                type="text"
+                id="repo-path"
+                name="repo"
+                class="w-full px-4 py-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors font-mono text-sm"
+                data-i18n-placeholder="repositoryPlaceholder"
+                placeholder="예: /home/user/my-project"
+                required
+              />
+            </div>
+            <!-- Trigger Label Field -->
+            <div class="space-y-2">
+              <label for="trigger-label" class="text-sm font-bold text-on-surface/80" data-i18n="triggerLabel">트리거 라벨</label>
+              <input
+                type="text"
+                id="trigger-label"
+                name="label"
+                class="w-full px-4 py-3 rounded-lg border border-outline-variant/30 bg-surface-container-lowest text-on-surface outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-colors font-mono text-sm"
+                data-i18n-placeholder="labelPlaceholder"
+                placeholder="예: implement"
+                required
+              />
+            </div>
+          </div>
+          <div class="flex justify-end pt-2">
+            <button
+              type="submit"
+              class="px-6 py-3 bg-primary/10 text-primary border border-primary/30 rounded-lg font-bold text-sm hover:bg-primary/20 transition-colors flex items-center gap-2 active:scale-95"
+            >
+              <span class="material-symbols-outlined text-sm">add</span>
+              <span data-i18n="add">추가</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Settings Content (populated by loadSettings() on navigation) -->
+    <div id="settings-content" class="space-y-6"></div>
+
     <!-- Settings Tab Navigation -->
     <div class="flex items-center gap-1 mb-8 bg-surface-container rounded-lg p-1 ring-1 ring-outline-variant/10 w-fit">
       <button class="settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors bg-primary/10 text-primary flex items-center gap-2"
@@ -373,37 +425,26 @@
 
     <!-- Settings Tab Panels -->
     <div class="settings-tab-content">
-      <!-- General Tab Panel -->
       <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20">
         <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
           <span class="material-symbols-outlined">tune</span>
           <span data-i18n="settings.general">General</span>
         </h3>
-        <div id="general-settings-form" class="space-y-4">
-          <!-- General settings form will be populated here -->
-        </div>
+        <div id="general-settings-form" class="space-y-4"></div>
       </div>
-
-      <!-- Safety Tab Panel -->
       <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20 hidden">
         <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
           <span class="material-symbols-outlined">security</span>
           <span data-i18n="settings.safety">Safety</span>
         </h3>
-        <div id="safety-settings-form" class="space-y-4">
-          <!-- Safety settings form will be populated here -->
-        </div>
+        <div id="safety-settings-form" class="space-y-4"></div>
       </div>
-
-      <!-- Review Tab Panel -->
       <div id="settings-tab-review" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20 hidden">
         <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
           <span class="material-symbols-outlined">rate_review</span>
           <span data-i18n="settings.review">Review</span>
         </h3>
-        <div id="review-settings-form" class="space-y-4">
-          <!-- Review settings form will be populated here -->
-        </div>
+        <div id="review-settings-form" class="space-y-4"></div>
       </div>
     </div>
 

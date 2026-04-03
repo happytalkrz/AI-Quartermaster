@@ -5,6 +5,7 @@ import {
   detectGitInfo,
   writeMinimalConfig,
   addProjectToConfig,
+  removeProjectFromConfig,
   initProject
 } from "../../src/config/loader.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
@@ -859,6 +860,144 @@ safety:
 
     expect(content).toContain("first/repo");
     expect(content).toContain("/first/path");
+  });
+});
+
+describe("removeProjectFromConfig", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should remove project from existing config", () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+# AQ Config
+general:
+  projectName: "test-project"
+
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+    baseBranch: "main"
+  - repo: "target/repo"
+    path: "/target/path"
+    baseBranch: "develop"
+    mode: "content"
+  - repo: "another/repo"
+    path: "/another/path"
+
+safety:
+  maxPhases: 5
+`);
+
+    removeProjectFromConfig(configPath, "target/repo");
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("existing/repo");
+    expect(content).toContain("another/repo");
+    expect(content).not.toContain("target/repo");
+    expect(content).not.toContain("/target/path");
+    expect(content).not.toContain("develop");
+    expect(content).toContain("# AQ Config");
+    expect(content).toContain("maxPhases: 5");
+  });
+
+  it("should do nothing when projects section doesn't exist", () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+general:
+  projectName: "test-project"
+
+safety:
+  maxPhases: 5
+`);
+
+    removeProjectFromConfig(configPath, "target/repo");
+
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).toContain("test-project");
+    expect(content).toContain("maxPhases: 5");
+  });
+
+  it("should do nothing when target project doesn't exist", () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+`);
+
+    removeProjectFromConfig(configPath, "nonexistent/repo");
+
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).toContain("existing/repo");
+    expect(content).toContain("/existing/path");
+  });
+
+  it("should preserve YAML formatting and comments", () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `# Main config
+general:
+  projectName: "test-project"
+
+# Projects section
+projects:
+  # First project
+  - repo: "keep/repo"
+    path: "/keep/path"
+  # Target project to remove
+  - repo: "remove/repo"
+    path: "/remove/path"
+    baseBranch: "develop"
+  # Last project
+  - repo: "last/repo"
+    path: "/last/path"
+
+# Safety config
+safety:
+  maxPhases: 10
+`);
+
+    removeProjectFromConfig(configPath, "remove/repo");
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("# Main config");
+    expect(content).toContain("# Projects section");
+    expect(content).toContain("# First project");
+    expect(content).toContain("# Last project");
+    expect(content).toContain("# Safety config");
+    expect(content).not.toContain("remove/repo");
+    expect(content).not.toContain("/remove/path");
+  });
+
+  it("should handle project with minimal fields", () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+projects:
+  - repo: "simple/repo"
+    path: "/simple/path"
+  - repo: "complex/repo"
+    path: "/complex/path"
+    baseBranch: "feature"
+    mode: "content"
+`);
+
+    removeProjectFromConfig(configPath, "simple/repo");
+
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).not.toContain("simple/repo");
+    expect(content).toContain("complex/repo");
+    expect(content).toContain("feature");
+    expect(content).toContain("content");
   });
 });
 

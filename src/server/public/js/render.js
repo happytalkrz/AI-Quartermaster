@@ -502,9 +502,16 @@ function renderProjectCard(project) {
   html += '<span class="material-symbols-outlined text-primary text-sm">folder</span>';
   html += '<span class="text-sm font-bold text-on-surface">' + esc(project.repo) + '</span>';
   html += '</div>';
+  html += '<div class="flex items-center gap-2">';
   if (project.mode) {
     html += '<span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold">' + esc(project.mode) + '</span>';
   }
+  if (project.id) {
+    html += '<button onclick="deleteProject(\'' + esc(project.id) + '\')" class="text-xs text-outline hover:text-[#f85149] hover:bg-[#f85149]/10 px-2 py-1 rounded transition-colors" title="' + t('delete') + '">';
+    html += '<span class="material-symbols-outlined text-xs">delete</span>';
+    html += '</button>';
+  }
+  html += '</div>';
   html += '</div>';
 
   html += '<div class="text-xs text-outline font-mono mb-2">' + esc(project.path) + '</div>';

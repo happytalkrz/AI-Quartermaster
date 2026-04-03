@@ -8,6 +8,17 @@ import { tmpdir } from "os";
 // Mock the checkpoint module
 vi.mock("../../src/pipeline/checkpoint.js", () => ({
   removeCheckpoint: vi.fn(),
+  loadCheckpoint: vi.fn(),
+}));
+
+// Mock the worktree manager module
+vi.mock("../../src/git/worktree-manager.js", () => ({
+  removeWorktree: vi.fn(),
+}));
+
+// Mock the config loader module
+vi.mock("../../src/config/loader.js", () => ({
+  loadConfig: vi.fn(),
 }));
 
 describe("JobQueue", () => {
@@ -336,6 +347,204 @@ describe("JobQueue", () => {
       const updatedJob = store.get(job!.id);
       expect(updatedJob?.status).toBe("success");
       expect(updatedJob?.error).toBeUndefined();
+    });
+  });
+
+  describe("Worktree cleanup on failure job re-enqueue", () => {
+    it("should clean up worktree when re-enqueuing failed job with checkpoint worktreePath", async () => {
+      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeWorktree } = await import("../../src/git/worktree-manager.js");
+      const { loadConfig } = await import("../../src/config/loader.js");
+
+      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
+      const removeWorktreeSpy = vi.mocked(removeWorktree);
+      const loadConfigSpy = vi.mocked(loadConfig);
+
+      // Mock loadCheckpoint to return checkpoint with worktreePath
+      const mockWorktreePath = "/test/worktree/path/issue-123-test-branch";
+      loadCheckpointSpy.mockReturnValue({
+        worktreePath: mockWorktreePath,
+        issueNumber: 123,
+        repo: "test/repo",
+        branchName: "aq/123-test-branch"
+      });
+
+      // Mock loadConfig to return valid GitConfig
+      loadConfigSpy.mockReturnValue({
+        git: { gitPath: "git" }
+      });
+
+      // Mock removeWorktree to resolve successfully
+      removeWorktreeSpy.mockResolvedValue();
+
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("pipeline failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Create initial failed job
+      const initialJob = queue.enqueue(123, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      const failedJob = store.get(initialJob!.id);
+      expect(failedJob?.status).toBe("failure");
+
+      // Clear previous calls
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      // Re-enqueue same issue - should trigger worktree cleanup
+      const newJob = queue.enqueue(123, "test/repo");
+      expect(newJob).toBeDefined();
+      expect(newJob?.id).not.toBe(initialJob?.id);
+
+      // Verify checkpoint loading was called
+      expect(loadCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        123
+      );
+
+      // Verify worktree removal was called with correct path
+      expect(removeWorktreeSpy).toHaveBeenCalledWith(
+        expect.any(Object), // GitConfig
+        mockWorktreePath,
+        expect.objectContaining({
+          cwd: expect.any(String),
+          force: true
+        })
+      );
+
+      // Verify checkpoint cleanup was called
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        123
+      );
+
+      // Verify original job was archived
+      const archivedJob = store.get(initialJob!.id);
+      expect(archivedJob?.status).toBe("archived");
+    });
+
+    it("should skip worktree cleanup when checkpoint has no worktreePath", async () => {
+      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeWorktree } = await import("../../src/git/worktree-manager.js");
+      const { loadConfig } = await import("../../src/config/loader.js");
+
+      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
+      const removeWorktreeSpy = vi.mocked(removeWorktree);
+      const loadConfigSpy = vi.mocked(loadConfig);
+
+      // Mock loadCheckpoint to return checkpoint without worktreePath
+      loadCheckpointSpy.mockReturnValue({
+        issueNumber: 456,
+        repo: "test/repo",
+        branchName: "aq/456-test-branch"
+        // no worktreePath
+      });
+
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("pipeline failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Create initial failed job
+      const initialJob = queue.enqueue(456, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      const failedJob = store.get(initialJob!.id);
+      expect(failedJob?.status).toBe("failure");
+
+      // Clear previous calls
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      // Re-enqueue same issue
+      const newJob = queue.enqueue(456, "test/repo");
+      expect(newJob).toBeDefined();
+
+      // Verify checkpoint loading was called
+      expect(loadCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        456
+      );
+
+      // Verify worktree removal was NOT called
+      expect(removeWorktreeSpy).not.toHaveBeenCalled();
+
+      // Verify checkpoint cleanup was still called
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        456
+      );
+    });
+
+    it("should continue when worktree cleanup fails during re-enqueue", async () => {
+      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeWorktree } = await import("../../src/git/worktree-manager.js");
+
+      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
+      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
+      const removeWorktreeSpy = vi.mocked(removeWorktree);
+
+      // Mock loadCheckpoint to return checkpoint with worktreePath
+      const mockWorktreePath = "/test/worktree/path/issue-789-test-branch";
+      loadCheckpointSpy.mockReturnValue({
+        worktreePath: mockWorktreePath,
+        issueNumber: 789,
+        repo: "test/repo",
+        branchName: "aq/789-test-branch"
+      });
+
+      // Mock removeWorktree to fail
+      removeWorktreeSpy.mockRejectedValue(new Error("Failed to remove worktree"));
+
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("pipeline failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Create initial failed job
+      const initialJob = queue.enqueue(789, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      const failedJob = store.get(initialJob!.id);
+      expect(failedJob?.status).toBe("failure");
+
+      // Clear previous calls
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      // Re-enqueue same issue - should continue despite worktree cleanup failure
+      const newJob = queue.enqueue(789, "test/repo");
+      expect(newJob).toBeDefined();
+      expect(newJob?.id).not.toBe(initialJob?.id);
+
+      // Verify worktree removal was attempted
+      expect(removeWorktreeSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        mockWorktreePath,
+        expect.objectContaining({ force: true })
+      );
+
+      // Verify checkpoint cleanup was still called despite worktree cleanup failure
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        789
+      );
+
+      // Verify original job was still archived
+      const archivedJob = store.get(initialJob!.id);
+      expect(archivedJob?.status).toBe("archived");
+
+      // Wait for new job to complete successfully
+      await new Promise(r => setTimeout(r, 50));
+      const completedNewJob = store.get(newJob!.id);
+      expect(completedNewJob?.status).toBe("success");
     });
   });
 

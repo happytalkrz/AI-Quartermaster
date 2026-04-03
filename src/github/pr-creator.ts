@@ -240,18 +240,15 @@ export async function checkPrConflict(
 
         if (diffResult.exitCode === 0) {
           // Parse diff output to extract conflict files
-          const diffLines = diffResult.stdout.split("\n");
+          const fileSet = new Set<string>();
           const filePattern = /^diff --git a\/(.+) b\/(.+)$/;
 
-          for (const line of diffLines) {
+          for (const line of diffResult.stdout.split("\n")) {
             const match = line.match(filePattern);
-            if (match) {
-              const filePath = match[1];
-              if (!conflictFiles.includes(filePath)) {
-                conflictFiles.push(filePath);
-              }
-            }
+            if (match) fileSet.add(match[1]);
           }
+
+          conflictFiles.push(...Array.from(fileSet));
         }
       } catch (diffError) {
         logger.warn(`Failed to get diff for PR #${prNumber}: ${diffError}`);

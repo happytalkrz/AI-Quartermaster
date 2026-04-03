@@ -179,22 +179,17 @@ export class IssuePoller {
   private buildConflictMessage(conflictInfo: PrConflictInfo): string {
     const { prNumber, conflictFiles, detectedAt, mergeStatus } = conflictInfo;
 
-    let message = `🚨 **PR #${prNumber} 머지 충돌 감지**\n\n`;
-    message += `**상태**: ${mergeStatus}\n`;
-    message += `**감지 시간**: ${detectedAt}\n\n`;
+    const filesList = conflictFiles.length > 0
+      ? `**충돌 파일(들)**:\n${conflictFiles.map(f => `- \`${f}\``).join("\n")}\n\n`
+      : "";
 
-    if (conflictFiles.length > 0) {
-      message += `**충돌 파일(들)**:\n`;
-      for (const file of conflictFiles) {
-        message += `- \`${file}\`\n`;
-      }
-      message += `\n`;
-    }
+    return `🚨 **PR #${prNumber} 머지 충돌 감지**
 
-    message += `베이스 브랜치의 변경으로 인해 이 PR에서 머지 충돌이 발생했습니다. `;
-    message += `충돌을 해결한 후 PR을 업데이트해 주세요.\n\n`;
-    message += `_자동 생성된 알림 — AQM PR 모니터링_`;
+**상태**: ${mergeStatus}
+**감지 시간**: ${detectedAt}
 
-    return message;
+${filesList}베이스 브랜치의 변경으로 인해 이 PR에서 머지 충돌이 발생했습니다. 충돌을 해결한 후 PR을 업데이트해 주세요.
+
+_자동 생성된 알림 — AQM PR 모니터링_`;
   }
 }

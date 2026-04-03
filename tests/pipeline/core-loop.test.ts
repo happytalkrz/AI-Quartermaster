@@ -834,10 +834,8 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TimeoutRecoveryPhase")];
       const plan = makePlan(phases);
 
-      // Simulate timeout on first attempt, success on retry
-      mockGeneratePlan
-        .mockRejectedValueOnce(new Error("Plan generation failed: Claude CLI timeout"))
-        .mockResolvedValueOnce(plan);
+      // generatePlan handles retries internally and returns success
+      mockGeneratePlan.mockResolvedValue(plan);
 
       mockSchedulePhases.mockReturnValue({
         success: true,
@@ -852,19 +850,15 @@ describe("runCoreLoop", () => {
       expect(result.phaseResults).toHaveLength(1);
       expect(result.phaseResults[0].phaseName).toBe("TimeoutRecoveryPhase");
 
-      // Should recover from timeout and succeed
-      expect(mockGeneratePlan).toHaveBeenCalledTimes(2);
+      // generatePlan is called once (retries are handled internally)
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should handle malformed plan generation responses", async () => {
       const validPlan = makePlan([makePhase(0, "ValidPhase")]);
 
-      // First attempt returns malformed plan, second returns valid plan
-      const malformedPlan = { ...validPlan, phases: [] }; // Invalid: no phases
-
-      mockGeneratePlan
-        .mockRejectedValueOnce(new Error("Plan generation failed: JSON 파싱 실패"))
-        .mockResolvedValueOnce(validPlan);
+      // generatePlan handles malformed responses internally and returns valid plan
+      mockGeneratePlan.mockResolvedValue(validPlan);
 
       mockSchedulePhases.mockReturnValue({
         success: true,
@@ -877,15 +871,15 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.phaseResults[0].phaseName).toBe("ValidPhase");
-      expect(mockGeneratePlan).toHaveBeenCalledTimes(2);
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should maintain error context across plan retry attempts", async () => {
       const phases = [makePhase(0, "ErrorContextPhase")];
       const plan = makePlan(phases);
 
-      // Mock generatePlan to succeed on first call, simulating internal retry success
-      mockGeneratePlan.mockResolvedValueOnce(plan);
+      // Mock generatePlan to succeed (it handles retry context internally)
+      mockGeneratePlan.mockResolvedValue(plan);
 
       mockSchedulePhases.mockReturnValue({
         success: true,

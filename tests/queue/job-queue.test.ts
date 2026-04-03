@@ -35,6 +35,20 @@ describe("JobQueue", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
+  // Helper to get and clear mocked functions
+  async function getMocks() {
+    const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const { removeWorktree } = await import("../../src/git/worktree-manager.js");
+    const { loadConfig } = await import("../../src/config/loader.js");
+
+    return {
+      removeCheckpoint: vi.mocked(removeCheckpoint),
+      loadCheckpoint: vi.mocked(loadCheckpoint),
+      removeWorktree: vi.mocked(removeWorktree),
+      loadConfig: vi.mocked(loadConfig),
+    };
+  }
+
   it("should enqueue and execute a job", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
     const queue = new JobQueue(store, 2, handler);
@@ -351,17 +365,28 @@ describe("JobQueue", () => {
   });
 
   describe("Worktree cleanup on failure job re-enqueue", () => {
-    it("should clean up worktree when re-enqueuing failed job with checkpoint worktreePath", async () => {
+    let removeCheckpointSpy: any;
+    let loadCheckpointSpy: any;
+    let removeWorktreeSpy: any;
+    let loadConfigSpy: any;
+
+    beforeEach(async () => {
       const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
       const { removeWorktree } = await import("../../src/git/worktree-manager.js");
       const { loadConfig } = await import("../../src/config/loader.js");
 
-      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
-      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
-      const removeWorktreeSpy = vi.mocked(removeWorktree);
-      const loadConfigSpy = vi.mocked(loadConfig);
+      removeCheckpointSpy = vi.mocked(removeCheckpoint);
+      loadCheckpointSpy = vi.mocked(loadCheckpoint);
+      removeWorktreeSpy = vi.mocked(removeWorktree);
+      loadConfigSpy = vi.mocked(loadConfig);
 
-      // Mock loadCheckpoint to return checkpoint with worktreePath
+      // Default mock implementations
+      loadCheckpointSpy.mockReturnValue(null);
+      loadConfigSpy.mockReturnValue({ git: { gitPath: "git" } });
+      removeWorktreeSpy.mockResolvedValue(undefined);
+    });
+
+    it("should clean up worktree when re-enqueuing failed job with checkpoint worktreePath", async () => {
       const mockWorktreePath = "/test/worktree/path/issue-123-test-branch";
       loadCheckpointSpy.mockReturnValue({
         worktreePath: mockWorktreePath,
@@ -369,14 +394,6 @@ describe("JobQueue", () => {
         repo: "test/repo",
         branchName: "aq/123-test-branch"
       });
-
-      // Mock loadConfig to return valid GitConfig
-      loadConfigSpy.mockReturnValue({
-        git: { gitPath: "git" }
-      });
-
-      // Mock removeWorktree to resolve successfully
-      removeWorktreeSpy.mockResolvedValue();
 
       const handler: JobHandler = vi.fn()
         .mockRejectedValueOnce(new Error("pipeline failure"))
@@ -390,7 +407,7 @@ describe("JobQueue", () => {
       const failedJob = store.get(initialJob!.id);
       expect(failedJob?.status).toBe("failure");
 
-      // Clear previous calls
+      // Clear previous calls before re-enqueueing
       loadCheckpointSpy.mockClear();
       removeWorktreeSpy.mockClear();
       removeCheckpointSpy.mockClear();
@@ -428,21 +445,10 @@ describe("JobQueue", () => {
     });
 
     it("should skip worktree cleanup when checkpoint has no worktreePath", async () => {
-      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
-      const { removeWorktree } = await import("../../src/git/worktree-manager.js");
-      const { loadConfig } = await import("../../src/config/loader.js");
-
-      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
-      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
-      const removeWorktreeSpy = vi.mocked(removeWorktree);
-      const loadConfigSpy = vi.mocked(loadConfig);
-
-      // Mock loadCheckpoint to return checkpoint without worktreePath
       loadCheckpointSpy.mockReturnValue({
         issueNumber: 456,
         repo: "test/repo",
         branchName: "aq/456-test-branch"
-        // no worktreePath
       });
 
       const handler: JobHandler = vi.fn()
@@ -451,13 +457,11 @@ describe("JobQueue", () => {
 
       const queue = new JobQueue(store, 1, handler);
 
-      // Create initial failed job
       const initialJob = queue.enqueue(456, "test/repo");
       await new Promise(r => setTimeout(r, 50));
       const failedJob = store.get(initialJob!.id);
       expect(failedJob?.status).toBe("failure");
 
-      // Clear previous calls
       loadCheckpointSpy.mockClear();
       removeWorktreeSpy.mockClear();
       removeCheckpointSpy.mockClear();
@@ -483,14 +487,6 @@ describe("JobQueue", () => {
     });
 
     it("should continue when worktree cleanup fails during re-enqueue", async () => {
-      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
-      const { removeWorktree } = await import("../../src/git/worktree-manager.js");
-
-      const removeCheckpointSpy = vi.mocked(removeCheckpoint);
-      const loadCheckpointSpy = vi.mocked(loadCheckpoint);
-      const removeWorktreeSpy = vi.mocked(removeWorktree);
-
-      // Mock loadCheckpoint to return checkpoint with worktreePath
       const mockWorktreePath = "/test/worktree/path/issue-789-test-branch";
       loadCheckpointSpy.mockReturnValue({
         worktreePath: mockWorktreePath,
@@ -498,8 +494,6 @@ describe("JobQueue", () => {
         repo: "test/repo",
         branchName: "aq/789-test-branch"
       });
-
-      // Mock removeWorktree to fail
       removeWorktreeSpy.mockRejectedValue(new Error("Failed to remove worktree"));
 
       const handler: JobHandler = vi.fn()

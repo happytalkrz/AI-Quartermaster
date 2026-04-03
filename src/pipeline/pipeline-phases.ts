@@ -254,6 +254,7 @@ export async function executeCoreLoopPhase(
     skillsContext: envResult.skillsContext,
     dataDir,
     jobLogger: jl,
+    progressCallback: input.progressCallback,
     previousPhaseResults: input.resumeFrom?.phaseResults?.map(r => ({
       phaseIndex: r.phaseIndex ?? 0,
       phaseName: r.phaseName ?? "",

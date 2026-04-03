@@ -17,6 +17,7 @@ export interface OrchestratorInput {
   jobLogger?: JobLogger;
   resumeFrom?: PipelineCheckpoint;
   isRetry?: boolean;     // true if this is a retry of a previously failed job
+  progressCallback?: import("../types/pipeline.js").ProgressCallback; // CLI용 진행률 콜백
 }
 
 export interface OrchestratorResult {

@@ -11,6 +11,7 @@ import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
+import { printResult } from "./result-reporter.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
@@ -85,6 +86,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       config,
       startTime
     );
+
+    // Print pipeline results to console
+    printResult(finalResult.report);
 
     return {
       success: true,

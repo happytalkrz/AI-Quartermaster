@@ -376,96 +376,71 @@ export function updateProjectInConfig(configPath: string, targetRepo: string, up
   const lines = content.split('\n');
 
   const projectsIndex = lines.findIndex(line => line.match(/^(\s*)projects\s*:\s*$/));
-
   if (projectsIndex === -1) {
     throw new Error(`No projects section found in config`);
   }
 
-  const projectsIndent = lines[projectsIndex].match(/^(\s*)/)![1];
-  const itemIndent = projectsIndent + '  ';
-  let projectStartIndex = -1;
-  let projectEndIndex = -1;
+  const indent = lines[projectsIndex].match(/^(\s*)/)![1];
+  const itemIndent = indent + '  ';
+  const fieldIndent = itemIndent + '  ';
 
+  let projectStart = -1;
+  let projectEnd = -1;
+
+  // Find target project
   for (let i = projectsIndex + 1; i < lines.length; i++) {
     const line = lines[i];
-    const trimmedLine = line.trim();
+    const trimmed = line.trim();
 
-    if (trimmedLine === '') continue;
-
-    if (!line.startsWith(itemIndent) && trimmedLine.match(/^\w+\s*:/)) {
-      break;
-    }
+    if (trimmed === '') continue;
+    if (!line.startsWith(itemIndent) && trimmed.match(/^\w+\s*:/)) break;
 
     if (line.startsWith(itemIndent) && line.includes('- repo:')) {
-      const repoMatch = line.match(/- repo:\s*["'](.+?)["']/);
-      if (repoMatch && repoMatch[1] === targetRepo) {
-        projectStartIndex = i;
-        projectEndIndex = i;
+      const match = line.match(/- repo:\s*["'](.+?)["']/);
+      if (match?.[1] !== targetRepo) continue;
 
-        for (let j = i + 1; j < lines.length; j++) {
-          const nextLine = lines[j];
-          const nextTrimmed = nextLine.trim();
+      projectStart = i;
+      projectEnd = i;
 
-          if (nextTrimmed === '') continue;
+      // Find project end
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j];
+        const nextTrimmed = nextLine.trim();
 
-          if (nextLine.startsWith(itemIndent) && nextLine.includes('- repo:')) {
-            break;
-          }
+        if (nextTrimmed === '') continue;
+        if (nextLine.startsWith(itemIndent) && nextLine.includes('- repo:')) break;
+        if (!nextLine.startsWith(itemIndent) && nextTrimmed.match(/^\w+\s*:/)) break;
 
-          if (!nextLine.startsWith(itemIndent) && nextTrimmed.match(/^\w+\s*:/)) {
-            break;
-          }
-
-          if (nextLine.startsWith(itemIndent + '  ')) {
-            projectEndIndex = j;
-          } else {
-            break;
-          }
+        if (nextLine.startsWith(fieldIndent)) {
+          projectEnd = j;
+        } else {
+          break;
         }
-        break;
       }
+      break;
     }
   }
 
-  if (projectStartIndex === -1 || projectEndIndex === -1) {
+  if (projectStart === -1) {
     throw new Error(`Project "${targetRepo}" not found in config`);
   }
 
-  // 프로젝트 범위 내에서 각 필드를 업데이트하거나 추가
-  const fieldIndent = itemIndent + '  ';
-  const projectLines = lines.slice(projectStartIndex, projectEndIndex + 1);
+  const projectLines = lines.slice(projectStart, projectEnd + 1);
 
-  // 업데이트할 필드들
-  const fieldsToUpdate: Array<{ field: keyof Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>; value: string | undefined }> = [
-    { field: 'path', value: updates.path },
-    { field: 'baseBranch', value: updates.baseBranch },
-    { field: 'mode', value: updates.mode }
-  ];
+  // Update or add fields
+  Object.entries(updates).forEach(([field, value]) => {
+    if (value === undefined) return;
 
-  for (const { field, value } of fieldsToUpdate) {
-    if (value === undefined) continue;
-
-    // 해당 필드가 이미 있는지 확인
-    let fieldLineIndex = -1;
-    for (let i = 1; i < projectLines.length; i++) { // repo 라인(index 0) 제외
-      const line = projectLines[i];
-      if (line.includes(`${field}:`)) {
-        fieldLineIndex = i;
-        break;
-      }
-    }
+    const fieldLineIndex = projectLines.findIndex((line, i) => i > 0 && line.includes(`${field}:`));
 
     if (fieldLineIndex !== -1) {
-      // 기존 필드 업데이트
       projectLines[fieldLineIndex] = `${fieldIndent}${field}: "${value}"`;
     } else {
-      // 새 필드 추가 (repo 라인 다음에)
       projectLines.splice(1, 0, `${fieldIndent}${field}: "${value}"`);
     }
-  }
+  });
 
-  // 원본 배열에 업데이트된 프로젝트 라인들 적용
-  lines.splice(projectStartIndex, projectEndIndex - projectStartIndex + 1, ...projectLines);
+  lines.splice(projectStart, projectEnd - projectStart + 1, ...projectLines);
   writeFileSync(configPath, lines.join('\n'), 'utf-8');
 }
 

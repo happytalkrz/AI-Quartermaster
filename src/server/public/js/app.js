@@ -340,76 +340,60 @@ function showProjectMessage(message, type) {
   }, config.timeout);
 }
 
+function createModalField(label, name, value, readonly) {
+  var inputClass = 'w-full border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none';
+  var readonlyClass = readonly ? 'bg-surface-container-high/50 cursor-not-allowed' : 'bg-surface-container-high';
+  var readonlyAttr = readonly ? ' readonly' : '';
+  return '<div>' +
+    '<label class="block text-sm font-bold text-on-surface mb-2">' + label + '</label>' +
+    '<input type="text" name="' + name + '" value="' + esc(value) + '"' + readonlyAttr + ' class="' + inputClass + ' ' + readonlyClass + '">' +
+    '</div>';
+}
+
 function editProject(repo) {
   if (!currentConfig || !currentConfig.projects) return;
 
-  // Find the project in the current config
   var project = currentConfig.projects.find(function(p) { return p.repo === repo; });
   if (!project) {
     showProjectMessage('프로젝트를 찾을 수 없습니다.', 'error');
     return;
   }
 
-  // Create edit modal HTML
-  var modalId = 'edit-project-modal';
-  var existingModal = document.getElementById(modalId);
+  var existingModal = document.getElementById('edit-project-modal');
   if (existingModal) existingModal.remove();
 
-  var modalHtml = '<div id="' + modalId + '" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">';
-  modalHtml += '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20">';
-  modalHtml += '<div class="flex justify-between items-center mb-4">';
-  modalHtml += '<h3 class="text-lg font-bold text-on-surface">프로젝트 편집</h3>';
-  modalHtml += '<button onclick="closeEditProjectModal()" class="text-outline hover:text-on-surface">';
-  modalHtml += '<span class="material-symbols-outlined">close</span>';
-  modalHtml += '</button>';
-  modalHtml += '</div>';
-
-  modalHtml += '<form id="edit-project-form" class="space-y-4">';
-  modalHtml += '<div>';
-  modalHtml += '<label class="block text-sm font-bold text-on-surface mb-2">저장소 (owner/repo)</label>';
-  modalHtml += '<input type="text" name="repo" value="' + esc(project.repo) + '" readonly class="w-full bg-surface-container-high/50 border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-outline cursor-not-allowed">';
-  modalHtml += '</div>';
-
-  modalHtml += '<div>';
-  modalHtml += '<label class="block text-sm font-bold text-on-surface mb-2">로컬 경로</label>';
-  modalHtml += '<input type="text" name="path" value="' + esc(project.path) + '" class="w-full bg-surface-container-high border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none">';
-  modalHtml += '</div>';
-
+  var fieldsHtml = createModalField('저장소 (owner/repo)', 'repo', project.repo, true);
+  fieldsHtml += createModalField('로컬 경로', 'path', project.path, false);
   if (project.baseBranch !== undefined) {
-    modalHtml += '<div>';
-    modalHtml += '<label class="block text-sm font-bold text-on-surface mb-2">기본 브랜치</label>';
-    modalHtml += '<input type="text" name="baseBranch" value="' + esc(project.baseBranch || '') + '" class="w-full bg-surface-container-high border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none">';
-    modalHtml += '</div>';
+    fieldsHtml += createModalField('기본 브랜치', 'baseBranch', project.baseBranch || '', false);
   }
-
   if (project.mode !== undefined) {
-    modalHtml += '<div>';
-    modalHtml += '<label class="block text-sm font-bold text-on-surface mb-2">모드</label>';
-    modalHtml += '<input type="text" name="mode" value="' + esc(project.mode || '') + '" class="w-full bg-surface-container-high border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none">';
-    modalHtml += '</div>';
+    fieldsHtml += createModalField('모드', 'mode', project.mode || '', false);
   }
 
-  modalHtml += '<div class="flex gap-2 pt-4">';
-  modalHtml += '<button type="submit" class="flex-1 bg-primary text-on-primary font-bold py-2 px-4 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">';
-  modalHtml += '<span class="material-symbols-outlined text-sm">save</span>';
-  modalHtml += '<span>저장</span>';
-  modalHtml += '</button>';
-  modalHtml += '<button type="button" onclick="closeEditProjectModal()" class="px-4 py-2 border border-outline-variant/30 rounded-lg text-outline hover:bg-surface-container-high transition-colors">취소</button>';
-  modalHtml += '</div>';
-  modalHtml += '</form>';
-  modalHtml += '</div>';
-  modalHtml += '</div>';
+  var modalHtml = '<div id="edit-project-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">' +
+    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20">' +
+    '<div class="flex justify-between items-center mb-4">' +
+    '<h3 class="text-lg font-bold text-on-surface">프로젝트 편집</h3>' +
+    '<button onclick="closeEditProjectModal()" class="text-outline hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>' +
+    '</div>' +
+    '<form id="edit-project-form" class="space-y-4">' +
+    fieldsHtml +
+    '<div class="flex gap-2 pt-4">' +
+    '<button type="submit" class="flex-1 bg-primary text-on-primary font-bold py-2 px-4 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"><span class="material-symbols-outlined text-sm">save</span><span>저장</span></button>' +
+    '<button type="button" onclick="closeEditProjectModal()" class="px-4 py-2 border border-outline-variant/30 rounded-lg text-outline hover:bg-surface-container-high transition-colors">취소</button>' +
+    '</div>' +
+    '</form>' +
+    '</div>' +
+    '</div>';
 
-  // Add modal to DOM
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-  // Add form submit handler
   document.getElementById('edit-project-form').addEventListener('submit', function(e) {
     e.preventDefault();
     submitEditProject(repo);
   });
 
-  // Focus first input
   var firstInput = document.querySelector('#edit-project-form input[name="path"]');
   if (firstInput) firstInput.focus();
 }
@@ -426,15 +410,12 @@ function submitEditProject(repo) {
   var formData = new FormData(form);
   var updates = {};
 
-  // Collect only the fields that can be updated (excluding repo)
-  var path = formData.get('path');
-  if (path) updates.path = path;
-
-  var baseBranch = formData.get('baseBranch');
-  if (baseBranch !== null) updates.baseBranch = baseBranch;
-
-  var mode = formData.get('mode');
-  if (mode !== null) updates.mode = mode;
+  ['path', 'baseBranch', 'mode'].forEach(function(field) {
+    var value = formData.get(field);
+    if (field === 'path' ? value : value !== null) {
+      updates[field] = value;
+    }
+  });
 
   // Show loading state on submit button
   var submitButton = form.querySelector('button[type="submit"]');

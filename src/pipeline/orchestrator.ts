@@ -14,6 +14,8 @@ import { runFinalValidation } from "./final-validator.js";
 import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
+import { runReviewPhase, runSimplifyPhase, buildReviewVars } from "./pipeline-review.js";
+import type { ReviewContext, SimplifyContext } from "./pipeline-review.js";
 import { getDiffContent } from "../git/diff-collector.js";
 import { validateBeforePush } from "../safety/safety-checker.js";
 import { createCheckpoint, rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
@@ -280,250 +282,66 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
 
     // === REVIEWING: analyst + 3-round review ===
-    type ReviewVars = {
-      issue: { number: string; title: string; body: string };
-      plan: { summary: string };
-      diff: { full: string };
-      config: { testCommand: string; lintCommand: string };
-      skillsContext: string;
+    jl?.setProgress(PROGRESS_REVIEW_START);
+
+    const reviewContext: ReviewContext = {
+      issue,
+      coreResult,
+      gitConfig,
+      project,
+      worktreePath: worktreePath!,
+      promptsDir,
+      skillsContext,
+      jl,
+      timer,
+      checkpoint
     };
-    const buildReviewVars = async (): Promise<ReviewVars> => ({
-      issue: { number: String(issueNumber), title: issue.title, body: issue.body },
-      plan: { summary: coreResult.plan.problemDefinition },
-      diff: { full: await getDiffContent(gitConfig, project.baseBranch, { cwd: worktreePath! }) },
-      config: { testCommand: project.commands.test, lintCommand: project.commands.lint },
-      skillsContext: skillsContext,
-    });
-    let reviewVariables: ReviewVars | undefined;
 
-    if (!preset.skipReview) {
-      if (isPastState(state, "REVIEWING")) {
-        logger.info(`[SKIP] PLAN_GENERATED → REVIEWING (already done)`);
-      } else {
-        timer.assertNotExpired("review");
-        state = "REVIEWING";
-        logger.info("[REVIEWING] Starting analyst and review rounds...");
-        jl?.setStep("요구사항 대조 분석 중...");
-        jl?.setProgress(PROGRESS_REVIEW_START);
+    const reviewResult = await runReviewPhase(reviewContext, preset, state, isPastState);
 
-        reviewVariables = await buildReviewVars();
-
-        // === Phase 1: Requirements Analysis ===
-        const analystTemplatePath = resolve(promptsDir, "analyst-requirements.md");
-        let analystResult: AnalystResult | undefined;
-
-        if (existsSync(analystTemplatePath)) {
-          analystResult = await runAnalyst({
-            promptsDir,
-            claudeConfig: project.commands.claudeCli,
-            cwd: worktreePath!,
-            variables: reviewVariables,
-          });
-          jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
-        } else {
-          logger.info("[REVIEWING] Analyst template not found, skipping requirements analysis");
-        }
-
-        // === Phase 2: Code Review Rounds ===
-        jl?.setStep("리뷰 진행 중...");
-        let reviewResult: ReviewPipelineResult = await runReviews({
-          reviewConfig: project.review,
-          claudeConfig: project.commands.claudeCli,
-          promptsDir,
-          cwd: worktreePath!,
-          variables: reviewVariables,
-        });
-
-        if (analystResult) {
-          reviewResult.analyst = analystResult;
-        }
-
-        for (const round of reviewResult.rounds) {
-          jl?.log(`리뷰 "${round.roundName}": ${round.verdict}`);
-        }
-
-        const hasCriticalAnalystIssues = analystResult?.findings.some(f =>
-          f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-        ) || false;
-
-        if (hasCriticalAnalystIssues || !reviewResult.allPassed) {
-          const maxRetries = project.safety.maxRetries;
-          let retrySuccess = false;
-          const fixAttempts: ReviewFixAttempt[] = [];
-
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            // Extract findings for this attempt
-            const analystFindings = analystResult?.findings.filter(f =>
-              f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-            ) || [];
-            const reviewFindings = reviewResult.rounds.flatMap(round =>
-              round.findings.filter(f => f.severity === "error")
-            );
-
-            const allFindings = [...analystFindings, ...reviewFindings];
-            const findingsSummary = allFindings.map(f => f.message).join(", ");
-
-            logger.info(`[REVIEWING] Retry ${attempt}/${maxRetries} — fixing: ${findingsSummary}`);
-            jl?.log(`리뷰 실패 수정 시도 ${attempt}/${maxRetries}: ${findingsSummary}`);
-            jl?.setStep(`리뷰 오류 수정 중 (${attempt}/${maxRetries})...`);
-
-            // Prepare fix prompt
-            const details = [];
-            if (hasCriticalAnalystIssues) {
-              details.push("=== Requirements Analysis Issues ===");
-              details.push(...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`));
-            }
-            if (!reviewResult.allPassed) {
-              details.push("=== Code Review Issues ===");
-              details.push(...reviewFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`));
-            }
-
-            const fixPrompt = [
-              "The following review issues were found. Fix the errors only — do not add new features or refactor unrelated code.",
-              "",
-              details.join("\n"),
-            ].join("\n");
-
-            // Run Claude with fallback model
-            const claudeConfig = configForTask(project.commands.claudeCli, "fallback");
-            let fixSuccess = false;
-            let fixError: string | undefined;
-
-            try {
-              await runClaude({
-                prompt: fixPrompt,
-                cwd: worktreePath!,
-                config: claudeConfig,
-              });
-
-              await autoCommitIfDirty(gitConfig.gitPath, worktreePath!, `fix: review 오류 수정 (retry ${attempt})`);
-
-              // Re-run reviews
-              if (!reviewVariables) {
-                reviewVariables = await buildReviewVars();
-              }
-
-              const retryReviewResult = await runReviews({
-                reviewConfig: project.review,
-                claudeConfig: project.commands.claudeCli,
-                promptsDir,
-                cwd: worktreePath!,
-                variables: reviewVariables,
-              });
-
-              let retryAnalystResult: AnalystResult | undefined;
-              if (analystResult) {
-                retryAnalystResult = await runAnalyst({
-                  promptsDir,
-                  claudeConfig: project.commands.claudeCli,
-                  cwd: worktreePath!,
-                  variables: reviewVariables,
-                });
-              }
-
-              const retryHasCriticalAnalystIssues = retryAnalystResult?.findings.some(f =>
-                f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-              ) || false;
-
-              fixSuccess = !retryHasCriticalAnalystIssues && retryReviewResult.allPassed;
-
-              if (fixSuccess) {
-                logger.info(`[REVIEWING] Passed after retry ${attempt}`);
-                jl?.log(`리뷰 통과 (retry ${attempt})`);
-                reviewResult = { ...retryReviewResult, fixAttempts };
-                if (retryAnalystResult) {
-                  reviewResult.analyst = retryAnalystResult;
-                }
-                retrySuccess = true;
-              } else {
-                // Update for next iteration
-                reviewResult = retryReviewResult;
-                analystResult = retryAnalystResult;
-                for (const round of reviewResult.rounds) {
-                  jl?.log(`리뷰 "${round.roundName}": ${round.verdict} (retry ${attempt})`);
-                }
-              }
-            } catch (error) {
-              fixError = error instanceof Error ? error.message : String(error);
-              logger.error(`[REVIEWING] Fix attempt ${attempt} failed: ${fixError}`);
-            }
-
-            // Record fix attempt
-            fixAttempts.push({
-              attempt,
-              findingsSnapshot: {
-                analystFindings,
-                reviewFindings,
-              },
-              fixResult: {
-                success: fixSuccess,
-                filesModified: [],
-                summary: fixSuccess ? `Fixed ${allFindings.length} issues` : `Fix failed: ${fixError}`,
-                error: fixError,
-              },
-            });
-
-            if (fixSuccess) {
-              break;
-            }
-          }
-
-          if (!retrySuccess) {
-            const finalFindings = [
-              ...(analystResult?.findings.filter(f => f.severity === "error") || []),
-              ...reviewResult.rounds.flatMap(round => round.findings.filter(f => f.severity === "error"))
-            ];
-            const finalSummary = finalFindings.map(f => f.message).join(", ");
-
-            logger.error(`[REVIEWING] Failed after ${maxRetries} retries: ${finalSummary}`);
-            jl?.log(`실패: Review failed after ${maxRetries} retries: ${finalSummary}`);
-            jl?.setStep("실패");
-
-            // Add fix attempts to final result
-            reviewResult.fixAttempts = fixAttempts;
-
-            checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-            const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
-            printResult(report);
-            saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-            return {
-              success: false,
-              state: "FAILED",
-              error: `Review failed after ${maxRetries} retries: ${finalSummary}`,
-              report
-            };
-          }
-        }
-
-        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-      }
+    if (!reviewResult.success) {
+      const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+      printResult(report);
+      saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
+      return {
+        success: false,
+        state: "FAILED",
+        error: reviewResult.error,
+        report
+      };
     }
 
-    // === SIMPLIFYING ===
-    if (!preset.skipSimplify && project.review.simplify.enabled) {
-      if (isPastState(state, "SIMPLIFYING")) {
-        logger.info(`[SKIP] REVIEWING → SIMPLIFYING (already done)`);
-      } else {
-        timer.assertNotExpired("simplify");
-        state = "SIMPLIFYING";
-        logger.info("[SIMPLIFYING] Running code simplification...");
-        jl?.setStep("코드 간소화 중...");
-        jl?.setProgress(PROGRESS_SIMPLIFY_START);
-        if (!reviewVariables) {
-          reviewVariables = await buildReviewVars();
-        }
-        await runSimplify({
-          promptTemplate: project.review.simplify.promptTemplate,
-          promptsDir,
-          claudeConfig: project.commands.claudeCli,
-          cwd: worktreePath!,
-          testCommand: project.commands.test,
-          variables: reviewVariables,
-          gitPath: gitConfig.gitPath,
-        });
+    const reviewVariables = reviewResult.reviewVariables;
+    state = "REVIEWING";
 
-        checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
+    // === SIMPLIFYING ===
+    if (reviewVariables) {
+      const simplifyContext: SimplifyContext = {
+        project,
+        worktreePath: worktreePath!,
+        promptsDir,
+        reviewVariables,
+        gitConfig,
+        jl,
+        timer,
+        checkpoint
+      };
+
+      const simplifyResult = await runSimplifyPhase(simplifyContext, preset, state, isPastState);
+
+      if (!simplifyResult.success) {
+        const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+        printResult(report);
+        saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
+        return {
+          success: false,
+          state: "FAILED",
+          error: simplifyResult.error,
+          report
+        };
       }
+
+      state = "SIMPLIFYING";
     }
 
     // === FINAL_VALIDATING ===

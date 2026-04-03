@@ -61,6 +61,14 @@ export interface ReviewFixAttempt {
   };
 }
 
+export interface ReviewVariables {
+  issue: { number: string; title: string; body: string };
+  plan: { summary: string };
+  diff: { full: string };
+  config: { testCommand: string; lintCommand: string };
+  skillsContext: string;
+}
+
 export interface ReviewPipelineResult {
   analyst?: AnalystResult;
   rounds: ReviewResult[];

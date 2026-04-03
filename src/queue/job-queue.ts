@@ -179,28 +179,20 @@ export class JobQueue {
 
       // Step 1: Remove worktree if exists
       if (checkpoint.worktreePath) {
-        try {
-          logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
-          Promise.resolve(removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true }))
-            .catch(worktreeErr => {
-              logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
-            });
-        } catch (err) {
-          logger.warn(`Error during worktree cleanup for ${checkpoint.worktreePath}: ${err}`);
-        }
+        logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
+        Promise.resolve(removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true }))
+          .catch(worktreeErr => {
+            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
+          });
       }
 
       // Step 2: Delete remote branch if exists
       if (checkpoint.branchName) {
-        try {
-          logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
-          Promise.resolve(deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot }))
-            .catch(branchErr => {
-              logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${branchErr}`);
-            });
-        } catch (err) {
-          logger.warn(`Error during remote branch deletion for ${checkpoint.branchName}: ${err}`);
-        }
+        logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
+        Promise.resolve(deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot }))
+          .catch(branchErr => {
+            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${branchErr}`);
+          });
       }
     }
 

@@ -727,6 +727,10 @@ describe("JobQueue", () => {
       deleteRemoteBranchSpy.mockClear();
       removeCheckpointSpy.mockClear();
 
+      // Restore mock return values after clear
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
       // Re-enqueue should trigger cleanupFailedJobArtifacts
       queue.enqueue(123, "test/repo");
 
@@ -770,6 +774,9 @@ describe("JobQueue", () => {
       deleteRemoteBranchSpy.mockClear();
       removeCheckpointSpy.mockClear();
 
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
       queue.enqueue(456, "test/repo");
 
       expect(removeWorktreeSpy).not.toHaveBeenCalled();
@@ -795,6 +802,9 @@ describe("JobQueue", () => {
       removeWorktreeSpy.mockClear();
       deleteRemoteBranchSpy.mockClear();
       removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
 
       queue.enqueue(789, "test/repo");
 
@@ -824,6 +834,9 @@ describe("JobQueue", () => {
       deleteRemoteBranchSpy.mockClear();
       removeCheckpointSpy.mockClear();
 
+      removeWorktreeSpy.mockRejectedValue(new Error("Failed to remove worktree"));
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
       queue.enqueue(111, "test/repo");
 
       // Should continue despite worktree removal failure
@@ -852,6 +865,9 @@ describe("JobQueue", () => {
       removeWorktreeSpy.mockClear();
       deleteRemoteBranchSpy.mockClear();
       removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockRejectedValue(new Error("Failed to delete remote branch"));
 
       queue.enqueue(222, "test/repo");
 

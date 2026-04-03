@@ -252,11 +252,11 @@ function extractFilePathsFromIssue(issueBody: string): string[] {
   // 일반적인 파일 경로 패턴들
   const patterns = [
     // src/path/to/file.ts 형태
-    /(?:^|\s)([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
+    /(?:^|\s)([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
     // `src/path/to/file.ts` 형태 (백틱으로 감싸진)
-    /`([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)`/g,
+    /`([a-zA-Z0-9_-]+\/[a-zA-Z0-9_\-/]*\.[a-zA-Z0-9]+)`/g,
     // ./src/path/to/file.ts 형태
-    /(?:^|\s)(\.[\/][a-zA-Z0-9_\-\/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
+    /(?:^|\s)(\.[/][a-zA-Z0-9_\-/]*\.[a-zA-Z0-9]+)(?:\s|$)/g,
   ];
 
   for (const pattern of patterns) {

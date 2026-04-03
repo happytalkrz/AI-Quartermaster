@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig } from "../config/loader.js";
+import { loadConfig, updateConfigSection } from "../config/loader.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 
 // In-memory session token store: token → expiry timestamp
@@ -123,6 +123,38 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+    }
+  });
+
+  // Update configuration
+  api.put("/api/config", async (c) => {
+    try {
+      const body = await c.req.json();
+      const projectRoot = process.cwd();
+
+      // Validate request body structure
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+
+      // Extract updates from request body
+      // Body should contain config sections to update (e.g., { general: {...}, safety: {...} })
+      const updates = body;
+
+      // Update config using the utility function
+      updateConfigSection(projectRoot, updates);
+
+      // Return success response
+      return c.json({ success: true, message: "Configuration updated successfully" });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+
+      // Check if it's a validation error (400) or file system error (500)
+      if (message.includes("validation") || message.includes("Invalid") || message.includes("not found")) {
+        return c.json({ error: `Configuration validation failed: ${message}` }, 400);
+      }
+
+      return c.json({ error: `Failed to update configuration: ${message}` }, 500);
     }
   });
 

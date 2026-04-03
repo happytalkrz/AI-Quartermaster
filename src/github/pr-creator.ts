@@ -128,7 +128,7 @@ export async function enableAutoMerge(
   prNumber: number,
   repo: string,
   mergeMethod: MergeMethod,
-  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean; deleteBranch?: boolean }
 ): Promise<boolean> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -149,11 +149,12 @@ export async function enableAutoMerge(
   }
 
   // Enable auto-merge
-  const mergeResult = await runCli(
-    ghPath,
-    ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`],
-    {}
-  );
+  const mergeArgs = ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`];
+  if (options.deleteBranch) {
+    mergeArgs.push("--delete-branch");
+  }
+
+  const mergeResult = await runCli(ghPath, mergeArgs, {});
   if (mergeResult.exitCode !== 0) {
     logger.warn(`Failed to enable auto-merge on PR #${prNumber}: ${mergeResult.stderr}`);
     return false;

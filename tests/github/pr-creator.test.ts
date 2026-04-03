@@ -8,7 +8,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   loadTemplate: vi.fn(() => "mock template"),
 }));
 
-import { createDraftPR, closeIssue } from "../../src/github/pr-creator.js";
+import { createDraftPR, closeIssue, enableAutoMerge } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -103,5 +103,74 @@ describe("closeIssue", () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     await closeIssue(42, "test/repo", { ghPath: "/custom/gh" });
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "close", "42", "--repo", "test/repo"], {});
+  });
+});
+
+describe("enableAutoMerge", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should enable auto-merge successfully", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const result = await enableAutoMerge(42, "test/repo", "squash", {});
+    expect(result).toBe(true);
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--squash"], {});
+  });
+
+  it("should include --delete-branch flag when deleteBranch is true", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await enableAutoMerge(42, "test/repo", "squash", { deleteBranch: true });
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--squash", "--delete-branch"], {});
+  });
+
+  it("should not include --delete-branch flag when deleteBranch is false", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await enableAutoMerge(42, "test/repo", "squash", { deleteBranch: false });
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--squash"], {});
+  });
+
+  it("should mark PR as ready when isDraft is true", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // pr ready
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // pr merge
+
+    const result = await enableAutoMerge(42, "test/repo", "squash", { isDraft: true });
+    expect(result).toBe(true);
+    expect(mockRunCli).toHaveBeenNthCalledWith(1, "gh", ["pr", "ready", "42", "--repo", "test/repo"], {});
+    expect(mockRunCli).toHaveBeenNthCalledWith(2, "gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--squash"], {});
+  });
+
+  it("should return false when pr ready fails", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Draft PR not found", exitCode: 1 });
+    const result = await enableAutoMerge(42, "test/repo", "squash", { isDraft: true });
+    expect(result).toBe(false);
+  });
+
+  it("should return false when merge fails", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "PR not mergeable", exitCode: 1 });
+    const result = await enableAutoMerge(42, "test/repo", "squash", {});
+    expect(result).toBe(false);
+  });
+
+  it("should skip in dry run mode", async () => {
+    const result = await enableAutoMerge(42, "test/repo", "squash", { dryRun: true });
+    expect(result).toBe(true);
+    expect(mockRunCli).not.toHaveBeenCalled();
+  });
+
+  it("should use custom gh path", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    await enableAutoMerge(42, "test/repo", "squash", { ghPath: "/custom/gh" });
+    expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--squash"], {});
+  });
+
+  it("should handle different merge methods", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+
+    await enableAutoMerge(42, "test/repo", "merge", {});
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--merge"], {});
+
+    mockRunCli.mockClear();
+    await enableAutoMerge(42, "test/repo", "rebase", {});
+    expect(mockRunCli).toHaveBeenCalledWith("gh", ["pr", "merge", "42", "--repo", "test/repo", "--auto", "--rebase"], {});
   });
 });

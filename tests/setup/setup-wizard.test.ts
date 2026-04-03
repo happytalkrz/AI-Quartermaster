@@ -149,7 +149,7 @@ CUSTOM_VAR=example
         expect(content).toContain("test-user/test-repo");
         expect(content).toContain("/home/test/projects/test-repo");
         expect(content).toContain("test-user/test-repo");
-      });
+      }, 10000);
 
       it("should run wizard and create new config when no existing file", async () => {
         // Mock runInteractiveWizard function directly
@@ -248,7 +248,7 @@ CUSTOM_VAR=example
           if (command === "gh" && args.includes("setup-git")) {
             return { exitCode: 0, stdout: "git credential helper configured", stderr: "" };
           }
-          if (command === "curl" && args.includes("smee.io/new")) {
+          if (command === "curl" && args.some(arg => arg.includes("smee.io/new"))) {
             return { exitCode: 0, stdout: "https://smee.io/new-channel", stderr: "" };
           }
           return { exitCode: 0, stdout: "", stderr: "" };

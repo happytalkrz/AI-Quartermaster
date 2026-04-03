@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { JobStore } from "../../src/queue/job-store.js";
-import { mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -15,6 +15,7 @@ describe("JobStore", () => {
   });
 
   afterEach(() => {
+    store?.stopWatching();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -178,6 +179,136 @@ describe("JobStore", () => {
 
       const result = store.shouldBlockRepickup(42, "test/repo");
       expect(result).toBe(true);
+    });
+  });
+
+  describe("File System Watcher", () => {
+    it("should detect external file deletion and remove from cache", async () => {
+      const job = store.create(42, "test/repo");
+      expect(store.get(job.id)).toBeTruthy();
+
+      let deletedJob: any = null;
+      store.on('jobDeleted', (job) => {
+        deletedJob = job;
+      });
+
+      // Simulate external deletion
+      const jobsDir = join(dataDir, "jobs");
+      unlinkSync(join(jobsDir, `${job.id}.json`));
+
+      // Wait for watcher to process the event
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      expect(store.get(job.id)).toBeUndefined();
+      expect(deletedJob).toBeTruthy();
+      expect(deletedJob.id).toBe(job.id);
+    });
+
+    it("should detect external file modification and reload job", async () => {
+      const job = store.create(42, "test/repo");
+      const originalStatus = job.status;
+
+      let updatedJob: any = null;
+      let previousJob: any = null;
+      store.on('jobUpdated', (job, prev) => {
+        updatedJob = job;
+        previousJob = prev;
+      });
+
+      // Simulate external modification
+      const jobsDir = join(dataDir, "jobs");
+      const modifiedJob = { ...job, status: "running", startedAt: new Date().toISOString() };
+      writeFileSync(join(jobsDir, `${job.id}.json`), JSON.stringify(modifiedJob, null, 2));
+
+      // Wait for watcher to process the event
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const reloadedJob = store.get(job.id);
+      expect(reloadedJob?.status).toBe("running");
+      expect(updatedJob).toBeTruthy();
+      expect(updatedJob.status).toBe("running");
+      expect(previousJob?.status).toBe(originalStatus);
+    });
+
+    it("should handle external creation of new job file", async () => {
+      let createdJob: any = null;
+      store.on('jobCreated', (job) => {
+        createdJob = job;
+      });
+
+      const newJobId = `aq-99-${Date.now()}`;
+      const newJob = {
+        id: newJobId,
+        issueNumber: 99,
+        repo: "external/repo",
+        status: "queued",
+        createdAt: new Date().toISOString()
+      };
+
+      // Simulate external creation
+      const jobsDir = join(dataDir, "jobs");
+      writeFileSync(join(jobsDir, `${newJobId}.json`), JSON.stringify(newJob, null, 2));
+
+      // Wait for watcher to process the event
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      const foundJob = store.get(newJobId);
+      expect(foundJob).toBeTruthy();
+      expect(foundJob?.issueNumber).toBe(99);
+      expect(foundJob?.repo).toBe("external/repo");
+      expect(createdJob).toBeTruthy();
+      expect(createdJob.id).toBe(newJobId);
+    });
+
+    it("should not trigger events for internal deletions", async () => {
+      const job = store.create(42, "test/repo");
+
+      let deletedEventCount = 0;
+      store.on('jobDeleted', () => {
+        deletedEventCount++;
+      });
+
+      // Internal deletion (should trigger only one event)
+      store.remove(job.id);
+
+      // Wait for potential watcher events
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      expect(deletedEventCount).toBe(1); // Only from internal deletion
+      expect(store.get(job.id)).toBeUndefined();
+    });
+
+    it("should handle corrupt external file by removing from cache", async () => {
+      const job = store.create(42, "test/repo");
+      expect(store.get(job.id)).toBeTruthy();
+
+      let deletedJob: any = null;
+      store.on('jobDeleted', (job) => {
+        deletedJob = job;
+      });
+
+      // Write corrupt JSON
+      const jobsDir = join(dataDir, "jobs");
+      writeFileSync(join(jobsDir, `${job.id}.json`), "{ invalid json }");
+
+      // Wait for watcher to process the event
+      await new Promise(resolve => setTimeout(resolve, 150));
+
+      expect(store.get(job.id)).toBeUndefined();
+      expect(deletedJob).toBeTruthy();
+      expect(deletedJob.id).toBe(job.id);
+    });
+
+    it("should start and stop watching correctly", () => {
+      expect(store.startWatching).toBeDefined();
+      expect(store.stopWatching).toBeDefined();
+
+      // Should not crash when called multiple times
+      store.startWatching();
+      store.startWatching();
+
+      store.stopWatching();
+      store.stopWatching();
     });
   });
 });

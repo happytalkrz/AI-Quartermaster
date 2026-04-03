@@ -13,10 +13,10 @@ const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 interface SSEClient {
   id: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
-  encoder: typeof TextEncoder.prototype;
 }
 
 const sseClients = new Map<string, SSEClient>();
+const encoder = new TextEncoder();
 
 function broadcastToAllClients(event: string, data: any): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -24,7 +24,7 @@ function broadcastToAllClients(event: string, data: any): void {
 
   for (const [clientId, client] of sseClients) {
     try {
-      client.controller.enqueue(client.encoder.encode(message));
+      client.controller.enqueue(encoder.encode(message));
     } catch {
       // Client disconnected, mark for removal
       clientsToRemove.push(clientId);
@@ -272,10 +272,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
 
     const stream = new ReadableStream({
       start(controller) {
-        const encoder = new TextEncoder();
-
         // Register client
-        sseClients.set(clientId, { id: clientId, controller, encoder });
+        sseClients.set(clientId, { id: clientId, controller });
 
         // Send initial state
         const sendInitialState = () => {

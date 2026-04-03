@@ -45,6 +45,13 @@ export type ErrorCategory =
   | "SAFETY_VIOLATION"
   | "UNKNOWN";
 
+export interface ErrorHistoryEntry {
+  attempt: number;
+  errorCategory: ErrorCategory;
+  errorMessage: string;
+  timestamp: string;
+}
+
 export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;

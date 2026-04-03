@@ -5,7 +5,7 @@ import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
@@ -15,12 +15,25 @@ import { phaseProgress } from "./progress-tracker.js";
 
 const logger = getLogger();
 
+function formatErrorHistory(errorHistory: ErrorHistoryEntry[]): string {
+  const formatted = errorHistory.map((entry, index) => {
+    const attemptInfo = `Attempt ${entry.attempt} (${entry.errorCategory})`;
+    const timestamp = new Date(entry.timestamp).toLocaleString();
+    const message = entry.errorMessage.slice(-500); // Limit each error message
+    return `${attemptInfo} [${timestamp}]:\n${message}`;
+  }).join('\n\n---\n\n');
+
+  // Limit total length to prevent prompt bloat
+  return formatted.length > 2000 ? formatted.slice(-2000) : formatted;
+}
+
 export interface PhaseRetryContext {
   issue: GitHubIssue;
   plan: Plan;
   phase: Phase;
   previousError: string;
   errorCategory: ErrorCategory;
+  errorHistory?: ErrorHistoryEntry[];
   attempt: number;
   maxRetries: number;
   claudeConfig: ClaudeCliConfig;
@@ -40,6 +53,11 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 
+    // Use errorHistory if available, fallback to previousError for compatibility
+    const errorMessage = ctx.errorHistory && ctx.errorHistory.length > 0
+      ? formatErrorHistory(ctx.errorHistory)
+      : ctx.previousError.slice(-1500);
+
     const rendered = renderTemplate(template, {
       issue: {
         number: String(ctx.issue.number),
@@ -56,7 +74,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         attempt: String(ctx.attempt),
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
-        errorMessage: ctx.previousError.slice(-1500),
+        errorMessage,
       },
       config: {
         testCommand: ctx.testCommand,

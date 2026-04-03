@@ -41,7 +41,7 @@ function prepareErrorHistoryForTemplate(errorHistory: ErrorHistoryEntry[]): Erro
   const processedEntries = [];
 
   for (const entry of errorHistory) {
-    let errorSummary = truncateErrorMessage(entry.errorMessage.trim());
+    const errorSummary = truncateErrorMessage(entry.errorMessage.trim());
     const entryLength = errorSummary.length + ENTRY_SIZE_ESTIMATE;
 
     if (currentLength + entryLength > ERROR_SUMMARY_MAX_LENGTH && processedEntries.length > 0) {

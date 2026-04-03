@@ -439,6 +439,13 @@ function renderSettingsView(config) {
     return;
   }
 
+  // 프로젝트 카운트 배지 업데이트
+  var projectCount = config.projects ? config.projects.length : 0;
+  var badge = document.getElementById('projects-count-badge');
+  if (badge) {
+    badge.textContent = projectCount;
+  }
+
   // 프로젝트 목록 렌더링
   var container = document.getElementById('settings-content');
   if (container && config.projects && config.projects.length > 0) {

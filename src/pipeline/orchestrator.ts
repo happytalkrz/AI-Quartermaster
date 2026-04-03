@@ -43,47 +43,14 @@ import {
   PROGRESS_PR_CREATED,
   PROGRESS_DONE,
 } from "./progress-tracker.js";
+import {
+  type OrchestratorInput,
+  type OrchestratorResult,
+  STATE_ORDER,
+  isPastState,
+  saveResult,
+} from "./pipeline-context.js";
 
-export interface OrchestratorInput {
-  issueNumber: number;
-  repo: string; // "owner/repo"
-  config: AQConfig;
-  projectRoot?: string;  // optional override; falls back to project config
-  aqRoot?: string;       // AI Quartermaster root (where prompts/ lives)
-  jobLogger?: JobLogger;
-  resumeFrom?: PipelineCheckpoint;
-  isRetry?: boolean;     // true if this is a retry of a previously failed job
-}
-
-const STATE_ORDER: PipelineState[] = [
-  "RECEIVED",
-  "VALIDATED",
-  "BASE_SYNCED",
-  "BRANCH_CREATED",
-  "WORKTREE_CREATED",
-  "PLAN_GENERATED",
-  "REVIEWING",
-  "SIMPLIFYING",
-  "FINAL_VALIDATING",
-  "DRAFT_PR_CREATED",
-  "DONE",
-];
-
-function isPastState(checkpointState: PipelineState, current: PipelineState): boolean {
-  const checkpointIdx = STATE_ORDER.indexOf(checkpointState);
-  const currentIdx = STATE_ORDER.indexOf(current);
-  // States not in STATE_ORDER (FAILED, PHASE_FAILED) return -1 → re-execute all stages
-  if (checkpointIdx === -1 || currentIdx === -1) return false;
-  return checkpointIdx > currentIdx;
-}
-
-export interface OrchestratorResult {
-  success: boolean;
-  state: PipelineState;
-  prUrl?: string;
-  report?: PipelineReport;
-  error?: string;
-}
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { issueNumber, repo, config, aqRoot } = input;
@@ -930,18 +897,5 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     return { success: false, state: "FAILED", error: rollbackInfo ? `${errMsg}. ${rollbackInfo}` : errMsg };
-  }
-}
-
-function saveResult(config: AQConfig, projectRoot: string, issueNumber: number, report: PipelineReport): void {
-  try {
-    const logDir = resolve(projectRoot, config.general.logDir);
-    mkdirSync(logDir, { recursive: true });
-    writeFileSync(
-      resolve(logDir, `issue-${issueNumber}-result.json`),
-      JSON.stringify(report, null, 2)
-    );
-  } catch {
-    // non-fatal
   }
 }

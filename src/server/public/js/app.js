@@ -302,6 +302,14 @@ applyTranslations();
   initArchivedToggle();
 })();
 
+// Bind project form submit event
+document.addEventListener('submit', function(e) {
+  if (e.target.id === 'add-project-form') {
+    e.preventDefault();
+    addProject();
+  }
+});
+
 // Initial data fetch
 apiFetch('/api/jobs')
   .then(function(r) { return r.json(); })

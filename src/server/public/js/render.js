@@ -388,170 +388,65 @@ function fetchStats() {
 /* ══════════════════════════════════════════════════════════════
    Settings Rendering
    ══════════════════════════════════════════════════════════════ */
-function renderSettings(config) {
-  var html = '';
 
-  // Configuration sections
-  var sections = [
-    { key: 'general', title: 'General', icon: 'settings', data: config.general },
-    { key: 'git', title: 'Git', icon: 'account_tree', data: config.git },
-    { key: 'worktree', title: 'Worktree', icon: 'folder_managed', data: config.worktree },
-    { key: 'commands', title: 'Commands', icon: 'terminal', data: config.commands },
-    { key: 'review', title: 'Review', icon: 'rate_review', data: config.review },
-    { key: 'pr', title: 'Pull Request', icon: 'merge', data: config.pr },
-    { key: 'safety', title: 'Safety', icon: 'security', data: config.safety }
-  ];
-
-  sections.forEach(function(section) {
-    html += renderConfigSection(section.key, section.title, section.icon, section.data);
-  });
-
-  // Projects section
-  if (config.projects && config.projects.length > 0) {
-    html += '<div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/20">';
-    html += '<div class="flex items-center gap-3 p-6 border-b border-outline-variant/20">';
-    html += '<span class="material-symbols-outlined text-primary">inventory_2</span>';
-    html += '<h3 class="text-lg font-headline font-bold text-on-surface">Projects</h3>';
-    html += '<span class="text-xs text-outline bg-surface-container-high px-2 py-1 rounded-full">' + config.projects.length + '</span>';
-    html += '</div>';
-    html += '<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">';
-    config.projects.forEach(function(project) {
-      html += renderProjectCard(project);
-    });
-    html += '</div></div>';
+function renderProjectCard(project) {
+  var html = '<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container flex flex-col justify-between group">';
+  html += '<div class="flex justify-between items-start mb-4">';
+  html += '<div class="flex items-center gap-2">';
+  html += '<span class="material-symbols-outlined text-primary text-xl">account_tree</span>';
+  html += '<h3 class="font-bold text-on-surface">' + esc(project.repo) + '</h3>';
+  html += '</div>';
+  html += '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">';
+  if (project.id) {
+    html += '<button onclick="deleteProject(\'' + esc(project.id) + '\')" class="p-1 hover:text-error transition-colors" title="' + t('delete') + '">';
+    html += '<span class="material-symbols-outlined text-sm">delete</span>';
+    html += '</button>';
   }
-
-  return html;
-}
-
-function renderConfigSection(key, title, icon, data) {
-  var sectionId = 'section-' + key;
-  var isExpanded = localStorage.getItem('aqm-section-' + key) !== 'collapsed';
-  var expandClass = isExpanded ? 'expanded' : 'collapsed';
-  var contentClass = isExpanded ? 'block' : 'hidden';
-  var iconClass = isExpanded ? 'rotate-180' : '';
-
-  var html = '<div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/20">';
-  html += '<div class="flex items-center gap-3 p-6 cursor-pointer" onclick="toggleSection(\'' + key + '\')">';
-  html += '<span class="material-symbols-outlined text-primary">' + icon + '</span>';
-  html += '<h3 class="text-lg font-headline font-bold text-on-surface flex-1">' + title + '</h3>';
-  html += '<span class="material-symbols-outlined text-outline transform transition-transform ' + iconClass + '" id="icon-' + key + '">expand_more</span>';
+  html += '</div>';
   html += '</div>';
 
-  html += '<div id="content-' + key + '" class="' + contentClass + ' border-t border-outline-variant/20">';
-  html += '<div class="p-6 space-y-4">';
+  html += '<div class="space-y-3">';
+  html += '<div class="flex flex-col">';
+  html += '<span class="text-[10px] uppercase text-outline tracking-wider font-bold">' + t('localPath') + '</span>';
+  html += '<code class="font-mono text-xs text-on-surface-variant truncate bg-surface-container-highest/30 p-1.5 rounded">' + esc(project.path) + '</code>';
+  html += '</div>';
 
-  // Render key-value pairs
-  if (data && typeof data === 'object') {
-    for (var prop in data) {
-      if (data.hasOwnProperty(prop)) {
-        html += renderConfigProperty(prop, data[prop]);
-      }
-    }
+  if (project.baseBranch) {
+    html += '<div class="flex justify-between items-end">';
+    html += '<div class="flex flex-col">';
+    html += '<span class="text-[10px] uppercase text-outline tracking-wider font-bold">' + t('branch') + '</span>';
+    html += '<span class="text-sm font-medium">' + esc(project.baseBranch) + '</span>';
+    html += '</div>';
+    html += '</div>';
   }
 
-  html += '</div></div></div>';
-  return html;
-}
-
-function renderConfigProperty(key, value) {
-  var html = '<div class="flex flex-col sm:flex-row sm:items-center gap-3 py-2">';
-  html += '<span class="text-sm font-bold text-on-surface/80 font-mono min-w-[140px]">' + esc(key) + '</span>';
-  html += '<div class="flex-1">';
-
-  if (value === null || value === undefined) {
-    html += '<span class="text-xs text-outline italic">null</span>';
-  } else if (typeof value === 'boolean') {
-    var color = value ? 'text-[#3fb950]' : 'text-outline';
-    html += '<span class="text-sm font-bold ' + color + '">' + String(value) + '</span>';
-  } else if (typeof value === 'number') {
-    html += '<span class="text-sm font-mono text-primary">' + value + '</span>';
-  } else if (Array.isArray(value)) {
-    if (value.length === 0) {
-      html += '<span class="text-xs text-outline italic">empty array</span>';
-    } else {
-      html += '<div class="space-y-1">';
-      value.forEach(function(item, i) {
-        html += '<div class="text-sm font-mono bg-surface-container-low px-2 py-1 rounded border border-outline-variant/20">';
-        html += '<span class="text-outline text-xs mr-2">' + i + ':</span>' + esc(String(item));
-        html += '</div>';
-      });
-      html += '</div>';
-    }
-  } else if (typeof value === 'object') {
-    html += '<div class="bg-surface-container-low p-3 rounded-lg border border-outline-variant/20">';
-    html += '<pre class="text-xs font-mono text-on-surface/80 leading-relaxed">' + esc(JSON.stringify(value, null, 2)) + '</pre>';
+  if (project.mode) {
+    html += '<div class="flex items-center gap-2 px-2 py-1 rounded-full bg-primary/10 w-fit">';
+    html += '<span class="text-[10px] font-bold text-primary uppercase">' + esc(project.mode) + '</span>';
     html += '</div>';
-  } else {
-    var displayValue = String(value);
-    if (displayValue.includes('********')) {
-      html += '<span class="text-sm font-mono bg-[#f85149]/10 text-[#f85149] px-2 py-1 rounded border border-[#f85149]/20">' + esc(displayValue) + '</span>';
-    } else {
-      html += '<span class="text-sm font-mono bg-surface-container-low px-2 py-1 rounded border border-outline-variant/20">' + esc(displayValue) + '</span>';
-    }
   }
 
   html += '</div></div>';
   return html;
 }
 
-function renderProjectCard(project) {
-  var html = '<div class="bg-surface-container-low p-4 rounded-lg ring-1 ring-outline-variant/10">';
-  html += '<div class="flex items-start justify-between mb-3">';
-  html += '<div class="flex items-center gap-2">';
-  html += '<span class="material-symbols-outlined text-primary text-sm">folder</span>';
-  html += '<span class="text-sm font-bold text-on-surface">' + esc(project.repo) + '</span>';
-  html += '</div>';
-  html += '<div class="flex items-center gap-2">';
-  if (project.mode) {
-    html += '<span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold">' + esc(project.mode) + '</span>';
-  }
-  if (project.id) {
-    html += '<button onclick="deleteProject(\'' + esc(project.id) + '\')" class="text-xs text-outline hover:text-[#f85149] hover:bg-[#f85149]/10 px-2 py-1 rounded transition-colors" title="' + t('delete') + '">';
-    html += '<span class="material-symbols-outlined text-xs">delete</span>';
-    html += '</button>';
-  }
-  html += '</div>';
-  html += '</div>';
-
-  html += '<div class="text-xs text-outline font-mono mb-2">' + esc(project.path) + '</div>';
-
-  if (project.baseBranch) {
-    html += '<div class="text-xs text-outline flex items-center gap-1 mb-1">';
-    html += '<span class="material-symbols-outlined text-xs">account_tree</span>';
-    html += 'Base: ' + esc(project.baseBranch);
-    html += '</div>';
-  }
-
-  html += '</div>';
-  return html;
-}
-
-function toggleSection(key) {
-  var content = document.getElementById('content-' + key);
-  var icon = document.getElementById('icon-' + key);
-  var isCollapsed = content.classList.contains('hidden');
-
-  if (isCollapsed) {
-    content.classList.remove('hidden');
-    content.classList.add('block');
-    icon.classList.add('rotate-180');
-    localStorage.setItem('aqm-section-' + key, 'expanded');
-  } else {
-    content.classList.remove('block');
-    content.classList.add('hidden');
-    icon.classList.remove('rotate-180');
-    localStorage.setItem('aqm-section-' + key, 'collapsed');
-  }
-}
-
 function renderSettingsView(config) {
   if (!config) {
     var container = document.getElementById('settings-content');
     if (container) {
-      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러올 수 없습니다.</div>';
+      container.innerHTML = '<div class="col-span-full flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러올 수 없습니다.</div>';
     }
     return;
+  }
+
+  // 프로젝트 목록 렌더링
+  var container = document.getElementById('settings-content');
+  if (container && config.projects && config.projects.length > 0) {
+    var html = '';
+    config.projects.forEach(function(project) {
+      html += renderProjectCard(project);
+    });
+    container.innerHTML = html;
   }
 
   // 각 탭별로 폼 렌더링
@@ -584,8 +479,8 @@ function renderFormField(key, value, configPath) {
   var isMasked = typeof value === 'string' && value.includes('********');
   var isReadonly = isMasked;
 
-  var html = '<div class="space-y-2">';
-  html += '<label for="' + fieldId + '" class="block text-sm font-bold text-on-surface/80">' + esc(key) + '</label>';
+  var html = '<label class="block">';
+  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">' + esc(key) + '</span>';
 
   if (typeof value === 'boolean') {
     html += renderCheckboxInput(fieldId, value, configPath, isReadonly);
@@ -599,7 +494,7 @@ function renderFormField(key, value, configPath) {
     html += renderTextInput(fieldId, String(value), configPath, isReadonly, isMasked);
   }
 
-  html += '</div>';
+  html += '</label>';
   return html;
 }
 
@@ -612,7 +507,7 @@ function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
 
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
   var classes = buildInputClasses(
-    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none',
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
     isReadonly,
     isMasked ? 'bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]' : ''
   );
@@ -626,7 +521,7 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
 
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none',
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
     isReadonly
   );
 
@@ -638,24 +533,24 @@ function renderNumberInput(fieldId, value, configPath, isReadonly) {
 }
 
 function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
-  var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-1 focus:ring-primary bg-surface-container-lowest';
+  var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-1 focus:ring-primary bg-surface-container-highest/40';
   if (isReadonly) {
     classes += ' opacity-60 cursor-not-allowed';
   }
 
-  return '<div class="flex items-center gap-3">' +
+  return '<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg">' +
+         '<span class="text-sm font-bold">' + (value ? t('enabled') || 'Enabled' : t('disabled') || 'Disabled') + '</span>' +
          '<input type="checkbox" id="' + fieldId + '" ' +
          'data-config-path="' + esc(configPath) + '" ' +
          (value ? 'checked' : '') + ' ' +
          'class="' + classes + '"' +
          (isReadonly ? ' disabled' : '') + '/>' +
-         '<span class="text-sm text-outline">' + (value ? t('enabled') || 'Enabled' : t('disabled') || 'Disabled') + '</span>' +
          '</div>';
 }
 
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono',
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var arrayText = JSON.stringify(value, null, 2);
@@ -667,12 +562,12 @@ function renderArrayInput(fieldId, value, configPath, isReadonly) {
          (isReadonly ? ' readonly' : '') + '>' +
          esc(arrayText) +
          '</textarea>' +
-         '<div class="text-xs text-outline mt-1">JSON 형식으로 입력하세요</div>';
+         '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
 }
 
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono',
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var objectText = JSON.stringify(value, null, 2);
@@ -684,5 +579,5 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          (isReadonly ? ' readonly' : '') + '>' +
          esc(objectText) +
          '</textarea>' +
-         '<div class="text-xs text-outline mt-1">JSON 형식으로 입력하세요</div>';
+         '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
 }

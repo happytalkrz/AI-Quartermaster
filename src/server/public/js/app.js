@@ -77,7 +77,7 @@ var currentConfig = null; // 현재 설정 데이터 저장
 
 function showErrorMessage(message) {
   var container = document.getElementById('settings-content');
-  container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
+  container.innerHTML = '<div class="col-span-full flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
 }
 
 function loadSettings() {
@@ -85,7 +85,7 @@ function loadSettings() {
   if (!container) return;
 
   // Show loading state
-  container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin">sync</span>설정을 로딩 중...</div>';
+  container.innerHTML = '<div class="col-span-full flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin">sync</span>설정을 로딩 중...</div>';
 
   // Fetch configuration
   apiFetch('/api/config')
@@ -112,7 +112,7 @@ function loadSettings() {
 }
 
 function setSettingsTab(tabName) {
-  var activeClasses = ['bg-primary/10', 'text-primary'];
+  var activeClasses = ['bg-primary/10', 'text-primary', 'shadow-sm'];
   var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
     var isActive = btn.dataset.tab === tabName;

@@ -58,10 +58,14 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
-    const tasks = projects.flatMap(p =>
+    // 1. GitHub 이슈 폴링
+    const issueTasks = projects.flatMap(p =>
       triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
     );
-    await Promise.allSettled(tasks);
+    await Promise.allSettled(issueTasks);
+
+    // 2. Failed job 감지 및 재큐잉
+    await this.pollFailedJobs();
   }
 
   private async pollProjectLabel(
@@ -108,6 +112,34 @@ export class IssuePoller {
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
       this.queue.enqueue(issue.number, repo);
+    }
+  }
+
+  private async pollFailedJobs(): Promise<void> {
+    try {
+      const failedJobs = this.store.findFailedJobsForRetry();
+
+      if (failedJobs.length === 0) {
+        logger.debug("재시도할 실패 job 없음");
+        return;
+      }
+
+      logger.info(`실패 job ${failedJobs.length}개 발견, 재큐잉 시작`);
+
+      for (const job of failedJobs) {
+        logger.info(`실패 job 재큐잉 — #${job.issueNumber} "${job.repo}" (job: ${job.id})`);
+
+        // enqueue 호출 시 기존 failed job은 자동으로 아카이브되고 정리됨
+        const newJob = this.queue.enqueue(job.issueNumber, job.repo, undefined, true);
+
+        if (newJob) {
+          logger.info(`재큐잉 성공 — 새 job: ${newJob.id}`);
+        } else {
+          logger.warn(`재큐잉 실패 — #${job.issueNumber} (${job.repo})`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`Failed job 폴링 중 오류: ${err}`);
     }
   }
 }

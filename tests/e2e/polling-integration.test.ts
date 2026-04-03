@@ -57,6 +57,21 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string; s
     shouldBlockRepickup: vi.fn((issueNumber: number, repo: string): boolean => {
       return jobs.some(j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success");
     }),
+    findFailedJobsForRetry: vi.fn((): Job[] => {
+      const now = Date.now();
+      const RETRY_DELAY_MS = 10 * 60 * 1000; // 10분 대기 후 재시도
+
+      return jobs.filter(job => {
+        // failed 상태이고 retry가 아닌 job만
+        if (job.status !== "failure" || job.isRetry === true) {
+          return false;
+        }
+
+        // 최근 실패한 job은 제외 (10분 대기)
+        const completedAt = job.completedAt ? new Date(job.completedAt).getTime() : 0;
+        return completedAt > 0 && (now - completedAt) > RETRY_DELAY_MS;
+      });
+    }),
     create: vi.fn((issueNumber: number, repo: string): Job => {
       const job: Job = {
         id: `aq-${issueNumber}-${Date.now()}`,
@@ -564,5 +579,168 @@ describe("E2E: polling integration", () => {
     // Original job should be archived
     const failedJob = store.get("aq-50-0");
     expect(failedJob?.status).toBe("archived");
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Failed job polling: detects failed jobs and re-enqueues them
+  // -------------------------------------------------------------------------
+  it("detects failed jobs during polling and re-enqueues them", async () => {
+    // Create failed job that's old enough to retry (11 minutes ago)
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 60, repo: "test/repo", status: "failure" }
+    ]);
+
+    // Set completedAt time for the failed job
+    const failedJob = store.get("aq-60-0");
+    if (failedJob) {
+      failedJob.completedAt = oldFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    // Mock GitHub to return empty results (focusing on failed job polling)
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // Failed job should be re-enqueued
+    expect(queue.enqueue).toHaveBeenCalledWith(60, "test/repo", undefined, true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 11. Failed job polling: skips retry jobs that failed
+  // -------------------------------------------------------------------------
+  it("does not re-enqueue failed retry jobs", async () => {
+    // Create failed retry job (should not be re-enqueued)
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 70, repo: "test/repo", status: "failure" }
+    ]);
+
+    // Set as retry job and completedAt time
+    const failedRetryJob = store.get("aq-70-0");
+    if (failedRetryJob) {
+      failedRetryJob.isRetry = true;
+      failedRetryJob.completedAt = oldFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    // Mock GitHub to return empty results
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // Retry job should NOT be re-enqueued
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 12. Failed job polling: skips recently failed jobs
+  // -------------------------------------------------------------------------
+  it("does not re-enqueue recently failed jobs", async () => {
+    // Create recently failed job (5 minutes ago, should wait 10 minutes)
+    const recentFailureTime = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 80, repo: "test/repo", status: "failure" }
+    ]);
+
+    // Set completedAt time for the failed job
+    const failedJob = store.get("aq-80-0");
+    if (failedJob) {
+      failedJob.completedAt = recentFailureTime;
+    }
+
+    const queue = makeJobQueue(store);
+
+    // Mock GitHub to return empty results
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // Recently failed job should NOT be re-enqueued
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 13. Failed job polling: handles multiple failed jobs
+  // -------------------------------------------------------------------------
+  it("handles multiple failed jobs during polling", async () => {
+    // Create multiple failed jobs that are old enough to retry
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore([
+      { issueNumber: 90, repo: "test/repo", status: "failure" },
+      { issueNumber: 91, repo: "test/repo", status: "failure" },
+      { issueNumber: 92, repo: "test/repo", status: "failure" }
+    ]);
+
+    // Set completedAt time for all failed jobs
+    const jobs = ["aq-90-0", "aq-91-1", "aq-92-2"];
+    jobs.forEach(jobId => {
+      const job = store.get(jobId);
+      if (job) {
+        job.completedAt = oldFailureTime;
+      }
+    });
+
+    const queue = makeJobQueue(store);
+
+    // Mock GitHub to return empty results
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // All failed jobs should be re-enqueued
+    expect(queue.enqueue).toHaveBeenCalledTimes(3);
+    expect(queue.enqueue).toHaveBeenCalledWith(90, "test/repo", undefined, true);
+    expect(queue.enqueue).toHaveBeenCalledWith(91, "test/repo", undefined, true);
+    expect(queue.enqueue).toHaveBeenCalledWith(92, "test/repo", undefined, true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 14. Failed job polling: no failed jobs to process
+  // -------------------------------------------------------------------------
+  it("handles empty failed jobs list gracefully", async () => {
+    // Create store with no failed jobs
+    const store = makeJobStore([
+      { issueNumber: 100, repo: "test/repo", status: "success" },
+      { issueNumber: 101, repo: "test/repo", status: "running" }
+    ]);
+
+    const queue = makeJobQueue(store);
+
+    // Mock GitHub to return empty results
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // No jobs should be re-enqueued
+    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 });

@@ -131,6 +131,22 @@ export class JobStore extends EventEmitter {
     return false;
   }
 
+  findFailedJobsForRetry(): Job[] {
+    const now = Date.now();
+    const RETRY_DELAY_MS = 10 * 60 * 1000; // 10분 대기 후 재시도
+
+    return Array.from(this.cache.values()).filter(job => {
+      // failed 상태이고 retry가 아닌 job만
+      if (job.status !== "failure" || job.isRetry === true) {
+        return false;
+      }
+
+      // 최근 실패한 job은 제외 (10분 대기)
+      const completedAt = job.completedAt ? new Date(job.completedAt).getTime() : 0;
+      return completedAt > 0 && (now - completedAt) > RETRY_DELAY_MS;
+    });
+  }
+
   archive(id: string): boolean {
     const job = this.get(id);
     if (!job) return false;

@@ -8,7 +8,7 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
 
 import { generatePlan } from "../../src/pipeline/plan-generator.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
-import { writeFileSync, mkdirSync, rmSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 

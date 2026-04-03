@@ -539,11 +539,140 @@ function toggleSection(key) {
 }
 
 function renderSettingsView(config) {
-  var container = document.getElementById('settings-content');
   if (!config) {
-    container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러올 수 없습니다.</div>';
+    var container = document.getElementById('settings-content');
+    if (container) {
+      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러올 수 없습니다.</div>';
+    }
     return;
   }
 
-  container.innerHTML = renderSettings(config);
+  // 각 탭별로 폼 렌더링
+  renderTabForm('general', config.general);
+  renderTabForm('safety', config.safety);
+  renderTabForm('review', config.review);
+
+  // 저장된 탭 선택 복원 또는 기본 탭 설정
+  var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
+  setSettingsTab(savedTab);
+}
+
+function renderTabForm(tabName, data) {
+  var container = document.getElementById(tabName + '-settings-form');
+  if (!container || !data) return;
+
+  var html = '';
+
+  for (var key in data) {
+    if (data.hasOwnProperty(key)) {
+      html += renderFormField(key, data[key], tabName + '.' + key);
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+function renderFormField(key, value, configPath) {
+  var fieldId = 'field-' + configPath.replace(/\./g, '-');
+  var isMasked = typeof value === 'string' && value.includes('********');
+  var isReadonly = isMasked;
+
+  var html = '<div class="space-y-2">';
+  html += '<label for="' + fieldId + '" class="block text-sm font-bold text-on-surface/80">' + esc(key) + '</label>';
+
+  if (typeof value === 'boolean') {
+    html += renderCheckboxInput(fieldId, value, configPath, isReadonly);
+  } else if (typeof value === 'number') {
+    html += renderNumberInput(fieldId, value, configPath, isReadonly);
+  } else if (Array.isArray(value)) {
+    html += renderArrayInput(fieldId, value, configPath, isReadonly);
+  } else if (typeof value === 'object' && value !== null) {
+    html += renderObjectInput(fieldId, value, configPath, isReadonly);
+  } else {
+    html += renderTextInput(fieldId, String(value), configPath, isReadonly, isMasked);
+  }
+
+  html += '</div>';
+  return html;
+}
+
+function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
+  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none';
+  if (isReadonly) {
+    classes += ' opacity-60 cursor-not-allowed';
+  }
+  if (isMasked) {
+    classes += ' bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]';
+  }
+
+  return '<input type="text" id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'value="' + esc(value) + '" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '/>';
+}
+
+function renderNumberInput(fieldId, value, configPath, isReadonly) {
+  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none';
+  if (isReadonly) {
+    classes += ' opacity-60 cursor-not-allowed';
+  }
+
+  return '<input type="number" id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'value="' + value + '" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '/>';
+}
+
+function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
+  var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-1 focus:ring-primary bg-surface-container-lowest';
+  if (isReadonly) {
+    classes += ' opacity-60 cursor-not-allowed';
+  }
+
+  return '<div class="flex items-center gap-3">' +
+         '<input type="checkbox" id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         (value ? 'checked' : '') + ' ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' disabled' : '') + '/>' +
+         '<span class="text-sm text-outline">' + (value ? t('enabled') || 'Enabled' : t('disabled') || 'Disabled') + '</span>' +
+         '</div>';
+}
+
+function renderArrayInput(fieldId, value, configPath, isReadonly) {
+  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono';
+  if (isReadonly) {
+    classes += ' opacity-60 cursor-not-allowed';
+  }
+
+  var arrayText = JSON.stringify(value, null, 2);
+
+  return '<textarea id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'rows="4" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '>' +
+         esc(arrayText) +
+         '</textarea>' +
+         '<div class="text-xs text-outline mt-1">JSON 형식으로 입력하세요</div>';
+}
+
+function renderObjectInput(fieldId, value, configPath, isReadonly) {
+  var classes = 'w-full px-3 py-2 text-sm border border-outline-variant/30 rounded-lg bg-surface-container-lowest text-on-surface focus:ring-1 focus:ring-primary focus:border-primary outline-none font-mono';
+  if (isReadonly) {
+    classes += ' opacity-60 cursor-not-allowed';
+  }
+
+  var objectText = JSON.stringify(value, null, 2);
+
+  return '<textarea id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'rows="6" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '>' +
+         esc(objectText) +
+         '</textarea>' +
+         '<div class="text-xs text-outline mt-1">JSON 형식으로 입력하세요</div>';
 }

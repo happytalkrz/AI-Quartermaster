@@ -5,7 +5,7 @@ import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory, PhaseRetryErrorContext } from "../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";

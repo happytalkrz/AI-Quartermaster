@@ -41,6 +41,26 @@ var i18n = {
     commandHQ: "커맨드 HQ",
     jobDetail: "작업 상세",
     phaseProgress: "단계 진행률",
+    // 설정 편집 UI 메시지
+    config: {
+      tabs: {
+        general: "일반",
+        safety: "안전",
+        review: "리뷰"
+      },
+      saveState: {
+        saving: "저장 중...",
+        saved: "저장됨",
+        saveFailed: "저장 실패"
+      },
+      form: {
+        edit: "편집",
+        reset: "초기화",
+        resetConfirm: "설정을 초기화하시겠습니까?",
+        saveChanges: "변경사항 저장",
+        discardChanges: "변경사항 취소"
+      }
+    },
   },
   en: {
     dashboard: "Dashboard",
@@ -79,6 +99,26 @@ var i18n = {
     commandHQ: "Command HQ",
     jobDetail: "Job Detail",
     phaseProgress: "Phase Progress",
+    // Settings edit UI messages
+    config: {
+      tabs: {
+        general: "General",
+        safety: "Safety",
+        review: "Review"
+      },
+      saveState: {
+        saving: "Saving...",
+        saved: "Saved",
+        saveFailed: "Save Failed"
+      },
+      form: {
+        edit: "Edit",
+        reset: "Reset",
+        resetConfirm: "Reset all settings to default?",
+        saveChanges: "Save Changes",
+        discardChanges: "Discard Changes"
+      }
+    },
   }
 };
 

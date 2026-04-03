@@ -745,4 +745,175 @@ describe("runCoreLoop", () => {
       });
     });
   });
+
+  describe("plan generation retry integration", () => {
+    it("should handle plan generation successfully with internal retry", async () => {
+      const phases = [makePhase(0, "TestPhase")];
+      const plan = makePlan(phases);
+
+      // Plan generation succeeds (it handles retries internally)
+      mockGeneratePlan.mockResolvedValue(plan);
+
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "TestPhase"));
+
+      const result = await runCoreLoop(makeContext());
+
+      // Should succeed
+      expect(result.success).toBe(true);
+      expect(result.phaseResults).toHaveLength(1);
+      expect(result.phaseResults[0].success).toBe(true);
+
+      // generatePlan should have been called once (internal retries are handled by generatePlan)
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
+    });
+
+    it("should fail when plan generation consistently fails", async () => {
+      // All plan generation attempts fail
+      mockGeneratePlan.mockRejectedValue(new Error("Plan generation failed after 2 attempts"));
+
+      const result = await runCoreLoop(makeContext());
+
+      // Should fail when plan cannot be generated
+      expect(result.success).toBe(false);
+      expect(result.phaseResults).toEqual([]);
+
+      // generatePlan should have been called once (core-loop doesn't retry, plan-generator does internally)
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
+      expect(mockSchedulePhases).not.toHaveBeenCalled();
+      expect(mockExecutePhase).not.toHaveBeenCalled();
+    });
+
+    it("should pass correct context to generatePlan on retry scenarios", async () => {
+      const phases = [makePhase(0, "RetryPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "RetryPhase"));
+
+      const customContext = makeContext({
+        modeHint: "retry-test-mode",
+        issue: {
+          number: 999,
+          title: "Retry integration test",
+          body: "Test plan retry integration with specific context",
+          labels: ["retry", "integration"],
+        },
+      });
+
+      await runCoreLoop(customContext);
+
+      // Verify generatePlan was called with correct parameters
+      expect(mockGeneratePlan).toHaveBeenCalledWith({
+        issue: customContext.issue,
+        repo: customContext.repo,
+        branch: customContext.branch,
+        repoStructure: customContext.repoStructure,
+        claudeConfig: customContext.config.commands.claudeCli,
+        promptsDir: customContext.promptsDir,
+        cwd: customContext.cwd,
+        modeHint: "retry-test-mode",
+        maxPhases: 10,
+        sensitivePaths: ".env",
+      });
+    });
+
+    it("should handle plan generation timeout and recovery", async () => {
+      const phases = [makePhase(0, "TimeoutRecoveryPhase")];
+      const plan = makePlan(phases);
+
+      // Simulate timeout on first attempt, success on retry
+      mockGeneratePlan
+        .mockRejectedValueOnce(new Error("Plan generation failed: Claude CLI timeout"))
+        .mockResolvedValueOnce(plan);
+
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "TimeoutRecoveryPhase"));
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.phaseResults).toHaveLength(1);
+      expect(result.phaseResults[0].phaseName).toBe("TimeoutRecoveryPhase");
+
+      // Should recover from timeout and succeed
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(2);
+    });
+
+    it("should handle malformed plan generation responses", async () => {
+      const validPlan = makePlan([makePhase(0, "ValidPhase")]);
+
+      // First attempt returns malformed plan, second returns valid plan
+      const malformedPlan = { ...validPlan, phases: [] }; // Invalid: no phases
+
+      mockGeneratePlan
+        .mockRejectedValueOnce(new Error("Plan generation failed: JSON 파싱 실패"))
+        .mockResolvedValueOnce(validPlan);
+
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: validPlan.phases }],
+      });
+
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "ValidPhase"));
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.phaseResults[0].phaseName).toBe("ValidPhase");
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(2);
+    });
+
+    it("should maintain error context across plan retry attempts", async () => {
+      const phases = [makePhase(0, "ErrorContextPhase")];
+      const plan = makePlan(phases);
+
+      // Simulate different types of failures
+      mockGeneratePlan
+        .mockRejectedValueOnce(new Error("Plan generation failed: API rate limit exceeded"))
+        .mockRejectedValueOnce(new Error("Plan generation failed: Network timeout"))
+        .mockResolvedValueOnce(plan);
+
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "ErrorContextPhase"));
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(3);
+
+      // Verify that each call had the same context but plan-generator handled retries internally
+      const generatePlanCalls = mockGeneratePlan.mock.calls;
+      expect(generatePlanCalls).toHaveLength(3);
+
+      // All calls should have the same basic context
+      generatePlanCalls.forEach(call => {
+        expect(call[0]).toMatchObject({
+          issue: expect.any(Object),
+          repo: expect.any(Object),
+          branch: expect.any(Object),
+          repoStructure: expect.any(String),
+          claudeConfig: expect.any(Object),
+          promptsDir: expect.any(String),
+          cwd: expect.any(String),
+        });
+      });
+    });
+  });
 });

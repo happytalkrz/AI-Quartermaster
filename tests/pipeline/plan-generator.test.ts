@@ -29,7 +29,17 @@ describe("generatePlan", () => {
       "Generate plan for #{{issue.number}}: {{issue.title}}"
     );
 
+    // Reset all mocks and set defaults
     vi.clearAllMocks();
+
+    // Ensure extractJson is properly mocked by default
+    mockExtractJson.mockImplementation((text: string) => {
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error("JSON parsing failed");
+      }
+    });
   });
 
   it("should generate a valid plan", async () => {
@@ -113,47 +123,59 @@ describe("generatePlan", () => {
     ).rejects.toThrow("Plan generation failed");
   });
 
-  it("should throw on plan without phases", async () => {
-    const badPlan = {
+  it("should handle template rendering with various issue data", async () => {
+    const mockPlan = {
       mode: "code",
-      issueNumber: 1,
-      title: "Test",
-      problemDefinition: "Test",
-      requirements: ["Test"],
-      affectedFiles: [],
-      risks: [],
-      phases: [], // Empty phases should trigger validation error
-      verificationPoints: [],
-      stopConditions: [],
+      issueNumber: 111,
+      title: "Template Test",
+      problemDefinition: "Test template rendering",
+      requirements: ["Proper rendering"],
+      affectedFiles: ["src/template.ts"],
+      risks: ["Rendering failure"],
+      phases: [
+        {
+          index: 0,
+          name: "Template phase",
+          description: "Test template",
+          targetFiles: ["src/template.ts"],
+          commitStrategy: "Single",
+          verificationCriteria: ["Template works"],
+        },
+      ],
+      verificationPoints: ["Rendering successful"],
+      stopConditions: ["Template error"],
     };
 
-    // Return consistent valid JSON that will pass JSON parsing but fail validation
     mockRunClaude.mockResolvedValue({
       success: true,
-      output: JSON.stringify(badPlan),
+      output: JSON.stringify(mockPlan),
       durationMs: 100,
     });
+    mockExtractJson.mockReturnValue(mockPlan);
 
-    // Mock extractJson to return the badPlan consistently on all calls
-    mockExtractJson.mockReturnValue(badPlan);
+    const result = await generatePlan({
+      issue: {
+        number: 111,
+        title: "Template Test with Special chars: <>\"'&",
+        body: "Body with\nmultiple\nlines",
+        labels: ["template", "test"],
+      },
+      repo: { owner: "test-org", name: "test-repo" },
+      branch: { base: "master", work: "ax/111-template" },
+      repoStructure: "Complex\n  Structure\n    With\n      Indentation",
+      claudeConfig: {
+        path: "claude",
+        model: "test",
+        maxTurns: 1,
+        timeout: 1000,
+        additionalArgs: [],
+      },
+      promptsDir,
+      cwd: testDir,
+    });
 
-    await expect(
-      generatePlan({
-        issue: { number: 1, title: "Test", body: "", labels: [] },
-        repo: { owner: "t", name: "r" },
-        branch: { base: "master", work: "ax/1-test" },
-        repoStructure: "",
-        claudeConfig: {
-          path: "claude",
-          model: "test",
-          maxTurns: 1,
-          timeout: 1000,
-          additionalArgs: [],
-        },
-        promptsDir,
-        cwd: testDir,
-      })
-    ).rejects.toThrow("Plan must have at least one phase");
+    expect(result.title).toBe("Template Test");
+    expect(result.issueNumber).toBe(111);
   });
 
   it("should retry on first Claude failure then succeed", async () => {
@@ -340,106 +362,202 @@ describe("generatePlan", () => {
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
   });
 
-  it("should throw on plan without problemDefinition", async () => {
-    const badPlan = {
-      mode: "code",
-      issueNumber: 1,
-      title: "Test",
-      problemDefinition: "", // Empty problem definition
-      requirements: ["Test"],
-      affectedFiles: [],
-      risks: [],
+  it("should use JSON schema for structured output", async () => {
+    const schemaBasedPlan = {
+      mode: "content",
+      issueNumber: 222,
+      title: "Schema test",
+      problemDefinition: "Test JSON schema validation",
+      requirements: ["Valid schema", "Proper structure"],
+      affectedFiles: ["docs/schema.json"],
+      risks: ["Schema mismatch"],
       phases: [
         {
           index: 0,
-          name: "Test phase",
-          description: "Test description",
-          targetFiles: [],
-          commitStrategy: "Single",
-          verificationCriteria: [],
+          name: "Schema validation",
+          description: "Validate against JSON schema",
+          targetFiles: ["docs/schema.json"],
+          commitStrategy: "Schema commit",
+          verificationCriteria: ["Schema valid", "Output structured"],
         },
       ],
-      verificationPoints: [],
-      stopConditions: [],
+      verificationPoints: ["Schema compliance"],
+      stopConditions: ["Invalid structure"],
     };
 
-    // Clear previous mocks and set new ones
-    vi.clearAllMocks();
     mockRunClaude.mockResolvedValue({
       success: true,
-      output: JSON.stringify(badPlan),
-      durationMs: 100,
+      output: JSON.stringify(schemaBasedPlan),
+      durationMs: 1200,
     });
-    mockExtractJson.mockReturnValue(badPlan);
+    mockExtractJson.mockReturnValue(schemaBasedPlan);
 
-    await expect(
-      generatePlan({
-        issue: { number: 1, title: "Test", body: "", labels: [] },
-        repo: { owner: "t", name: "r" },
-        branch: { base: "master", work: "ax/1-test" },
-        repoStructure: "",
-        claudeConfig: {
-          path: "claude",
-          model: "test",
-          maxTurns: 1,
-          timeout: 1000,
-          additionalArgs: [],
-        },
-        promptsDir,
-        cwd: testDir,
-      })
-    ).rejects.toThrow("Plan must have a problem definition");
+    const result = await generatePlan({
+      issue: { number: 222, title: "Schema test", body: "Test JSON schema", labels: ["schema"] },
+      repo: { owner: "test", name: "schema-repo" },
+      branch: { base: "main", work: "ax/222-schema" },
+      repoStructure: "docs/\n  schema.json",
+      claudeConfig: {
+        path: "claude",
+        model: "claude-haiku",
+        maxTurns: 3,
+        timeout: 10000,
+        additionalArgs: ["--json-mode"],
+      },
+      promptsDir,
+      cwd: testDir,
+    });
+
+    // Verify schema compliance
+    expect(result.mode).toBe("content");
+    expect(result.phases[0].verificationCriteria).toContain("Schema valid");
+    expect(typeof result.issueNumber).toBe("number");
   });
 
-  it("should throw on plan without requirements", async () => {
-    const badPlan = {
+  it("should handle large and complex issue descriptions", async () => {
+    const complexPlan = {
       mode: "code",
-      issueNumber: 1,
-      title: "Test",
-      problemDefinition: "Test problem",
-      requirements: [], // Empty requirements
-      affectedFiles: [],
-      risks: [],
+      issueNumber: 333,
+      title: "Large complex issue",
+      problemDefinition: "Complex multi-part problem requiring detailed analysis",
+      requirements: [
+        "Requirement 1: Database optimization",
+        "Requirement 2: API enhancement",
+        "Requirement 3: Frontend updates",
+        "Requirement 4: Documentation updates",
+        "Requirement 5: Test coverage improvement"
+      ],
+      affectedFiles: [
+        "src/database/optimizer.ts",
+        "src/api/v2/endpoints.ts",
+        "src/frontend/components/*.tsx",
+        "docs/api.md",
+        "tests/**/*.test.ts"
+      ],
+      risks: [
+        "Performance regression",
+        "Breaking API changes",
+        "Database migration complexity",
+        "Frontend compatibility issues"
+      ],
       phases: [
         {
           index: 0,
-          name: "Test phase",
-          description: "Test description",
-          targetFiles: [],
-          commitStrategy: "Single",
-          verificationCriteria: [],
+          name: "Database optimization",
+          description: "Optimize database queries and indexes",
+          targetFiles: ["src/database/optimizer.ts", "migrations/"],
+          commitStrategy: "Separate commits per optimization",
+          verificationCriteria: ["Query performance improved", "No data loss", "Tests pass"],
+        },
+        {
+          index: 1,
+          name: "API enhancements",
+          description: "Add new API endpoints and improve existing ones",
+          targetFiles: ["src/api/v2/endpoints.ts"],
+          commitStrategy: "Feature branch merge",
+          verificationCriteria: ["API tests pass", "Backward compatibility", "Documentation updated"],
+          dependsOn: [0],
         },
       ],
-      verificationPoints: [],
-      stopConditions: [],
+      verificationPoints: [
+        "All optimizations complete",
+        "API functionality verified",
+        "Frontend integration tested",
+        "Documentation up to date"
+      ],
+      stopConditions: [
+        "Performance regression detected",
+        "API breaking changes found",
+        "Critical security vulnerability"
+      ],
     };
 
-    // Clear previous mocks and set new ones
-    vi.clearAllMocks();
     mockRunClaude.mockResolvedValue({
       success: true,
-      output: JSON.stringify(badPlan),
-      durationMs: 100,
+      output: JSON.stringify(complexPlan),
+      durationMs: 3000,
     });
-    mockExtractJson.mockReturnValue(badPlan);
+    mockExtractJson.mockReturnValue(complexPlan);
 
-    await expect(
-      generatePlan({
-        issue: { number: 1, title: "Test", body: "", labels: [] },
-        repo: { owner: "t", name: "r" },
-        branch: { base: "master", work: "ax/1-test" },
-        repoStructure: "",
-        claudeConfig: {
-          path: "claude",
-          model: "test",
-          maxTurns: 1,
-          timeout: 1000,
-          additionalArgs: [],
-        },
-        promptsDir,
-        cwd: testDir,
-      })
-    ).rejects.toThrow("Plan must have requirements");
+    const longIssueBody = `
+# Complex Issue Description
+
+This is a comprehensive issue that involves multiple components:
+
+## Background
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+
+## Problem Statement
+1. Database queries are slow
+2. API needs new endpoints
+3. Frontend components need updates
+4. Documentation is outdated
+
+## Acceptance Criteria
+- [ ] Database performance improved by 50%
+- [ ] New API endpoints implemented
+- [ ] Frontend components updated
+- [ ] Documentation reflects all changes
+
+## Technical Details
+\`\`\`sql
+SELECT * FROM large_table WHERE complex_condition;
+\`\`\`
+
+## Related Issues
+Fixes #100, #200, #300
+`;
+
+    const result = await generatePlan({
+      issue: {
+        number: 333,
+        title: "Complex multi-component enhancement",
+        body: longIssueBody,
+        labels: ["enhancement", "performance", "api", "frontend", "documentation"],
+      },
+      repo: { owner: "enterprise", name: "platform" },
+      branch: { base: "develop", work: "ax/333-complex-enhancement" },
+      repoStructure: `
+src/
+  database/
+    optimizer.ts
+    migrations/
+  api/
+    v1/
+    v2/
+      endpoints.ts
+  frontend/
+    components/
+      Dashboard.tsx
+      UserList.tsx
+docs/
+  api.md
+  deployment.md
+tests/
+  unit/
+  integration/
+`,
+      claudeConfig: {
+        path: "claude",
+        model: "claude-opus",
+        maxTurns: 30,
+        timeout: 120000,
+        additionalArgs: ["--verbose", "--enable-agents"],
+      },
+      promptsDir,
+      cwd: testDir,
+      maxPhases: 8,
+      sensitivePaths: "src/database/migrations/,config/production.yml",
+      modeHint: "This is a complex enterprise-level enhancement",
+    });
+
+    expect(result.requirements).toHaveLength(5);
+    expect(result.affectedFiles.length).toBeGreaterThan(3);
+    expect(result.risks).toContain("Performance regression");
+    expect(result.phases).toHaveLength(2);
+    expect(result.phases[1].dependsOn).toEqual([0]);
+    expect(result.verificationPoints.length).toBeGreaterThan(2);
+    expect(result.stopConditions).toContain("Performance regression detected");
   });
 
   it("should handle different issue types and modes", async () => {

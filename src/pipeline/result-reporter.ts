@@ -20,6 +20,7 @@ export interface PipelineReport {
     errorCategory?: ErrorCategory;
   }>;
   totalDurationMs: number;
+  totalCostUsd?: number;
   prUrl?: string;
   errorCategory?: ErrorCategory;
   errorSummary?: string;
@@ -37,6 +38,10 @@ export function formatResult(
   prUrl?: string
 ): PipelineReport {
   const failedPhase = phaseResults.find(r => !r.success);
+  const totalCostUsd = phaseResults
+    .filter(r => r.costUsd !== undefined)
+    .reduce((sum, r) => sum + (r.costUsd || 0), 0);
+
   return {
     issueNumber,
     repo,
@@ -54,6 +59,7 @@ export function formatResult(
       errorCategory: r.errorCategory,
     })),
     totalDurationMs: Date.now() - startTime,
+    totalCostUsd: totalCostUsd > 0 ? totalCostUsd : undefined,
     prUrl,
     errorCategory: failedPhase?.errorCategory,
     errorSummary: failedPhase?.error?.slice(0, 500),
@@ -70,6 +76,10 @@ export function printResult(report: PipelineReport): void {
   console.log(`Plan: ${report.plan.title} (${report.plan.phaseCount} phases)`);
   console.log(`Result: ${report.success ? "SUCCESS" : "FAILED"}`);
   console.log(`Duration: ${(report.totalDurationMs / 1000).toFixed(1)}s`);
+
+  if (report.totalCostUsd !== undefined) {
+    console.log(`Cost: $${report.totalCostUsd.toFixed(2)}`);
+  }
 
   console.log("\nPhases:");
   for (const phase of report.phases) {

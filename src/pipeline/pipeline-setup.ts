@@ -7,7 +7,8 @@ import { resolveProject, type ResolvedProject } from "../config/project-resolver
 import { detectModeFromLabels } from "../config/mode-presets.js";
 import { getLogger } from "../utils/logger.js";
 import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "./progress-tracker.js";
-import type { AQConfig } from "../types/config.js";
+import type { AQConfig, GitConfig, PipelineMode } from "../types/config.js";
+import type { PipelineState } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
@@ -17,17 +18,16 @@ const logger = getLogger();
 export interface ProjectSetupResult {
   projectRoot: string;
   promptsDir: string;
-  gitConfig: import("../types/config.js").GitConfig;
+  gitConfig: GitConfig;
 }
 
-export interface DuplicatePRCheckResult {
-  hasDuplicatePR: boolean;
-  prUrl?: string;
-}
+export type DuplicatePRCheckResult =
+  | { hasDuplicatePR: false }
+  | { hasDuplicatePR: true; prUrl: string };
 
 export interface IssueSetupResult {
   issue: Awaited<ReturnType<typeof fetchIssue>>;
-  mode: import("../types/config.js").PipelineMode;
+  mode: PipelineMode;
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
@@ -70,34 +70,44 @@ export async function checkDuplicatePR(
   jl?: JobLogger,
   dataDir?: string
 ): Promise<DuplicatePRCheckResult> {
-  // Check if a PR already exists for this issue (prevents duplicate work)
-  // Skip this check for retry jobs to allow re-execution of failed jobs
-  if (!isRetry) {
-    try {
-      const prCheckResult = await runCli(
-        project.commands.ghCli.path,
-        ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
-        { timeout: 10000 }
-      );
-      if (prCheckResult.exitCode === 0) {
-        const prs = JSON.parse(prCheckResult.stdout);
-        if (prs.length > 0) {
-          logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
-          jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
-          jl?.setProgress(PROGRESS_DONE);
-          jl?.setStep("완료 (기존 PR)");
-          if (dataDir) {
-            removeCheckpoint(dataDir, issueNumber);
-          }
-          return { hasDuplicatePR: true, prUrl: prs[0].url };
+  // Skip check for retry jobs to allow re-execution of failed jobs
+  if (isRetry) {
+    return { hasDuplicatePR: false };
+  }
+
+  try {
+    const prCheckResult = await runCli(
+      project.commands.ghCli.path,
+      ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
+      { timeout: 10000 }
+    );
+    if (prCheckResult.exitCode === 0) {
+      const prs = JSON.parse(prCheckResult.stdout);
+      if (prs.length > 0) {
+        const prUrl = prs[0].url;
+        logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prUrl} — marking as complete`);
+        jl?.log(`이슈에 이미 PR이 존재합니다: ${prUrl}`);
+        jl?.setProgress(PROGRESS_DONE);
+        jl?.setStep("완료 (기존 PR)");
+        if (dataDir) {
+          removeCheckpoint(dataDir, issueNumber);
         }
+        return { hasDuplicatePR: true, prUrl };
       }
-    } catch {
-      // non-fatal: continue pipeline if PR check fails
     }
+  } catch {
+    // non-fatal: continue pipeline if PR check fails
   }
 
   return { hasDuplicatePR: false };
+}
+
+/**
+ * Pipeline 상태 비교: current > target 여부 확인
+ */
+function isPastState(current: PipelineState, target: PipelineState): boolean {
+  const states: PipelineState[] = ["RECEIVED", "VALIDATED", "BASE_SYNCED", "BRANCH_CREATED", "WORKTREE_CREATED", "PLAN_GENERATED", "PHASE_IN_PROGRESS", "PHASE_FAILED", "REVIEWING", "SIMPLIFYING", "FINAL_VALIDATING", "DRAFT_PR_CREATED", "DONE", "FAILED"];
+  return states.indexOf(current) > states.indexOf(target);
 }
 
 /**
@@ -108,10 +118,10 @@ export async function fetchAndValidateIssue(
   repo: string,
   issueNumber: number,
   project: ResolvedProject,
-  state: import("../types/pipeline.js").PipelineState,
+  state: PipelineState,
   timer: PipelineTimer,
   jl?: JobLogger,
-  resumeMode?: import("../types/config.js").PipelineMode,
+  resumeMode?: PipelineMode,
   setupContext?: {
     projectRoot: string;
     worktreePath?: string;
@@ -119,12 +129,6 @@ export async function fetchAndValidateIssue(
     dataDir: string;
   }
 ): Promise<IssueSetupResult> {
-  const isPastState = (current: import("../types/pipeline.js").PipelineState, target: import("../types/pipeline.js").PipelineState): boolean => {
-    const states = ["RECEIVED", "VALIDATED", "BASE_SYNCED", "BRANCH_CREATED", "WORKTREE_CREATED", "PLAN_GENERATED", "PHASE_IN_PROGRESS", "PHASE_FAILED", "REVIEWING", "SIMPLIFYING", "FINAL_VALIDATING", "DRAFT_PR_CREATED", "DONE", "FAILED"];
-    const currentIndex = states.indexOf(current);
-    const targetIndex = states.indexOf(target);
-    return currentIndex > targetIndex;
-  };
 
   // === RECEIVED → VALIDATED ===
   let issue: Awaited<ReturnType<typeof fetchIssue>>;

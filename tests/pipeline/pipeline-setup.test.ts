@@ -182,7 +182,7 @@ describe("checkDuplicatePR", () => {
 
     const result = await checkDuplicatePR("test/repo", 42, project, false);
 
-    expect(result).toEqual({ hasDuplicatePR: false });
+    expect(result.hasDuplicatePR).toBe(false);
     expect(mockRunCli).toHaveBeenCalledWith(
       "gh",
       ["pr", "list", "--repo", "test/repo", "--search", "#42 in:title", "--json", "number,url", "--limit", "1"],
@@ -205,10 +205,10 @@ describe("checkDuplicatePR", () => {
 
     const result = await checkDuplicatePR("test/repo", 42, project, false, mockJobLogger, "/tmp/data");
 
-    expect(result).toEqual({
-      hasDuplicatePR: true,
-      prUrl: "https://github.com/test/repo/pull/123",
-    });
+    expect(result.hasDuplicatePR).toBe(true);
+    if (result.hasDuplicatePR) {
+      expect(result.prUrl).toBe("https://github.com/test/repo/pull/123");
+    }
     expect(mockJobLogger.log).toHaveBeenCalledWith("이슈에 이미 PR이 존재합니다: https://github.com/test/repo/pull/123");
     expect(mockJobLogger.setProgress).toHaveBeenCalledWith(100);
     expect(mockJobLogger.setStep).toHaveBeenCalledWith("완료 (기존 PR)");
@@ -218,7 +218,7 @@ describe("checkDuplicatePR", () => {
   it("should skip check when isRetry is true", async () => {
     const result = await checkDuplicatePR("test/repo", 42, project, true);
 
-    expect(result).toEqual({ hasDuplicatePR: false });
+    expect(result.hasDuplicatePR).toBe(false);
     expect(mockRunCli).not.toHaveBeenCalled();
   });
 
@@ -227,7 +227,7 @@ describe("checkDuplicatePR", () => {
 
     const result = await checkDuplicatePR("test/repo", 42, project, false);
 
-    expect(result).toEqual({ hasDuplicatePR: false });
+    expect(result.hasDuplicatePR).toBe(false);
   });
 
   it("should handle non-zero exit codes gracefully", async () => {
@@ -239,7 +239,7 @@ describe("checkDuplicatePR", () => {
 
     const result = await checkDuplicatePR("test/repo", 42, project, false);
 
-    expect(result).toEqual({ hasDuplicatePR: false });
+    expect(result.hasDuplicatePR).toBe(false);
   });
 });
 

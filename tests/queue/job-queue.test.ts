@@ -861,7 +861,7 @@ describe("JobQueue", () => {
       expect(removeCheckpointSpy).toHaveBeenCalled();
     });
 
-    it("should skip cleanup when no checkpoint exists", async () => {
+    it("should attempt checkpoint cleanup even when no checkpoint exists", async () => {
       loadCheckpointSpy.mockReturnValue(null);
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
@@ -880,7 +880,7 @@ describe("JobQueue", () => {
       expect(loadCheckpointSpy).toHaveBeenCalled();
       expect(removeWorktreeSpy).not.toHaveBeenCalled();
       expect(deleteRemoteBranchSpy).not.toHaveBeenCalled();
-      expect(removeCheckpointSpy).not.toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
     });
   });
 });

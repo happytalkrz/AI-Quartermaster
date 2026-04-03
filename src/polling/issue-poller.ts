@@ -3,6 +3,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { JobStore } from "../queue/job-store.js";
 import { JobQueue } from "../queue/job-queue.js";
 import { AQConfig } from "../types/config.js";
+import { SelfUpdater, UpdateInfo } from "../update/self-updater.js";
 
 const logger = getLogger();
 
@@ -12,17 +13,30 @@ interface RawIssue {
   labels: Array<{ name: string } | string>;
 }
 
+type UpdateAvailableCallback = (updateInfo: UpdateInfo) => void | Promise<void>;
+
 export class IssuePoller {
   private config: AQConfig;
   private store: JobStore;
   private queue: JobQueue;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
+  private selfUpdater: SelfUpdater;
+  private onUpdateAvailable?: UpdateAvailableCallback;
 
-  constructor(config: AQConfig, store: JobStore, queue: JobQueue) {
+  constructor(
+    config: AQConfig,
+    store: JobStore,
+    queue: JobQueue,
+    onUpdateAvailable?: UpdateAvailableCallback
+  ) {
     this.config = config;
     this.store = store;
     this.queue = queue;
+    this.onUpdateAvailable = onUpdateAvailable;
+    this.selfUpdater = new SelfUpdater(config.git, {
+      cwd: process.cwd(),
+    });
   }
 
   start(): void {
@@ -58,10 +72,29 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
+    // Check for updates if auto-update is enabled
+    if (this.config.general.autoUpdate && this.onUpdateAvailable) {
+      await this.checkForUpdates();
+    }
+
     const tasks = projects.flatMap(p =>
       triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
     );
     await Promise.allSettled(tasks);
+  }
+
+  private async checkForUpdates(): Promise<void> {
+    try {
+      logger.debug("업데이트 확인 시작");
+      const updateInfo = await this.selfUpdater.checkForUpdates();
+
+      if (updateInfo.hasUpdates && this.onUpdateAvailable) {
+        logger.info(`새 업데이트 감지 — ${updateInfo.currentHash.substring(0, 8)} -> ${updateInfo.remoteHash.substring(0, 8)}`);
+        await this.onUpdateAvailable(updateInfo);
+      }
+    } catch (err) {
+      logger.warn(`업데이트 확인 중 오류: ${err}`);
+    }
   }
 
   private async pollProjectLabel(

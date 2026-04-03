@@ -188,16 +188,22 @@ describe("JobStore", () => {
       expect(store.get(job.id)).toBeTruthy();
 
       let deletedJob: any = null;
-      store.on('jobDeleted', (job) => {
-        deletedJob = job;
+      const deletePromise = new Promise<void>((resolve) => {
+        store.on('jobDeleted', (job) => {
+          deletedJob = job;
+          resolve();
+        });
       });
 
       // Simulate external deletion
       const jobsDir = join(dataDir, "jobs");
       unlinkSync(join(jobsDir, `${job.id}.json`));
 
-      // Wait for watcher to process the event
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Wait for the jobDeleted event or timeout after 500ms
+      await Promise.race([
+        deletePromise,
+        new Promise(resolve => setTimeout(resolve, 500))
+      ]);
 
       expect(store.get(job.id)).toBeUndefined();
       expect(deletedJob).toBeTruthy();

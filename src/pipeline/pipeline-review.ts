@@ -7,6 +7,7 @@ import { getDiffContent } from "../git/diff-collector.js";
 import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
+import { retryWithClaudeFix } from "./retry-with-fix.js";
 import { getLogger } from "../utils/logger.js";
 import type {
   ReviewVariables,
@@ -30,6 +31,12 @@ function hasCriticalAnalystIssues(result: AnalystResult | undefined): boolean {
   return result?.findings.some(f =>
     f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
   ) || false;
+}
+
+interface ReviewRetryResult {
+  reviewResult: ReviewPipelineResult;
+  analystResult?: AnalystResult;
+  fixAttempts: ReviewFixAttempt[];
 }
 
 export interface ReviewContext {
@@ -159,60 +166,61 @@ export async function runReviewPhase(
         if (!ctx.project.safety?.maxRetries) {
           throw new Error("Safety configuration not found");
         }
-        const maxRetries = ctx.project.safety.maxRetries;
-        let retrySuccess = false;
+        if (!ctx.project.commands?.claudeCli) {
+          throw new Error("Claude CLI configuration not found");
+        }
+
+        const claudeCliConfig = ctx.project.commands.claudeCli;
         const fixAttempts: ReviewFixAttempt[] = [];
 
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-          // Extract findings for this attempt
-          const analystFindings = analystResult?.findings.filter(f =>
-            f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-          ) || [];
-          const reviewFindings = reviewResult.rounds.flatMap(round =>
-            round.findings.filter(f => f.severity === "error")
-          );
+        const retryResult = await retryWithClaudeFix<ReviewRetryResult>({
+          checkFn: async () => {
+            const currentHasCritical = hasCriticalAnalystIssues(analystResult);
+            const success = !currentHasCritical && reviewResult.allPassed;
+            return {
+              success,
+              result: {
+                reviewResult,
+                analystResult,
+                fixAttempts: []
+              }
+            };
+          },
 
-          const allFindings = [...analystFindings, ...reviewFindings];
-          const findingsSummary = allFindings.map(f => f.message).join(", ");
+          buildFixPromptFn: (result: ReviewRetryResult) => {
+            const currentAnalystResult = result.analystResult;
+            const currentReviewResult = result.reviewResult;
+            const currentHasCritical = hasCriticalAnalystIssues(currentAnalystResult);
 
-          logger.info(`[REVIEWING] Retry ${attempt}/${maxRetries} — fixing: ${findingsSummary}`);
-          ctx.jl?.log(`리뷰 실패 수정 시도 ${attempt}/${maxRetries}: ${findingsSummary}`);
-          ctx.jl?.setStep(`리뷰 오류 수정 중 (${attempt}/${maxRetries})...`);
+            const analystFindings = currentAnalystResult?.findings.filter(f =>
+              f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
+            ) || [];
+            const reviewFindings = currentReviewResult.rounds.flatMap(round =>
+              round.findings.filter(f => f.severity === "error")
+            );
 
-          // Prepare fix prompt
-          const details = [];
-          if (hasCritical) {
-            details.push("=== Requirements Analysis Issues ===");
-            details.push(...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`));
-          }
-          if (!reviewResult.allPassed) {
-            details.push("=== Code Review Issues ===");
-            details.push(...reviewFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`));
-          }
+            const details = [];
+            if (currentHasCritical) {
+              details.push("=== Requirements Analysis Issues ===");
+              details.push(...analystFindings.map(f =>
+                `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`
+              ));
+            }
+            if (!currentReviewResult.allPassed) {
+              details.push("=== Code Review Issues ===");
+              details.push(...reviewFindings.map(f =>
+                `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`
+              ));
+            }
 
-          const fixPrompt = [
-            "The following review issues were found. Fix the errors only — do not add new features or refactor unrelated code.",
-            "",
-            details.join("\n"),
-          ].join("\n");
+            return [
+              "The following review issues were found. Fix the errors only — do not add new features or refactor unrelated code.",
+              "",
+              details.join("\n"),
+            ].join("\n");
+          },
 
-          // Run Claude with fallback model
-          if (!ctx.project.commands?.claudeCli) {
-            throw new Error("Claude CLI configuration not found");
-          }
-          const claudeConfig = configForTask(ctx.project.commands.claudeCli, "fallback");
-          let fixSuccess = false;
-          let fixError: string | undefined;
-
-          try {
-            await runClaude({
-              prompt: fixPrompt,
-              cwd: ctx.worktreePath,
-              config: claudeConfig,
-            });
-
-            await autoCommitIfDirty(ctx.gitConfig.gitPath, ctx.worktreePath, `fix: review 오류 수정 (retry ${attempt})`);
-
+          revalidateFn: async () => {
             // Re-run reviews
             if (!reviewVariables) {
               reviewVariables = await buildReviewVars(ctx);
@@ -220,7 +228,7 @@ export async function runReviewPhase(
 
             const retryReviewResult = await runReviews({
               reviewConfig: ctx.project.review as Required<typeof ctx.project.review>,
-              claudeConfig: ctx.project.commands.claudeCli,
+              claudeConfig: claudeCliConfig,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,
               variables: reviewVariables as any,
@@ -230,76 +238,75 @@ export async function runReviewPhase(
             if (analystResult) {
               retryAnalystResult = await runAnalyst({
                 promptsDir: ctx.promptsDir,
-                claudeConfig: ctx.project.commands.claudeCli,
+                claudeConfig: claudeCliConfig,
                 cwd: ctx.worktreePath,
                 variables: reviewVariables as any,
               });
             }
 
-            const retryHasCriticalAnalystIssues = retryAnalystResult?.findings.some(f =>
-              f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
-            ) || false;
+            const retryHasCriticalAnalystIssues = hasCriticalAnalystIssues(retryAnalystResult);
+            const success = !retryHasCriticalAnalystIssues && retryReviewResult.allPassed;
 
-            fixSuccess = !retryHasCriticalAnalystIssues && retryReviewResult.allPassed;
+            return {
+              success,
+              result: {
+                reviewResult: retryReviewResult,
+                analystResult: retryAnalystResult,
+                fixAttempts
+              }
+            };
+          },
 
-            if (fixSuccess) {
-              logger.info(`[REVIEWING] Passed after retry ${attempt}`);
-              ctx.jl?.log(`리뷰 통과 (retry ${attempt})`);
-              reviewResult = { ...retryReviewResult, fixAttempts };
-              if (retryAnalystResult) {
-                reviewResult.analyst = retryAnalystResult;
-              }
-              retrySuccess = true;
-            } else {
-              // Update for next iteration
-              reviewResult = retryReviewResult;
-              analystResult = retryAnalystResult;
-              for (const round of reviewResult.rounds) {
-                ctx.jl?.log(`리뷰 "${round.roundName}": ${round.verdict} (retry ${attempt})`);
-              }
+          maxRetries: ctx.project.safety.maxRetries,
+          claudeConfig: claudeCliConfig,
+          cwd: ctx.worktreePath,
+          gitPath: ctx.gitConfig.gitPath,
+          commitMessageTemplate: "fix: review 오류 수정 (retry {attempt})",
+
+          onAttempt: (attempt, maxRetries, description) => {
+            logger.info(`[REVIEWING] Retry ${attempt}/${maxRetries} — fixing: ${description}`);
+            ctx.jl?.log(`리뷰 실패 수정 시도 ${attempt}/${maxRetries}: ${description}`);
+            ctx.jl?.setStep(`리뷰 오류 수정 중 (${attempt}/${maxRetries})...`);
+          },
+
+          onSuccess: (attempt, result) => {
+            logger.info(`[REVIEWING] Passed after retry ${attempt}`);
+            ctx.jl?.log(`리뷰 통과 (retry ${attempt})`);
+
+            // Update results
+            reviewResult = { ...result.reviewResult, fixAttempts };
+            if (result.analystResult) {
+              reviewResult.analyst = result.analystResult;
+              analystResult = result.analystResult;
             }
-          } catch (error) {
-            fixError = error instanceof Error ? error.message : String(error);
-            logger.error(`[REVIEWING] Fix attempt ${attempt} failed: ${fixError}`);
+          },
+
+          onFailure: (maxRetries, finalResult) => {
+            const finalFindings = [
+              ...(finalResult.analystResult?.findings.filter(f => f.severity === "error") || []),
+              ...finalResult.reviewResult.rounds.flatMap(round => round.findings.filter(f => f.severity === "error"))
+            ];
+            const finalSummary = finalFindings.map(f => f.message).join(", ");
+
+            logger.error(`[REVIEWING] Failed after ${maxRetries} retries: ${finalSummary}`);
+            ctx.jl?.log(`실패: Review failed after ${maxRetries} retries: ${finalSummary}`);
+            ctx.jl?.setStep("실패");
           }
+        });
 
-          // Record fix attempt
-          fixAttempts.push({
-            attempt,
-            findingsSnapshot: {
-              analystFindings,
-              reviewFindings,
-            },
-            fixResult: {
-              success: fixSuccess,
-              filesModified: [],
-              summary: fixSuccess ? `Fixed ${allFindings.length} issues` : `Fix failed: ${fixError}`,
-              error: fixError,
-            },
-          });
-
-          if (fixSuccess) {
-            break;
-          }
-        }
-
-        if (!retrySuccess) {
+        if (!retryResult.success) {
           const finalFindings = [
-            ...(analystResult?.findings.filter(f => f.severity === "error") || []),
-            ...reviewResult.rounds.flatMap(round => round.findings.filter(f => f.severity === "error"))
+            ...(retryResult.result.analystResult?.findings.filter(f => f.severity === "error") || []),
+            ...retryResult.result.reviewResult.rounds.flatMap(round => round.findings.filter(f => f.severity === "error"))
           ];
           const finalSummary = finalFindings.map(f => f.message).join(", ");
-
-          logger.error(`[REVIEWING] Failed after ${maxRetries} retries: ${finalSummary}`);
-          ctx.jl?.log(`실패: Review failed after ${maxRetries} retries: ${finalSummary}`);
-          ctx.jl?.setStep("실패");
 
           // Add fix attempts to final result
           reviewResult.fixAttempts = fixAttempts;
 
           return {
             success: false,
-            error: `Review failed after ${maxRetries} retries: ${finalSummary}`,
+            error: `Review failed after ${ctx.project.safety.maxRetries} retries: ${finalSummary}`,
             reviewResult,
             reviewVariables
           };

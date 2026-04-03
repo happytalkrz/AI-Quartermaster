@@ -73,6 +73,8 @@ function toggleTheme() {
 /* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
+var currentConfig = null; // 현재 설정 데이터 저장
+
 function loadSettings() {
   var container = document.getElementById('settings-content');
   if (!container) return;
@@ -85,6 +87,7 @@ function loadSettings() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.config) {
+        currentConfig = data.config;
         renderSettingsView(data.config);
       } else {
         container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정 데이터가 없습니다.</div>';
@@ -93,6 +96,111 @@ function loadSettings() {
     .catch(function(error) {
       container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러오는데 실패했습니다.</div>';
     });
+}
+
+function setSettingsTab(tabName) {
+  document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
+    var isActive = btn.dataset.tab === tabName;
+    btn.classList.toggle('bg-primary/10 text-primary', isActive);
+    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
+  });
+
+  document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {
+    var isActive = panel.id === 'settings-tab-' + tabName;
+    panel.classList.toggle('hidden', !isActive);
+  });
+
+  localStorage.setItem('aqm-selected-tab', tabName);
+}
+
+function showButtonState(btn, icon, message, colorClass) {
+  var originalContent = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined text-base' + (icon === 'sync' ? ' animate-spin' : '') + '">' + icon + '</span><span>' + message + '</span>';
+  btn.classList.replace('bg-primary', colorClass);
+
+  setTimeout(function() {
+    btn.disabled = false;
+    btn.innerHTML = originalContent;
+    btn.classList.replace(colorClass, 'bg-primary');
+  }, 2000);
+}
+
+function saveSettings() {
+  var saveBtn = document.getElementById('save-settings-btn');
+  if (!saveBtn || !currentConfig) return;
+
+  showButtonState(saveBtn, 'sync', t('config.saveState.saving'), 'bg-primary');
+
+  apiFetch('/api/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config: collectFormData() })
+  })
+    .then(function(r) {
+      if (r.ok) {
+        showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
+      } else {
+        throw new Error('Save failed');
+      }
+    })
+    .catch(function() {
+      showButtonState(saveBtn, 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
+    });
+}
+
+function collectFormData() {
+  if (!currentConfig) return null;
+
+  var updatedConfig = JSON.parse(JSON.stringify(currentConfig)); // deep copy
+
+  // 각 폼에서 데이터 수집
+  ['general', 'safety', 'review'].forEach(function(section) {
+    var form = document.getElementById(section + '-settings-form');
+    if (!form) return;
+
+    var inputs = form.querySelectorAll('input, select, textarea');
+    inputs.forEach(function(input) {
+      var path = input.dataset.configPath;
+      if (!path) return;
+
+      var value = getInputValue(input);
+      setNestedValue(updatedConfig, path, value);
+    });
+  });
+
+  return updatedConfig;
+}
+
+function getInputValue(input) {
+  switch (input.type) {
+    case 'checkbox':
+      return input.checked;
+    case 'number':
+      return parseInt(input.value, 10) || 0;
+    default:
+      // textarea이고 JSON 데이터인 경우 파싱 시도
+      if (input.tagName.toLowerCase() === 'textarea') {
+        try {
+          return JSON.parse(input.value);
+        } catch (e) {
+          return input.value; // JSON 파싱 실패 시 문자열로 반환
+        }
+      }
+      return input.value;
+  }
+}
+
+function setNestedValue(obj, path, value) {
+  var keys = path.split('.');
+  var current = obj;
+
+  for (var i = 0; i < keys.length - 1; i++) {
+    if (!current[keys[i]]) current[keys[i]] = {};
+    current = current[keys[i]];
+  }
+
+  current[keys[keys.length - 1]] = value;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -306,3 +414,7 @@ apiFetch('/api/jobs')
   .catch(function() {});
 
 connectSSE();
+
+// 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
+window.setSettingsTab = setSettingsTab;
+window.saveSettings = saveSettings;

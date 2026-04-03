@@ -51,6 +51,11 @@ var i18n = {
     triggerLabel: "트리거 라벨",
     labelPlaceholder: "예: implement",
     add: "추가",
+    config: {
+      tabs: { general: "일반", safety: "안전", review: "리뷰" },
+      saveState: { saving: "저장 중...", saved: "저장됨", saveFailed: "저장 실패" },
+      form: { edit: "편집", reset: "초기화", resetConfirm: "설정을 초기화하시겠습니까?", saveChanges: "변경사항 저장", discardChanges: "변경사항 취소" }
+    },
   },
   en: {
     dashboard: "Dashboard",
@@ -99,6 +104,11 @@ var i18n = {
     triggerLabel: "Trigger Label",
     labelPlaceholder: "e.g. implement",
     add: "Add",
+    config: {
+      tabs: { general: "General", safety: "Safety", review: "Review" },
+      saveState: { saving: "Saving...", saved: "Saved", saveFailed: "Save Failed" },
+      form: { edit: "Edit", reset: "Reset", resetConfirm: "Reset all settings to default?", saveChanges: "Save Changes", discardChanges: "Discard Changes" }
+    },
   }
 };
 

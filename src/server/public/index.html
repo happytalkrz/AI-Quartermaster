@@ -146,6 +146,10 @@
     .view-panel { display: none; }
     .view-panel.active { display: block; }
 
+    /* hide settings tab panels by default */
+    .settings-tab-panel { display: block; }
+    .settings-tab-panel.hidden { display: none; }
+
     @keyframes fadeIn {
         from { opacity: 0; transform: scale(0.95) translateY(10px); }
         to { opacity: 1; transform: scale(1) translateY(0); }
@@ -399,6 +403,59 @@
 
     <!-- Settings Content (populated by loadSettings() on navigation) -->
     <div id="settings-content" class="space-y-6"></div>
+
+    <!-- Settings Tab Navigation -->
+    <div class="flex items-center gap-1 mb-8 bg-surface-container rounded-lg p-1 ring-1 ring-outline-variant/10 w-fit">
+      <button class="settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors bg-primary/10 text-primary flex items-center gap-2"
+              data-tab="general" onclick="setSettingsTab('general')">
+        <span class="material-symbols-outlined text-base">tune</span>
+        <span data-i18n="settings.general">General</span>
+      </button>
+      <button class="settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+              data-tab="safety" onclick="setSettingsTab('safety')">
+        <span class="material-symbols-outlined text-base">security</span>
+        <span data-i18n="settings.safety">Safety</span>
+      </button>
+      <button class="settings-tab-btn px-4 py-2 text-sm font-bold rounded-md transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+              data-tab="review" onclick="setSettingsTab('review')">
+        <span class="material-symbols-outlined text-base">rate_review</span>
+        <span data-i18n="settings.review">Review</span>
+      </button>
+    </div>
+
+    <!-- Settings Tab Panels -->
+    <div class="settings-tab-content">
+      <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20">
+        <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined">tune</span>
+          <span data-i18n="settings.general">General</span>
+        </h3>
+        <div id="general-settings-form" class="space-y-4"></div>
+      </div>
+      <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20 hidden">
+        <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined">security</span>
+          <span data-i18n="settings.safety">Safety</span>
+        </h3>
+        <div id="safety-settings-form" class="space-y-4"></div>
+      </div>
+      <div id="settings-tab-review" class="settings-tab-panel bg-surface-container p-6 rounded-xl ring-1 ring-outline-variant/20 hidden">
+        <h3 class="text-lg font-headline font-bold text-on-surface mb-4 flex items-center gap-2">
+          <span class="material-symbols-outlined">rate_review</span>
+          <span data-i18n="settings.review">Review</span>
+        </h3>
+        <div id="review-settings-form" class="space-y-4"></div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="flex justify-end mt-8 pt-6 border-t border-outline-variant/30">
+      <button id="save-settings-btn" onclick="saveSettings()"
+              class="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-lg hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+        <span class="material-symbols-outlined text-base">save</span>
+        <span data-i18n="save">Save</span>
+      </button>
+    </div>
   </div>
 
 </main>

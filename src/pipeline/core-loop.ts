@@ -225,9 +225,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   }
 
   // Calculate total cost from phase results
-  const totalCostUsd = phaseResults
-    .filter(result => result.costUsd !== undefined)
-    .reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  const totalCostUsd = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
 
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);
   logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)}`);

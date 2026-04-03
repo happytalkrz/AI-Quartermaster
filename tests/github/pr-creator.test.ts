@@ -55,7 +55,20 @@ describe("createDraftPR", () => {
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/1", stderr: "", exitCode: 0 });
     const result = await createDraftPR(prConfig, ghConfig, ctx, { cwd: "/tmp", promptsDir: "/prompts" });
     expect(result).toEqual({ url: "https://github.com/test/repo/pull/1", number: 1 });
-    expect(mockRunCli).toHaveBeenCalled();
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining([
+        "pr", "create",
+        "--repo", "test/repo",
+        "--head", "aq/42-fix-login",
+        "--base", "master",
+        "--title", "[AQ-#{issueNumber}] {title}",
+        "--body", expect.stringContaining("Closes #42"),
+        "--draft",
+        "--label", "ai-quartermaster",
+      ]),
+      { cwd: "/tmp", timeout: 30000 }
+    );
   });
 
   it("should return null on failure", async () => {
@@ -104,15 +117,23 @@ describe("closeIssue", () => {
 
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/3\n", stderr: "", exitCode: 0 });
 
-    await createDraftPR(prConfig, ghConfig, ctxWithCost, { cwd: "/tmp", promptsDir: "/prompts" });
+    const result = await createDraftPR(prConfig, ghConfig, ctxWithCost, { cwd: "/tmp", promptsDir: "/prompts" });
 
-    const callArgs = mockRunCli.mock.calls[0][1];
-    const bodyIndex = callArgs.indexOf("--body");
-    expect(bodyIndex).toBeGreaterThanOrEqual(0);
-
-    // The body should contain totalCostUsd formatted to 4 decimal places
-    // We can't easily verify the exact template contents due to mocking, but we can verify the call was made with stats
-    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.arrayContaining(["--body"]), expect.any(Object));
+    expect(result).toEqual({ url: "https://github.com/test/repo/pull/3", number: 3 });
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining([
+        "pr", "create",
+        "--repo", "test/repo",
+        "--head", "aq/42-fix-login",
+        "--base", "master",
+        "--title", "[AQ-#{issueNumber}] {title}",
+        "--body", expect.stringContaining("Closes #42"),
+        "--draft",
+        "--label", "ai-quartermaster",
+      ]),
+      { cwd: "/tmp", timeout: 30000 }
+    );
   });
 
   it("should use default totalCostUsd when not provided", async () => {
@@ -120,10 +141,23 @@ describe("closeIssue", () => {
 
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/4\n", stderr: "", exitCode: 0 });
 
-    await createDraftPR(prConfig, ghConfig, ctxWithoutCost, { cwd: "/tmp", promptsDir: "/prompts" });
+    const result = await createDraftPR(prConfig, ghConfig, ctxWithoutCost, { cwd: "/tmp", promptsDir: "/prompts" });
 
-    // Should still work, defaults to '0.0000' in template
-    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.arrayContaining(["--body"]), expect.any(Object));
+    expect(result).toEqual({ url: "https://github.com/test/repo/pull/4", number: 4 });
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining([
+        "pr", "create",
+        "--repo", "test/repo",
+        "--head", "aq/42-fix-login",
+        "--base", "master",
+        "--title", "[AQ-#{issueNumber}] {title}",
+        "--body", expect.stringContaining("Closes #42"),
+        "--draft",
+        "--label", "ai-quartermaster",
+      ]),
+      { cwd: "/tmp", timeout: 30000 }
+    );
   });
 });
 

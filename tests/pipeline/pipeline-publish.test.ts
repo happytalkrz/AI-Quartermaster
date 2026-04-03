@@ -209,13 +209,29 @@ describe("pushAndCreatePR", () => {
 
     expect(result.success).toBe(true);
     expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
-    expect(mockValidateBeforePush).toHaveBeenCalled();
+    expect(mockValidateBeforePush).toHaveBeenCalledWith({
+      safetyConfig: context.projectConfig.safety,
+      gitConfig: context.gitConfig,
+      cwd: "/tmp/wt/42-fix-bug",
+      baseBranch: "main",
+    });
     expect(mockPushBranch).toHaveBeenCalledWith(
       context.gitConfig,
       "ax/42-fix-bug",
       { cwd: "/tmp/wt/42-fix-bug" }
     );
-    expect(mockCreateDraftPR).toHaveBeenCalled();
+    expect(mockCreateDraftPR).toHaveBeenCalledWith(
+      context.projectConfig.pr,
+      context.projectConfig.commands.ghCli,
+      expect.objectContaining({
+        issueNumber: 42,
+        issueTitle: "Fix bug",
+        repo: "test/repo",
+        branchName: "ax/42-fix-bug",
+        baseBranch: "main",
+      }),
+      expect.objectContaining({ cwd: "/tmp/wt/42-fix-bug", dryRun: false })
+    );
     expect(mockEnableAutoMerge).toHaveBeenCalledWith(
       1,
       "test/repo",
@@ -247,7 +263,11 @@ describe("pushAndCreatePR", () => {
     const result = await pushAndCreatePR(context);
 
     expect(result.success).toBe(true);
-    expect(mockCheckConflicts).toHaveBeenCalled();
+    expect(mockCheckConflicts).toHaveBeenCalledWith(
+      context.gitConfig,
+      "main",
+      { cwd: "/tmp/wt/42-fix-bug" }
+    );
     expect(mockAttemptRebase).toHaveBeenCalledWith(
       context.gitConfig,
       "main",
@@ -486,8 +506,15 @@ describe("cleanupOnSuccess", () => {
       "/tmp/wt/42-fix-bug",
       { cwd: "/tmp/project" }
     );
-    expect(mockFormatResult).toHaveBeenCalled();
-    expect(mockPrintResult).toHaveBeenCalled();
+    expect(mockFormatResult).toHaveBeenCalledWith(
+      42,
+      "test/repo",
+      context.plan,
+      context.phaseResults,
+      context.startTime,
+      "https://github.com/test/repo/pull/1"
+    );
+    expect(mockPrintResult).toHaveBeenCalledWith(mockFormatResult.mock.results[0].value);
     expect(mockRemoveCheckpoint).toHaveBeenCalledWith("/tmp/data", 42);
   });
 
@@ -512,10 +539,18 @@ describe("cleanupOnSuccess", () => {
 
   it("should record success pattern", async () => {
     const context = makeCleanupContext();
+    const mockAddFn = vi.fn();
+    mockPatternStore.mockImplementation(() => ({ add: mockAddFn }) as any);
 
     await cleanupOnSuccess(context);
 
     expect(mockPatternStore).toHaveBeenCalledWith("/tmp/data");
+    expect(mockAddFn).toHaveBeenCalledWith({
+      issueNumber: 42,
+      repo: "test/repo",
+      type: "success",
+      tags: [],
+    });
   });
 });
 

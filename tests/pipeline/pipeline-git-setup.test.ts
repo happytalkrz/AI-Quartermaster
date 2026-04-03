@@ -159,9 +159,16 @@ describe("setupGitEnvironment", () => {
     });
 
     // BASE_SYNCED state still executes syncBaseBranch (isPastState(BASE_SYNCED, BASE_SYNCED) = false)
-    expect(mockSyncBaseBranch).toHaveBeenCalled();
-    expect(mockCreateWorkBranch).toHaveBeenCalled();
-    expect(mockCreateWorktree).toHaveBeenCalled();
+    expect(mockSyncBaseBranch).toHaveBeenCalledWith(defaultGitConfig, { cwd: "/project" });
+    expect(mockCreateWorkBranch).toHaveBeenCalledWith(defaultGitConfig, 42, "Fix bug", { cwd: "/project" });
+    expect(mockCreateWorktree).toHaveBeenCalledWith(
+      defaultGitConfig,
+      defaultWorktreeConfig,
+      "ax/42-fix-bug",
+      42,
+      "fix-bug",
+      { cwd: "/project" }
+    );
     expect(result.branchName).toBe("ax/42-fix-bug");
     expect(result.worktreePath).toBe("/tmp/worktrees/42-fix-bug");
   });
@@ -190,9 +197,13 @@ describe("setupGitEnvironment", () => {
       jl: mockJobLogger,
     });
 
-    expect(mockRemoveWorktree).not.toHaveBeenCalled(); // No cleanup needed
+    expect(mockRemoveWorktree).not.toHaveBeenCalled(); // No cleanup needed since existsSync returns false (no existing worktree)
     expect(result.state).toBe("WORKTREE_CREATED");
     expect(result.branchName).toBe("ax/42-fix-bug");
+    expect(result.worktreePath).toBe("/tmp/worktrees/42-fix-bug");
+    // Git setup should still have proceeded normally despite retry flag
+    expect(mockSyncBaseBranch).toHaveBeenCalledWith(defaultGitConfig, { cwd: "/project" });
+    expect(mockCreateWorkBranch).toHaveBeenCalledWith(defaultGitConfig, 42, "Fix bug", { cwd: "/project" });
   });
 
   it("should proceed normally on retry when no cleanup needed", async () => {
@@ -222,7 +233,18 @@ describe("setupGitEnvironment", () => {
     expect(mockRemoveWorktree).not.toHaveBeenCalled();
     expect(result.state).toBe("WORKTREE_CREATED");
     expect(result.branchName).toBe("ax/42-fix-bug");
-    // Note: runCli might be called by other functions, so we don't check for specific prune calls
+    expect(result.worktreePath).toBe("/tmp/worktrees/42-fix-bug");
+    // Full git setup should have executed with correct parameters
+    expect(mockSyncBaseBranch).toHaveBeenCalledWith(defaultGitConfig, { cwd: "/project" });
+    expect(mockCreateWorkBranch).toHaveBeenCalledWith(defaultGitConfig, 42, "Fix bug", { cwd: "/project" });
+    expect(mockCreateWorktree).toHaveBeenCalledWith(
+      defaultGitConfig,
+      defaultWorktreeConfig,
+      "ax/42-fix-bug",
+      42,
+      "fix-bug",
+      { cwd: "/project" }
+    );
   });
 
   it("should throw if missing branch name or worktree path", async () => {
@@ -342,6 +364,14 @@ describe("prepareWorkEnvironment", () => {
 
     expect(result.rollbackHash).toBeUndefined();
     expect(mockCreateCheckpoint).not.toHaveBeenCalled();
+    // Verify the rest of the environment was still prepared
+    expect(result.projectConventions).toBe("");
+    expect(result.skillsContext).toBe("");
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "git",
+      ["ls-tree", "-r", "--name-only", "HEAD"],
+      { cwd: "/tmp/worktree" }
+    );
   });
 
   it("should handle checkpoint creation failure gracefully", async () => {
@@ -365,7 +395,18 @@ describe("prepareWorkEnvironment", () => {
     });
 
     expect(result.rollbackHash).toBeUndefined();
-    expect(mockCreateCheckpoint).toHaveBeenCalled();
+    expect(mockCreateCheckpoint).toHaveBeenCalledWith({
+      cwd: "/tmp/worktree",
+      gitPath: "git",
+    });
+    // Verify execution continued despite checkpoint failure
+    expect(result.projectConventions).toBe("");
+    expect(result.skillsContext).toBe("");
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "git",
+      ["ls-tree", "-r", "--name-only", "HEAD"],
+      { cwd: "/tmp/worktree" }
+    );
   });
 
   it("should skip dependency installation when preInstall is null", async () => {
@@ -388,6 +429,12 @@ describe("prepareWorkEnvironment", () => {
     });
 
     expect(mockInstallDependencies).not.toHaveBeenCalled();
+    // Verify git structure command still ran with correct worktree path
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "git",
+      ["ls-tree", "-r", "--name-only", "HEAD"],
+      { cwd: "/tmp/worktree" }
+    );
   });
 
   it("should load CLAUDE.md from worktree first, then project root", async () => {
@@ -467,6 +514,9 @@ describe("prepareWorkEnvironment", () => {
 
     expect(result.projectConventions).toBe("");
     expect(mockReadFileSync).not.toHaveBeenCalled();
+    // Both worktree and project root paths should have been checked
+    expect(mockExistsSync).toHaveBeenCalledWith("/tmp/worktree/CLAUDE.md");
+    expect(mockExistsSync).toHaveBeenCalledWith("/project/CLAUDE.md");
   });
 
   it("should load skills when skillsPath is provided", async () => {
@@ -522,6 +572,8 @@ describe("prepareWorkEnvironment", () => {
 
     expect(result.skillsContext).toBe("");
     expect(mockFormatSkillsForPrompt).not.toHaveBeenCalled();
+    // loadSkills should have been called with resolved path even when result is empty
+    expect(mockLoadSkills).toHaveBeenCalledWith("/project/skills");
   });
 
   it("should limit repo structure output to 200 lines", async () => {

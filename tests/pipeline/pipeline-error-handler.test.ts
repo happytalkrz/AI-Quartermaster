@@ -31,9 +31,14 @@ vi.mock("../../src/utils/logger.js", () => ({
 
 describe("pipeline-error-handler", () => {
   let mockContext: CoreLoopFailureContext;
+  let mockPatternStore: { add: any };
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mockPatternStore = {
+      add: vi.fn(),
+    };
 
     mockContext = {
       issueNumber: 123,
@@ -61,7 +66,7 @@ describe("pipeline-error-handler", () => {
       aqRoot: "/test/aq",
       projectRoot: "/test/project",
       dataDir: "/test/data",
-      patternStore: new (vi.fn())(),
+      patternStore: mockPatternStore as any,
       jl: {
         log: vi.fn(),
         setStep: vi.fn(),
@@ -76,7 +81,7 @@ describe("pipeline-error-handler", () => {
 
       expect(result.success).toBe(false);
       expect(result.state).toBe("FAILED");
-      expect(result.error).toBe("Phase execution failed");
+      expect(result.error).toBe("Phase execution failed. Rolled back to abc123 (strategy: all)");
       expect(result.report).toEqual({ summary: "test report" });
     });
 
@@ -165,14 +170,14 @@ describe("pipeline-error-handler", () => {
     });
 
     it("should handle pattern store failure gracefully", async () => {
-      mockContext.patternStore.add = vi.fn().mockImplementationOnce(() => {
+      mockPatternStore.add = vi.fn().mockImplementationOnce(() => {
         throw new Error("Pattern store error");
       });
 
       const result = await handleCoreLoopFailure(mockContext);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Phase execution failed");
+      expect(result.error).toBe("Phase execution failed. Rolled back to abc123 (strategy: all)");
     });
   });
 });

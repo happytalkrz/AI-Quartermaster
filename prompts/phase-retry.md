@@ -24,6 +24,28 @@
 {{retry.errorMessage}}
 ```
 
+{{#retry.errorHistory}}
+## 에러 히스토리
+
+이전 시도들의 에러 정보를 참고하여 반복적인 실수를 방지하세요:
+
+| 시도 | 에러 유형 | 에러 메시지 (요약) |
+|------|-----------|-------------------|
+{{#retry.errorHistory}}
+| {{attempt}} | {{errorCategory}} | {{errorSummary}} |
+{{/retry.errorHistory}}
+
+**주의**: 이전 시도들에서 이미 시도한 접근 방식은 피하고, 근본 원인을 해결하는 다른 방법을 시도하세요.
+{{/retry.errorHistory}}
+
+## 이전 시도 출력 로그
+
+{{retry.lastOutput}}이(가) 있는 경우, 이전 시도의 전체 출력을 참고하여 문제를 파악하세요:
+
+```
+{{retry.lastOutput}}
+```
+
 ---
 
 ## 진행 보고 (필수)

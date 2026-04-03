@@ -37,6 +37,11 @@ function navigateTo(view) {
     var job = currentJobs.find(function(j) { return j.id === selectedJobId; });
     if (job) renderLogsView(job);
   }
+
+  // If navigating to settings view, load configuration
+  if (view === 'settings') {
+    loadSettings();
+  }
 }
 
 // Bind navigation clicks
@@ -63,6 +68,31 @@ function toggleTheme() {
     localStorage.setItem('aqm-theme', 'dark');
     document.getElementById('btn-theme').textContent = 'dark_mode';
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Settings
+   ══════════════════════════════════════════════════════════════ */
+function loadSettings() {
+  var container = document.getElementById('settings-content');
+  if (!container) return;
+
+  // Show loading state
+  container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin">sync</span>설정을 로딩 중...</div>';
+
+  // Fetch configuration
+  apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.config) {
+        renderSettingsView(data.config);
+      } else {
+        container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정 데이터가 없습니다.</div>';
+      }
+    })
+    .catch(function(error) {
+      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러오는데 실패했습니다.</div>';
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -171,5 +201,4 @@ apiFetch('/api/jobs')
   .then(handleData)
   .catch(function() {});
 
-fetchStats();
 connectSSE();

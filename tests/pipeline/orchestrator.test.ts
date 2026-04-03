@@ -55,6 +55,9 @@ vi.mock("../../src/safety/safety-checker.js", () => ({
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
+vi.mock("../../src/claude/claude-runner.js", () => ({
+  runClaude: vi.fn(),
+}));
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
@@ -64,6 +67,7 @@ import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.j
 import { runCoreLoop } from "../../src/pipeline/core-loop.js";
 import { installDependencies } from "../../src/pipeline/dependency-installer.js";
 import { runCli } from "../../src/utils/cli-runner.js";
+import { runClaude } from "../../src/claude/claude-runner.js";
 import { runFinalValidation } from "../../src/pipeline/final-validator.js";
 import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runSimplify } from "../../src/review/simplify-runner.js";
@@ -84,6 +88,7 @@ const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockCoreLoop = vi.mocked(runCoreLoop);
 const mockInstallDeps = vi.mocked(installDependencies);
 const mockRunCli = vi.mocked(runCli);
+const mockRunClaude = vi.mocked(runClaude);
 const mockRunReviews = vi.mocked(runReviews);
 const mockRunSimplify = vi.mocked(runSimplify);
 const mockFinalValidation = vi.mocked(runFinalValidation);
@@ -107,6 +112,7 @@ function setupSuccessMocks() {
   mockCreateWorktree.mockResolvedValue({ path: "/tmp/wt/42-fix-bug", branch: "ax/42-fix-bug" });
   mockInstallDeps.mockResolvedValue(undefined);
   mockRunCli.mockResolvedValue({ stdout: "src/\n", stderr: "", exitCode: 0 });
+  mockRunClaude.mockResolvedValue(undefined);
   mockCoreLoop.mockResolvedValue({
     plan: {
       issueNumber: 42, title: "Fix bug", problemDefinition: "Bug fix",
@@ -132,7 +138,10 @@ function setupSuccessMocks() {
 }
 
 describe("runPipeline", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunClaude.mockResolvedValue(undefined);
+  });
 
   it("should run full pipeline successfully", async () => {
     setupSuccessMocks();
@@ -232,5 +241,235 @@ describe("runPipeline", () => {
     expect(result.success).toBe(true);
     expect(result.state).toBe("DONE");
     expect(mockCloseIssue).toHaveBeenCalled();
+  });
+
+  describe("review fix loop", () => {
+    it("should succeed on first fix attempt", async () => {
+      setupSuccessMocks();
+
+      // First review fails with error findings
+      mockRunReviews
+        .mockResolvedValueOnce({
+          rounds: [{
+            roundName: "basic",
+            verdict: "FAIL",
+            findings: [{ severity: "error", message: "Missing validation", file: "src/test.ts", line: 10 }],
+            summary: "Validation missing",
+            durationMs: 1000
+          }],
+          allPassed: false
+        })
+        // Second review (after fix) passes
+        .mockResolvedValueOnce({
+          rounds: [{
+            roundName: "basic",
+            verdict: "PASS",
+            findings: [],
+            summary: "All good",
+            durationMs: 800
+          }],
+          allPassed: true,
+          fixAttempts: [{
+            attempt: 1,
+            findingsSnapshot: {
+              reviewFindings: [{ severity: "error", message: "Missing validation", file: "src/test.ts", line: 10 }]
+            },
+            fixResult: {
+              success: true,
+              filesModified: [],
+              summary: "Fixed 1 issues"
+            }
+          }]
+        });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config: makeConfig(),
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("DONE");
+      expect(mockRunReviews).toHaveBeenCalledTimes(2); // Initial + 1 retry
+      expect(mockRunClaude).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.stringContaining("Missing validation")
+        })
+      );
+    });
+
+    it("should succeed on second fix attempt", async () => {
+      setupSuccessMocks();
+
+      // First review fails
+      mockRunReviews
+        .mockResolvedValueOnce({
+          rounds: [{
+            roundName: "basic",
+            verdict: "FAIL",
+            findings: [{ severity: "error", message: "Logic error", file: "src/logic.ts", line: 5 }],
+            summary: "Logic issues",
+            durationMs: 1000
+          }],
+          allPassed: false
+        })
+        // First retry still fails
+        .mockResolvedValueOnce({
+          rounds: [{
+            roundName: "basic",
+            verdict: "FAIL",
+            findings: [{ severity: "error", message: "Still has error", file: "src/logic.ts", line: 5 }],
+            summary: "Still failing",
+            durationMs: 900
+          }],
+          allPassed: false
+        })
+        // Second retry passes
+        .mockResolvedValueOnce({
+          rounds: [{
+            roundName: "basic",
+            verdict: "PASS",
+            findings: [],
+            summary: "Fixed",
+            durationMs: 700
+          }],
+          allPassed: true,
+          fixAttempts: [
+            {
+              attempt: 1,
+              findingsSnapshot: {
+                reviewFindings: [{ severity: "error", message: "Logic error", file: "src/logic.ts", line: 5 }]
+              },
+              fixResult: {
+                success: false,
+                filesModified: [],
+                summary: "Fixed 1 issues"
+              }
+            },
+            {
+              attempt: 2,
+              findingsSnapshot: {
+                reviewFindings: [{ severity: "error", message: "Still has error", file: "src/logic.ts", line: 5 }]
+              },
+              fixResult: {
+                success: true,
+                filesModified: [],
+                summary: "Fixed 1 issues"
+              }
+            }
+          ]
+        });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config: makeConfig(),
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("DONE");
+      expect(mockRunReviews).toHaveBeenCalledTimes(3); // Initial + 2 retries
+    });
+
+    it("should fail after max retries exhausted", async () => {
+      setupSuccessMocks();
+
+      // Configure max retries = 2
+      const config = makeConfig();
+      config.safety.maxRetries = 2;
+
+      // All reviews fail
+      mockRunReviews.mockResolvedValue({
+        rounds: [{
+          roundName: "basic",
+          verdict: "FAIL",
+          findings: [{ severity: "error", message: "Persistent error", file: "src/bad.ts", line: 1 }],
+          summary: "Always failing",
+          durationMs: 1000
+        }],
+        allPassed: false,
+        fixAttempts: [
+          {
+            attempt: 1,
+            findingsSnapshot: {
+              reviewFindings: [{ severity: "error", message: "Persistent error", file: "src/bad.ts", line: 1 }]
+            },
+            fixResult: {
+              success: false,
+              filesModified: [],
+              summary: "Fixed 1 issues"
+            }
+          },
+          {
+            attempt: 2,
+            findingsSnapshot: {
+              reviewFindings: [{ severity: "error", message: "Persistent error", file: "src/bad.ts", line: 1 }]
+            },
+            fixResult: {
+              success: false,
+              filesModified: [],
+              summary: "Fixed 1 issues"
+            }
+          }
+        ]
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+      expect(result.error).toContain("Review failed after 2 retries");
+      expect(mockRunReviews).toHaveBeenCalledTimes(3); // Initial + 2 retries
+    });
+
+    it("should include critical analyst issues in fix loop", async () => {
+      setupSuccessMocks();
+
+      // Mock analyst to return critical findings
+      vi.mocked(mockRunReviews).mockImplementation(async (ctx) => {
+        // First call - both analyst and review fail
+        return {
+          analyst: {
+            verdict: "INCOMPLETE",
+            findings: [
+              { type: "missing", requirement: "Error handling", severity: "error", message: "Missing error handling", suggestion: "Add try-catch" },
+            ],
+            summary: "Requirements not met",
+            coverage: { implemented: [], missing: ["Error handling"], excess: [] },
+            durationMs: 1200
+          },
+          rounds: [{
+            roundName: "basic",
+            verdict: "FAIL",
+            findings: [{ severity: "error", message: "Type error", file: "src/types.ts", line: 20 }],
+            summary: "Type issues",
+            durationMs: 1000
+          }],
+          allPassed: false
+        };
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config: makeConfig(),
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+      expect(mockRunClaude).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: expect.stringContaining("Type error")
+        })
+      );
+    });
   });
 });

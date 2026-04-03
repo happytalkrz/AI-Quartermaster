@@ -5,7 +5,7 @@ import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
@@ -15,14 +15,61 @@ import { phaseProgress } from "./progress-tracker.js";
 
 const logger = getLogger();
 
+interface ErrorHistoryForTemplate {
+  attempt: number;
+  errorCategory: ErrorCategory;
+  errorSummary: string;
+}
+
+const ERROR_SUMMARY_MAX_LENGTH = 3000;
+const ERROR_MESSAGE_FIRST_PART = 200;
+const ERROR_MESSAGE_LAST_PART = 100;
+const ERROR_MESSAGE_THRESHOLD = 300;
+const ENTRY_SIZE_ESTIMATE = 50;
+
+function truncateErrorMessage(message: string): string {
+  if (message.length <= ERROR_MESSAGE_THRESHOLD) {
+    return message;
+  }
+  const first = message.slice(0, ERROR_MESSAGE_FIRST_PART).trim();
+  const last = message.slice(-ERROR_MESSAGE_LAST_PART).trim();
+  return `${first}...${last}`;
+}
+
+function prepareErrorHistoryForTemplate(errorHistory: ErrorHistoryEntry[]): ErrorHistoryForTemplate[] {
+  let currentLength = 0;
+  const processedEntries = [];
+
+  for (const entry of errorHistory) {
+    const errorSummary = truncateErrorMessage(entry.errorMessage.trim());
+    const entryLength = errorSummary.length + ENTRY_SIZE_ESTIMATE;
+
+    if (currentLength + entryLength > ERROR_SUMMARY_MAX_LENGTH && processedEntries.length > 0) {
+      break;
+    }
+
+    processedEntries.push({
+      attempt: entry.attempt,
+      errorCategory: entry.errorCategory,
+      errorSummary: errorSummary.replace(/\|/g, '\\|'),
+    });
+
+    currentLength += entryLength;
+  }
+
+  return processedEntries;
+}
+
 export interface PhaseRetryContext {
   issue: GitHubIssue;
   plan: Plan;
   phase: Phase;
   previousError: string;
   errorCategory: ErrorCategory;
+  errorHistory?: ErrorHistoryEntry[];
   attempt: number;
   maxRetries: number;
+  lastOutput?: string;
   claudeConfig: ClaudeCliConfig;
   promptsDir: string;
   cwd: string;
@@ -40,6 +87,12 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 
+    const hasErrorHistory = ctx.errorHistory && ctx.errorHistory.length > 0;
+    const errorMessage = hasErrorHistory
+      ? `최근 에러: ${ctx.previousError.slice(-500)}`
+      : ctx.previousError.slice(-1500);
+    const errorHistory = hasErrorHistory ? prepareErrorHistoryForTemplate(ctx.errorHistory!) : undefined;
+
     const rendered = renderTemplate(template, {
       issue: {
         number: String(ctx.issue.number),
@@ -56,7 +109,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         attempt: String(ctx.attempt),
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
-        errorMessage: ctx.previousError.slice(-1500),
+        errorMessage,
+        errorHistory: errorHistory as any, // Type assertion for template compatibility
+        lastOutput: ctx.lastOutput || "",
       },
       config: {
         testCommand: ctx.testCommand,

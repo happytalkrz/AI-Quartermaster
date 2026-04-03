@@ -4,7 +4,7 @@ import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
 import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult } from "../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -12,6 +12,24 @@ import { PatternStore } from "../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 
 const logger = getLogger();
+
+function addErrorToHistory(
+  historyMap: Map<number, ErrorHistoryEntry[]>,
+  phaseIndex: number,
+  attempt: number,
+  errorCategory: string | undefined,
+  error: string | undefined,
+): ErrorHistoryEntry[] {
+  const history = historyMap.get(phaseIndex) || [];
+  history.push({
+    attempt,
+    errorCategory: (errorCategory ?? "UNKNOWN") as any,
+    errorMessage: error ?? "Unknown error",
+    timestamp: new Date().toISOString(),
+  });
+  historyMap.set(phaseIndex, history);
+  return history;
+}
 
 export interface CoreLoopContext {
   issue: GitHubIssue;
@@ -85,6 +103,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);
   jl?.log(`${scheduleResult.groups.length}개 레벨로 병렬 실행 스케줄링`);
 
+  // Track error history for each phase (phase index -> error history)
+  const phaseErrorHistories = new Map<number, ErrorHistoryEntry[]>();
+
   // Execute phases level by level (parallel within level, sequential between levels)
   for (const group of scheduleResult.groups) {
     logger.info(`\n--- Level ${group.level}: ${group.phases.length} phases in parallel ---`);
@@ -134,6 +155,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
       if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION") {
+        let errorHistory = addErrorToHistory(phaseErrorHistories, phase.index, 0, result.errorCategory, result.error);
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
           jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
@@ -144,6 +167,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             phase,
             previousError: result.error ?? "Unknown error",
             errorCategory: result.errorCategory ?? "UNKNOWN",
+            errorHistory: [...errorHistory],
             attempt,
             maxRetries,
             claudeConfig: ctx.config.commands.claudeCli,
@@ -158,8 +182,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           if (result.success) {
             logger.info(`Phase ${phase.index + 1} succeeded on retry ${attempt}`);
             jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt} 성공`);
+            phaseErrorHistories.delete(phase.index);
             break;
           }
+
+          errorHistory = addErrorToHistory(phaseErrorHistories, phase.index, attempt, result.errorCategory, result.error);
         }
       }
 

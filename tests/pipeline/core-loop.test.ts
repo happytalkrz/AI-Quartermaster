@@ -437,4 +437,312 @@ describe("runCoreLoop", () => {
       expect(mockCheckPhaseLimit).toHaveBeenCalledWith(15, 10);
     });
   });
+
+  describe("error history accumulation", () => {
+    it("should accumulate error history across multiple retry attempts", async () => {
+      const phases = [makePhase(0, "FlakyPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // First execution fails
+      mockExecutePhase.mockResolvedValueOnce(
+        makeFailureResult(0, "FlakyPhase", "Initial error", "TS_ERROR")
+      );
+
+      // First retry fails
+      mockRetryPhase.mockResolvedValueOnce(
+        makeFailureResult(0, "FlakyPhase", "First retry error", "TS_ERROR")
+      );
+
+      // Second retry fails (final attempt)
+      mockRetryPhase.mockResolvedValueOnce(
+        makeFailureResult(0, "FlakyPhase", "Second retry error", "TS_ERROR")
+      );
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(mockRetryPhase).toHaveBeenCalledTimes(2);
+
+      // First retry should receive error history with initial failure
+      expect(mockRetryPhase).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        attempt: 1,
+        previousError: "Initial error",
+        errorCategory: "TS_ERROR",
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "TS_ERROR",
+            errorMessage: "Initial error",
+            timestamp: expect.any(String),
+          },
+        ],
+      }));
+
+      // Second retry should receive error history with initial failure + first retry failure
+      expect(mockRetryPhase).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        attempt: 2,
+        previousError: "First retry error",
+        errorCategory: "TS_ERROR",
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "TS_ERROR",
+            errorMessage: "Initial error",
+            timestamp: expect.any(String),
+          },
+          {
+            attempt: 1,
+            errorCategory: "TS_ERROR",
+            errorMessage: "First retry error",
+            timestamp: expect.any(String),
+          },
+        ],
+      }));
+    });
+
+    it("should clear error history when retry succeeds", async () => {
+      const phases = [
+        makePhase(0, "RecoveringPhase"),
+        makePhase(1, "NextPhase"),
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // First phase: fails initially, succeeds on retry
+      mockExecutePhase
+        .mockResolvedValueOnce(makeFailureResult(0, "RecoveringPhase", "Temporary error", "TS_ERROR"))
+        .mockResolvedValueOnce(makeSuccessResult(1, "NextPhase"));
+
+      // Retry succeeds
+      mockRetryPhase.mockResolvedValueOnce(makeSuccessResult(0, "RecoveringPhase"));
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.phaseResults).toHaveLength(2);
+      expect(result.phaseResults[0].success).toBe(true); // Retry succeeded
+      expect(result.phaseResults[1].success).toBe(true); // Next phase succeeded
+
+      // Should have called retry with error history
+      expect(mockRetryPhase).toHaveBeenCalledWith(expect.objectContaining({
+        attempt: 1,
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "TS_ERROR",
+            errorMessage: "Temporary error",
+            timestamp: expect.any(String),
+          },
+        ],
+      }));
+
+      // Verify no further retries (error history would be cleared after success)
+      expect(mockRetryPhase).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not accumulate error history for non-retryable errors", async () => {
+      const phases = [makePhase(0, "TimeoutPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Phase fails with timeout (non-retryable)
+      mockExecutePhase.mockResolvedValueOnce(
+        makeFailureResult(0, "TimeoutPhase", "Process timed out", "TIMEOUT")
+      );
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.phaseResults).toHaveLength(1);
+      expect(result.phaseResults[0].errorCategory).toBe("TIMEOUT");
+
+      // Should not attempt retry for timeout errors
+      expect(mockRetryPhase).not.toHaveBeenCalled();
+    });
+
+    it("should not accumulate error history for safety violations", async () => {
+      const phases = [makePhase(0, "UnsafePhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Phase fails with safety violation (non-retryable)
+      mockExecutePhase.mockResolvedValueOnce(
+        makeFailureResult(0, "UnsafePhase", "Safety guard triggered", "SAFETY_VIOLATION")
+      );
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(false);
+      expect(result.phaseResults).toHaveLength(1);
+      expect(result.phaseResults[0].errorCategory).toBe("SAFETY_VIOLATION");
+
+      // Should not attempt retry for safety violations
+      expect(mockRetryPhase).not.toHaveBeenCalled();
+    });
+
+    it("should handle error history with different error categories", async () => {
+      const phases = [makePhase(0, "MixedErrorPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // First execution fails with TS error
+      mockExecutePhase.mockResolvedValueOnce(
+        makeFailureResult(0, "MixedErrorPhase", "Type error", "TS_ERROR")
+      );
+
+      // First retry fails with verification error
+      mockRetryPhase.mockResolvedValueOnce(
+        makeFailureResult(0, "MixedErrorPhase", "Test failed", "VERIFICATION_FAILED")
+      );
+
+      // Second retry succeeds
+      mockRetryPhase.mockResolvedValueOnce(
+        makeSuccessResult(0, "MixedErrorPhase")
+      );
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(mockRetryPhase).toHaveBeenCalledTimes(2);
+
+      // Second retry should have mixed error categories in history
+      expect(mockRetryPhase).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        attempt: 2,
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "TS_ERROR",
+            errorMessage: "Type error",
+            timestamp: expect.any(String),
+          },
+          {
+            attempt: 1,
+            errorCategory: "VERIFICATION_FAILED",
+            errorMessage: "Test failed",
+            timestamp: expect.any(String),
+          },
+        ],
+      }));
+    });
+
+    it("should handle error history with unknown error category", async () => {
+      const phases = [makePhase(0, "UnknownErrorPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Phase fails with no error category (undefined)
+      const result = makeFailureResult(0, "UnknownErrorPhase", "Unknown error");
+      delete result.errorCategory; // Remove errorCategory to test undefined handling
+
+      mockExecutePhase.mockResolvedValueOnce(result);
+
+      // Retry fails with no error message (undefined) but still returns a valid result
+      const retryResult = makeFailureResult(0, "UnknownErrorPhase", "Retry error", "TS_ERROR");
+      retryResult.error = undefined; // Set error to undefined instead of deleting
+
+      mockRetryPhase.mockResolvedValue(retryResult); // Use mockResolvedValue to handle multiple calls
+
+      await runCoreLoop(makeContext());
+
+      expect(mockRetryPhase).toHaveBeenCalledWith(expect.objectContaining({
+        attempt: 1,
+        previousError: "Unknown error",
+        errorCategory: "UNKNOWN", // Should default to UNKNOWN
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "UNKNOWN", // Should default to UNKNOWN
+            errorMessage: "Unknown error",
+            timestamp: expect.any(String),
+          },
+        ],
+      }));
+    });
+
+    it("should maintain separate error histories for different phases", async () => {
+      const phases = [
+        makePhase(0, "Phase1"),
+        makePhase(1, "Phase2"),
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }], // Both phases run in parallel
+      });
+
+      // Both phases fail initially
+      mockExecutePhase
+        .mockResolvedValueOnce(makeFailureResult(0, "Phase1", "Phase1 error", "TS_ERROR"))
+        .mockResolvedValueOnce(makeFailureResult(1, "Phase2", "Phase2 error", "VERIFICATION_FAILED"));
+
+      // Both phases succeed on retry
+      mockRetryPhase
+        .mockResolvedValueOnce(makeSuccessResult(0, "Phase1"))
+        .mockResolvedValueOnce(makeSuccessResult(1, "Phase2"));
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(mockRetryPhase).toHaveBeenCalledTimes(2);
+
+      // Each retry should have its own error history
+      const retryCall1 = mockRetryPhase.mock.calls.find(call => call[0].phase.index === 0);
+      const retryCall2 = mockRetryPhase.mock.calls.find(call => call[0].phase.index === 1);
+
+      expect(retryCall1?.[0]).toMatchObject({
+        phase: { index: 0 },
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "TS_ERROR",
+            errorMessage: "Phase1 error",
+          },
+        ],
+      });
+
+      expect(retryCall2?.[0]).toMatchObject({
+        phase: { index: 1 },
+        errorHistory: [
+          {
+            attempt: 0,
+            errorCategory: "VERIFICATION_FAILED",
+            errorMessage: "Phase2 error",
+          },
+        ],
+      });
+    });
+  });
 });

@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig, tryLoadConfig } from "../../src/config/loader.js";
-import { writeFileSync, mkdirSync, rmSync } from "fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  loadConfig,
+  tryLoadConfig,
+  detectGitInfo,
+  writeMinimalConfig,
+  addProjectToConfig,
+  initProject
+} from "../../src/config/loader.js";
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import * as cliRunner from "../../src/utils/cli-runner.js";
 
 describe("loadConfig", () => {
   let testDir: string;
@@ -517,5 +525,496 @@ projects:
     expect(result.error).toBeUndefined();
     expect(result.config?.projects).toHaveLength(1);
     expect(result.config?.projects?.[0].repo).toBe("owner/repo-name");
+  });
+});
+
+describe("detectGitInfo", () => {
+  let mockCwd: string;
+
+  beforeEach(() => {
+    mockCwd = "/test/repo";
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should detect GitHub SSH remote URL and default branch", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:owner/repo.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "not found" };
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    expect(result.repo).toBe("owner/repo");
+    expect(result.baseBranch).toBe("main");
+    expect(result.error).toBeUndefined();
+  });
+
+  it("should detect GitHub HTTPS remote URL", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "https://github.com/owner/repo.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/develop\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "not found" };
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    expect(result.repo).toBe("owner/repo");
+    expect(result.baseBranch).toBe("develop");
+  });
+
+  it("should detect GitHub URL without .git suffix", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "https://github.com/owner/repo\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        throw new Error("no such ref"); // symbolic-ref throws exception
+      }
+      if (command === "git" && args.includes("config") && args.includes("init.defaultBranch")) {
+        return { exitCode: 0, stdout: "main\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "not found" };
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    expect(result.repo).toBe("owner/repo");
+    expect(result.baseBranch).toBe("main");
+  });
+
+  it("should fallback to 'main' when no branch detection works", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:owner/repo.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        throw new Error("no such ref"); // symbolic-ref throws exception
+      }
+      if (command === "git" && args.includes("config")) {
+        throw new Error("no config found"); // config also throws exception
+      }
+      return { exitCode: 1, stdout: "", stderr: "not found" };
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    expect(result.repo).toBe("owner/repo");
+    expect(result.baseBranch).toBe("main");
+  });
+
+  it("should return undefined repo when remote detection fails", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 1, stdout: "", stderr: "no remote configured" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "not found" };
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    expect(result.repo).toBeUndefined();
+    expect(result.baseBranch).toBe("main");
+  });
+
+  it("should handle git command failures gracefully", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      // All git commands fail but function should still return some result
+      throw new Error("Git command failed");
+    });
+
+    const result = await detectGitInfo(mockCwd);
+
+    // When all git commands fail, we should get undefined repo and fallback branch
+    expect(result.repo).toBeUndefined();
+    expect(result.baseBranch).toBe("main"); // Fallback to main
+    expect(result.error).toBeUndefined(); // Should not error, just return undefined values
+  });
+});
+
+describe("writeMinimalConfig", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should create minimal config.yml with basic project info", () => {
+    const configPath = join(testDir, "config.yml");
+    const project = {
+      repo: "owner/repo",
+      path: "/test/path"
+    };
+
+    writeMinimalConfig(configPath, project);
+
+    expect(existsSync(configPath)).toBe(true);
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("# AI Quartermaster 설정 파일");
+    expect(content).toContain('repo: "owner/repo"');
+    expect(content).toContain('path: "/test/path"');
+    expect(content).toContain("projects:");
+  });
+
+  it("should include optional baseBranch and mode when provided", () => {
+    const configPath = join(testDir, "config.yml");
+    const project = {
+      repo: "owner/repo",
+      path: "/test/path",
+      baseBranch: "develop",
+      mode: "content" as const
+    };
+
+    writeMinimalConfig(configPath, project);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain('baseBranch: "develop"');
+    expect(content).toContain('mode: "content"');
+  });
+
+  it("should not include baseBranch and mode when not provided", () => {
+    const configPath = join(testDir, "config.yml");
+    const project = {
+      repo: "owner/repo",
+      path: "/test/path"
+    };
+
+    writeMinimalConfig(configPath, project);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).not.toContain("baseBranch:");
+    expect(content).not.toContain("mode:");
+  });
+
+  it("should include usage comments and documentation links", () => {
+    const configPath = join(testDir, "config.yml");
+    const project = {
+      repo: "owner/repo",
+      path: "/test/path"
+    };
+
+    writeMinimalConfig(configPath, project);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("# 추가 설정이 필요한 경우");
+    expect(content).toContain("# general:");
+    expect(content).toContain("# safety:");
+  });
+});
+
+describe("addProjectToConfig", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should add project to existing projects section", () => {
+    const configPath = join(testDir, "config.yml");
+    const existingContent = `# Test config
+general:
+  projectName: "test-project"
+
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+    baseBranch: "main"
+
+safety:
+  maxPhases: 10
+`;
+    writeFileSync(configPath, existingContent);
+
+    const newProject = {
+      repo: "new/repo",
+      path: "/new/path",
+      baseBranch: "develop",
+      mode: "content" as const
+    };
+
+    addProjectToConfig(configPath, newProject);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("existing/repo");
+    expect(content).toContain("new/repo");
+    expect(content).toContain('path: "/new/path"');
+    expect(content).toContain('baseBranch: "develop"');
+    expect(content).toContain('mode: "content"');
+  });
+
+  it("should create projects section when not exists", () => {
+    const configPath = join(testDir, "config.yml");
+    const existingContent = `# Test config
+general:
+  projectName: "test-project"
+
+safety:
+  maxPhases: 10
+`;
+    writeFileSync(configPath, existingContent);
+
+    const newProject = {
+      repo: "new/repo",
+      path: "/new/path"
+    };
+
+    addProjectToConfig(configPath, newProject);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("projects:");
+    expect(content).toContain("new/repo");
+    expect(content).toContain("/new/path");
+    expect(content).toContain("safety:"); // Existing content preserved
+  });
+
+  it("should preserve existing file format and indentation", () => {
+    const configPath = join(testDir, "config.yml");
+    const existingContent = `general:
+  projectName: "test-project"
+  logLevel: "info"
+
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+
+# Comment preserved
+safety:
+  maxPhases: 10
+`;
+    writeFileSync(configPath, existingContent);
+
+    const newProject = {
+      repo: "new/repo",
+      path: "/new/path"
+    };
+
+    addProjectToConfig(configPath, newProject);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("# Comment preserved");
+    expect(content).toContain("logLevel: \"info\"");
+    expect(content).toContain("maxPhases: 10");
+
+    // Check indentation is preserved
+    const lines = content.split('\n');
+    const projectsLine = lines.find(line => line.includes("projects:"));
+    expect(projectsLine).toMatch(/^projects:\s*$/); // No leading spaces for projects:
+
+    const newRepoLine = lines.find(line => line.includes("new/repo"));
+    expect(newRepoLine).toMatch(/^ {2}- repo:/); // 2 spaces for project items
+  });
+
+  it("should handle empty projects section", () => {
+    const configPath = join(testDir, "config.yml");
+    const existingContent = `general:
+  projectName: "test-project"
+
+projects:
+
+safety:
+  maxPhases: 10
+`;
+    writeFileSync(configPath, existingContent);
+
+    const newProject = {
+      repo: "first/repo",
+      path: "/first/path"
+    };
+
+    addProjectToConfig(configPath, newProject);
+
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("first/repo");
+    expect(content).toContain("/first/path");
+  });
+});
+
+describe("initProject", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    // Mock process.cwd
+    vi.spyOn(process, "cwd").mockReturnValue("/test/current/dir");
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it("should create new config.yml when not exists", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:test/repo.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    await initProject(testDir, {});
+
+    const configPath = join(testDir, "config.yml");
+    expect(existsSync(configPath)).toBe(true);
+
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).toContain("test/repo");
+    expect(content).toContain("/test/current/dir");
+  });
+
+  it("should add to existing config.yml", async () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+general:
+  projectName: "existing-project"
+
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+`);
+
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:new/repo.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/develop\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    await initProject(testDir, {});
+
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).toContain("existing/repo");
+    expect(content).toContain("new/repo");
+    expect(content).toContain("develop");
+  });
+
+  it("should use provided options over detected values", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:auto/detected.git\n", stderr: "" };
+      }
+      if (command === "git" && args.includes("symbolic-ref")) {
+        return { exitCode: 0, stdout: "refs/remotes/origin/auto-branch\n", stderr: "" };
+      }
+      return { exitCode: 1, stdout: "", stderr: "" };
+    });
+
+    await initProject(testDir, {
+      repo: "override/repo",
+      path: "/override/path",
+      baseBranch: "feature",
+      mode: "content"
+    });
+
+    const configPath = join(testDir, "config.yml");
+    const content = readFileSync(configPath, "utf-8");
+
+    expect(content).toContain("override/repo");
+    expect(content).toContain("/override/path");
+    expect(content).toContain("feature");
+    expect(content).toContain("content");
+    expect(content).not.toContain("auto/detected");
+  });
+
+  it("should throw error when git detection returns no repo", async () => {
+    // When git commands fail, detectGitInfo returns undefined repo
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async () => {
+      throw new Error("Git not found");
+    });
+
+    await expect(initProject(testDir, {})).rejects.toThrow("GitHub 저장소를 감지할 수 없습니다");
+  });
+
+  it("should throw error when no repo detected and not provided", async () => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      // Git commands succeed but return no repo info
+      return { exitCode: 1, stdout: "", stderr: "no remote" };
+    });
+
+    await expect(initProject(testDir, {})).rejects.toThrow("GitHub 저장소를 감지할 수 없습니다");
+  });
+
+  it("should throw error when project already exists without force", async () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+projects:
+  - repo: "existing/repo"
+    path: "/existing/path"
+`);
+
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:existing/repo.git\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+    });
+
+    await expect(initProject(testDir, {})).rejects.toThrow("이미 등록되어 있습니다");
+  });
+
+  it("should overwrite when project exists with force option", async () => {
+    const configPath = join(testDir, "config.yml");
+    writeFileSync(configPath, `
+projects:
+  - repo: "existing/repo"
+    path: "/old/path"
+`);
+
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+      if (command === "git" && args.includes("get-url")) {
+        return { exitCode: 0, stdout: "git@github.com:existing/repo.git\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "refs/remotes/origin/main\n", stderr: "" };
+    });
+
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await initProject(testDir, { force: true });
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("덮어씁니다"));
+
+    // Should still add the project (implementation may vary)
+    const content = readFileSync(configPath, "utf-8");
+    expect(content).toContain("existing/repo");
   });
 });

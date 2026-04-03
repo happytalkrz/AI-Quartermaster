@@ -90,6 +90,9 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           const pct = parseInt(match[1], 10);
           jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
           jl.log(line.trim());
+
+          // CLI용 진행률 콜백: phase 진행률 업데이트
+          ctx.progressCallback?.onPhaseProgress?.(phaseIdx, ctx.phase.name, pct);
         } else if (line.includes("[HEARTBEAT]") || line.includes("[INFO]") || line.includes("[STEP]")) {
           jl.log(line.trim());
         }

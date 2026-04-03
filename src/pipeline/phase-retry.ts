@@ -5,7 +5,7 @@ import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry, ProgressCallback } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
@@ -77,6 +77,7 @@ export interface PhaseRetryContext {
   lintCommand: string;
   gitPath: string;
   jobLogger?: JobLogger;
+  progressCallback?: ProgressCallback;  // CLI용 진행률 콜백
 }
 
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
@@ -133,6 +134,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
           const pct = parseInt(match[1], 10);
           jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
           jl.log(line.trim());
+
+          // CLI용 진행률 콜백: phase 진행률 업데이트
+          ctx.progressCallback?.onPhaseProgress?.(phaseIdx, ctx.phase.name, pct);
         } else if (line.includes("[HEARTBEAT]") || line.includes("[INFO]") || line.includes("[STEP]")) {
           jl.log(line.trim());
         }

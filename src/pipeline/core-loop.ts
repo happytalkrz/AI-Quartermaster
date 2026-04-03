@@ -183,6 +183,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         skillsContext: ctx.skillsContext,
         pastFailures: pastFailures || undefined,
         jobLogger: jl,
+        progressCallback: ctx.progressCallback,
       });
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
@@ -209,6 +210,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             lintCommand: ctx.config.commands.lint,
             gitPath: ctx.config.git.gitPath,
             jobLogger: jl,
+            progressCallback: ctx.progressCallback,
           });
 
           if (result.success) {

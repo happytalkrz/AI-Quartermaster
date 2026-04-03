@@ -39,6 +39,7 @@ import { setupGitEnvironment, prepareWorkEnvironment } from "./pipeline-git-setu
 import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "./pipeline-setup.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { runCli } from "../utils/cli-runner.js";
+import { handleCoreLoopFailure } from "./pipeline-error-handler.js";
 import {
   PROGRESS_ISSUE_VALIDATED,
   PROGRESS_PLAN_GENERATED,
@@ -51,9 +52,12 @@ import {
 import {
   type OrchestratorInput,
   type OrchestratorResult,
+  type PipelineRuntime,
   STATE_ORDER,
   isPastState,
   saveResult,
+  initializePipelineState,
+  transitionState,
 } from "./pipeline-context.js";
 
 
@@ -62,21 +66,12 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   const logger = getLogger();
   const jl = input.jobLogger;
   const startTime = Date.now();
-  const resumeFrom = input.resumeFrom;
-  let state: PipelineState = resumeFrom?.state ?? "RECEIVED";
-  let worktreePath: string | undefined = resumeFrom?.worktreePath;
-  let branchName: string | undefined = resumeFrom?.branchName;
-  let projectRoot: string = input.projectRoot ?? resumeFrom?.projectRoot ?? "";
-  let gitConfig = config.git;
-  let promptsDir: string = resolve(projectRoot, "prompts");
-  let rollbackHash: string | undefined;
-  let rollbackStrategy: "none" | "all" | "failed-only" = "none";
 
-  if (resumeFrom) {
-    logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
-    const { progressForState } = await import("./progress-tracker.js");
-    jl?.setProgress(progressForState(resumeFrom.state));
-  }
+  // Initialize pipeline state
+  const runtime = await initializePipelineState(input, config);
+
+  // Extract runtime variables for compatibility
+  let { state, worktreePath, branchName, projectRoot, gitConfig, promptsDir, rollbackHash, rollbackStrategy } = runtime;
 
   try {
     // === Phase 1: Resolve project setup ===
@@ -84,7 +79,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       repo,
       config,
       input.projectRoot,
-      resumeFrom?.projectRoot,
+      input.resumeFrom?.projectRoot,
       aqRoot
     );
     projectRoot = setupResult.projectRoot;
@@ -119,7 +114,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       state,
       timer,
       jl,
-      resumeFrom?.mode,
+      input.resumeFrom?.mode,
       {
         projectRoot,
         worktreePath,
@@ -130,7 +125,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     const { issue, checkpoint } = issueResult;
     let mode = issueResult.mode;
-    state = "VALIDATED";
+    transitionState(runtime, "VALIDATED");
+    state = runtime.state;
     let preset = getModePreset(mode);
 
     // === Setup Git Environment: VALIDATED → WORKTREE_CREATED ===
@@ -146,9 +142,13 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       jl,
     });
 
-    branchName = gitSetupResult.branchName;
-    worktreePath = gitSetupResult.worktreePath;
-    state = gitSetupResult.state;
+    transitionState(runtime, gitSetupResult.state, {
+      branchName: gitSetupResult.branchName,
+      worktreePath: gitSetupResult.worktreePath
+    });
+    branchName = runtime.branchName;
+    worktreePath = runtime.worktreePath;
+    state = runtime.state;
 
     checkpoint({ branchName, worktreePath });
 
@@ -200,7 +200,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       skillsContext,
       dataDir,
       jobLogger: jl,
-      previousPhaseResults: resumeFrom?.phaseResults?.map(r => ({
+      previousPhaseResults: input.resumeFrom?.phaseResults?.map(r => ({
         phaseIndex: r.phaseIndex ?? 0,
         phaseName: r.phaseName ?? "",
         success: r.success ?? false,
@@ -231,54 +231,29 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     })));
 
     if (!coreResult.success) {
-      state = "FAILED";
-      const failedPhase = coreResult.phaseResults.find(r => !r.success);
-      jl?.log(`실패: ${failedPhase?.error ?? "Phase execution failed"}`);
-      jl?.setStep("실패");
-      // Save checkpoint so pipeline can be resumed
-      checkpoint({ state: "PLAN_GENERATED", plan: coreResult.plan, phaseResults: coreResult.phaseResults });
-      // Record failure pattern
-      try {
-        patternStore.add({
-          issueNumber,
-          repo,
-          type: "failure",
-          errorCategory: failedPhase?.errorCategory,
-          errorMessage: failedPhase?.error,
-          phaseName: failedPhase?.phaseName,
-          tags: [],
-        });
-      } catch { /* non-fatal */ }
-
-      // === Rollback on core-loop failure ===
-      let rollbackInfo: string | undefined;
-      if (worktreePath && rollbackStrategy !== "none") {
-        try {
-          let targetHash: string | undefined;
-          if (rollbackStrategy === "all" && rollbackHash) {
-            targetHash = rollbackHash;
-          } else if (rollbackStrategy === "failed-only") {
-            // Roll back to the last successful phase's commit
-            const lastSuccessful = [...coreResult.phaseResults].reverse().find(r => r.success && r.commitHash);
-            targetHash = lastSuccessful?.commitHash ?? rollbackHash;
-          }
-          if (targetHash) {
-            await doRollback(targetHash, { cwd: worktreePath, gitPath: gitConfig.gitPath });
-            rollbackInfo = `Rolled back to ${targetHash.slice(0, 8)} (strategy: ${rollbackStrategy})`;
-            logger.info(rollbackInfo);
-          }
-        } catch (rbErr) {
-          logger.warn(`Rollback failed: ${rbErr}`);
-        }
-      }
-
-      const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
-      printResult(report);
-      saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
-      return { success: false, state, error: rollbackInfo ? `Phase execution failed. ${rollbackInfo}` : "Phase execution failed", report };
+      const failureResult = await handleCoreLoopFailure({
+        issueNumber,
+        repo,
+        coreResult,
+        worktreePath,
+        rollbackHash,
+        rollbackStrategy,
+        gitConfig,
+        startTime,
+        config,
+        aqRoot: aqRoot ?? projectRoot,
+        projectRoot,
+        dataDir,
+        patternStore,
+        jl,
+        checkpoint,
+      });
+      transitionState(runtime, "FAILED");
+      return failureResult;
     }
 
-    state = "PLAN_GENERATED"; // core-loop completed all phases
+    transitionState(runtime, "PLAN_GENERATED"); // core-loop completed all phases
+    state = runtime.state;
     jl?.setProgress(PROGRESS_REVIEW_START);
 
     checkpoint({ plan: coreResult.plan, phaseResults: coreResult.phaseResults });
@@ -314,7 +289,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     const reviewVariables = reviewResult.reviewVariables;
-    state = "REVIEWING";
+    transitionState(runtime, "REVIEWING");
+    state = runtime.state;
 
     // === SIMPLIFYING ===
     if (reviewVariables) {
@@ -343,7 +319,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         };
       }
 
-      state = "SIMPLIFYING";
+      transitionState(runtime, "SIMPLIFYING");
+      state = runtime.state;
     }
 
     // === FINAL_VALIDATING ===
@@ -379,7 +356,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     if (!preset.skipFinalValidation && !isPastState(state, "FINAL_VALIDATING")) {
-      state = "FINAL_VALIDATING";
+      transitionState(runtime, "FINAL_VALIDATING");
+      state = runtime.state;
     }
 
     // === Push branch, create PR, and handle post-PR tasks ===
@@ -408,7 +386,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     const prUrl = publishResult.prUrl;
-    state = "DRAFT_PR_CREATED";
+    transitionState(runtime, "DRAFT_PR_CREATED");
+    state = runtime.state;
 
     // === Cleanup on success and finalize ===
     const cleanupContext = {
@@ -430,7 +409,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     await cleanupOnSuccess(cleanupContext);
 
-    state = "DONE";
+    transitionState(runtime, "DONE");
+    state = runtime.state;
     jl?.setProgress(PROGRESS_DONE);
 
     return { success: true, state, prUrl, report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl) };

@@ -5,6 +5,7 @@ import type { AQConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
+import { getLogger } from "../utils/logger.js";
 
 export interface OrchestratorInput {
   issueNumber: number;
@@ -23,6 +24,17 @@ export interface OrchestratorResult {
   prUrl?: string;
   report?: PipelineReport;
   error?: string;
+}
+
+export interface PipelineRuntime {
+  state: PipelineState;
+  worktreePath?: string;
+  branchName?: string;
+  projectRoot: string;
+  gitConfig: any;
+  promptsDir: string;
+  rollbackHash?: string;
+  rollbackStrategy: "none" | "all" | "failed-only";
 }
 
 export const STATE_ORDER: PipelineState[] = [
@@ -57,5 +69,68 @@ export function saveResult(config: AQConfig, projectRoot: string, issueNumber: n
     );
   } catch {
     // non-fatal
+  }
+}
+
+export async function initializePipelineState(
+  input: OrchestratorInput,
+  config: AQConfig
+): Promise<PipelineRuntime> {
+  const resumeFrom = input.resumeFrom;
+  const logger = getLogger();
+
+  const runtime: PipelineRuntime = {
+    state: resumeFrom?.state ?? "RECEIVED",
+    worktreePath: resumeFrom?.worktreePath,
+    branchName: resumeFrom?.branchName,
+    projectRoot: input.projectRoot ?? resumeFrom?.projectRoot ?? "",
+    gitConfig: config.git,
+    promptsDir: resolve(input.projectRoot ?? resumeFrom?.projectRoot ?? "", "prompts"),
+    rollbackHash: undefined,
+    rollbackStrategy: "none",
+  };
+
+  if (resumeFrom) {
+    logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
+    const { progressForState } = await import("./progress-tracker.js");
+    input.jobLogger?.setProgress(progressForState(resumeFrom.state));
+  }
+
+  return runtime;
+}
+
+export function transitionState(
+  runtime: PipelineRuntime,
+  newState: PipelineState,
+  context?: {
+    worktreePath?: string;
+    branchName?: string;
+    projectRoot?: string;
+    rollbackHash?: string;
+    rollbackStrategy?: "none" | "all" | "failed-only";
+  }
+): void {
+  const logger = getLogger();
+
+  logger.info(`State transition: ${runtime.state} → ${newState}`);
+  runtime.state = newState;
+
+  if (context) {
+    if (context.worktreePath !== undefined) {
+      runtime.worktreePath = context.worktreePath;
+    }
+    if (context.branchName !== undefined) {
+      runtime.branchName = context.branchName;
+    }
+    if (context.projectRoot !== undefined) {
+      runtime.projectRoot = context.projectRoot;
+      runtime.promptsDir = resolve(context.projectRoot, "prompts");
+    }
+    if (context.rollbackHash !== undefined) {
+      runtime.rollbackHash = context.rollbackHash;
+    }
+    if (context.rollbackStrategy !== undefined) {
+      runtime.rollbackStrategy = context.rollbackStrategy;
+    }
   }
 }

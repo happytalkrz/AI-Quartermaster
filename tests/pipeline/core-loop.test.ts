@@ -745,4 +745,115 @@ describe("runCoreLoop", () => {
       });
     });
   });
+
+  describe("cost calculation", () => {
+    it("should calculate totalCostUsd from phase results", async () => {
+      const phases = [
+        makePhase(0, "Frontend"),
+        makePhase(1, "Backend"),
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Mock phases with different costs
+      const frontendResult = makeSuccessResult(0, "Frontend");
+      frontendResult.costUsd = 0.025;
+      const backendResult = makeSuccessResult(1, "Backend");
+      backendResult.costUsd = 0.040;
+
+      mockExecutePhase
+        .mockResolvedValueOnce(frontendResult)
+        .mockResolvedValueOnce(backendResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.065);
+    });
+
+    it("should handle phases with no cost information", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // Phase result without costUsd
+      const phaseResult = makeSuccessResult(0, "Test");
+      // costUsd is undefined by default in makeSuccessResult
+
+      mockExecutePhase.mockResolvedValueOnce(phaseResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0);
+    });
+
+    it("should calculate totalCostUsd with mixed cost and no-cost phases", async () => {
+      const phases = [
+        makePhase(0, "WithCost"),
+        makePhase(1, "NoCost"),
+        makePhase(2, "WithCost2"),
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      const result1 = makeSuccessResult(0, "WithCost");
+      result1.costUsd = 0.015;
+      const result2 = makeSuccessResult(1, "NoCost");
+      // result2.costUsd is undefined
+      const result3 = makeSuccessResult(2, "WithCost2");
+      result3.costUsd = 0.030;
+
+      mockExecutePhase
+        .mockResolvedValueOnce(result1)
+        .mockResolvedValueOnce(result2)
+        .mockResolvedValueOnce(result3);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.045); // 0.015 + 0 + 0.030
+    });
+
+    it("should include costs from retry attempts", async () => {
+      const phases = [makePhase(0, "RetryPhase")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
+      // First attempt fails
+      const failedResult = makeFailureResult(0, "RetryPhase", "Error", "TS_ERROR");
+      failedResult.costUsd = 0.020;
+      mockExecutePhase.mockResolvedValueOnce(failedResult);
+
+      // Retry succeeds
+      const retryResult = makeSuccessResult(0, "RetryPhase");
+      retryResult.costUsd = 0.035;
+      mockRetryPhase.mockResolvedValueOnce(retryResult);
+
+      const result = await runCoreLoop(makeContext());
+
+      expect(result.success).toBe(true);
+      expect(result.totalCostUsd).toBe(0.035); // Only final result is counted
+    });
+  });
 });

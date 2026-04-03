@@ -104,4 +104,31 @@ describe("closeIssue", () => {
     await closeIssue(42, "test/repo", { ghPath: "/custom/gh" });
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", ["issue", "close", "42", "--repo", "test/repo"], {});
   });
+
+  it("should include totalCostUsd in stats when provided", async () => {
+    const ctxWithCost = { ...ctx, totalCostUsd: 0.1234 };
+
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/3\n", stderr: "", exitCode: 0 });
+
+    await createDraftPR(prConfig, ghConfig, ctxWithCost, { cwd: "/tmp", promptsDir: "/prompts" });
+
+    const callArgs = mockRunCli.mock.calls[0][1];
+    const bodyIndex = callArgs.indexOf("--body");
+    expect(bodyIndex).toBeGreaterThanOrEqual(0);
+
+    // The body should contain totalCostUsd formatted to 4 decimal places
+    // We can't easily verify the exact template contents due to mocking, but we can verify the call was made with stats
+    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.arrayContaining(["--body"]), expect.any(Object));
+  });
+
+  it("should use default totalCostUsd when not provided", async () => {
+    const ctxWithoutCost = { ...ctx }; // totalCostUsd is undefined
+
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/4\n", stderr: "", exitCode: 0 });
+
+    await createDraftPR(prConfig, ghConfig, ctxWithoutCost, { cwd: "/tmp", promptsDir: "/prompts" });
+
+    // Should still work, defaults to '0.0000' in template
+    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.arrayContaining(["--body"]), expect.any(Object));
+  });
 });

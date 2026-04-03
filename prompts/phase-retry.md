@@ -24,6 +24,14 @@
 {{retry.errorMessage}}
 ```
 
+## 이전 시도 출력 로그
+
+{{retry.lastOutput}}이(가) 있는 경우, 이전 시도의 전체 출력을 참고하여 문제를 파악하세요:
+
+```
+{{retry.lastOutput}}
+```
+
 ---
 
 ## 진행 보고 (필수)

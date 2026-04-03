@@ -531,21 +531,27 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
             jl?.setStep(`리뷰 오류 수정 중 (${attempt}/${maxRetries})...`);
 
             // Prepare fix prompt
-            const errorDetails = [
-              hasCriticalAnalystIssues ? "=== Requirements Analysis Issues ===" : "",
-              ...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`),
-              !reviewResult.allPassed ? "=== Code Review Issues ===" : "",
-              ...reviewFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`),
-            ].filter(Boolean).join("\n");
+            const details = [];
+            if (hasCriticalAnalystIssues) {
+              details.push("=== Requirements Analysis Issues ===");
+              details.push(...analystFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}`));
+            }
+            if (!reviewResult.allPassed) {
+              details.push("=== Code Review Issues ===");
+              details.push(...reviewFindings.map(f => `- ${f.message}${f.suggestion ? ` (Suggestion: ${f.suggestion})` : ""}${f.file && f.line ? ` (${f.file}:${f.line})` : ""}`));
+            }
 
             const fixPrompt = [
               "The following review issues were found. Fix the errors only — do not add new features or refactor unrelated code.",
               "",
-              errorDetails,
+              details.join("\n"),
             ].join("\n");
 
             // Run Claude with fallback model
             const claudeConfig = configForTask(project.commands.claudeCli, "fallback");
+            let fixSuccess = false;
+            let fixError: string | undefined;
+
             try {
               await runClaude({
                 prompt: fixPrompt,
@@ -582,21 +588,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
                 f.severity === "error" && (f.type === "missing" || f.type === "mismatch")
               ) || false;
 
-              // Record fix attempt
-              fixAttempts.push({
-                attempt,
-                findingsSnapshot: {
-                  analystFindings,
-                  reviewFindings,
-                },
-                fixResult: {
-                  success: !retryHasCriticalAnalystIssues && retryReviewResult.allPassed,
-                  filesModified: [], // TODO: Could track this if needed
-                  summary: `Fixed ${allFindings.length} issues`,
-                },
-              });
+              fixSuccess = !retryHasCriticalAnalystIssues && retryReviewResult.allPassed;
 
-              if (!retryHasCriticalAnalystIssues && retryReviewResult.allPassed) {
+              if (fixSuccess) {
                 logger.info(`[REVIEWING] Passed after retry ${attempt}`);
                 jl?.log(`리뷰 통과 (retry ${attempt})`);
                 reviewResult = { ...retryReviewResult, fixAttempts };
@@ -604,7 +598,6 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
                   reviewResult.analyst = retryAnalystResult;
                 }
                 retrySuccess = true;
-                break;
               } else {
                 // Update for next iteration
                 reviewResult = retryReviewResult;
@@ -614,22 +607,27 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
                 }
               }
             } catch (error) {
-              const errorMsg = error instanceof Error ? error.message : String(error);
-              logger.error(`[REVIEWING] Fix attempt ${attempt} failed: ${errorMsg}`);
+              fixError = error instanceof Error ? error.message : String(error);
+              logger.error(`[REVIEWING] Fix attempt ${attempt} failed: ${fixError}`);
+            }
 
-              fixAttempts.push({
-                attempt,
-                findingsSnapshot: {
-                  analystFindings,
-                  reviewFindings,
-                },
-                fixResult: {
-                  success: false,
-                  filesModified: [],
-                  summary: `Fix failed: ${errorMsg}`,
-                  error: errorMsg,
-                },
-              });
+            // Record fix attempt
+            fixAttempts.push({
+              attempt,
+              findingsSnapshot: {
+                analystFindings,
+                reviewFindings,
+              },
+              fixResult: {
+                success: fixSuccess,
+                filesModified: [],
+                summary: fixSuccess ? `Fixed ${allFindings.length} issues` : `Fix failed: ${fixError}`,
+                error: fixError,
+              },
+            });
+
+            if (fixSuccess) {
+              break;
             }
           }
 

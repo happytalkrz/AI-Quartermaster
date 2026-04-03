@@ -121,7 +121,17 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     // Generate a basic report for failed pipelines
     const { formatResult } = await import("./result-reporter.js");
-    const basicPlan = { title: "Pipeline failed", phases: [] };
+    const basicPlan = {
+      issueNumber,
+      title: "Pipeline failed",
+      problemDefinition: "Pipeline execution failed",
+      requirements: [],
+      affectedFiles: [],
+      risks: [],
+      phases: [],
+      verificationPoints: [],
+      stopConditions: []
+    };
     const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
 
     return { success: false, state: "FAILED", error: finalErrorMessage, report };

@@ -75,6 +75,11 @@ function toggleTheme() {
    ══════════════════════════════════════════════════════════════ */
 var currentConfig = null; // 현재 설정 데이터 저장
 
+function showErrorMessage(message) {
+  var container = document.getElementById('settings-content');
+  container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
+}
+
 function loadSettings() {
   var container = document.getElementById('settings-content');
   if (!container) return;
@@ -94,38 +99,27 @@ function loadSettings() {
         try {
           renderSettingsView(data.config);
         } catch (renderError) {
-          container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 렌더링하는데 실패했습니다.</div>';
+          showErrorMessage('설정을 렌더링하는데 실패했습니다.');
         }
       } else {
-        container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정 데이터가 없습니다.</div>';
+        showErrorMessage('설정 데이터가 없습니다.');
       }
     })
     .catch(function(error) {
-      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>설정을 불러오는데 실패했습니다.</div>';
+      showErrorMessage('설정을 불러오는데 실패했습니다.');
     });
 }
 
 function setSettingsTab(tabName) {
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
     var isActive = btn.dataset.tab === tabName;
-    if (isActive) {
-      // 활성 탭: 활성 스타일 추가, 비활성 스타일 제거
-      btn.classList.add('bg-primary/10', 'text-primary');
-      btn.classList.remove('text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high');
-    } else {
-      // 비활성 탭: 비활성 스타일 추가, 활성 스타일 제거
-      btn.classList.remove('bg-primary/10', 'text-primary');
-      btn.classList.add('text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high');
-    }
+    btn.classList.toggle('bg-primary/10 text-primary', isActive);
+    btn.classList.toggle('text-outline hover:text-on-surface hover:bg-surface-container-high', !isActive);
   });
 
   document.querySelectorAll('.settings-tab-panel').forEach(function(panel) {
     var isActive = panel.id === 'settings-tab-' + tabName;
-    if (isActive) {
-      panel.classList.remove('hidden');
-    } else {
-      panel.classList.add('hidden');
-    }
+    panel.classList.toggle('hidden', !isActive);
   });
 
   localStorage.setItem('aqm-selected-tab', tabName);

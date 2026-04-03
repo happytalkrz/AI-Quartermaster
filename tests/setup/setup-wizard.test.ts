@@ -127,7 +127,7 @@ CUSTOM_VAR=example
         expect(content).toBe("existing content");
       });
 
-      it.skip("should run wizard and create user config when overwrite confirmed", async () => {
+      it("should run wizard and create user config when overwrite confirmed", async () => {
         const configPath = join(aqRoot, "config.yml");
         writeFileSync(configPath, "existing content");
 
@@ -151,7 +151,7 @@ CUSTOM_VAR=example
         expect(content).toContain("test-user/test-repo");
       });
 
-      it.skip("should run wizard and create new config when no existing file", async () => {
+      it("should run wizard and create new config when no existing file", async () => {
         // Mock runInteractiveWizard function directly
         const mockWizard = vi.spyOn(setupWizard, "runInteractiveWizard").mockResolvedValue({
           repo: "new-user/new-repo",
@@ -231,7 +231,7 @@ CUSTOM_VAR=example
     });
 
     describe("smee channel creation", () => {
-      it.skip("should create new smee channel when not set", async () => {
+      it("should create new smee channel when not set", async () => {
         vi.clearAllMocks();
 
         // Override CLI runner mock specifically for this test

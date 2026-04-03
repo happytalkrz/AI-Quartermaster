@@ -20,13 +20,7 @@ export interface SelfUpdaterOptions {
  * Detects updates from origin/main and performs git pull + npm ci when needed
  */
 export class SelfUpdater {
-  private gitConfig: GitConfig;
-  private options: SelfUpdaterOptions;
-
-  constructor(gitConfig: GitConfig, options: SelfUpdaterOptions) {
-    this.gitConfig = gitConfig;
-    this.options = options;
-  }
+  constructor(private gitConfig: GitConfig, private options: SelfUpdaterOptions) {}
 
   /**
    * Checks if there are new commits on origin/main compared to current HEAD

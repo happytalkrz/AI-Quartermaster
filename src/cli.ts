@@ -17,7 +17,7 @@ import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
 import { PatternStore } from "./learning/pattern-store.js";
-import { SelfUpdater, UpdateInfo } from "./update/self-updater.js";
+import { SelfUpdater } from "./update/self-updater.js";
 
 interface CliArgs {
   command?: string;
@@ -263,7 +263,7 @@ async function startCommand(args: CliArgs): Promise<void> {
   store.prune(effectiveConfig.general.maxJobs);
 
   // === Graceful restart callback ===
-  const performGracefulRestart = async (updateInfo: UpdateInfo): Promise<void> => {
+  const performGracefulRestart = async (): Promise<void> => {
     logger.info("업데이트 감지됨 — graceful restart 시작...");
 
     try {

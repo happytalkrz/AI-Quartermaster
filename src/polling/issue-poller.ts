@@ -21,7 +21,7 @@ export class IssuePoller {
   private queue: JobQueue;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
-  private selfUpdater: SelfUpdater;
+  private selfUpdater: SelfUpdater | undefined;
   private onUpdateAvailable?: UpdateAvailableCallback;
 
   constructor(
@@ -34,9 +34,6 @@ export class IssuePoller {
     this.store = store;
     this.queue = queue;
     this.onUpdateAvailable = onUpdateAvailable;
-    this.selfUpdater = new SelfUpdater(config.git, {
-      cwd: process.cwd(),
-    });
   }
 
   start(): void {
@@ -90,6 +87,9 @@ export class IssuePoller {
   private async checkForUpdates(): Promise<void> {
     try {
       logger.debug("업데이트 확인 시작");
+      if (!this.selfUpdater) {
+        this.selfUpdater = new SelfUpdater(this.config.git, { cwd: process.cwd() });
+      }
       const updateInfo = await this.selfUpdater.checkForUpdates();
 
       if (updateInfo.hasUpdates && this.onUpdateAvailable) {

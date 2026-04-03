@@ -1,6 +1,5 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
-import { fetchIssue } from "../github/issue-fetcher.js";
 import { createDraftPR, enableAutoMerge, closeIssue } from "../github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
@@ -16,24 +15,25 @@ import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
 import { getDiffContent } from "../git/diff-collector.js";
-import { validateIssue, validateBeforePush } from "../safety/safety-checker.js";
+import { validateBeforePush } from "../safety/safety-checker.js";
 import { createCheckpoint, rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
 import { PipelineTimer } from "../safety/timeout-manager.js";
 import { createSlugWithFallback } from "../utils/slug.js";
-import { runCli } from "../utils/cli-runner.js";
 import { errorMessage } from "../types/errors.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
 import type { ReviewPipelineResult, AnalystResult, ReviewFixAttempt } from "../types/review.js";
-import { resolveProject } from "../config/project-resolver.js";
-import { getModePreset, detectModeFromLabels } from "../config/mode-presets.js";
+import { getModePreset } from "../config/mode-presets.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
-import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
+import { removeCheckpoint } from "./checkpoint.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import { withRepoLock } from "../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
+import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "./pipeline-setup.js";
+import { resolveProject } from "../config/project-resolver.js";
+import { runCli } from "../utils/cli-runner.js";
 import {
   PROGRESS_ISSUE_VALIDATED,
   PROGRESS_PLAN_GENERATED,
@@ -74,95 +74,59 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   }
 
   try {
-    // Resolve per-project config (merges project overrides with global defaults)
-    const project = resolveProject(repo, config);
-    // Allow explicit --target override, otherwise use resolved project path
-    projectRoot = input.projectRoot ?? resumeFrom?.projectRoot ?? project.path;
-    promptsDir = resolve(aqRoot ?? projectRoot, "prompts");
-
-    // Build a git config that reflects per-project branch settings
-    gitConfig = {
-      ...config.git,
-      defaultBaseBranch: project.baseBranch,
-      branchTemplate: project.branchTemplate,
-    };
+    // === Phase 1: Resolve project setup ===
+    const setupResult = resolveResolvedProject(
+      repo,
+      config,
+      input.projectRoot,
+      resumeFrom?.projectRoot,
+      aqRoot
+    );
+    projectRoot = setupResult.projectRoot;
+    promptsDir = setupResult.promptsDir;
+    gitConfig = setupResult.gitConfig;
 
     // Start pipeline-level timer
     const timer = new PipelineTimer(config.safety.maxTotalDurationMs);
 
     const dataDir = resolve(aqRoot ?? projectRoot, "data");
+    const project = resolveProject(repo, config);
 
-    // Check if a PR already exists for this issue (prevents duplicate work)
-    // Skip this check for retry jobs to allow re-execution of failed jobs
-    if (!input.isRetry) {
-      try {
-        const prCheckResult = await runCli(
-          project.commands.ghCli.path,
-          ["pr", "list", "--repo", repo, "--search", `#${issueNumber} in:title`, "--json", "number,url", "--limit", "1"],
-          { timeout: 10000 }
-        );
-        if (prCheckResult.exitCode === 0) {
-          const prs = JSON.parse(prCheckResult.stdout);
-          if (prs.length > 0) {
-            logger.info(`[SKIP] Issue #${issueNumber} already has PR: ${prs[0].url} — marking as complete`);
-            jl?.log(`이슈에 이미 PR이 존재합니다: ${prs[0].url}`);
-            jl?.setProgress(PROGRESS_DONE);
-            jl?.setStep("완료 (기존 PR)");
-            removeCheckpoint(dataDir, issueNumber);
-            return { success: true, state: "DONE", prUrl: prs[0].url };
-          }
-        }
-      } catch {
-        // non-fatal: continue pipeline if PR check fails
+    // === Phase 2: Check duplicate PR ===
+    const duplicateResult = await checkDuplicatePR(
+      repo,
+      issueNumber,
+      project,
+      input.isRetry ?? false,
+      jl,
+      dataDir
+    );
+
+    if (duplicateResult.hasDuplicatePR) {
+      return { success: true, state: "DONE", prUrl: duplicateResult.prUrl };
+    }
+
+    // === Phase 3: Fetch and validate issue ===
+    const issueResult = await fetchAndValidateIssue(
+      repo,
+      issueNumber,
+      project,
+      state,
+      timer,
+      jl,
+      resumeFrom?.mode,
+      {
+        projectRoot,
+        worktreePath,
+        branchName,
+        dataDir,
       }
-    }
+    );
 
-    // === RECEIVED → VALIDATED ===
-    let issue: Awaited<ReturnType<typeof fetchIssue>>;
-    if (isPastState(state, "VALIDATED")) {
-      logger.info(`[SKIP] RECEIVED → VALIDATED (already done)`);
-      // Still need to fetch issue for later stages
-      issue = await fetchIssue(repo, issueNumber, {
-        ghPath: project.commands.ghCli.path,
-        timeout: project.commands.ghCli.timeout,
-      });
-    } else {
-      logger.info(`[RECEIVED] Issue #${issueNumber} from ${repo}`);
-      jl?.setStep("이슈 정보 가져오는 중...");
-
-      timer.assertNotExpired("issue-fetch");
-      issue = await fetchIssue(repo, issueNumber, {
-        ghPath: project.commands.ghCli.path,
-        timeout: project.commands.ghCli.timeout,
-      });
-      logger.info(`[VALIDATED] Issue: ${issue.title}`);
-      jl?.log(`이슈: ${issue.title}`);
-      state = "VALIDATED";
-      jl?.setProgress(PROGRESS_ISSUE_VALIDATED);
-
-      // === Safety: validate issue labels ===
-      validateIssue(issue, project.safety);
-
-      saveCheckpoint(dataDir, issueNumber, {
-        issueNumber, repo, state, projectRoot,
-        worktreePath, branchName, phaseResults: [], mode: "code", savedAt: new Date().toISOString(),
-      });
-    }
-
-    // Determine initial pipeline mode: issue label > project config > default
-    let mode = resumeFrom?.mode || detectModeFromLabels(issue.labels, project.mode ?? "code");
+    const { issue, checkpoint } = issueResult;
+    let mode = issueResult.mode;
+    state = "VALIDATED";
     let preset = getModePreset(mode);
-    logger.info(`Pipeline mode (초기): ${mode}`);
-    jl?.log(`모드: ${mode}`);
-
-    const checkpoint = (overrides?: Partial<PipelineCheckpoint>) => {
-      saveCheckpoint(dataDir, issueNumber, {
-        issueNumber, repo, state, projectRoot,
-        worktreePath, branchName, phaseResults: [],
-        mode, savedAt: new Date().toISOString(),
-        ...overrides,
-      });
-    };
 
     // === VALIDATED → BASE_SYNCED → BRANCH_CREATED → WORKTREE_CREATED ===
     // Serialize git operations per-repo to prevent concurrent branch/worktree conflicts

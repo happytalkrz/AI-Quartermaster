@@ -201,7 +201,7 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
               prResult.number,
               repo,
               projectConfig.pr.mergeMethod,
-              { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+              { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft, deleteBranch: projectConfig.pr.deleteBranch ?? false }
             );
             if (merged) {
               jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod}, 의존성 확인 완료)`);
@@ -219,7 +219,7 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
             prResult.number,
             repo,
             projectConfig.pr.mergeMethod,
-            { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+            { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft, deleteBranch: projectConfig.pr.deleteBranch ?? false }
           );
           if (merged) {
             jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod})`);
@@ -234,7 +234,7 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
           prResult.number,
           repo,
           projectConfig.pr.mergeMethod,
-          { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft }
+          { ghPath: projectConfig.commands.ghCli.path, dryRun, isDraft: projectConfig.pr.draft, deleteBranch: projectConfig.pr.deleteBranch ?? false }
         );
         if (merged) {
           jl?.log(`Auto-merge 활성화 (${projectConfig.pr.mergeMethod})`);

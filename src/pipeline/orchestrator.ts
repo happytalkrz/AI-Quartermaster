@@ -52,9 +52,6 @@ import {
 } from "./pipeline-context.js";
 
 
-
-
-
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { issueNumber, repo, config, aqRoot } = input;
   const logger = getLogger();
@@ -902,7 +899,3 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     return { success: false, state: "FAILED", error: rollbackInfo ? `${errMsg}. ${rollbackInfo}` : errMsg };
   }
 }
-
-
-// Re-export for backward compatibility
-export { type OrchestratorInput, type OrchestratorResult } from "./pipeline-context.js";

@@ -4,6 +4,7 @@ import type { PipelineState } from "../types/pipeline.js";
 import type { AQConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { JobLogger } from "../queue/job-logger.js";
+import type { PipelineCheckpoint } from "./checkpoint.js";
 
 export interface OrchestratorInput {
   issueNumber: number;
@@ -12,7 +13,7 @@ export interface OrchestratorInput {
   projectRoot?: string;  // optional override; falls back to project config
   aqRoot?: string;       // AI Quartermaster root (where prompts/ lives)
   jobLogger?: JobLogger;
-  resumeFrom?: import("./checkpoint.js").PipelineCheckpoint;
+  resumeFrom?: PipelineCheckpoint;
   isRetry?: boolean;     // true if this is a retry of a previously failed job
 }
 

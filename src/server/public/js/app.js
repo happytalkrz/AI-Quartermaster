@@ -227,14 +227,14 @@ function cancelJob(id) {
   showConfirm(t('cancelConfirm'), '').then(function(ok) {
     if (!ok) return;
     apiFetch('/api/jobs/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
-      .then(function() { return apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData); })
+      .then(function() { return apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData); })
       .catch(function() {});
   });
 }
 
 function retryJob(id) {
   apiFetch('/api/jobs/' + encodeURIComponent(id) + '/retry', { method: 'POST' })
-    .then(function() { return apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData); })
+    .then(function() { return apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData); })
     .catch(function() {});
 }
 
@@ -243,7 +243,7 @@ function deleteJob(id) {
     .then(function(r) {
       if (r.ok) {
         if (selectedJobId === id) selectedJobId = null;
-        apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
+        apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
       }
     })
     .catch(function() {});
@@ -257,7 +257,7 @@ function clearAllJobs() {
       return apiFetch('/api/jobs/' + encodeURIComponent(j.id), { method: 'DELETE' }).catch(function() {});
     })).then(function() {
       selectedJobId = null;
-      apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
+      apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
     });
   });
 }
@@ -494,7 +494,17 @@ function connectSSE() {
   if (es) { try { es.close(); } catch(e) {} }
   setConnState('connecting');
   var key = getApiKey();
-  var sseUrl = key ? '/api/events?key=' + encodeURIComponent(key) : '/api/events';
+  var params = [];
+
+  if (key) {
+    params.push('key=' + encodeURIComponent(key));
+  }
+
+  if (currentProject && currentProject !== 'all') {
+    params.push('project=' + encodeURIComponent(currentProject));
+  }
+
+  var sseUrl = '/api/events' + (params.length > 0 ? '?' + params.join('&') : '');
   es = new EventSource(sseUrl);
   es.onopen = function() {
     setConnState('connected');
@@ -681,7 +691,7 @@ document.addEventListener('submit', function(e) {
 });
 
 // Initial data fetch
-apiFetch('/api/jobs')
+apiFetch(buildJobsUrl())
   .then(function(r) { return r.json(); })
   .then(handleData)
   .catch(function() {});
@@ -689,12 +699,89 @@ apiFetch('/api/jobs')
 // Load version info and check for updates
 loadVersionInfo();
 
+// Initialize project selection
+initProjectSelection();
+
 connectSSE();
 
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
+/* ══════════════════════════════════════════════════════════════
+   Project Selection Dropdown
+   ══════════════════════════════════════════════════════════════ */
+function toggleProjectDropdown() {
+  var dropdown = document.getElementById('project-dropdown');
+  if (!dropdown) return;
+
+  if (dropdown.classList.contains('hidden')) {
+    loadProjectList();
+    dropdown.classList.remove('hidden');
+  } else {
+    dropdown.classList.add('hidden');
+  }
+}
+
+function loadProjectList() {
+  apiFetch('/api/projects')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      allProjects = data.projects || [];
+      renderProjectDropdown();
+    })
+    .catch(function() {
+      allProjects = [];
+      renderProjectDropdown();
+    });
+}
+
+function renderProjectDropdown() {
+  var container = document.getElementById('project-dropdown-content');
+  if (!container) return;
+
+  var html = '';
+
+  // All Projects option
+  var isAllSelected = currentProject === 'all';
+  html += '<div class="project-option ' + (isAllSelected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high') + ' px-3 py-2 rounded-md cursor-pointer transition-colors text-sm" onclick="setProject(\'all\')">';
+  html += '<div class="flex items-center gap-2">';
+  html += '<span class="material-symbols-outlined text-sm">dashboard</span>';
+  html += '<span>All Projects</span>';
+  if (isAllSelected) html += '<span class="material-symbols-outlined text-sm ml-auto">check</span>';
+  html += '</div></div>';
+
+  // Individual projects
+  allProjects.forEach(function(project) {
+    var isSelected = currentProject === project.repo;
+    html += '<div class="project-option ' + (isSelected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high') + ' px-3 py-2 rounded-md cursor-pointer transition-colors text-sm" onclick="setProject(\'' + esc(project.repo) + '\')">';
+    html += '<div class="flex items-center gap-2">';
+    html += '<span class="material-symbols-outlined text-sm">account_tree</span>';
+    html += '<span>' + esc(project.repo) + '</span>';
+    if (isSelected) html += '<span class="material-symbols-outlined text-sm ml-auto">check</span>';
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function initProjectSelection() {
+  // Load initial project list and update UI
+  loadProjectList();
+  updateProjectDropdownUI();
+
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function(e) {
+    var dropdown = document.getElementById('project-dropdown');
+    var button = document.getElementById('project-selector');
+    if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
+      dropdown.classList.add('hidden');
+    }
+  });
+}
+
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
 window.closeEditProjectModal = closeEditProjectModal;
 window.performUpdate = performUpdate;
 window.dismissUpdate = dismissUpdate;
+window.toggleProjectDropdown = toggleProjectDropdown;
+window.setProject = setProject;

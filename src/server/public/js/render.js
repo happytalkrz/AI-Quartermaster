@@ -427,7 +427,7 @@ function startLiveTickers() {
    Fetch Stats
    ══════════════════════════════════════════════════════════════ */
 function fetchStats() {
-  apiFetch('/api/stats')
+  apiFetch(buildStatsUrl())
     .then(function(r) { return r.json(); })
     .then(function(stats) {
       if (stats.totalJobs !== undefined) document.getElementById('stat-total').textContent = stats.totalJobs;

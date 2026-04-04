@@ -35,10 +35,56 @@ function hideApiKeyPrompt() {
   document.getElementById('api-key-banner').style.display = 'none';
 }
 
+function buildJobsUrl(additionalParams) {
+  var url = '/api/jobs';
+  var params = [];
+
+  if (currentProject && currentProject !== 'all') {
+    params.push('project=' + encodeURIComponent(currentProject));
+  }
+
+  if (additionalParams) {
+    for (var key in additionalParams) {
+      if (additionalParams.hasOwnProperty(key) && additionalParams[key] !== null && additionalParams[key] !== undefined) {
+        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(additionalParams[key]));
+      }
+    }
+  }
+
+  if (params.length > 0) {
+    url += '?' + params.join('&');
+  }
+
+  return url;
+}
+
+function buildStatsUrl(additionalParams) {
+  var url = '/api/stats';
+  var params = [];
+
+  if (currentProject && currentProject !== 'all') {
+    params.push('project=' + encodeURIComponent(currentProject));
+  }
+
+  if (additionalParams) {
+    for (var key in additionalParams) {
+      if (additionalParams.hasOwnProperty(key) && additionalParams[key] !== null && additionalParams[key] !== undefined) {
+        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(additionalParams[key]));
+      }
+    }
+  }
+
+  if (params.length > 0) {
+    url += '?' + params.join('&');
+  }
+
+  return url;
+}
+
 function saveApiKey() {
   var input = document.getElementById('api-key-input');
   setApiKey(input.value.trim());
   hideApiKeyPrompt();
   connectSSE();
-  apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
+  apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
 }

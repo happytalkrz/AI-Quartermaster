@@ -334,6 +334,21 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     </nav>
   </div>
   <div class="flex items-center gap-4">
+    <!-- Project selector -->
+    <div class="relative">
+      <button id="project-selector" onclick="toggleProjectDropdown()" class="flex items-center gap-2 text-xs text-outline hover:text-on-surface transition-colors px-2 py-1.5 rounded-md hover:bg-surface-container-high">
+        <span class="material-symbols-outlined text-sm">account_tree</span>
+        <span id="current-project-label" data-i18n="allProjects">All Projects</span>
+        <span class="material-symbols-outlined text-sm">expand_more</span>
+      </button>
+      <div id="project-dropdown" class="absolute right-0 top-full mt-1 bg-surface-container-lowest border border-outline-variant/20 rounded-lg shadow-lg min-w-[200px] max-w-[300px] z-50 hidden">
+        <div class="p-2">
+          <div id="project-dropdown-content">
+            <!-- Project options will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
     <!-- Version info -->
     <div class="flex items-center gap-2 text-xs text-outline">
       <span class="material-symbols-outlined text-sm">info</span>

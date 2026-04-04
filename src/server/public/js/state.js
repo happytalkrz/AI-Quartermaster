@@ -7,13 +7,24 @@ var currentJobs = [];
 var currentFilter = 'all';
 var selectedJobId = null;
 var hideArchived = localStorage.getItem('aqm-hide-archived') === 'true';
+var currentProject = localStorage.getItem('aqm-current-project') || 'all';
+var allProjects = [];
 
 /* ══════════════════════════════════════════════════════════════
    Filter
    ══════════════════════════════════════════════════════════════ */
 function filterJobs(jobs) {
   var filtered = jobs;
+
+  // Apply archived filter
   if (hideArchived) filtered = filtered.filter(function(j) { return j.status !== 'archived'; });
+
+  // Apply project filter
+  if (currentProject && currentProject !== 'all') {
+    filtered = filtered.filter(function(j) { return j.repo === currentProject; });
+  }
+
+  // Apply status filter
   if (currentFilter === 'all') return filtered;
   if (currentFilter === 'running') return filtered.filter(function(j) { return j.status === 'running'; });
   if (currentFilter === 'queued') return filtered.filter(function(j) { return j.status === 'queued'; });
@@ -63,5 +74,28 @@ function initArchivedToggle() {
     btn.classList.add('bg-primary');
     btn.querySelector('span').classList.remove('translate-x-0.5');
     btn.querySelector('span').classList.add('translate-x-5');
+  }
+}
+
+function setProject(projectRepo) {
+  currentProject = projectRepo;
+  localStorage.setItem('aqm-current-project', projectRepo);
+  updateProjectDropdownUI();
+  renderFromState();
+
+  // Close dropdown
+  var dropdown = document.getElementById('project-dropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+}
+
+function updateProjectDropdownUI() {
+  var label = document.getElementById('current-project-label');
+  if (!label) return;
+
+  if (currentProject === 'all') {
+    label.textContent = 'All Projects';
+  } else {
+    var project = allProjects.find(function(p) { return p.repo === currentProject; });
+    label.textContent = project ? project.repo : currentProject;
   }
 }

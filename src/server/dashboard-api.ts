@@ -453,6 +453,24 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
+  // Get projects list
+  api.get("/api/projects", (c) => {
+    try {
+      const projectRoot = process.cwd();
+      const config = loadConfig(projectRoot);
+
+      if (!config.projects || config.projects.length === 0) {
+        return c.json({ projects: [] });
+      }
+
+      return c.json({ projects: config.projects });
+    } catch (error: unknown) {
+      const logger = getLogger();
+      logger.error(`Failed to load projects: ${getErrorMessage(error)}`);
+      return c.json({ error: "Failed to load projects" }, 500);
+    }
+  });
+
   // Add project to configuration
   api.post("/api/projects", async (c) => {
     try {

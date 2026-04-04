@@ -71,6 +71,28 @@ function toggleTheme() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Mobile Sidebar Toggle
+   ══════════════════════════════════════════════════════════════ */
+function toggleSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebar-overlay');
+
+  if (!sidebar || !overlay) return;
+
+  var isOpen = sidebar.style.transform === 'translateX(0px)' || sidebar.style.transform === '';
+
+  if (isOpen) {
+    // Close sidebar
+    sidebar.style.transform = 'translateX(-100%)';
+    overlay.classList.add('hidden');
+  } else {
+    // Open sidebar
+    sidebar.style.transform = 'translateX(0px)';
+    overlay.classList.remove('hidden');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
 var currentConfig = null; // 현재 설정 데이터 저장
@@ -433,3 +455,4 @@ connectSSE();
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
+window.toggleSidebar = toggleSidebar;

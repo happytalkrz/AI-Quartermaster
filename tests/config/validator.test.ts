@@ -115,6 +115,7 @@ describe("validateConfig", () => {
       stopConditions: ["STOP", "ABORT"],
       allowedLabels: ["bug", "feature"],
       rollbackStrategy: "none",
+      strict: false,
     },
   };
 

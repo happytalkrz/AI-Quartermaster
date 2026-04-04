@@ -67,7 +67,6 @@ const ECONOMY_PRESET: ExecutionModePreset = {
   enableFinalValidation: false,
   maxPhases: 5,
   maxRetries: 1,
-  strictSafety: false,
   description: "빠른 구현에 집중. 리뷰 스킵으로 토큰 소비 최소화"
 };
 
@@ -78,7 +77,6 @@ const STANDARD_PRESET: ExecutionModePreset = {
   enableFinalValidation: true,
   maxPhases: 10,
   maxRetries: 2,
-  strictSafety: true,
   description: "균형 잡힌 품질과 효율성. 1라운드 리뷰로 기본적인 품질 보장"
 };
 
@@ -89,7 +87,6 @@ const THOROUGH_PRESET: ExecutionModePreset = {
   enableFinalValidation: true,
   maxPhases: 15,
   maxRetries: 3,
-  strictSafety: true,
   description: "최고 수준의 코드 품질 보장. 보안 및 아키텍처 변경에 적합"
 };
 

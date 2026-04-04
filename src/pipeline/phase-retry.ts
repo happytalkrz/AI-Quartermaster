@@ -93,7 +93,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   let claudeResult: ClaudeRunResult | undefined;
 
   try {
-    logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index}`);
+    logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index + 1}`);
     const cleanStateResult = await ensureCleanState(
       ctx.checkpoint,
       ctx.worktreeManager,
@@ -176,12 +176,12 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       .replace(/\{\{?title\}\}?/g, `Phase ${ctx.phase.index + 1} fix: ${ctx.phase.name}`);
     const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
     if (autoCommitted) {
-      logger.info(`Auto-committing retry changes for phase ${ctx.phase.index}`);
+      logger.info(`Auto-committing retry changes for phase ${ctx.phase.index + 1}`);
     }
 
     // Run verification
     if (ctx.testCommand) {
-      logger.info(`Running verification after retry for phase ${ctx.phase.index}`);
+      logger.info(`Running verification after retry for phase ${ctx.phase.index + 1}`);
       const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
       if (testResult.exitCode !== 0) {
         throw new Error(`Tests failed after retry:\n${testResult.stdout}\n${testResult.stderr}`);

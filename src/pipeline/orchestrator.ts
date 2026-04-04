@@ -5,18 +5,22 @@ import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
   executeCoreLoopPhase,
-  executePostProcessingPhases,
-  type PostProcessingContext
+  executePostProcessingPhases
 } from "./pipeline-phases.js";
 import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
 import { clearCache } from "../github/github-cache.js";
+import {
+  handleDuplicatePR,
+  extractValidatedSetupValues,
+  createPostProcessingContext
+} from "./orchestrator-helpers.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
-  const { issueNumber, repo, config, aqRoot } = input;
+  const { config, aqRoot } = input;
   const startTime = Date.now();
 
   // Initialize pipeline state
@@ -26,22 +30,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     // Phase 1: Initial Setup (Project, Duplicate PR check, Issue validation)
     const setupResult = await executeInitialSetupPhases(input, runtime, config, aqRoot);
 
-    // Early return for duplicate PR
-    if (setupResult.duplicatePRUrl) {
-      return { success: true, state: "DONE", prUrl: setupResult.duplicatePRUrl };
+    // Handle duplicate PR early return
+    const duplicateResult = handleDuplicatePR(setupResult);
+    if (duplicateResult) {
+      return duplicateResult;
     }
 
-    const { issue, mode, checkpoint } = setupResult;
-
-    // Validate required values from setup (moved to pipeline-phases but needed here for types)
-    if (!issue) {
-      throw new Error("Issue not fetched during setup");
-    }
-    if (!mode) {
-      throw new Error("Pipeline mode not determined during setup");
-    }
-
-    const checkpointFn = checkpoint || (() => {});
+    // Extract validated setup values
+    const { issue, mode, checkpointFn } = extractValidatedSetupValues(setupResult);
 
     // Phase 2: Environment Setup (Git + Work environment)
     const envResult = await executeEnvironmentSetup(
@@ -74,19 +70,16 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
 
     // Phase 4: Post-processing (Review, Simplify, Validation, Publish)
-    const postProcessingContext: PostProcessingContext = {
+    const postProcessingContext = createPostProcessingContext({
       issue,
       coreResult: coreResult.coreResult,
-      gitConfig: setupResult.gitConfig,
-      project: setupResult.project,
-      worktreePath: runtime.worktreePath!,
-      promptsDir: setupResult.promptsDir,
-      skillsContext: envResult.skillsContext,
+      setupResult,
+      envResult,
       preset: coreResult.preset,
-      timer: setupResult.timer,
-      checkpoint: checkpointFn,
+      runtime,
+      checkpointFn,
       jobLogger: input.jobLogger
-    };
+    });
 
     const finalResult = await executePostProcessingPhases(
       postProcessingContext,

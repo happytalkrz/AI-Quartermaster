@@ -11,7 +11,8 @@ import { createWebhookApp, startServer } from "./server/webhook-server.js";
 import { createDashboardRoutes } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
 import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
-import { notifySuccess, notifyFailure } from "./notification/notifier.js";
+import { notifySuccess, notifyFailure, sendWebhookNotification } from "./notification/notifier.js";
+import type { WebhookPayload } from "./types/notification.js";
 import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
 import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
@@ -244,6 +245,19 @@ async function startCommand(args: CliArgs): Promise<void> {
           errorCategory: result.report?.errorCategory,
           lastOutput: result.report?.errorSummary,
         });
+
+        // Webhook 알림 전송 (설정되어 있는 경우)
+        if (effectiveConfig.notification.webhookUrl) {
+          const webhookPayload: WebhookPayload = {
+            repo: job.repo,
+            issueNumber: job.issueNumber,
+            error: errorMsg,
+            errorCategory: result.report?.errorCategory,
+            prUrl: result.prUrl,
+          };
+          await sendWebhookNotification(effectiveConfig.notification.webhookUrl, webhookPayload);
+        }
+
         return { error: errorMsg };
       }
     } catch (err) {
@@ -252,6 +266,17 @@ async function startCommand(args: CliArgs): Promise<void> {
         ghPath: effectiveConfig.commands.ghCli.path,
         dryRun: effectiveConfig.general.dryRun,
       });
+
+      // Webhook 알림 전송 (설정되어 있는 경우)
+      if (effectiveConfig.notification.webhookUrl) {
+        const webhookPayload: WebhookPayload = {
+          repo: job.repo,
+          issueNumber: job.issueNumber,
+          error: errorMsg,
+        };
+        await sendWebhookNotification(effectiveConfig.notification.webhookUrl, webhookPayload);
+      }
+
       return { error: errorMsg };
     }
   }, effectiveConfig.general.stuckTimeoutMs);

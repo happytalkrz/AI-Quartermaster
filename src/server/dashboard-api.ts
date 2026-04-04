@@ -559,15 +559,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     });
   });
 
+  // Helper to read current version from package.json
+  const getCurrentVersion = (): string => {
+    const packageJsonPath = resolve(process.cwd(), "package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version;
+  };
+
   // Get version information (current version + update check)
   api.get("/api/version", async (c) => {
     try {
-      // Read current version from package.json
-      const packageJsonPath = resolve(process.cwd(), "package.json");
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-      const currentVersion = packageJson.version;
-
-      // Initialize SelfUpdater to check for updates
+      const currentVersion = getCurrentVersion();
       const config = loadConfig(process.cwd());
       const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
 
@@ -581,11 +583,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           packageLockChanged: updateInfo.packageLockChanged,
         });
       } catch (updateError) {
-        // Return version info even if update check fails
-        const logger = getLogger();
-        const errMsg = updateError instanceof Error ? updateError.message : "Unknown error";
-        logger.warn(`업데이트 확인 실패: ${errMsg}`);
-
+        getLogger().warn(`업데이트 확인 실패: ${getErrorMessage(updateError)}`);
         return c.json({
           currentVersion,
           currentHash: "unknown",
@@ -596,15 +594,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         });
       }
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return c.json({ error: `버전 정보 조회 실패: ${message}` }, 500);
+      return c.json({ error: `버전 정보 조회 실패: ${getErrorMessage(error)}` }, 500);
     }
   });
 
   // Perform self-update
   api.post("/api/update", async (c) => {
     try {
-      // Check for running jobs first
       const runningJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
       if (runningJobs.length > 0) {
         return c.json({
@@ -613,46 +609,31 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }, 409);
       }
 
-      // Initialize SelfUpdater and perform update
       const config = loadConfig(process.cwd());
       const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
-
-      const logger = getLogger();
-      logger.info("사용자 요청으로 업데이트 시작");
+      getLogger().info("사용자 요청으로 업데이트 시작");
 
       const result = await selfUpdater.performSelfUpdate();
-
       if (result.updated) {
-        // Broadcast update completion to SSE clients
         broadcastToAllClients('updateCompleted', {
           updated: result.updated,
           needsRestart: result.needsRestart,
           timestamp: new Date().toISOString()
         });
-
-        return c.json({
-          message: "업데이트가 완료되었습니다",
-          updated: result.updated,
-          needsRestart: result.needsRestart,
-        });
-      } else {
-        return c.json({
-          message: "이미 최신 버전입니다",
-          updated: false,
-          needsRestart: false,
-        });
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      const logger = getLogger();
-      logger.error(`업데이트 실패: ${message}`);
 
-      // Broadcast update failure to SSE clients
+      return c.json({
+        message: result.updated ? "업데이트가 완료되었습니다" : "이미 최신 버전입니다",
+        updated: result.updated,
+        needsRestart: result.needsRestart,
+      });
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      getLogger().error(`업데이트 실패: ${message}`);
       broadcastToAllClients('updateFailed', {
         error: message,
         timestamp: new Date().toISOString()
       });
-
       return c.json({ error: `업데이트 실패: ${message}` }, 500);
     }
   });

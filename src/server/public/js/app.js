@@ -543,36 +543,32 @@ function updateVersionDisplay(data) {
   }
 }
 
-function checkForUpdates(data) {
-  if (updateDismissed || !data.hasUpdates) {
-    return;
+function getApiBannerHeight() {
+  var apiBanner = document.getElementById('api-key-banner');
+  if (apiBanner && apiBanner.style.display !== 'none') {
+    return apiBanner.offsetHeight;
   }
+  return 0;
+}
+
+function checkForUpdates(data) {
+  if (updateDismissed || !data.hasUpdates) return;
 
   var updateBanner = document.getElementById('update-banner');
   var updateInfo = document.getElementById('update-info');
+  if (!updateBanner || !updateInfo) return;
 
-  if (updateBanner && updateInfo) {
-    // API 키 배너가 표시되어 있으면 그 아래에 배치
-    var apiBanner = document.getElementById('api-key-banner');
-    var topOffset = 0;
-    if (apiBanner && apiBanner.style.display !== 'none') {
-      topOffset = apiBanner.offsetHeight;
-      document.documentElement.style.setProperty('--api-banner-height', topOffset + 'px');
-    }
+  var topOffset = getApiBannerHeight();
+  document.documentElement.style.setProperty('--api-banner-height', topOffset + 'px');
 
-    // 업데이트 정보 텍스트 구성
-    var message = '새 버전으로 업데이트할 수 있습니다.';
-    if (data.currentHash !== 'unknown' && data.remoteHash !== 'unknown') {
-      message = data.currentHash + ' → ' + data.remoteHash + ' 업데이트 사용 가능';
-    }
+  var message = data.currentHash !== 'unknown' && data.remoteHash !== 'unknown'
+    ? data.currentHash + ' → ' + data.remoteHash + ' 업데이트 사용 가능'
+    : '새 버전으로 업데이트할 수 있습니다.';
 
-    updateInfo.textContent = message;
-    updateBanner.style.display = 'flex';
-    updateBanner.style.top = topOffset + 'px';
-
-    // 페이지 콘텐츠가 배너에 가려지지 않도록 padding 조정
-    adjustPagePadding();
-  }
+  updateInfo.textContent = message;
+  updateBanner.style.display = 'flex';
+  updateBanner.style.top = topOffset + 'px';
+  adjustPagePadding();
 }
 
 function adjustPagePadding() {
@@ -597,37 +593,38 @@ function adjustPagePadding() {
   }
 }
 
-function performUpdate() {
+function setUpdateButtonState(icon, text, isLoading) {
   var updateBtn = document.getElementById('update-btn');
   var updateBtnIcon = document.getElementById('update-btn-icon');
   var updateBtnText = document.getElementById('update-btn-text');
 
-  if (!updateBtn || updateBtn.disabled) return;
-
-  // 업데이트 중 상태로 변경
-  updateBtn.disabled = true;
   if (updateBtnIcon) {
-    updateBtnIcon.textContent = 'sync';
-    updateBtnIcon.classList.add('animate-spin');
+    updateBtnIcon.textContent = icon;
+    if (isLoading) {
+      updateBtnIcon.classList.add('animate-spin');
+    } else {
+      updateBtnIcon.classList.remove('animate-spin');
+    }
   }
   if (updateBtnText) {
-    updateBtnText.textContent = '업데이트 중...';
+    updateBtnText.textContent = text;
   }
+  if (updateBtn) {
+    updateBtn.disabled = isLoading;
+  }
+}
+
+function performUpdate() {
+  var updateBtn = document.getElementById('update-btn');
+  if (!updateBtn || updateBtn.disabled) return;
+
+  setUpdateButtonState('sync', '업데이트 중...', true);
 
   apiFetch('/api/update', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.updated) {
-        // 업데이트 성공
-        if (updateBtnIcon) {
-          updateBtnIcon.textContent = 'check';
-          updateBtnIcon.classList.remove('animate-spin');
-        }
-        if (updateBtnText) {
-          updateBtnText.textContent = '완료';
-        }
-
-        // 2초 후 배너 숨기고 페이지 새로고침 권유
+        setUpdateButtonState('check', '완료', false);
         setTimeout(function() {
           if (data.needsRestart) {
             if (confirm('업데이트가 완료되었습니다. 변경사항을 적용하려면 페이지를 새로고침해야 합니다. 지금 새로고침하시겠습니까?')) {
@@ -635,38 +632,18 @@ function performUpdate() {
             }
           } else {
             dismissUpdate();
-            loadVersionInfo(); // 새 버전 정보 로드
+            loadVersionInfo();
           }
         }, 2000);
       } else {
-        // 이미 최신 버전
-        if (updateBtnIcon) {
-          updateBtnIcon.textContent = 'check';
-          updateBtnIcon.classList.remove('animate-spin');
-        }
-        if (updateBtnText) {
-          updateBtnText.textContent = '최신 버전';
-        }
-        setTimeout(function() {
-          dismissUpdate();
-        }, 2000);
+        setUpdateButtonState('check', '최신 버전', false);
+        setTimeout(function() { dismissUpdate(); }, 2000);
       }
     })
-    .catch(function(error) {
-      // 업데이트 실패
-      if (updateBtnIcon) {
-        updateBtnIcon.textContent = 'error';
-        updateBtnIcon.classList.remove('animate-spin');
-      }
-      if (updateBtnText) {
-        updateBtnText.textContent = '실패';
-      }
-
+    .catch(function() {
+      setUpdateButtonState('error', '실패', false);
       setTimeout(function() {
-        // 원래 상태로 복구
-        updateBtn.disabled = false;
-        if (updateBtnIcon) updateBtnIcon.textContent = 'download';
-        if (updateBtnText) updateBtnText.textContent = '업데이트';
+        setUpdateButtonState('download', '업데이트', false);
       }, 3000);
     });
 }

@@ -114,9 +114,6 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     retryContext.currentAttempt = attempt - 1;
     const startTime = Date.now();
 
-    let templatePath: string;
-    let templateData: PlanTemplateData;
-
     // 기본 데이터 구조
     const baseData = {
       issue: {
@@ -134,41 +131,39 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       config: { maxPhases, sensitivePaths },
     };
 
-    // 첫 시도는 일반 템플릿, 재시도는 retry 템플릿 사용
-    if (attempt === 1) {
-      templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-      templateData = baseData;
-    } else {
-      const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
-      const useRetryTemplate = existsSync(retryTemplatePath);
-      templatePath = useRetryTemplate ? retryTemplatePath : resolve(ctx.promptsDir, "plan-generation.md");
-
-      const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
-      templateData = useRetryTemplate
-        ? {
-            retry: {
-              attempt,
-              maxRetries,
-              failureReason: lastFailure.errorCategory || "UNKNOWN",
-              errorMessage: lastFailure.error || "Unknown error",
-              previousAttempts: retryContext.generationHistory.map((h, i) => ({
-                attempt: i + 1,
-                failureReason: h.errorCategory || "UNKNOWN",
-                problemSummary: h.error?.slice(0, 100) || "Unknown",
-              })),
-            },
-            context: retryContext.contextualization || {
-              functionSignatures: {},
-              importRelations: {},
-              typeDefinitions: {},
-            },
-            ...baseData,
-          }
-        : baseData;
-    }
+    // 항상 원본 템플릿을 기본으로 사용
+    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    let templateData = baseData;
 
     const template = loadTemplate(templatePath);
     let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+
+    // retry 시에는 retry 섹션을 append
+    if (attempt > 1) {
+      const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
+      if (existsSync(retryTemplatePath)) {
+        const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
+        const retryData = {
+          retry: {
+            attempt,
+            maxRetries,
+            failureReason: lastFailure.errorCategory || "UNKNOWN",
+            errorMessage: lastFailure.error || "Unknown error",
+            previousAttempts: retryContext.generationHistory.map((h, i) =>
+              `| ${i + 1} | ${h.errorCategory || "UNKNOWN"} | ${(h.error?.slice(0, 100) || "Unknown").replace(/\|/g, "\\|")} |`
+            ),
+          },
+          context: retryContext.contextualization || {},
+        };
+
+        // retry 템플릿에서 retry 특화 섹션만 추출
+        const retryTemplate = loadTemplate(retryTemplatePath);
+        const retrySection = extractRetrySection(retryTemplate);
+        const renderedRetrySection = renderTemplate(retrySection, retryData);
+
+        finalPrompt += "\n\n" + renderedRetrySection;
+      }
+    }
 
     if (ctx.modeHint) {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
@@ -707,4 +702,20 @@ function extractTypeDefinitionsRegex(content: string): string[] {
   }
 
   return typeDefinitions;
+}
+
+/**
+ * retry 템플릿에서 retry 특화 섹션만 추출합니다.
+ * "## 이전 실패 정보"부터 끝까지를 반환합니다.
+ */
+function extractRetrySection(retryTemplate: string): string {
+  const lines = retryTemplate.split('\n');
+  const retryStartIndex = lines.findIndex(line => line.trim().startsWith('## 이전 실패 정보'));
+
+  if (retryStartIndex === -1) {
+    // retry 섹션을 찾을 수 없으면 전체 템플릿 반환
+    return retryTemplate;
+  }
+
+  return lines.slice(retryStartIndex).join('\n');
 }

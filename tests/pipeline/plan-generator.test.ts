@@ -703,10 +703,49 @@ tests/
   // Phase 6: 재시도 로직 테스트 케이스 추가
   describe("plan retry logic with contextualization", () => {
     beforeEach(() => {
-      // Create a dummy retry template
+      // Create a retry template that matches the actual structure
       writeFileSync(
         join(promptsDir, "plan-generation-retry.md"),
-        "Retry plan generation for #{{issue.number}}: {{issue.title}}\n\nContext: {{context}}\nRetry: {{retry}}"
+        `# Plan 생성 재시도
+
+이전 Plan 생성이 실패했으므로, 실패 정보와 추가 컨텍스트를 바탕으로 더 구체적인 구현 계획(Plan)을 수립하세요.
+
+## 이전 실패 정보
+
+- **실패 횟수**: {{retry.attempt}}/{{retry.maxRetries}}
+- **실패 사유**: {{retry.failureReason}}
+- **에러 메시지**:
+
+\`\`\`
+{{retry.errorMessage}}
+\`\`\`
+
+{{#retry.previousAttempts}}
+### 이전 시도 히스토리
+
+이전 시도들의 실패 정보를 참고하여 반복적인 실수를 방지하세요:
+
+| 시도 | 실패 사유 | 주요 문제점 |
+|------|-----------|-------------|
+{{#retry.previousAttempts}}
+{{.}}
+{{/retry.previousAttempts}}
+{{/retry.previousAttempts}}
+
+## 추가 컨텍스트 정보
+
+Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다:
+
+{{#context.functionSignatures}}
+### 관련 함수 시그니처
+
+\`\`\`typescript
+{{#context.functionSignatures}}
+// {{filePath}}
+{{signature}}
+{{/context.functionSignatures}}
+\`\`\`
+{{/context.functionSignatures}}`
       );
 
       // Reset notification mock
@@ -1028,12 +1067,18 @@ tests/
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
       expect(result.issueNumber).toBe(789);
 
-      // Verify that the second call used the retry template
+      // Verify that the second call used the original template + retry section composition
       const secondCall = mockRunClaude.mock.calls[1];
       const promptUsed = secondCall[0].prompt;
-      expect(promptUsed).toContain("Retry plan generation");
-      expect(promptUsed).toContain("Context:");
-      expect(promptUsed).toContain("Retry:");
+
+      // Should contain original template content
+      expect(promptUsed).toContain("Generate plan for #789: Retry template test");
+
+      // Should contain retry section appended
+      expect(promptUsed).toContain("## 이전 실패 정보");
+      expect(promptUsed).toContain("- **실패 횟수**: 2/2");
+      expect(promptUsed).toContain("- **실패 사유**: CLI_CRASH");
+      expect(promptUsed).toContain("Initial failure");
     });
   });
 

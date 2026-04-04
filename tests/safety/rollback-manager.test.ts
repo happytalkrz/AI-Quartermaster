@@ -4,8 +4,9 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-import { createCheckpoint, rollbackToCheckpoint } from "../../src/safety/rollback-manager.js";
+import { createCheckpoint, rollbackToCheckpoint, ensureCleanState, type WorktreeManager, type EnsureCleanStateOptions } from "../../src/safety/rollback-manager.js";
 import { runCli } from "../../src/utils/cli-runner.js";
+import type { GitConfig, WorktreeConfig } from "../../src/types/config.js";
 
 const mockRunCli = vi.mocked(runCli);
 

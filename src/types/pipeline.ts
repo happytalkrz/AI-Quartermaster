@@ -228,34 +228,8 @@ export interface PlanRetryContext {
   canRetry: boolean;
 }
 
-// CLI용 실시간 진행률 출력을 위한 콜백 인터페이스
-
 export interface ProgressCallback {
-  /** Phase 시작 시 호출되는 콜백 */
   onPhaseStart?: (phaseIndex: number, phaseName: string, totalPhases: number) => void;
-  /** Phase 진행률 업데이트 시 호출되는 콜백 */
   onPhaseProgress?: (phaseIndex: number, phaseName: string, progress: number) => void;
-  /** Phase 완료 시 호출되는 콜백 */
-  onPhaseComplete?: (phaseIndex: number, phaseName: string, success: boolean, result?: PhaseResult) => void;
-}
-
-export interface PipelineInput {
-  /** 이슈 번호 */
-  issueNumber: number;
-  /** 저장소 (owner/repo 형식) */
-  repo: string;
-  /** 설정 */
-  config: import("./config.js").AQConfig;
-  /** 프로젝트 루트 경로 */
-  projectRoot?: string;
-  /** AQ 루트 경로 */
-  aqRoot?: string;
-  /** Job 로거 */
-  jobLogger?: import("../queue/job-logger.js").JobLogger;
-  /** 체크포인트에서 재개 */
-  resumeFrom?: import("../pipeline/checkpoint.js").PipelineCheckpoint;
-  /** 재시도 여부 */
-  isRetry?: boolean;
-  /** 진행률 콜백 (선택적) */
-  progressCallback?: ProgressCallback;
+  onPhaseComplete?: (phaseIndex: number, phaseName: string, success: boolean) => void;
 }

@@ -52,28 +52,20 @@ async function runCommand(args: CliArgs): Promise<void> {
   logger.info(`AI Quartermaster 시작 - Issue #${args.issue} (${args.repo})`);
   logger.info(`대상 프로젝트: ${targetRoot}`);
 
-  // CLI용 진행률 출력 콜백
-  const progressCallback = {
-    onPhaseStart: (phaseIndex: number, phaseName: string, totalPhases: number) => {
-      process.stdout.write(`\r[Phase ${phaseIndex + 1}/${totalPhases}] ${phaseName} — 시작 중...`);
-    },
-    onPhaseProgress: (phaseIndex: number, phaseName: string, progress: number) => {
-      const progressPercent = Math.round(progress * 100);
-      process.stdout.write(`\r[Phase ${phaseIndex + 1}/?] ${phaseName} — 진행 중... (${progressPercent}%)`);
-    },
-    onPhaseComplete: (phaseIndex: number, phaseName: string, success: boolean) => {
-      const status = success ? "완료" : "실패";
-      process.stdout.write(`\r[Phase ${phaseIndex + 1}/?] ${phaseName} — ${status}\n`);
-    },
-  };
-
   const result = await runPipeline({
     issueNumber: args.issue,
     repo: args.repo,
     config: effectiveConfig,
     projectRoot: targetRoot,
     aqRoot,
-    progressCallback,
+    progressCallback: {
+      onPhaseStart: (idx, name, total) =>
+        process.stdout.write(`\r[Phase ${idx + 1}/${total}] ${name} — 시작 중...`),
+      onPhaseProgress: (idx, name, progress) =>
+        process.stdout.write(`\r[Phase ${idx + 1}/?] ${name} — 진행 중... (${Math.round(progress * 100)}%)`),
+      onPhaseComplete: (idx, name, success) =>
+        process.stdout.write(`\r[Phase ${idx + 1}/?] ${name} — ${success ? "완료" : "실패"}\n`),
+    },
   });
 
   process.exit(result.success ? 0 : 1);

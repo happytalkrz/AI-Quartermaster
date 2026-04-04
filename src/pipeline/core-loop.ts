@@ -45,7 +45,7 @@ export interface CoreLoopContext {
   dataDir?: string;
   jobLogger?: JobLogger;
   previousPhaseResults?: PhaseResult[];  // from checkpoint resume
-  progressCallback?: ProgressCallback;  // CLI용 진행률 콜백
+  progressCallback?: ProgressCallback;
 }
 
 export interface CoreLoopResult {
@@ -164,8 +164,6 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       logger.info(`Starting Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
       jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
       jl?.setProgress(phaseStart(phase.index, plan.phases.length));
-
-      // CLI용 진행률 콜백: phase 시작
       ctx.progressCallback?.onPhaseStart?.(phase.index, phase.name, plan.phases.length);
 
       let result = await executePhase({
@@ -246,19 +244,14 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       if (!result.success) {
         logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
         jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
-
-        // CLI용 진행률 콜백: phase 실패 완료
-        ctx.progressCallback?.onPhaseComplete?.(phase.index, phase.name, false, result);
-
+        ctx.progressCallback?.onPhaseComplete?.(phase.index, phase.name, false);
         return { plan, phaseResults, success: false };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
       jl?.log(`Phase ${phase.index + 1} 완료 (${result.commitHash?.slice(0, 8)})`);
       jl?.setProgress(phaseStart(phase.index + 1, plan.phases.length));
-
-      // CLI용 진행률 콜백: phase 성공 완료
-      ctx.progressCallback?.onPhaseComplete?.(phase.index, phase.name, true, result);
+      ctx.progressCallback?.onPhaseComplete?.(phase.index, phase.name, true);
     }
 
     logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);

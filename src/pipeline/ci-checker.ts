@@ -1,7 +1,7 @@
 import { runGhCommand } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import type { GhCliConfig, RetryConfig } from "../types/config.js";
+import type { GhCliConfig } from "../types/config.js";
 
 const logger = getLogger();
 
@@ -163,6 +163,7 @@ export async function pollCiStatus(
 
   logger.info(`Starting CI polling for PR #${prNumber} (max duration: ${maxDurationMs}ms, interval: ${intervalMs}ms)`);
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const elapsed = Date.now() - startTime;
 

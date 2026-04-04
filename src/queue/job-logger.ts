@@ -1,5 +1,6 @@
 import type { Job } from "./job-store.js";
 import { JobStore } from "./job-store.js";
+import type { UsageInfo } from "../types/pipeline.js";
 
 /**
  * Appends log messages to a job and updates its current step.
@@ -30,5 +31,10 @@ export class JobLogger {
 
   setProgress(progress: number): void {
     this.store.update(this.jobId, { progress: Math.round(progress) });
+  }
+
+  setCosts(totalCostUsd: number, totalUsage?: UsageInfo): void {
+    const updates: Partial<Job> = { totalCostUsd, totalUsage };
+    this.store.update(this.jobId, updates);
   }
 }

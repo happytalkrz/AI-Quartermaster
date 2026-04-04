@@ -3,6 +3,13 @@ export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
 export type MergeMethod = "merge" | "squash" | "rebase";
 
+export interface RetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  jitterFactor: number;
+}
+
 export interface SkillContent {
   name: string;
   category: string;
@@ -57,11 +64,13 @@ export interface ClaudeCliConfig {
   maxTurns: number;
   timeout: number;
   additionalArgs: string[];
+  retry?: RetryConfig;
 }
 
 export interface GhCliConfig {
   path: string;
   timeout: number;
+  retry?: RetryConfig;
 }
 
 export interface CommandsConfig {

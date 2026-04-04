@@ -1,5 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { extractJson, type ClaudeRunOptions } from "../../src/claude/claude-runner.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { extractJson, type ClaudeRunOptions, runClaude } from "../../src/claude/claude-runner.js";
+import { spawn } from "child_process";
+import { EventEmitter } from "events";
+
+// Mock child_process
+vi.mock("child_process");
+const mockSpawn = vi.mocked(spawn);
 
 describe("extractJson", () => {
   it("should parse plain JSON string", () => {
@@ -65,5 +71,191 @@ describe("ClaudeRunOptions", () => {
 
     expect(options.maxTurns).toBeUndefined();
     expect(options.enableAgents).toBeUndefined();
+  });
+});
+
+describe("runClaude retry behavior", () => {
+  let mockChild: EventEmitter & {
+    pid: number;
+    stdin: { write: () => void; end: () => void };
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: () => void;
+    killed: boolean;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockChild = Object.assign(new EventEmitter(), {
+      pid: 12345,
+      stdin: { write: vi.fn(), end: vi.fn() },
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      kill: vi.fn(),
+      killed: false,
+    });
+
+    mockSpawn.mockReturnValue(mockChild as any);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should retry on rate limit error", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+        retry: {
+          maxRetries: 2,
+          initialDelayMs: 100,
+          maxDelayMs: 1000,
+          jitterFactor: 0.1,
+        },
+      },
+    };
+
+    let callCount = 0;
+    mockSpawn.mockImplementation(() => {
+      callCount++;
+      const child = Object.assign(new EventEmitter(), {
+        pid: 12345 + callCount,
+        stdin: { write: vi.fn(), end: vi.fn() },
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        kill: vi.fn(),
+        killed: false,
+      });
+
+      setTimeout(() => {
+        if (callCount === 1) {
+          // First attempt - rate limit error
+          child.stderr.emit("data", Buffer.from("Error: rate limit exceeded"));
+          child.emit("close", 1);
+        } else {
+          // Second attempt - success
+          child.stdout.emit("data", Buffer.from('{"type": "result", "result": "success"}\n'));
+          child.emit("close", 0);
+        }
+      }, 10);
+
+      return child as any;
+    });
+
+    const runPromise = runClaude(options);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(mockSpawn).toHaveBeenCalledTimes(2); // First attempt + retry
+  }, 10000);
+
+  it("should retry on prompt too long error", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+        retry: {
+          maxRetries: 1,
+          initialDelayMs: 100,
+          maxDelayMs: 1000,
+          jitterFactor: 0.1,
+        },
+      },
+    };
+
+    let callCount = 0;
+    mockSpawn.mockImplementation(() => {
+      callCount++;
+      const child = Object.assign(new EventEmitter(), {
+        pid: 12345 + callCount,
+        stdin: { write: vi.fn(), end: vi.fn() },
+        stdout: new EventEmitter(),
+        stderr: new EventEmitter(),
+        kill: vi.fn(),
+        killed: false,
+      });
+
+      // Both attempts fail with prompt too long
+      setTimeout(() => {
+        child.stderr.emit("data", Buffer.from("Error: prompt is too long"));
+        child.emit("close", 1);
+      }, 10);
+
+      return child as any;
+    });
+
+    const runPromise = runClaude(options);
+
+    try {
+      await runPromise;
+      expect.fail("Should have thrown after exhausting retries");
+    } catch (error) {
+      expect((error as Error).message).toContain("prompt is too long");
+      expect(mockSpawn).toHaveBeenCalledTimes(2); // Original + 1 retry
+    }
+  }, 10000);
+
+  it("should not retry on non-retryable errors", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+        retry: {
+          maxRetries: 2,
+          initialDelayMs: 100,
+          maxDelayMs: 1000,
+          jitterFactor: 0.1,
+        },
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    // Simulate non-retryable error
+    setTimeout(() => {
+      mockChild.stderr.emit("data", Buffer.from("Error: invalid syntax"));
+      mockChild.emit("close", 1);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(false);
+    expect(mockSpawn).toHaveBeenCalledTimes(1); // No retry
+  });
+
+  it("should work without retry config", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+        // No retry config
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      mockChild.stdout.emit("data", Buffer.from('{"type": "result", "result": "success"}\n'));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
   });
 });

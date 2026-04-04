@@ -43,6 +43,8 @@ export type ErrorCategory =
   | "CLI_CRASH"
   | "VERIFICATION_FAILED"
   | "SAFETY_VIOLATION"
+  | "RATE_LIMIT"
+  | "PROMPT_TOO_LONG"
   | "UNKNOWN";
 
 export type MergeStateStatus =

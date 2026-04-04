@@ -1,7 +1,14 @@
 import { execFile, spawn } from "child_process";
 import { promisify } from "util";
+import { RateLimitTracker, withRateLimit } from "./rate-limiter.js";
+import { RetryConfig } from "../types/config.js";
+import { getLogger } from "./logger.js";
 
 const execFileAsync = promisify(execFile);
+const logger = getLogger();
+
+// GitHub API rate limit 트래커 (싱글톤)
+const githubRateLimiter = new RateLimitTracker();
 
 export interface CliRunResult {
   stdout: string;
@@ -75,4 +82,97 @@ export async function runCli(
       exitCode: typeof error.code === "number" ? error.code : 1,
     };
   }
+}
+
+/**
+ * GitHub CLI 실행 (rate limiting + 재시도 포함)
+ */
+export async function runGhCommand(
+  ghPath: string,
+  args: string[],
+  options: CliRunOptions = {},
+  retryConfig?: RetryConfig
+): Promise<CliRunResult> {
+  const finalRetryConfig: RetryConfig = retryConfig ?? {
+    maxRetries: 3,
+    initialDelayMs: 2000,
+    maxDelayMs: 30000,
+    jitterFactor: 0.1,
+  };
+
+  return withRateLimit(
+    async () => {
+      // gh CLI에 --include-headers 옵션 추가하여 HTTP 헤더 포함
+      const enhancedArgs = shouldIncludeHeaders(args) ? [...args, "--include-headers"] : args;
+
+      const result = await runCli(ghPath, enhancedArgs, options);
+
+      // rate limit 헤더 파싱 및 업데이트
+      if (result.exitCode === 0 || result.exitCode === 429) {
+        parseRateLimitHeaders(result);
+      }
+
+      // 429 응답 처리
+      if (result.exitCode === 429 || isRateLimitError(result)) {
+        const error = new Error("GitHub API rate limit exceeded");
+        (error as any).status = 429;
+        throw error;
+      }
+
+      return result;
+    },
+    githubRateLimiter,
+    finalRetryConfig,
+    `gh ${args[0] || "command"}`
+  );
+}
+
+/**
+ * gh API 호출에 --include-headers가 필요한지 판단
+ */
+function shouldIncludeHeaders(args: string[]): boolean {
+  // gh api 명령어에만 --include-headers 추가
+  return args[0] === "api" && !args.includes("--include-headers");
+}
+
+/**
+ * GitHub API 응답에서 rate limit 헤더 파싱
+ */
+function parseRateLimitHeaders(result: CliRunResult): void {
+  const fullOutput = result.stdout + result.stderr;
+  const lines = fullOutput.split(/\r?\n/);
+
+  const headers: Record<string, string> = {};
+  let inHeaderSection = false;
+
+  for (const line of lines) {
+    if (line.startsWith("HTTP/")) {
+      inHeaderSection = true;
+      continue;
+    }
+    if (inHeaderSection && line === "") break; // End of headers
+    if (inHeaderSection) {
+      const colonIdx = line.indexOf(":");
+      if (colonIdx !== -1) {
+        const key = line.slice(0, colonIdx).toLowerCase();
+        const value = line.slice(colonIdx + 1).trim();
+        headers[key] = value;
+      }
+    }
+  }
+
+  if (Object.keys(headers).length > 0) {
+    logger.debug(`Parsed GitHub headers: ${Object.keys(headers).join(", ")}`);
+    githubRateLimiter.updateFromHeaders(headers);
+  }
+}
+
+/**
+ * Rate limit 관련 에러인지 판단
+ */
+function isRateLimitError(result: CliRunResult): boolean {
+  const output = (result.stdout + result.stderr).toLowerCase();
+  return output.includes("rate limit") ||
+         output.includes("too many requests") ||
+         output.includes("api rate limit exceeded");
 }

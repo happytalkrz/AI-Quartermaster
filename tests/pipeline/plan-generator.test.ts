@@ -112,6 +112,19 @@ describe("generatePlan", () => {
     expect(result.plan.issueNumber).toBe(42);
     expect(result.plan.phases).toHaveLength(1);
     expect(result.plan.problemDefinition).toBe("Need to add login");
+
+    // Verify configForTaskWithMode was called with correct parameters
+    expect(mockConfigForTaskWithMode).toHaveBeenCalledWith(
+      {
+        path: "claude",
+        model: "claude-opus-4-5",
+        maxTurns: 50,
+        timeout: 600000,
+        additionalArgs: [],
+      },
+      "plan",
+      "standard"
+    );
   });
 
   it("should throw on Claude failure", async () => {

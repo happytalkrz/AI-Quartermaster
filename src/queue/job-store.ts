@@ -2,6 +2,7 @@ import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, watch,
 import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 
@@ -290,8 +291,8 @@ export class JobStore extends EventEmitter {
       });
 
       logger.info(`Started watching job store directory: ${this.dataDir}`);
-    } catch (err) {
-      logger.error(`Failed to start watching job store directory: ${err}`);
+    } catch (err: unknown) {
+      logger.error(`Failed to start watching job store directory: ${getErrorMessage(err)}`);
     }
   }
 
@@ -341,8 +342,8 @@ export class JobStore extends EventEmitter {
           } else {
             this.emit('jobCreated', job);
           }
-        } catch (err) {
-          logger.warn(`Failed to reload job file ${jobId}: ${err}`);
+        } catch (err: unknown) {
+          logger.warn(`Failed to reload job file ${jobId}: ${getErrorMessage(err)}`);
           // If file is corrupt, remove from cache
           const existingJob = this.cache.get(jobId);
           if (existingJob) {

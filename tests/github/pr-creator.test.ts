@@ -53,22 +53,24 @@ describe("createDraftPR", () => {
 
   it("should create PR with correct arguments", async () => {
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/1", stderr: "", exitCode: 0 });
-    const result = await createDraftPR(ctx, prConfig, ghConfig);
-    expect(result).toBe("https://github.com/test/repo/pull/1");
+    const options = { cwd: "/tmp", promptsDir: "/tmp/prompts" };
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toEqual({ url: "https://github.com/test/repo/pull/1", number: 1 });
     expect(mockRunCli).toHaveBeenCalled();
   });
 
-  it("should return null on failure", async () => {
+  it("should throw error on failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "error", exitCode: 1 });
-    const result = await createDraftPR(ctx, prConfig, ghConfig);
-    expect(result).toBe(null);
+    const options = { cwd: "/tmp", promptsDir: "/tmp/prompts" };
+    await expect(createDraftPR(prConfig, ghConfig, ctx, options)).rejects.toThrow("Failed to create PR: error");
   });
 
   it("should skip in dry run mode", async () => {
     const dryConfig = { ...prConfig };
     const dryGh = { ...ghConfig };
-    const result = await createDraftPR(ctx, dryConfig, dryGh, true);
-    expect(result).toBe("DRY_RUN");
+    const options = { cwd: "/tmp", promptsDir: "/tmp/prompts", dryRun: true };
+    const result = await createDraftPR(dryConfig, dryGh, ctx, options);
+    expect(result).toEqual({ url: "https://github.com/dry-run", number: 0 });
   });
 });
 

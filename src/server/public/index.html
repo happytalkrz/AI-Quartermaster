@@ -224,6 +224,66 @@ if (localStorage.getItem('aqm-theme') === 'light') {
             padding-left: 16px !important;
             padding-right: 16px !important;
         }
+
+        /* Stats grid responsive: 2 columns on 1080px and below */
+        section.grid.grid-cols-1.md\\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        /* Dashboard layout responsive: vertical stack on narrow screens */
+        .grid.grid-cols-12 {
+            grid-template-columns: 1fr !important;
+            gap: 1.5rem !important;
+        }
+
+        /* Job list and detail columns full width in vertical layout */
+        .col-span-4,
+        .col-span-8 {
+            grid-column: 1 / -1 !important;
+        }
+
+        /* Job list height adjustment for stacked layout */
+        #job-list {
+            max-height: 400px !important;
+        }
+
+        /* Job detail minimum height adjustment */
+        #job-detail {
+            min-height: 300px !important;
+        }
+
+        /* Job card responsive layout improvements */
+        #job-list .flex.justify-between.items-start {
+            flex-wrap: wrap !important;
+            gap: 0.5rem !important;
+        }
+
+        #job-list .flex.justify-between.items-center {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.25rem !important;
+        }
+
+        /* Job detail header responsive layout */
+        #job-detail .flex.justify-between.items-start {
+            flex-direction: column !important;
+            gap: 1rem !important;
+        }
+
+        #job-detail .flex.items-center.gap-6 {
+            flex-wrap: wrap !important;
+            gap: 1rem !important;
+        }
+
+        #job-detail .flex.gap-3 {
+            flex-wrap: wrap !important;
+        }
+
+        /* Responsive text sizing */
+        #job-detail h1 {
+            font-size: 1.25rem !important;
+            line-height: 1.75rem !important;
+        }
     }
 </style>
 </head>

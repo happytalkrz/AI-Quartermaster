@@ -52,13 +52,25 @@ describe("cli-runner", () => {
 
   describe("runCli", () => {
     it("should execute command successfully", async () => {
-      // Simple test - just verify the function exists and returns a result structure
+      const { execFile } = await import("child_process");
+      const mockExecFile = vi.mocked(execFile);
+
+      // Mock successful execution
+      mockExecFile.mockImplementation((command, args, options, callback) => {
+        if (callback) {
+          callback(null, "hello", "");
+        }
+        return {} as any;
+      });
+
       const result = await runCli("echo", ["hello"]);
 
       expect(result).toHaveProperty("stdout");
       expect(result).toHaveProperty("stderr");
       expect(result).toHaveProperty("exitCode");
-      expect(typeof result.exitCode).toBe("number");
+      expect(result.stdout).toBe("hello");
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
     });
 
     it("should handle command failure", async () => {
@@ -197,12 +209,12 @@ x-ratelimit-reset: 1234567890
         return {} as any;
       });
 
-      // Mock withRateLimit to simulate retry behavior
+      // Mock withRateLimit to simulate retry behavior that throws the error
       vi.mocked(rateLimiter.withRateLimit).mockImplementation(async (operation) => {
         return operation();
       });
 
-      const result = await runGhCommand("gh", ["api", "repos/owner/repo"]);
+      await expect(runGhCommand("gh", ["api", "repos/owner/repo"])).rejects.toThrow("GitHub API rate limit exceeded");
 
       expect(rateLimiter.withRateLimit).toHaveBeenCalledWith(
         expect.any(Function),

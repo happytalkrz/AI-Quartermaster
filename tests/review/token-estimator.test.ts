@@ -5,6 +5,9 @@ import {
   getEffectiveTokenLimit,
   exceedsTokenLimit,
   analyzeTokenUsage,
+  truncateToTokenBudget,
+  summarizeForBudget,
+  truncateRepoStructure,
   MODEL_TOKEN_LIMITS,
   SAFETY_MARGIN,
   CHARS_PER_TOKEN,
@@ -173,6 +176,178 @@ describe("token-estimator", () => {
       const specialText = "Hello\n\tWorld!@#$%^&*()";
       const tokens = estimateTokenCount(specialText);
       expect(tokens).toBe(Math.ceil(specialText.length / CHARS_PER_TOKEN));
+    });
+  });
+
+  describe("truncateToTokenBudget", () => {
+    it("should return empty string for invalid inputs", () => {
+      expect(truncateToTokenBudget("", 100)).toBe("");
+      expect(truncateToTokenBudget("text", 0)).toBe("");
+      expect(truncateToTokenBudget("text", -1)).toBe("");
+    });
+
+    it("should return original text if within budget", () => {
+      const text = "Hello world!";
+      const tokens = estimateTokenCount(text);
+      expect(truncateToTokenBudget(text, tokens + 10)).toBe(text);
+      expect(truncateToTokenBudget(text, tokens)).toBe(text);
+    });
+
+    it("should truncate at sentence boundaries", () => {
+      const text = "First sentence. Second sentence. Third sentence.";
+      const result = truncateToTokenBudget(text, 5); // ~20 chars = 5 tokens
+      expect(result).toContain("First sentence");
+      expect(result.length).toBeLessThan(text.length);
+    });
+
+    it("should truncate at word boundaries when sentences don't fit", () => {
+      const longSentence = "This is a very long sentence without proper punctuation";
+      const result = truncateToTokenBudget(longSentence, 3); // ~12 chars = 3 tokens
+      expect(result).toMatch(/^This is/);
+      expect(result).toContain("...");
+    });
+
+    it("should handle text with mixed sentence endings", () => {
+      const text = "Question? Statement! Exclamation. More text here.";
+      const result = truncateToTokenBudget(text, 8); // Should fit first few sentences
+      expect(result).toMatch(/Question\? Statement!/);
+    });
+
+    it("should add ellipsis when truncating", () => {
+      const text = "a".repeat(100);
+      const result = truncateToTokenBudget(text, 5);
+      expect(result).toContain("...");
+      expect(estimateTokenCount(result)).toBeLessThanOrEqual(5);
+    });
+  });
+
+  describe("summarizeForBudget", () => {
+    it("should return empty string for invalid inputs", () => {
+      expect(summarizeForBudget("", 100)).toBe("");
+      expect(summarizeForBudget("text", 0)).toBe("");
+      expect(summarizeForBudget("text", -1)).toBe("");
+    });
+
+    it("should return original text if within budget", () => {
+      const text = "Short text";
+      const tokens = estimateTokenCount(text);
+      expect(summarizeForBudget(text, tokens + 10)).toBe(text);
+    });
+
+    it("should create summary with beginning and end", () => {
+      const text = "Beginning part with important content. " + "Middle content ".repeat(20) + "End part with conclusion.";
+      const result = summarizeForBudget(text, 20);
+
+      expect(result).toContain("Beginning part");
+      expect(result).toContain("conclusion.");
+      expect(result).toContain("[... content truncated ...]");
+      expect(estimateTokenCount(result)).toBeLessThanOrEqual(20);
+    });
+
+    it("should fallback to truncation if target tokens too small", () => {
+      const text = "This is some text that needs summarizing.";
+      const result = summarizeForBudget(text, 5);
+
+      expect(result).not.toContain("[... content truncated ...]");
+      expect(estimateTokenCount(result)).toBeLessThanOrEqual(5);
+    });
+
+    it("should preserve word boundaries in beginning and end", () => {
+      const text = "Start with words here. " + "x".repeat(200) + " End with words there.";
+      const result = summarizeForBudget(text, 30);
+
+      expect(result).toMatch(/^Start with words/);
+      if (result.includes("[... content truncated ...]")) {
+        expect(result).toMatch(/words there\.$/);
+      }
+    });
+  });
+
+  describe("truncateRepoStructure", () => {
+    const sampleStructure = `README.md
+package.json
+src/
+  index.ts
+  utils/
+    helper.ts
+  components/
+    Button.tsx
+tests/
+  index.test.ts
+  utils/
+    helper.test.ts
+node_modules/
+  express/
+    index.js
+docs/
+  api.md
+.gitignore
+tsconfig.json`;
+
+    it("should return empty string for invalid inputs", () => {
+      expect(truncateRepoStructure("", 100)).toBe("");
+      expect(truncateRepoStructure("structure", 0)).toBe("");
+      expect(truncateRepoStructure("structure", -1)).toBe("");
+    });
+
+    it("should return original structure if within budget", () => {
+      const tokens = estimateTokenCount(sampleStructure);
+      expect(truncateRepoStructure(sampleStructure, tokens + 10)).toBe(sampleStructure);
+    });
+
+    it("should prioritize important files", () => {
+      const result = truncateRepoStructure(sampleStructure, 15);
+
+      // Should include some high-priority files
+      const hasImportantFiles = result.includes("README.md") ||
+                               result.includes("package.json") ||
+                               result.includes("tsconfig.json");
+      expect(hasImportantFiles).toBe(true);
+
+      // Should exclude low-priority files
+      expect(result).not.toContain("node_modules");
+    });
+
+    it("should maintain some semblance of order", () => {
+      const result = truncateRepoStructure(sampleStructure, 20);
+      const lines = result.split('\n').filter(line => line.trim());
+
+      // README should come before package.json (if both present)
+      const readmeIndex = lines.findIndex(line => line.includes("README.md"));
+      const packageIndex = lines.findIndex(line => line.includes("package.json"));
+
+      if (readmeIndex >= 0 && packageIndex >= 0) {
+        expect(readmeIndex).toBeLessThan(packageIndex);
+      }
+    });
+
+    it("should add truncation indicator when needed", () => {
+      const result = truncateRepoStructure(sampleStructure, 3);
+      const shouldHaveIndicator = result.includes("...") || result.split('\n').length < sampleStructure.split('\n').length;
+      expect(shouldHaveIndicator).toBe(true);
+    });
+
+    it("should handle single line structures", () => {
+      const singleLine = "README.md";
+      const result = truncateRepoStructure(singleLine, 5);
+      expect(result).toContain("README.md");
+    });
+
+    it("should prioritize TypeScript and source files", () => {
+      const structure = `README.md
+src/index.ts
+src/utils.tsx
+build/output.js
+random.txt
+package.json`;
+
+      const result = truncateRepoStructure(structure, 12);
+      const hasSourceFiles = result.includes("index.ts") || result.includes("utils.tsx");
+      const hasConfigFiles = result.includes("README.md") || result.includes("package.json");
+
+      expect(hasSourceFiles || hasConfigFiles).toBe(true);
+      // Should prefer important files over random files
+      expect(result).not.toContain("random.txt");
     });
   });
 });

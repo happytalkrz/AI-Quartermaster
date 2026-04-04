@@ -66,9 +66,10 @@ describe("createDraftPR", () => {
     expect(mockRunCli).toHaveBeenCalled();
   });
 
-  it("should throw on failure", async () => {
+  it("should return null on failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "error", exitCode: 1 });
-    await expect(createDraftPR(prConfig, ghConfig, ctx, options)).rejects.toThrow("Failed to create PR: error");
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toBe(null);
   });
 
   it("should skip in dry run mode", async () => {

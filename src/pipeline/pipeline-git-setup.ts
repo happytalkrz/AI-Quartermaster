@@ -136,8 +136,8 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
             try {
               await runCli(input.gitConfig.gitPath, ["worktree", "prune"], { cwd: input.projectRoot });
               logger.info(`[RETRY] Pruned stale entries`);
-            } catch (pruneError) {
-              logger.warn(`[RETRY] Prune failed: ${pruneError}`);
+            } catch (pruneError: unknown) {
+              logger.warn(`[RETRY] Prune failed: ${getErrorMessage(pruneError)}`);
             }
             logger.warn(`[RETRY] Cleanup failed; continuing (branch-manager handles full cleanup)`);
             input.jl?.log("워크트리 정리 실패했지만 계속 진행 (branch-manager에서 완전 정리 예정)");

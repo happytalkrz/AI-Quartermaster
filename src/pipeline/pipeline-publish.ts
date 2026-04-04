@@ -201,8 +201,8 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
                 { ghPath: projectConfig.commands.ghCli.path, dryRun }
               );
               jl?.log(`의존성 PR 미머지로 auto-merge 스킵, 코멘트 추가됨`);
-            } catch (commentErr) {
-              logger.warn(`Failed to add dependency comment: ${commentErr}`);
+            } catch (commentErr: unknown) {
+              logger.warn(`Failed to add dependency comment: ${getErrorMessage(commentErr)}`);
               jl?.log(`의존성 코멘트 추가 실패 (경고만, 계속 진행)`);
             }
 
@@ -211,9 +211,9 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
             // All dependencies merged, proceed with auto-merge
             await enableAutoMergeHelper("의존성 확인 완료");
           }
-        } catch (depErr) {
+        } catch (depErr: unknown) {
           // Fallback: enable auto-merge anyway if dependency check fails
-          logger.warn(`Dependency check failed, proceeding with auto-merge: ${depErr}`);
+          logger.warn(`Dependency check failed, proceeding with auto-merge: ${getErrorMessage(depErr)}`);
           jl?.log(`의존성 확인 실패, auto-merge 계속 진행`);
           await enableAutoMergeHelper();
         }
@@ -236,8 +236,8 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
       } else {
         jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
       }
-    } catch (e) {
-      logger.warn(`Failed to close issue #${issueNumber}: ${e}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed to close issue #${issueNumber}: ${getErrorMessage(err)}`);
       jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
     }
 
@@ -276,8 +276,8 @@ export async function cleanupOnSuccess(context: CleanupContext): Promise<void> {
     try {
       await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot });
       logger.info(`Worktree cleaned up`);
-    } catch (e) {
-      logger.warn(`Failed to cleanup worktree: ${e}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed to cleanup worktree: ${getErrorMessage(err)}`);
     }
   }
 
@@ -327,8 +327,8 @@ export async function handlePipelineFailure(context: FailureHandlerContext): Pro
       await doRollback(rollbackHash, { cwd: worktreePath, gitPath: gitConfig.gitPath });
       rollbackInfo = `Rolled back to ${rollbackHash.slice(0, 8)} (strategy: ${rollbackStrategy})`;
       logger.info(rollbackInfo);
-    } catch (rbErr) {
-      logger.warn(`Rollback failed: ${rbErr}`);
+    } catch (rbErr: unknown) {
+      logger.warn(`Rollback failed: ${getErrorMessage(rbErr)}`);
     }
   }
 

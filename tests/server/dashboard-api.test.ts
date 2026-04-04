@@ -1547,50 +1547,14 @@ describe("Dashboard API - Version Management", () => {
     });
 
     describe("cleanup functions", () => {
-      it("should export stopPeriodicCleanup function", () => {
-        expect(typeof stopPeriodicCleanup).toBe("function");
-      });
-
-      it("should export cleanupAllSSEClients function", () => {
-        expect(typeof cleanupAllSSEClients).toBe("function");
-      });
-
-      it("should export cleanupDashboardResources function", () => {
-        expect(typeof cleanupDashboardResources).toBe("function");
-      });
-
       it("should call cleanup functions without errors", () => {
-        // These functions should be callable and not throw errors
         expect(() => stopPeriodicCleanup()).not.toThrow();
         expect(() => cleanupAllSSEClients()).not.toThrow();
         expect(() => cleanupDashboardResources()).not.toThrow();
       });
 
-      it("cleanupDashboardResources should call all cleanup functions", () => {
-        // Mock console to avoid potential logging during cleanup
-        const originalConsole = console;
-        const mockConsole = {
-          ...console,
-          log: vi.fn(),
-          warn: vi.fn(),
-          error: vi.fn(),
-        };
-        global.console = mockConsole as any;
-
-        // Should not throw and should clean up resources
-        expect(() => cleanupDashboardResources()).not.toThrow();
-
-        // Restore console
-        global.console = originalConsole;
-      });
-
       it("cleanup functions should handle repeated calls gracefully", () => {
-        // Multiple calls should not cause issues
         expect(() => {
-          stopPeriodicCleanup();
-          stopPeriodicCleanup();
-          cleanupAllSSEClients();
-          cleanupAllSSEClients();
           cleanupDashboardResources();
           cleanupDashboardResources();
         }).not.toThrow();

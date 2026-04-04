@@ -139,7 +139,7 @@ export function stopPeriodicCleanup(): void {
  * Clean up all active SSE clients by closing their connections.
  */
 export function cleanupAllSSEClients(): void {
-  for (const [clientId, client] of sseClients) {
+  for (const [, client] of sseClients) {
     try {
       client.controller.close();
     } catch {

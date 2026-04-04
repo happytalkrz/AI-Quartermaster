@@ -97,6 +97,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       cwd: ctx.cwd,
       modeHint: ctx.modeHint,
       maxPhases: ctx.config.safety.maxPhases,
+      locale: ctx.config.general.locale,
       sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
     });
     plan = planResult.plan;
@@ -218,6 +219,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         skillsContext: ctx.skillsContext,
         pastFailures: pastFailures || undefined,
         jobLogger: jl,
+        locale: ctx.config.general.locale,
       });
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)

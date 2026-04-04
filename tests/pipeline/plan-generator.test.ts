@@ -828,33 +828,8 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       });
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
-      expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1);
+      expect(mockNotifyPlanRetryContext).not.toHaveBeenCalled(); // 이슈 코멘트 안 남김
       expect(result.plan.issueNumber).toBe(123);
-
-      // Verify context collection notification was called with proper structure
-      const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
-      expect(notifyCall[0]).toBe("test/repo"); // repo
-      expect(notifyCall[1]).toBe(123); // issue number
-      expect(notifyCall[2]).toMatchObject({
-        currentAttempt: expect.any(Number),
-        maxRetries: 2,
-        canRetry: true,
-        generationHistory: expect.arrayContaining([
-          expect.objectContaining({
-            success: false,
-            error: expect.stringContaining("API failure"),
-            errorCategory: "CLI_CRASH",
-            attempt: 1,
-          }),
-        ]),
-      });
-
-      // Verify contextualization info was collected
-      const contextInfo = notifyCall[3];
-      expect(contextInfo).toBeDefined();
-      expect(contextInfo.functionSignatures["src/test.ts"]).toBeDefined();
-      expect(contextInfo.importRelations["src/test.ts"]).toBeDefined();
-      expect(contextInfo.typeDefinitions["src/test.ts"]).toBeDefined();
     });
 
     it("should fail after max retries with context collection", async () => {
@@ -898,12 +873,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       ).rejects.toThrow("Plan generation failed after 2 attempts");
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2); // maxRetries = 2
-      expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1); // Called once before second attempt
-
-      // Verify that context collection was attempted
-      const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
-      expect(notifyCall[2].generationHistory).toHaveLength(1);
-      expect(notifyCall[2].generationHistory[0].success).toBe(false);
+      expect(mockNotifyPlanRetryContext).not.toHaveBeenCalled(); // 이슈 코멘트 안 남김
     });
 
     it("should collect contextualization info correctly for TypeScript files", async () => {

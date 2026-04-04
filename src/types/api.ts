@@ -167,19 +167,3 @@ export const UpdateConfigRequestSchema = z.object({
 }).partial().strict();
 
 export type UpdateConfigRequest = z.infer<typeof UpdateConfigRequestSchema>;
-
-// 공통 에러 응답 타입
-export interface ApiErrorResponse {
-  error: string;
-}
-
-// 성공 응답 타입들
-export interface ApiSuccessResponse {
-  success: true;
-  message: string;
-}
-
-export interface CreateProjectSuccessResponse {
-  message: string;
-  project: CreateProjectRequest;
-}

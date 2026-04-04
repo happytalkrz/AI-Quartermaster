@@ -173,7 +173,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       // Update configuration file
-      updateConfigSection(process.cwd(), parseResult.data as Partial<AQConfig>);
+      updateConfigSection(process.cwd(), parseResult.data);
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {
@@ -232,7 +232,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         repo: repo.trim(),
         path: path.trim(),
         baseBranch: baseBranch?.trim() || undefined,
-        mode: mode || undefined,
+        mode,
       };
 
       try {

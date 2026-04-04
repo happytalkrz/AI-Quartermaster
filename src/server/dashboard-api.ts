@@ -19,10 +19,20 @@ interface SSEClient {
   controller: ReadableStreamDefaultController<Uint8Array>;
 }
 
+// SSE event data types
+type SSEEventData =
+  | { event: 'jobDeleted'; data: { id: string; job: Job } }
+  | { event: 'jobUpdated'; data: { id: string; job: Job } }
+  | { event: 'jobCreated'; data: { id: string; job: Job } }
+  | { event: 'configChanged'; data: { changes: unknown; timestamp: string } };
+
 const sseClients = new Map<string, SSEClient>();
 const encoder = new TextEncoder();
 
-function broadcastToAllClients(event: string, data: any): void {
+function broadcastToAllClients<T extends SSEEventData['event']>(
+  event: T,
+  data: Extract<SSEEventData, { event: T }>['data']
+): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const clientsToRemove: string[] = [];
 

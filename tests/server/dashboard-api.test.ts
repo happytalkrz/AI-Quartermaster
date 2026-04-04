@@ -1538,18 +1538,12 @@ describe("Dashboard API - Version Management", () => {
         expect(result.error).toBe("Unauthorized");
       });
     });
-<<<<<<< HEAD
   });
-=======
->>>>>>> origin/aq/220-fix-token-estimator
 
-    describe("SSE Resource Management", () => {
-      it("should handle SSE client connections properly", async () => {
-        const response = await app.request("/api/events?token=test-token");
-        expect(response.status).toBe(401);
-      });
+  describe("SSE Resource Management", () => {
+    it("should handle SSE client connections properly", async () => {
+      const response = await app.request("/api/events?token=test-token");
+      expect(response.status).toBe(401);
     });
-  });
-  });
   });
 });

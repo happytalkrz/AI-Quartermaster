@@ -5,13 +5,10 @@ import {
   getEffectiveTokenLimit,
   exceedsTokenLimit,
   analyzeTokenUsage,
-<<<<<<< HEAD
   truncateToTokenBudget,
   summarizeForBudget,
   truncateRepoStructure,
-=======
   isCodeContent,
->>>>>>> origin/aq/220-fix-token-estimator
   MODEL_TOKEN_LIMITS,
   SAFETY_MARGIN,
   CHARS_PER_TOKEN,
@@ -219,7 +216,6 @@ describe("token-estimator", () => {
     });
   });
 
-<<<<<<< HEAD
   describe("truncateToTokenBudget", () => {
     it("should return empty string for invalid inputs", () => {
       expect(truncateToTokenBudget("", 100)).toBe("");
@@ -389,7 +385,9 @@ package.json`;
       expect(hasSourceFiles || hasConfigFiles).toBe(true);
       // Should prefer important files over random files
       expect(result).not.toContain("random.txt");
-=======
+    });
+  });
+
   describe("isCodeContent", () => {
     it("should detect diff content as code", () => {
       const diffContent = `diff --git a/src/file.ts b/src/file.ts
@@ -910,7 +908,6 @@ export class APIClient {
     it("should have correct content type ratios", () => {
       expect(CHARS_PER_TOKEN_BY_TYPE.code).toBe(3.2);
       expect(CHARS_PER_TOKEN_BY_TYPE.natural).toBe(4);
->>>>>>> origin/aq/220-fix-token-estimator
     });
   });
 });

@@ -151,7 +151,7 @@ export const DEFAULT_CONFIG: AQConfig = {
         "Blocked keyword found"
       ],
     },
-    strict: false,
+    strict: true,
   },
   executionMode: "standard",
 };

@@ -4,7 +4,7 @@ import { syncBaseBranch, createWorkBranch } from "../git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { installDependencies } from "./dependency-installer.js";
 import { createCheckpoint } from "../safety/rollback-manager.js";
-import { createSlugWithFallback } from "../utils/slug.js";
+import { createSlugWithFallback, createSlug } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
 import { withRepoLock } from "../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
@@ -87,6 +87,7 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
   }
 
   const slug = createSlugWithFallback(input.issueTitle);
+  const repoSlug = createSlug(input.repo);
 
   // Serialize git operations per-repo to prevent concurrent branch/worktree conflicts
   await withRepoLock(input.repo, async () => {
@@ -151,7 +152,8 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
         branchName!,
         input.issueNumber,
         slug,
-        { cwd: input.projectRoot }
+        { cwd: input.projectRoot },
+        repoSlug
       );
       worktreePath = worktreeInfo.path;
       state = "WORKTREE_CREATED";

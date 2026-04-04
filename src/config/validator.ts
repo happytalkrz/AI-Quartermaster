@@ -45,6 +45,13 @@ const ERROR_MESSAGE_MAP: ErrorMessageMapping[] = [
     example: 'general:\n  concurrency: 2'
   },
   {
+    path: "projects.concurrency",
+    code: "invalid_type",
+    message: "프로젝트별 동시 실행 수는 양의 정수여야 합니다.",
+    solution: "projects[].concurrency에 1 이상의 정수를 설정하세요.",
+    example: 'projects:\n  - repo: "owner/repo"\n    path: "/path/to/repo"\n    concurrency: 2'
+  },
+  {
     path: "safety.maxPhases",
     code: "too_small",
     message: "최대 페이즈 수는 1 이상이어야 합니다.",
@@ -276,6 +283,7 @@ const projectConfigSchema = z.object({
   baseBranch: z.string().optional(),
   branchTemplate: z.string().optional(),
   mode: z.enum(["code", "content"]).optional(),
+  concurrency: z.number().int().positive().optional(),
   commands: z.object({
     test: z.string(),
     lint: z.string(),

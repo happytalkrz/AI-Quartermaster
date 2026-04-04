@@ -39,6 +39,17 @@ describe("createWorktree", () => {
     expect(mockRunCli).toHaveBeenCalledWith("git", expect.arrayContaining(["worktree", "add"]), expect.any(Object));
   });
 
+  it("should support repoSlug in dirTemplate", async () => {
+    const configWithRepoSlug = {
+      ...worktreeConfig,
+      dirTemplate: "{repoSlug}-{issueNumber}-{slug}",
+    };
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const info = await createWorktree(gitConfig, configWithRepoSlug, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" }, "owner-repo");
+    expect(info.path).toContain("owner-repo-42-fix-bug");
+    expect(info.branch).toBe("ax/42-fix-bug");
+  });
+
   it("should set AI-Quartermaster as git author in worktree", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     await createWorktree(gitConfig, worktreeConfig, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" });

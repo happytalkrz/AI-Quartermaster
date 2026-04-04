@@ -153,5 +153,8 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
     strict: true,
   },
+  features: {
+    parallelPhases: false,  // 안정성을 위해 기본값은 false
+  },
   executionMode: "standard",
 };

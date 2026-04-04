@@ -10,7 +10,7 @@ import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResul
 
 export interface PlanTemplateBaseData {
   issue: {
-    number: string;
+    number: number;
     title: string;
     body: string;
     labels: string[];
@@ -25,7 +25,7 @@ export interface PlanTemplateBaseData {
     work: string;
   };
   config: {
-    maxPhases: string;
+    maxPhases: number;
     sensitivePaths: string;
   };
 }
@@ -109,7 +109,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     required: ["mode", "issueNumber", "title", "problemDefinition", "phases"],
   });
 
-  const maxPhases = String(ctx.maxPhases ?? 10);
+  const maxPhases = ctx.maxPhases ?? 10;
   const sensitivePaths = ctx.sensitivePaths ?? "";
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -119,7 +119,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     // 기본 데이터 구조
     const baseData = {
       issue: {
-        number: String(ctx.issue.number),
+        number: ctx.issue.number,
         title: ctx.issue.title,
         body: attempt === 1 ? `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>` : ctx.issue.body,
         labels: ctx.issue.labels,
@@ -142,7 +142,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
       logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
       const dynamicSection = buildDynamicSection({
-        issue: baseData.issue as { number: number; title: string; body: string; labels: string[] },
+        issue: baseData.issue,
         repo: baseData.repo,
         branch: baseData.branch,
         config: baseData.config,
@@ -201,7 +201,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       if (ctx.cachedLayers) {
         // 캐시된 레이어 사용 시 동적 섹션 재구성
         const dynamicSection = buildDynamicSection({
-          issue: templateData.issue as { number: number; title: string; body: string; labels: string[] },
+          issue: templateData.issue,
           repo: templateData.repo,
           branch: templateData.branch,
           config: templateData.config,

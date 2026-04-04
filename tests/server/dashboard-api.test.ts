@@ -22,6 +22,14 @@ vi.mock("../../src/config/validator.js", () => ({
   validateConfig: vi.fn(),
 }));
 
+vi.mock("../../src/update/self-updater.js", () => ({
+  SelfUpdater: vi.fn(),
+}));
+
+vi.mock("fs", () => ({
+  readFileSync: vi.fn(),
+}));
+
 // Mock imports
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
 const mockUpdateConfigSection = vi.mocked(await import("../../src/config/loader.js")).updateConfigSection;
@@ -30,6 +38,8 @@ const mockRemoveProjectFromConfig = vi.mocked(await import("../../src/config/loa
 const mockUpdateProjectInConfig = vi.mocked(await import("../../src/config/loader.js")).updateProjectInConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
+const mockSelfUpdater = vi.mocked(await import("../../src/update/self-updater.js")).SelfUpdater;
+const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -1027,6 +1037,338 @@ describe("Dashboard API - Projects Management", () => {
       expect(response.status).toBe(400);
       const result = await response.json();
       expect(result.error).toContain("Configuration validation failed");
+    });
+  });
+});
+
+describe("Dashboard API - Version Management", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("GET /api/version", () => {
+    describe("without API key", () => {
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      it("should return version info with update check", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: false,
+          currentHash: "abc12345",
+          remoteHash: "abc12345",
+          packageLockChanged: false,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "abc12345".substring(0, 8),
+          remoteHash: "abc12345".substring(0, 8),
+          hasUpdates: false,
+          packageLockChanged: false,
+        });
+        expect(mockSelfUpdater).toHaveBeenCalledWith(mockConfig.git, { cwd: process.cwd() });
+      });
+
+      it("should return version info with available updates", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: true,
+          currentHash: "abc12345",
+          remoteHash: "def67890",
+          packageLockChanged: true,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "abc12345".substring(0, 8),
+          remoteHash: "def67890".substring(0, 8),
+          hasUpdates: true,
+          packageLockChanged: true,
+        });
+      });
+
+      it("should return version info even when update check fails", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockRejectedValue(new Error("Network error")),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "unknown",
+          remoteHash: "unknown",
+          hasUpdates: false,
+          packageLockChanged: false,
+          error: "업데이트 확인에 실패했습니다",
+        });
+      });
+
+      it("should return 500 when package.json reading fails", async () => {
+        mockReadFileSync.mockImplementation(() => {
+          throw new Error("File not found");
+        });
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("버전 정보 조회 실패: File not found");
+      });
+
+      it("should return 500 when package.json is invalid JSON", async () => {
+        mockReadFileSync.mockReturnValue("invalid json");
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toContain("버전 정보 조회 실패:");
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      it("should require Bearer token authentication", async () => {
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+
+      it("should return version info with valid Bearer token", async () => {
+        const mockPackageJson = { version: "2.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: false,
+          currentHash: "xyz98765",
+          remoteHash: "xyz98765",
+          packageLockChanged: false,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.currentVersion).toBe("2.0.0");
+        expect(result.hasUpdates).toBe(false);
+      });
+    });
+  });
+
+  describe("POST /api/update", () => {
+    describe("without API key", () => {
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      it("should perform update successfully when no jobs running", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        // Mock no running jobs
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: true, needsRestart: true }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          message: "업데이트가 완료되었습니다",
+          updated: true,
+          needsRestart: true,
+        });
+        expect(mockSelfUpdaterInstance.performSelfUpdate).toHaveBeenCalled();
+      });
+
+      it("should return message when already up to date", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: false, needsRestart: false }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          message: "이미 최신 버전입니다",
+          updated: false,
+          needsRestart: false,
+        });
+      });
+
+      it("should return 409 when jobs are running", async () => {
+        const runningJobs = [
+          { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" as const },
+          { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" as const },
+        ];
+        mockJobStore.list.mockReturnValue(runningJobs);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(409);
+        const result = await response.json();
+        expect(result.error).toBe("진행 중인 작업이 있어 업데이트를 수행할 수 없습니다");
+        expect(result.runningJobs).toEqual([
+          { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" },
+          { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" },
+        ]);
+      });
+
+      it("should return 500 when update fails", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockRejectedValue(new Error("Git pull failed")),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("업데이트 실패: Git pull failed");
+      });
+
+      it("should handle unknown errors gracefully", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockRejectedValue("String error"),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("업데이트 실패: Unknown error");
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      it("should require Bearer token authentication", async () => {
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+
+      it("should perform update with valid Bearer token", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: true, needsRestart: true }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.updated).toBe(true);
+        expect(result.needsRestart).toBe(true);
+      });
+
+      it("should return 401 with invalid Bearer token", async () => {
+        const response = await app.request("/api/update", {
+          method: "POST",
+          headers: { Authorization: "Bearer invalid-token" },
+        });
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
     });
   });
 });

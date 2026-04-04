@@ -1,5 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -9,6 +11,7 @@ import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 import { CreateProjectRequestSchema, UpdateConfigRequestSchema } from "../types/api.js";
+import { SelfUpdater } from "../update/self-updater.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -135,6 +138,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/config", bearerAuth);
     api.use("/api/projects", bearerAuth);
     api.use("/api/projects/*", bearerAuth);
+    api.use("/api/version", bearerAuth);
+    api.use("/api/update", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -575,6 +580,85 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         "Connection": "keep-alive",
       },
     });
+  });
+
+  // Helper to read current version from package.json
+  const getCurrentVersion = (): string => {
+    const packageJsonPath = resolve(process.cwd(), "package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version;
+  };
+
+  // Get version information (current version + update check)
+  api.get("/api/version", async (c) => {
+    try {
+      const currentVersion = getCurrentVersion();
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+
+      try {
+        const updateInfo = await selfUpdater.checkForUpdates();
+        return c.json({
+          currentVersion,
+          currentHash: updateInfo.currentHash.substring(0, 8),
+          remoteHash: updateInfo.remoteHash.substring(0, 8),
+          hasUpdates: updateInfo.hasUpdates,
+          packageLockChanged: updateInfo.packageLockChanged,
+        });
+      } catch (updateError) {
+        getLogger().warn(`업데이트 확인 실패: ${getErrorMessage(updateError)}`);
+        return c.json({
+          currentVersion,
+          currentHash: "unknown",
+          remoteHash: "unknown",
+          hasUpdates: false,
+          packageLockChanged: false,
+          error: "업데이트 확인에 실패했습니다",
+        });
+      }
+    } catch (error: unknown) {
+      return c.json({ error: `버전 정보 조회 실패: ${getErrorMessage(error)}` }, 500);
+    }
+  });
+
+  // Perform self-update
+  api.post("/api/update", async (c) => {
+    try {
+      const runningJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
+      if (runningJobs.length > 0) {
+        return c.json({
+          error: "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
+          runningJobs: runningJobs.map(job => ({ id: job.id, issueNumber: job.issueNumber, repo: job.repo, status: job.status })),
+        }, 409);
+      }
+
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+      getLogger().info("사용자 요청으로 업데이트 시작");
+
+      const result = await selfUpdater.performSelfUpdate();
+      if (result.updated) {
+        broadcastToAllClients('updateCompleted', {
+          updated: result.updated,
+          needsRestart: result.needsRestart,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return c.json({
+        message: result.updated ? "업데이트가 완료되었습니다" : "이미 최신 버전입니다",
+        updated: result.updated,
+        needsRestart: result.needsRestart,
+      });
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      getLogger().error(`업데이트 실패: ${message}`);
+      broadcastToAllClients('updateFailed', {
+        error: message,
+        timestamp: new Date().toISOString()
+      });
+      return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
   });
 
   return api;

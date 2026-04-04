@@ -609,7 +609,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (runningJobs.length > 0) {
         return c.json({
           error: "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
-          runningJobs: runningJobs.map(job => ({ id: job.id, type: job.type, status: job.status })),
+          runningJobs: runningJobs.map(job => ({ id: job.id, issueNumber: job.issueNumber, repo: job.repo, status: job.status })),
         }, 409);
       }
 

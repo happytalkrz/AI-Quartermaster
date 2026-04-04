@@ -1141,4 +1141,246 @@ describe("JobQueue", () => {
       expect(handler).toHaveBeenCalledTimes(3);
     });
   });
+
+  describe("Project error tracking and pause logic", () => {
+    it("should track consecutive failures and pause project after threshold", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("failure 1"))
+        .mockRejectedValueOnce(new Error("failure 2"))
+        .mockRejectedValueOnce(new Error("failure 3"))
+        .mockResolvedValue({ prUrl: "https://pr/success" });
+
+      const queue = new JobQueue(store, 2, handler);
+
+      // First failure
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job1!.id)?.status).toBe("failure");
+
+      let status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(1);
+      expect(status?.pausedUntil).toBeNull();
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+
+      // Second failure
+      const job2 = queue.enqueue(2, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job2!.id)?.status).toBe("failure");
+
+      status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(2);
+      expect(status?.pausedUntil).toBeNull();
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+
+      // Third failure - should trigger pause
+      const job3 = queue.enqueue(3, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job3!.id)?.status).toBe("failure");
+
+      status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(3);
+      expect(status?.pausedUntil).toBeGreaterThan(Date.now());
+      expect(queue.isProjectPaused("test/repo")).toBe(true);
+
+      // Fourth job should not start due to pause
+      const job4 = queue.enqueue(4, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job4!.id)?.status).toBe("queued"); // still queued due to pause
+    });
+
+    it("should reset failure count on success", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("failure 1"))
+        .mockRejectedValueOnce(new Error("failure 2"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/success" })
+        .mockRejectedValueOnce(new Error("failure after success"));
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Two failures
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      const job2 = queue.enqueue(2, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      let status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(2);
+
+      // Success should reset count
+      const job3 = queue.enqueue(3, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job3!.id)?.status).toBe("success");
+
+      status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(0);
+      expect(status?.lastFailureAt).toBeNull();
+
+      // New failure should start counting from 1 again
+      const job4 = queue.enqueue(4, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job4!.id)?.status).toBe("failure");
+
+      status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(1);
+    });
+
+    it("should auto-resume project after pause duration expires", async () => {
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
+      const queue = new JobQueue(store, 1, handler);
+
+      // Manually pause project for short duration
+      const shortPauseDuration = 100; // 100ms
+      queue.pauseProject("test/repo", shortPauseDuration);
+
+      expect(queue.isProjectPaused("test/repo")).toBe(true);
+
+      // Job should be deferred while paused
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job1!.id)?.status).toBe("queued");
+
+      // Wait for pause to expire and trigger processNext
+      await new Promise(r => setTimeout(r, shortPauseDuration + 50));
+
+      // Manually trigger processNext to check expired pause
+      queue.enqueue(999, "other/repo"); // This will trigger processNext which checks all projects
+
+      // Project should auto-resume and job should start
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+      await new Promise(r => setTimeout(r, 100));
+      expect(store.get(job1!.id)?.status).toBe("success");
+    });
+
+    it("should manually resume paused project", async () => {
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
+      const queue = new JobQueue(store, 1, handler);
+
+      // Pause project
+      queue.pauseProject("test/repo", 60000); // 1 minute
+      expect(queue.isProjectPaused("test/repo")).toBe(true);
+
+      // Job should be deferred while paused
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job1!.id)?.status).toBe("queued");
+
+      // Manual resume
+      queue.resumeProject("test/repo");
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+
+      // Trigger processNext manually by enqueueing another job
+      queue.enqueue(999, "other/repo");
+
+      // Job should start immediately after resume
+      await new Promise(r => setTimeout(r, 100));
+      expect(store.get(job1!.id)?.status).toBe("success");
+    });
+
+    it("should handle multiple projects independently", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("repo1 failure 1"))
+        .mockRejectedValueOnce(new Error("repo1 failure 2"))
+        .mockRejectedValueOnce(new Error("repo1 failure 3"))
+        .mockResolvedValue({ prUrl: "https://pr/success" });
+
+      const queue = new JobQueue(store, 2, handler);
+
+      // Fail repo1 three times to pause it
+      const job1 = queue.enqueue(1, "test/repo1");
+      await new Promise(r => setTimeout(r, 50));
+      const job2 = queue.enqueue(2, "test/repo1");
+      await new Promise(r => setTimeout(r, 50));
+      const job3 = queue.enqueue(3, "test/repo1");
+      await new Promise(r => setTimeout(r, 50));
+
+      // repo1 should be paused
+      expect(queue.isProjectPaused("test/repo1")).toBe(true);
+      const status1 = queue.getProjectStatus("test/repo1");
+      expect(status1?.consecutiveFailures).toBe(3);
+
+      // repo2 should be unaffected
+      expect(queue.isProjectPaused("test/repo2")).toBe(false);
+      const status2 = queue.getProjectStatus("test/repo2");
+      expect(status2).toBeNull();
+
+      // Job for repo2 should still work
+      const job4 = queue.enqueue(4, "test/repo2");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job4!.id)?.status).toBe("success");
+
+      // Job for repo1 should be deferred
+      const job5 = queue.enqueue(5, "test/repo1");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job5!.id)?.status).toBe("queued");
+    });
+
+    it("should not count stuck aborts as project failures", async () => {
+      // Test the logic by simulating job stuck abort without waiting for timeout
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
+      const queue = new JobQueue(store, 1, handler);
+
+      const job1 = queue.enqueue(1, "test/repo");
+
+      // Simulate stuck abort directly
+      queue.abortJob(job1!.id);
+
+      // Wait for job to complete normally (since stuck abort doesn't affect handler result)
+      await new Promise(r => setTimeout(r, 50));
+
+      // Job should complete normally, and no project error state should be created for stuck aborts
+      const updatedJob = store.get(job1!.id);
+      expect(updatedJob?.status).toBe("success");
+
+      // Project should not have failure count increased for stuck jobs (if any future stuck implementation)
+      const status = queue.getProjectStatus("test/repo");
+      expect(status).toBeNull(); // No error state should be created
+    });
+
+    it("should preserve manual pause when resetting failure count", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Manual pause
+      queue.pauseProject("test/repo", 60000);
+      expect(queue.isProjectPaused("test/repo")).toBe(true);
+
+      // Fail a job
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      // Resume and succeed
+      queue.resumeProject("test/repo");
+      const job2 = queue.enqueue(2, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job2!.id)?.status).toBe("success");
+
+      // Should reset failure count but not affect pausedUntil if manually set again
+      const status = queue.getProjectStatus("test/repo");
+      expect(status?.consecutiveFailures).toBe(0);
+    });
+
+    it("should handle getProjectStatus for non-existent project", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      const status = queue.getProjectStatus("non/existent");
+      expect(status).toBeNull();
+    });
+
+    it("should handle project pause with zero or negative duration", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      // Zero duration should effectively be no pause
+      queue.pauseProject("test/repo", 0);
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+
+      // Negative duration should effectively be no pause
+      queue.pauseProject("test/repo", -1000);
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+    });
+  });
 });

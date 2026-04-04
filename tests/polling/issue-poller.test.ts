@@ -24,6 +24,7 @@ const mockListOpenPrs = vi.mocked(listOpenPrs);
 // Mock job store and queue
 const mockStore = {
   shouldBlockRepickup: vi.fn(),
+  findFailedJobsForRetry: vi.fn().mockReturnValue([]),
 };
 
 const mockQueue = {
@@ -330,6 +331,228 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
       expect(mockListOpenPrs).toHaveBeenCalledTimes(2);
       expect(mockCheckPrConflict).toHaveBeenCalledTimes(1); // Only called for successful repo
+    });
+  });
+
+  describe("Project error tracking and polling pause", () => {
+    let mockQueue: any;
+
+    beforeEach(() => {
+      mockQueue = {
+        enqueue: vi.fn(),
+        isProjectPaused: vi.fn().mockReturnValue(false),
+        getProjectStatus: vi.fn().mockReturnValue(null),
+        pauseProject: vi.fn(),
+      };
+    });
+
+    it("should track polling failures and pause project after threshold", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 2, pauseDurationMs: 60000 }
+        ]
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+
+      // First failure
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Network error", exitCode: 1 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      expect(mockQueue.pauseProject).not.toHaveBeenCalled();
+
+      // Second failure - should trigger pause
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Network error", exitCode: 1 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      expect(mockQueue.pauseProject).toHaveBeenCalledWith("test/repo", 60000);
+    });
+
+    it("should reset error count on successful polling", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 3 }
+        ]
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+
+      // Two failures
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error 1", exitCode: 1 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error 2", exitCode: 1 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      expect(mockQueue.pauseProject).not.toHaveBeenCalled();
+
+      // Success should reset count
+      mockRunCli.mockResolvedValueOnce({ stdout: "[]", stderr: "", exitCode: 0 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Another failure should start counting from 1 again (not trigger pause)
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error after success", exitCode: 1 });
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      expect(mockQueue.pauseProject).not.toHaveBeenCalled();
+    });
+
+    it("should use default pause settings when project config is missing", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main" } // no pauseThreshold or pauseDurationMs
+        ]
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+
+      // Three failures with default threshold (3)
+      for (let i = 0; i < 3; i++) {
+        mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error", exitCode: 1 });
+        await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+      }
+
+      // Should pause with default duration (30 minutes = 30 * 60 * 1000 ms)
+      expect(mockQueue.pauseProject).toHaveBeenCalledWith("test/repo", 30 * 60 * 1000);
+    });
+
+    it("should handle runtime errors during polling", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 2 }
+        ]
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+
+      // Runtime error (not exit code error)
+      mockRunCli.mockRejectedValueOnce(new Error("Connection timeout"));
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Another runtime error should trigger pause
+      mockRunCli.mockRejectedValueOnce(new Error("DNS resolution failed"));
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      expect(mockQueue.pauseProject).toHaveBeenCalledWith("test/repo", 30 * 60 * 1000);
+    });
+
+    it("should skip paused projects during poll", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo1", path: "/tmp1", baseBranch: "main" },
+          { repo: "test/repo2", path: "/tmp2", baseBranch: "main" }
+        ]
+      });
+
+      // Mock repo1 as paused, repo2 as active
+      mockQueue.isProjectPaused.mockImplementation((repo: string) => repo === "test/repo1");
+      mockQueue.getProjectStatus.mockImplementation((repo: string) =>
+        repo === "test/repo1"
+          ? { consecutiveFailures: 3, pausedUntil: Date.now() + 60000, lastFailureAt: Date.now() }
+          : null
+      );
+
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+
+      await (poller as any).poll();
+
+      // Should only poll active projects
+      expect(mockRunCli).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["--repo", "test/repo2"]),
+        expect.any(Object)
+      );
+
+      expect(mockRunCli).not.toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["--repo", "test/repo1"]),
+        expect.any(Object)
+      );
+
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo2", expect.any(Object));
+      expect(mockListOpenPrs).not.toHaveBeenCalledWith("test/repo1", expect.any(Object));
+    });
+
+    it("should handle mixed paused and active projects", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/active1", path: "/tmp1", baseBranch: "main" },
+          { repo: "test/paused", path: "/tmp2", baseBranch: "main" },
+          { repo: "test/active2", path: "/tmp3", baseBranch: "main" }
+        ]
+      });
+
+      mockQueue.isProjectPaused.mockImplementation((repo: string) => repo === "test/paused");
+      mockQueue.getProjectStatus.mockImplementation((repo: string) =>
+        repo === "test/paused"
+          ? { consecutiveFailures: 3, pausedUntil: Date.now() + 30000, lastFailureAt: Date.now() }
+          : null
+      );
+
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+
+      await (poller as any).poll();
+
+      // Should poll only active projects
+      const callCount = mockRunCli.mock.calls.length;
+      const reposCalled = mockRunCli.mock.calls
+        .map(call => call[1].find((arg, i) => call[1][i-1] === "--repo"))
+        .filter(Boolean);
+
+      expect(reposCalled).toContain("test/active1");
+      expect(reposCalled).toContain("test/active2");
+      expect(reposCalled).not.toContain("test/paused");
+    });
+
+    it("should gracefully handle queue methods not available in test mode", async () => {
+      const limitedQueue = {
+        enqueue: vi.fn(),
+        // Missing isProjectPaused and pauseProject methods
+      };
+
+      const config = makeConfig();
+      poller = new IssuePoller(config, mockStore as any, limitedQueue as any);
+
+      // Should not throw when queue methods are missing
+      mockRunCli.mockResolvedValue({ stdout: "", stderr: "Error", exitCode: 1 });
+
+      await expect((poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000))
+        .resolves.not.toThrow();
+
+      // poll should also handle missing methods
+      await expect((poller as any).poll()).resolves.not.toThrow();
+    });
+
+    it("should reset error count after 1 hour of no failures", async () => {
+      const config = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 3 }
+        ]
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue);
+
+      // Mock Date.now to control time
+      const originalDateNow = Date.now;
+      let mockTime = 1000000;
+      vi.spyOn(Date, 'now').mockImplementation(() => mockTime);
+
+      try {
+        // Two failures
+        mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error 1", exitCode: 1 });
+        await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+        mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error 2", exitCode: 1 });
+        await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+        // Advance time by more than 1 hour
+        mockTime += 61 * 60 * 1000; // 61 minutes
+
+        // Third failure should start counting from 1 (not trigger pause)
+        mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "Error after timeout", exitCode: 1 });
+        await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+        expect(mockQueue.pauseProject).not.toHaveBeenCalled();
+      } finally {
+        vi.spyOn(Date, 'now').mockImplementation(originalDateNow);
+      }
     });
   });
 });

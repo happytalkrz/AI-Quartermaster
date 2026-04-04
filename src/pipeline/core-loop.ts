@@ -101,6 +101,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       },
       phaseResults: [],
       success: false,
+      totalCostUsd: 0,
     };
   }
 
@@ -130,7 +131,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   if (!scheduleResult.success) {
     logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
     jl?.log(`Phase 스케줄링 실패: ${scheduleResult.error}`);
-    return { plan, phaseResults, success: false };
+    return { plan, phaseResults, success: false, totalCostUsd: planCostUsd ?? 0 };
   }
 
   logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);

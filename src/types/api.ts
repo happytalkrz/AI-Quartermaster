@@ -167,3 +167,49 @@ export const UpdateConfigRequestSchema = z.object({
 }).partial().strict();
 
 export type UpdateConfigRequest = z.infer<typeof UpdateConfigRequestSchema>;
+
+// GetJobs 쿼리 스키마 (GET /api/jobs)
+export const GetJobsQuerySchema = z.object({
+  project: z.string().optional(),
+  status: z.enum(["pending", "running", "completed", "failed"]).optional(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+}).strict();
+
+export type GetJobsQuery = z.infer<typeof GetJobsQuerySchema>;
+
+// GetStats 쿼리 스키마 (GET /api/stats)
+export const GetStatsQuerySchema = z.object({
+  project: z.string().optional(),
+  timeRange: z.enum(["24h", "7d", "30d", "all"]).default("7d"),
+}).strict();
+
+export type GetStatsQuery = z.infer<typeof GetStatsQuerySchema>;
+
+// HealthCheck 응답 스키마 (GET /api/health)
+export const HealthCheckResponseSchema = z.object({
+  project: z.string(),
+  status: z.enum(["healthy", "warning", "error"]),
+  checks: z.object({
+    gitRemoteAccess: z.object({
+      status: z.enum(["ok", "error"]),
+      message: z.string().optional(),
+    }),
+    localPath: z.object({
+      status: z.enum(["ok", "error"]),
+      message: z.string().optional(),
+    }),
+    diskSpace: z.object({
+      status: z.enum(["ok", "warning", "error"]),
+      message: z.string().optional(),
+      freeBytes: z.number().optional(),
+    }),
+    dependencies: z.object({
+      status: z.enum(["ok", "warning", "error"]),
+      message: z.string().optional(),
+    }),
+  }),
+  lastChecked: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;

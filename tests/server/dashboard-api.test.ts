@@ -1540,6 +1540,141 @@ describe("Dashboard API - Version Management", () => {
     });
   });
 
+  describe("Dashboard API - Project filtering and health check", () => {
+    describe("without API key", () => {
+      let app: Hono;
+
+      beforeEach(() => {
+        vi.clearAllMocks();
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      describe("GET /api/jobs with project filter", () => {
+        it("should return jobs filtered by project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "completed" },
+            { id: "job-2", repo: "test/repo2", status: "completed" },
+            { id: "job-3", repo: "test/repo1", status: "failed" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs?project=test/repo1");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(2);
+          expect(result.jobs.every((job: any) => job.repo === "test/repo1")).toBe(true);
+        });
+
+        it("should return all jobs when no project filter specified", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "completed" },
+            { id: "job-2", repo: "test/repo2", status: "completed" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(2);
+        });
+      });
+
+      describe("GET /api/stats with project filter", () => {
+        it("should return stats for specific project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "completed" },
+            { id: "job-2", repo: "test/repo2", status: "completed" },
+            { id: "job-3", repo: "test/repo1", status: "failed" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/stats?project=test/repo1");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          // Check if stats endpoint works and returns some data structure
+          expect(result).toBeTypeOf("object");
+          expect(result).not.toBeNull();
+        });
+      });
+
+      describe("GET /api/health", () => {
+        it("should return 400 when project parameter is missing", async () => {
+          const response = await app.request("/api/health");
+          expect(response.status).toBe(400);
+
+          const result = await response.json();
+          expect(result.error).toBe("project parameter is required");
+        });
+
+        it("should accept project parameter", async () => {
+          const response = await app.request("/api/health?project=test/repo1");
+
+          // Should not return 400 (missing parameter)
+          expect(response.status).not.toBe(400);
+        });
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+      let app: Hono;
+
+      beforeEach(() => {
+        vi.clearAllMocks();
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      describe("GET /api/jobs with project filter", () => {
+        it("should require Bearer token authentication", async () => {
+          const response = await app.request("/api/jobs?project=test/repo1");
+
+          expect(response.status).toBe(401);
+          const result = await response.json();
+          expect(result.error).toBe("Unauthorized");
+        });
+
+        it("should return jobs with valid Bearer token", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "completed" },
+            { id: "job-2", repo: "test/repo2", status: "completed" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs?project=test/repo1", {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          expect(response.status).toBe(200);
+        });
+      });
+
+      describe("GET /api/health", () => {
+        it("should require Bearer token authentication", async () => {
+          const response = await app.request("/api/health?project=test/repo1");
+
+          expect(response.status).toBe(401);
+          const result = await response.json();
+          expect(result.error).toBe("Unauthorized");
+        });
+
+        it("should accept health check with valid Bearer token", async () => {
+          const response = await app.request("/api/health?project=test/repo1", {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+
+          // Should not return 401 (unauthorized)
+          expect(response.status).not.toBe(401);
+        });
+      });
+    });
+  });
+
   describe("SSE Resource Management", () => {
     it("should handle SSE client connections properly", async () => {
       const response = await app.request("/api/events?token=test-token");

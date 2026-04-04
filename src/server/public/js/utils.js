@@ -33,6 +33,11 @@ function fmtDurationMs(ms) {
   return m + 'm ' + s + 's';
 }
 
+function fmtCost(usd) {
+  if (usd === undefined || usd === null) return '';
+  return '$' + Number(usd).toFixed(4);
+}
+
 function relativeTime(iso) {
   if (!iso) return '';
   var diff = Date.now() - new Date(iso).getTime();

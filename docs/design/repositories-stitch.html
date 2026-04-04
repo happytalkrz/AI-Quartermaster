@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic Command | Repository Management</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #10141a; }
+        ::-webkit-scrollbar-thumb { background: #31353c; border-radius: 10px; }
+        .glass-panel {
+            background: rgba(49, 53, 60, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-background": "#dfe2eb",
+                      "on-primary-fixed": "#001c38",
+                      "surface-variant": "#31353c",
+                      "on-error": "#690005",
+                      "surface-container-high": "#262a31",
+                      "on-secondary-container": "#b0b5be",
+                      "secondary-fixed": "#dde3ec",
+                      "inverse-on-surface": "#2d3137",
+                      "outline-variant": "#414752",
+                      "on-error-container": "#ffdad6",
+                      "tertiary": "#ffba42",
+                      "on-surface": "#dfe2eb",
+                      "on-secondary-fixed": "#161c23",
+                      "surface-tint": "#a2c9ff",
+                      "background": "#10141a",
+                      "on-primary-container": "#003a6b",
+                      "tertiary-fixed-dim": "#ffba42",
+                      "tertiary-container": "#da9600",
+                      "outline": "#8b919d",
+                      "secondary-fixed-dim": "#c1c7d0",
+                      "on-tertiary-container": "#4f3400",
+                      "on-tertiary": "#432c00",
+                      "error": "#ffb4ab",
+                      "primary-container": "#58a6ff",
+                      "surface-container-highest": "#31353c",
+                      "secondary-container": "#41474f",
+                      "secondary": "#c1c7d0",
+                      "surface-dim": "#10141a",
+                      "tertiary-fixed": "#ffddaf",
+                      "surface-container-lowest": "#0a0e14",
+                      "on-tertiary-fixed": "#281800",
+                      "error-container": "#93000a",
+                      "surface-bright": "#353940",
+                      "primary-fixed": "#d3e4ff",
+                      "on-surface-variant": "#c0c7d4",
+                      "surface-container": "#1c2026",
+                      "primary-fixed-dim": "#a2c9ff",
+                      "on-primary-fixed-variant": "#004882",
+                      "on-secondary": "#2b3138",
+                      "inverse-surface": "#dfe2eb",
+                      "on-tertiary-fixed-variant": "#614000",
+                      "inverse-primary": "#0060aa",
+                      "primary": "#a2c9ff",
+                      "surface": "#10141a",
+                      "on-secondary-fixed-variant": "#41474f",
+                      "on-primary": "#00315c",
+                      "surface-container-low": "#181c22"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "fontFamily": {
+                      "headline": ["Space Grotesk"],
+                      "body": ["Inter"],
+                      "label": ["Inter"],
+                      "mono": ["JetBrains Mono"]
+              }
+            },
+          }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container overflow-hidden h-screen flex">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 left-0 sticky bg-[#181c22] flex flex-col py-8 shadow-xl shadow-black/20 z-50">
+<div class="px-6 mb-10">
+<h1 class="text-[#dfe2eb] font-black uppercase font-headline tracking-widest text-2xl">KINETIC</h1>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(162,201,255,0.6)]"></span>
+<span class="font-headline text-[10px] uppercase tracking-widest text-outline">Active Session</span>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-6 py-3 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center px-6 py-3 font-headline text-sm uppercase tracking-widest text-[#dfe2eb] bg-gradient-to-r from-[#a2c9ff]/10 to-transparent border-l-4 border-[#a2c9ff] transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="folder_managed">folder_managed</span>
+                Repositories
+            </a>
+<a class="flex items-center px-6 py-3 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="bolt">bolt</span>
+                Automation
+            </a>
+<a class="flex items-center px-6 py-3 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="psychology">psychology</span>
+                Intelligence
+            </a>
+<a class="flex items-center px-6 py-3 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="terminal">terminal</span>
+                Logs
+            </a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full py-3 bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline font-bold text-xs tracking-tighter rounded-lg active:scale-95 transition-transform duration-150">
+                DEPLOY NEW NODE
+            </button>
+<div class="mt-8 space-y-1">
+<a class="flex items-center py-2 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-[#dfe2eb] transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="help">help</span>
+                    Support
+                </a>
+<a class="flex items-center py-2 font-headline text-sm uppercase tracking-widest text-[#414752] hover:text-error transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="logout">logout</span>
+                    Sign Out
+                </a>
+</div>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 flex flex-col h-screen overflow-hidden bg-background">
+<!-- TopNavBar Shell -->
+<header class="w-full top-0 sticky bg-[#181c22] flex justify-between items-center px-8 h-16 w-full z-40">
+<div class="flex items-center gap-8 flex-1">
+<span class="text-xl font-bold tracking-tighter text-[#dfe2eb] font-headline">KINETIC COMMAND</span>
+<div class="relative w-96">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-sm" data-icon="search">search</span>
+<input class="w-full bg-surface-container-highest border-none text-on-surface text-xs font-body rounded-full pl-10 h-9 focus:ring-1 focus:ring-primary" placeholder="Search by name..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center bg-surface-container rounded-lg px-3 py-1.5 gap-2">
+<span class="text-[10px] font-headline uppercase tracking-widest text-outline">Status:</span>
+<select class="bg-transparent border-none text-xs font-bold font-headline text-[#a2c9ff] p-0 focus:ring-0">
+<option>All Repositories</option>
+<option>Active</option>
+<option>Inactive</option>
+</select>
+</div>
+<div class="flex gap-2">
+<button class="w-10 h-10 flex items-center justify-center text-outline hover:bg-[#31353c] rounded-full transition-colors active:scale-95">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center text-outline hover:bg-[#31353c] rounded-full transition-colors active:scale-95">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+<img alt="User profile avatar" class="w-8 h-8 rounded-full border border-outline-variant" data-alt="Close up portrait of a digital workspace administrator wearing sleek minimalist techwear" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDj3jdIChNfIf3XQJB_KoBI5j6HeN7pGqOXXhx_fXPsU1jByVMDeHLwmgc-hOfjRUJNDr1-Pd23F48HZpAKtfhc7eUv3sDKewTGMlm-9UD2XQZIooZvSPXU7nV2FNw8owi03jKzNOy0R_RpOGWLk2F73-q57h0cxeCtW7CtiKQHISNSFQuP9KIg4OtPXJOCz2XEabG4In7S-k-eWPZLeEzySpEdTMXs-7pkYo2WEhRJhxDvkq7LDQN2So4Y3weISFj0EASIOay3QRE"/>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto p-8">
+<div class="max-w-7xl mx-auto space-y-8">
+<!-- Section Title -->
+<div class="flex items-end justify-between">
+<div>
+<h2 class="text-4xl font-headline font-bold tracking-tighter text-on-surface">Repository Cluster</h2>
+<p class="text-outline font-body text-sm mt-1">Manage and monitor automated intelligence worktrees.</p>
+</div>
+<div class="flex gap-4">
+<div class="bg-surface-container-low p-4 rounded-xl flex items-center gap-4 border border-outline-variant/10">
+<span class="material-symbols-outlined text-primary-container" data-icon="database">database</span>
+<div>
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Total DB Size</p>
+<p class="text-lg font-mono font-medium text-on-surface">1.2 GB</p>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-xl flex items-center gap-4 border border-outline-variant/10">
+<span class="material-symbols-outlined text-tertiary" data-icon="description">description</span>
+<div>
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Log Volume</p>
+<p class="text-lg font-mono font-medium text-on-surface">450 MB</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Grid Layout -->
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+<!-- Add Repository Card -->
+<div class="group h-full min-h-[340px] rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center hover:border-primary-container hover:bg-primary-container/5 transition-all cursor-pointer">
+<div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-3xl text-outline group-hover:text-primary-container" data-icon="add">add</span>
+</div>
+<span class="font-headline font-bold text-sm tracking-widest text-outline group-hover:text-on-surface">ADD REPOSITORY</span>
+<p class="text-xs text-outline/50 mt-2">Connect a new Git worktree to Kinetic Command</p>
+</div>
+<!-- Repository Card 1 -->
+<div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">
+<div class="p-6 flex-1">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<h3 class="text-xl font-headline font-bold text-[#a2c9ff]">facebook/react</h3>
+<span class="material-symbols-outlined text-sm text-outline" data-icon="open_in_new">open_in_new</span>
+</div>
+<p class="text-xs font-mono text-outline">/home/user/workspace/react-core</p>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">
+<span class="w-2 h-2 rounded-full bg-[#3fb950] animate-pulse"></span>
+<span class="text-[10px] font-headline font-bold uppercase tracking-tighter">Active</span>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-primary" data-icon="account_tree">account_tree</span>
+<span class="font-mono text-sm">main</span>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Worktrees</p>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-tertiary" data-icon="layers">layers</span>
+<span class="font-mono text-sm">3 active</span>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Health</p>
+<div class="flex gap-1 items-center">
+<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+<span class="text-[10px] text-outline ml-1">STABLE</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20">
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>
+<p class="text-xl font-headline font-bold">45</p>
+</div>
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Success</p>
+<p class="text-xl font-headline font-bold text-[#3fb950]">92%</p>
+</div>
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>
+<p class="text-xl font-headline font-bold text-tertiary">$12.50</p>
+</div>
+</div>
+</div>
+<div class="px-6 py-3 bg-surface-container-highest flex justify-between items-center border-t border-white/5">
+<span class="text-[10px] text-outline font-body flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="schedule">schedule</span>
+                                Last active 2 hours ago
+                            </span>
+<div class="flex gap-2">
+<button class="p-1.5 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
+</button>
+<button class="p-1.5 hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="sync">sync</span>
+</button>
+<button class="p-1.5 hover:text-error transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Repository Card 2 -->
+<div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">
+<div class="p-6 flex-1">
+<div class="flex justify-between items-start mb-4">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<h3 class="text-xl font-headline font-bold text-[#a2c9ff]">vercel/next.js</h3>
+<span class="material-symbols-outlined text-sm text-outline" data-icon="open_in_new">open_in_new</span>
+</div>
+<p class="text-xs font-mono text-outline">/home/user/automation/next-deploy</p>
+</div>
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">
+<span class="w-2 h-2 rounded-full bg-[#c1c7d0]"></span>
+<span class="text-[10px] font-headline font-bold uppercase tracking-tighter text-outline">Inactive</span>
+</div>
+</div>
+<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-primary" data-icon="account_tree">account_tree</span>
+<span class="font-mono text-sm">v14-stable</span>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Worktrees</p>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-xs text-tertiary" data-icon="layers">layers</span>
+<span class="font-mono text-sm">1 active</span>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Health</p>
+<div class="flex gap-1 items-center">
+<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+<span class="text-[10px] text-error font-bold ml-1">LOCAL MISSING</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20 grayscale opacity-60">
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>
+<p class="text-xl font-headline font-bold">128</p>
+</div>
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Success</p>
+<p class="text-xl font-headline font-bold text-[#3fb950]">100%</p>
+</div>
+<div class="px-2 text-center">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>
+<p class="text-xl font-headline font-bold text-tertiary">$0.00</p>
+</div>
+</div>
+</div>
+<div class="px-6 py-3 bg-surface-container-highest flex justify-between items-center border-t border-white/5">
+<span class="text-[10px] text-outline font-body flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="schedule">schedule</span>
+                                Last active 14 days ago
+                            </span>
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-primary text-on-primary text-[10px] font-headline font-bold uppercase tracking-widest rounded hover:bg-primary-container transition-colors">
+                                    RE-LINK
+                                </button>
+<button class="p-1.5 hover:text-error transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Storage Management -->
+<div class="relative overflow-hidden rounded-2xl bg-surface-container-low border border-outline-variant/10 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+<div class="flex-1 space-y-4">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-primary/10 rounded-lg">
+<span class="material-symbols-outlined text-primary" data-icon="auto_delete">auto_delete</span>
+</div>
+<h3 class="text-xl font-headline font-bold">Data Maintenance Shell</h3>
+</div>
+<p class="text-outline text-sm leading-relaxed max-w-xl font-body">
+                            Kinetic Command retains telemetry data for 30 days by default. Automated cleanup schedules ensure high-performance operation of the digital quartermaster node.
+                        </p>
+</div>
+<div class="flex items-center gap-12">
+<div class="text-right">
+<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Active Retention</p>
+<div class="h-2 w-48 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container" style="width: 65%;"></div>
+</div>
+<p class="text-xs font-mono mt-2 text-primary-container">65% Capacity Reached</p>
+</div>
+<button class="flex items-center gap-2 px-6 py-3 bg-surface-container-highest border-b-2 border-primary-container text-on-surface font-headline font-bold text-xs tracking-widest uppercase hover:bg-surface-bright active:translate-y-0.5 transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="cleaning_services">cleaning_services</span>
+                            Clean Old Data
+                        </button>
+</div>
+<!-- Decorative telemetry line at the bottom -->
+<div class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-primary/20 to-transparent"></div>
+</div>
+</div>
+</div>
+<!-- Telemetry Stream Sidebar -->
+<div class="fixed right-0 top-16 bottom-0 w-80 bg-surface-container-lowest border-l border-outline-variant/10 z-30 hidden 2xl:flex flex-col">
+<div class="p-4 border-b border-outline-variant/10 flex justify-between items-center">
+<span class="text-[10px] font-headline font-bold uppercase tracking-widest">Node Telemetry</span>
+<span class="w-2 h-2 rounded-full bg-[#3fb950] animate-pulse"></span>
+</div>
+<div class="flex-1 p-4 font-mono text-[11px] space-y-2 overflow-y-auto">
+<div class="text-outline/40">[14:22:01] Initializing repository: react-core</div>
+<div class="text-primary/70">[14:22:05] SYNC: fetch origin main --quiet</div>
+<div class="text-outline/40">[14:22:09] Job #8821 started: Dependency analysis</div>
+<div class="text-[#3fb950]">[14:22:15] Job #8821 completed in 6.2s</div>
+<div class="text-outline/40">[14:23:44] Refreshing intelligence node 0xFA4...</div>
+<div class="text-tertiary/70">[14:24:02] WARN: /home/user/logs/temp growing &gt; 100MB</div>
+<div class="text-outline/40">[14:25:12] Monitoring next-deploy worktree...</div>
+<div class="text-error/70">[14:25:15] ERROR: Local path not found: next-deploy</div>
+<div class="text-outline/40">[14:26:01] System heartbeat OK</div>
+<div class="text-outline/40">[14:28:10] Awaiting instruction...</div>
+<!-- Fade mask -->
+<div class="absolute top-0 left-0 w-full h-12 bg-gradient-to-b from-surface-container-lowest to-transparent"></div>
+</div>
+</div>
+</main>
+<!-- FAB for Deployment (Suppressed on Details, visible here for utility) -->
+<button class="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-[0_8px_32px_rgba(162,201,255,0.4)] flex items-center justify-center hover:scale-110 active:scale-95 transition-all 2xl:hidden">
+<span class="material-symbols-outlined text-2xl" data-icon="add">add</span>
+</button>
+</body></html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Kinetic Command | Pipeline Timeline</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed": "#161c23",
+                        "on-surface": "#dfe2eb",
+                        "error": "#ffb4ab",
+                        "primary-container": "#58a6ff",
+                        "inverse-on-surface": "#2d3137",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "on-secondary-container": "#b0b5be",
+                        "surface": "#10141a",
+                        "surface-container-lowest": "#0a0e14",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "secondary-fixed": "#dde3ec",
+                        "surface-tint": "#a2c9ff",
+                        "on-tertiary": "#432c00",
+                        "on-primary-container": "#003a6b",
+                        "on-tertiary-container": "#4f3400",
+                        "surface-bright": "#353940",
+                        "secondary": "#c1c7d0",
+                        "primary": "#a2c9ff",
+                        "on-primary-fixed": "#001c38",
+                        "surface-variant": "#31353c",
+                        "inverse-surface": "#dfe2eb",
+                        "on-secondary": "#2b3138",
+                        "on-error": "#690005",
+                        "secondary-container": "#41474f",
+                        "on-primary-fixed-variant": "#004882",
+                        "on-error-container": "#ffdad6",
+                        "outline-variant": "#414752",
+                        "on-tertiary-fixed": "#281800",
+                        "tertiary": "#ffba42",
+                        "surface-container-high": "#262a31",
+                        "inverse-primary": "#0060aa",
+                        "surface-container-highest": "#31353c",
+                        "on-surface-variant": "#c0c7d4",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "primary-fixed": "#d3e4ff",
+                        "on-background": "#dfe2eb",
+                        "outline": "#8b919d",
+                        "tertiary-fixed": "#ffddaf",
+                        "surface-container": "#1c2026",
+                        "on-primary": "#00315c",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "tertiary-container": "#da9600",
+                        "surface-dim": "#10141a",
+                        "surface-container-low": "#181c22",
+                        "background": "#10141a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+            line-height: 1;
+        }
+        .glass-panel {
+            background: rgba(28, 32, 38, 0.7);
+            backdrop-filter: blur(16px);
+        }
+        .gantt-grid {
+            background-size: 6.66% 100%;
+            background-image: linear-gradient(to right, rgba(65, 71, 82, 0.1) 1px, transparent 1px);
+        }
+        .pulse-dot {
+            position: relative;
+        }
+        .pulse-dot::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.4;
+            transform: scale(1);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.4; }
+            70% { transform: scale(3); opacity: 0; }
+            100% { transform: scale(3); opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-xl flex justify-between items-center px-6 py-3 w-full border-b border-slate-800/50 font-['Space_Grotesk'] tracking-tight">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-widest text-blue-400 uppercase">KINETIC COMMAND</span>
+<div class="hidden md:flex gap-6 text-sm">
+<span class="text-blue-400 font-bold border-b border-blue-400">STATUS: OPERATIONAL</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-slate-400 hover:text-blue-200 transition-colors duration-200 active:scale-95 transition-transform">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-slate-400 hover:text-blue-200 transition-colors duration-200 active:scale-95 transition-transform">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden border border-outline-variant/30">
+<img alt="User operator avatar" class="w-full h-full object-cover" data-alt="close-up portrait of a professional male tech operator in a dimly lit workstation with blue ambient light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDS3Cun73P_DpeN4TYKhFZAWJO4XJFNmQZ-oMoO-A8KbgPA9Fhcs7niSSI66AkT4IHfBrzKMq_hpPA_Vy4fOQABMr-VGvAkJkS8lwdMD6O7HKEaE9rc1rpXCVaqQq9b9hfZ7cY_ifKK9ihXVBxlI3-ZPYyF8R9894nkZeTIjtQedP69lr40b7T6HulHq7yqHagA7gW7V6Ugh4FW8jLUePVvm0Ms0FhGopBfER4JZyzgZbr4vPkuJ2DVcSZHAWzkKL99kyTynCIPZpk"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 z-40 bg-slate-900 flex flex-col pt-20 pb-6 px-4 h-full border-r border-slate-800/30 font-['Inter'] text-sm tracking-wide">
+<div class="mb-8 px-2">
+<h2 class="text-blue-400 font-['Space_Grotesk'] uppercase font-bold text-lg">COMMAND</h2>
+<p class="text-[10px] text-slate-500 font-mono tracking-tighter">V.2.4.0-STABLE</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-blue-400 font-bold bg-blue-400/10 border-l-2 border-blue-400 active:translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span>Operations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-150 active:translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+<span>Automation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-150 active:translate-x-1 transition-transform" href="#">
+<span class="material-symbols-outlined">security</span>
+<span>Security</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 border-t border-slate-800/30 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-150" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+<span>Documentation</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-150" href="#">
+<span class="material-symbols-outlined">support_agent</span>
+<span>Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="pl-64 pt-16 min-h-screen">
+<div class="p-8 max-w-[1600px] mx-auto">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-primary uppercase tracking-[0.2em] text-xs font-bold">
+<span class="w-2 h-2 rounded-full bg-primary pulse-dot"></span>
+                        Pipeline Execution Active
+                    </div>
+<h1 class="text-4xl md:text-5xl font-headline font-bold tracking-tight text-on-surface">
+                        Job #198 — <span class="text-on-surface-variant font-light">feat: Add token pricing</span>
+</h1>
+<div class="flex items-center gap-6 mt-4">
+<div class="flex flex-col">
+<span class="text-[10px] uppercase text-outline tracking-widest font-bold">Total Duration</span>
+<span class="text-xl font-mono text-on-surface">12m 34s</span>
+</div>
+<div class="w-px h-8 bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-[10px] uppercase text-outline tracking-widest font-bold">Incurred Cost</span>
+<span class="text-xl font-mono text-tertiary">$1.62</span>
+</div>
+</div>
+</div>
+<!-- Action Cluster -->
+<div class="flex gap-3">
+<button class="px-6 py-2.5 bg-surface-container-high border border-outline-variant/20 text-on-surface rounded-lg font-medium hover:bg-surface-bright transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">terminal</span>
+                        View Logs
+                    </button>
+<button class="px-6 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary rounded-lg font-bold hover:brightness-110 transition-all flex items-center gap-2 shadow-lg shadow-primary/10">
+<span class="material-symbols-outlined text-sm">restart_alt</span>
+                        Rerun Pipeline
+                    </button>
+</div>
+</div>
+<!-- Bento Layout Container -->
+<div class="grid grid-cols-12 gap-6">
+<!-- Timeline Section (Main Span) -->
+<div class="col-span-12 lg:col-span-9 space-y-6">
+<div class="bg-surface-container border border-outline-variant/10 rounded-xl p-6 overflow-hidden relative">
+<div class="flex justify-between items-center mb-8">
+<h3 class="font-headline text-lg font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">analytics</span>
+                                Pipeline Timeline
+                            </h3>
+<div class="flex gap-4 text-[10px] font-mono text-outline">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#3fb950]"></span> SUCCESS</span>
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-error"></span> FAILED</span>
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-surface-container-highest"></span> PENDING</span>
+</div>
+</div>
+<!-- Gantt Container -->
+<div class="relative min-h-[400px]">
+<!-- X-Axis Labels -->
+<div class="absolute top-0 left-48 right-0 flex justify-between text-[10px] font-mono text-outline-variant mb-4 border-b border-outline-variant/10 pb-2">
+<span>0m</span>
+<span>3m</span>
+<span>6m</span>
+<span>9m</span>
+<span>12m</span>
+<span class="text-primary">15m</span>
+</div>
+<!-- Grid Lines Overlay -->
+<div class="absolute top-6 bottom-0 left-48 right-0 gantt-grid pointer-events-none opacity-20"></div>
+<!-- Phases -->
+<div class="pt-10 space-y-6">
+<!-- Phase 1 -->
+<div class="flex items-center group">
+<div class="w-48 pr-4 text-sm font-medium text-on-surface-variant group-hover:text-on-surface transition-colors">Phase 1: Plan</div>
+<div class="flex-1 bg-surface-container-high h-10 rounded-md relative overflow-hidden">
+<!-- Bar: 2m of 15m = 13.33% -->
+<div class="absolute left-0 top-0 h-full w-[13.33%] bg-[#3fb950] flex items-center px-3 justify-between group/bar cursor-help">
+<span class="text-[10px] font-bold text-slate-900 font-mono">2m</span>
+<span class="text-[10px] font-bold text-slate-900 font-mono">$0.15</span>
+</div>
+</div>
+</div>
+<!-- Phase 2 -->
+<div class="flex items-center group">
+<div class="w-48 pr-4 text-sm font-medium text-on-surface-variant group-hover:text-on-surface transition-colors">Phase 2: Implement</div>
+<div class="flex-1 bg-surface-container-high h-10 rounded-md relative overflow-hidden">
+<!-- Bar: 6m of 15m = 40%, starts at 13.33% -->
+<div class="absolute left-[13.33%] top-0 h-full w-[40%] bg-[#3fb950] flex items-center px-3 justify-between group/bar cursor-help">
+<span class="text-[10px] font-bold text-slate-900 font-mono">6m</span>
+<span class="text-[10px] font-bold text-slate-900 font-mono">$0.85</span>
+</div>
+</div>
+</div>
+<!-- Phase 3 -->
+<div class="flex items-center group">
+<div class="w-48 pr-4 text-sm font-medium text-on-surface-variant group-hover:text-on-surface transition-colors">Phase 3: Review</div>
+<div class="flex-1 bg-surface-container-high h-10 rounded-md relative">
+<!-- Bar: 3m of 15m = 20%, starts at 53.33% -->
+<div class="absolute left-[53.33%] top-0 h-full w-[20%] bg-error flex items-center px-3 justify-between group/bar cursor-help rounded-r-sm">
+<span class="text-[10px] font-bold text-on-error font-mono">3m</span>
+<span class="text-[10px] font-bold text-on-error font-mono">$0.45</span>
+<!-- Error Tooltip -->
+<div class="absolute -top-12 left-1/2 -translate-x-1/2 bg-error text-on-error px-3 py-1.5 rounded text-[10px] font-bold shadow-xl whitespace-nowrap z-10">
+<span class="material-symbols-outlined text-[12px] mr-1">error</span>
+                                                VALIDATION_FAILED: TOKEN_LIMIT_EXCEEDED
+                                            </div>
+</div>
+</div>
+</div>
+<!-- Phase 4 -->
+<div class="flex items-center group">
+<div class="w-48 pr-4 text-sm font-medium text-on-surface-variant/40">Phase 4: Validate</div>
+<div class="flex-1 bg-surface-container-high/30 h-10 rounded-md border border-dashed border-outline-variant/20 flex items-center justify-center">
+<span class="text-[10px] font-mono text-outline-variant/50 uppercase tracking-widest">Awaiting preceding tasks</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Telemetry Stream -->
+<div class="mt-12 bg-surface-container-lowest p-4 rounded-lg border border-outline-variant/10">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+<span class="w-1.5 h-1.5 bg-primary rounded-full pulse-dot"></span>
+                                    Live Telemetry Stream
+                                </span>
+<span class="text-[10px] font-mono text-outline-variant">AUTO_SCROLL: ON</span>
+</div>
+<div class="font-mono text-[11px] text-on-surface-variant space-y-1.5 opacity-80">
+<p><span class="text-outline-variant">[12:44:01]</span> <span class="text-[#3fb950]">SUCCESS:</span> PLAN_PHASE_COMMIT_VERIFIED_7712</p>
+<p><span class="text-outline-variant">[12:44:02]</span> <span class="text-primary">INFO:</span> INITIALIZING_LLM_ENVIRONMENT (gpt-4o)</p>
+<p><span class="text-outline-variant">[12:50:12]</span> <span class="text-[#3fb950]">SUCCESS:</span> IMPLEMENT_PHASE_COMPLETED (2048 tokens out)</p>
+<p><span class="text-outline-variant">[12:53:15]</span> <span class="text-error">ERROR:</span> REVIEW_PHASE_TERMINATED — Cost threshold $0.40 exceeded by $0.05</p>
+<p><span class="text-outline-variant">[12:53:16]</span> <span class="text-outline-variant">SYSTEM:</span> HALTING_PIPELINE_FLOW — AWAITING_MANUAL_INTERVENTION</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Sidebar Metadata -->
+<div class="col-span-12 lg:col-span-3 space-y-6">
+<!-- Job Status Card -->
+<div class="bg-surface-container-high p-6 rounded-xl border border-outline-variant/20 shadow-lg">
+<h4 class="text-xs font-bold text-outline uppercase tracking-[0.2em] mb-6">Job Intelligence</h4>
+<div class="space-y-6">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-xl">account_tree</span>
+<div>
+<p class="text-[10px] font-bold text-outline uppercase">Branch</p>
+<p class="text-sm font-medium">main</p>
+</div>
+</div>
+<span class="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded uppercase">Protected</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-xl">rebase</span>
+<div>
+<p class="text-[10px] font-bold text-outline uppercase">Pull Request</p>
+<p class="text-sm font-medium text-primary-container hover:underline cursor-pointer">#452</p>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline-variant">open_in_new</span>
+</div>
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-xl">memory</span>
+<div>
+<p class="text-[10px] font-bold text-outline uppercase">Core Model</p>
+<p class="text-sm font-medium">GPT-4o</p>
+</div>
+</div>
+<span class="px-2 py-0.5 bg-surface-container-highest text-on-surface-variant text-[10px] font-bold rounded uppercase">v2-alpha</span>
+</div>
+<div class="pt-6 border-t border-outline-variant/10">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded bg-surface-container flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">person</span>
+</div>
+<div>
+<p class="text-[10px] font-bold text-outline uppercase">Operator</p>
+<p class="text-sm font-medium">S. Garrison</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Health Matrix -->
+<div class="bg-surface-container p-6 rounded-xl border border-outline-variant/10">
+<h4 class="text-xs font-bold text-outline uppercase tracking-[0.2em] mb-4">System Health</h4>
+<div class="grid grid-cols-2 gap-4">
+<div class="bg-surface-container-low p-3 rounded border border-outline-variant/5">
+<p class="text-[9px] font-bold text-outline uppercase mb-1">Compute</p>
+<div class="flex items-end gap-2">
+<span class="text-lg font-mono">82%</span>
+<div class="w-full bg-outline-variant/20 h-1 mb-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[82%]"></div>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-3 rounded border border-outline-variant/5">
+<p class="text-[9px] font-bold text-outline uppercase mb-1">Latency</p>
+<div class="flex items-end gap-2">
+<span class="text-lg font-mono">14ms</span>
+<span class="material-symbols-outlined text-[#3fb950] text-sm mb-1.5">trending_down</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Technical Documentation Preview -->
+<div class="relative group cursor-pointer overflow-hidden rounded-xl border border-outline-variant/10">
+<img alt="Technical schematic backdrop" class="w-full h-32 object-cover opacity-30 group-hover:scale-105 transition-transform duration-500" data-alt="extreme close-up of high-tech server hardware with glowing green and blue status LEDs in a dark data center" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3SxM1svGK9CXSOS517iy3LqZRS_7Drcqk_Fzce0rHmm8_0AX2qlFgXFSma_QgaW5tAjBUBLReik8I8Iu7X_yylWSHA3N4tEwJoMwLaiPfetWaCKe3xqfNgg2IHmCCi0OdGEKC2S5Z5pX8z78Nvz-2N7IEvPJKMVRmAwb4qo3fzVqMZKo0PuLP_c2KGjVY76yaADi9mwb6kN-shB7NhjUr4cZrF6aqgd1xQGazN2DnBJ3-5G-zvHNpypy69aWQ1uQLjn55e0Vl-aI"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent p-4 flex flex-col justify-end">
+<p class="text-[10px] font-bold text-primary uppercase">Integration Guide</p>
+<h5 class="text-sm font-headline font-bold">Scaling LLM Token Pricing</h5>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

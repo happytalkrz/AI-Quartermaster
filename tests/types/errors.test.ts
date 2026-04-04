@@ -6,9 +6,9 @@ import {
   GitError,
   SafetyViolationError,
   TimeoutError,
-  RollbackError,
-  errorMessage
+  RollbackError
 } from "../../src/types/errors.js";
+import { getErrorMessage } from "../../src/utils/error-utils.js";
 
 // Test helper class to test abstract AQMError
 class TestAQMError extends AQMError {
@@ -190,20 +190,20 @@ describe("RollbackError", () => {
   });
 });
 
-describe("errorMessage (deprecated)", () => {
+describe("getErrorMessage", () => {
   it("should extract message from Error instances", () => {
     const error = new Error("test error");
-    expect(errorMessage(error)).toBe("test error");
+    expect(getErrorMessage(error)).toBe("test error");
   });
 
   it("should convert non-Error values to string", () => {
-    expect(errorMessage("string error")).toBe("string error");
-    expect(errorMessage(null)).toBe("null");
-    expect(errorMessage(42)).toBe("42");
+    expect(getErrorMessage("string error")).toBe("string error");
+    expect(getErrorMessage(null)).toBe("null");
+    expect(getErrorMessage(42)).toBe("42");
   });
 
   it("should work with AQMError instances", () => {
     const error = new TestAQMError("TEST_CODE", "aqm error message");
-    expect(errorMessage(error)).toBe("aqm error message");
+    expect(getErrorMessage(error)).toBe("aqm error message");
   });
 });

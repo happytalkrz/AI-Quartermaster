@@ -277,12 +277,11 @@ function filterLogLines(logs) {
   // Apply level filter (only show ERROR, FAIL, WARN levels when enabled)
   if (logsLevelFilter) {
     filtered = filtered.filter(function(line) {
-      return line.includes('[ERROR]') ||
-             line.includes('[FAIL]') ||
-             line.includes('[WARN]') ||
-             line.includes('실패') ||
-             line.includes('ERROR') ||
-             line.includes('error');
+      var upperLine = line.toUpperCase();
+      return upperLine.includes('ERROR') ||
+             upperLine.includes('FAIL') ||
+             upperLine.includes('WARN') ||
+             line.includes('실패');
     });
   }
 

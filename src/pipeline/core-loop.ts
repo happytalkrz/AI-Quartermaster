@@ -204,7 +204,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   }
 
   // Schedule phases for parallel execution based on dependencies
-  const scheduleResult = schedulePhases(plan.phases);
+  const enableParallelPhases = ctx.config.features?.parallelPhases ?? false;
+  const scheduleResult = schedulePhases(plan.phases, enableParallelPhases);
   if (!scheduleResult.success) {
     logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
     jl?.log(`Phase 스케줄링 실패: ${scheduleResult.error}`);

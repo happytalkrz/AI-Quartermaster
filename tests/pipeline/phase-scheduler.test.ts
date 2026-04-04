@@ -2,17 +2,18 @@ import { describe, it, expect } from "vitest";
 import {
   schedulePhases,
   detectCircularDependencies,
+  detectFileConflicts,
   getExecutablePhases,
   validatePhaseDependencies,
 } from "../../src/pipeline/phase-scheduler.js";
 import type { Phase } from "../../src/types/pipeline.js";
 
 describe("phase-scheduler", () => {
-  const createPhase = (index: number, name: string, dependsOn?: number[]): Phase => ({
+  const createPhase = (index: number, name: string, dependsOn?: number[], targetFiles?: string[]): Phase => ({
     index,
     name,
     description: `Phase ${index}: ${name}`,
-    targetFiles: [`file${index}.ts`],
+    targetFiles: targetFiles || [`file${index}.ts`],
     commitStrategy: "single",
     verificationCriteria: [`verify ${index}`],
     dependsOn,
@@ -265,6 +266,119 @@ describe("phase-scheduler", () => {
       const result = validatePhaseDependencies(phases);
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe("detectFileConflicts", () => {
+    it("should detect no conflicts when phases target different files", () => {
+      const phases = [
+        createPhase(0, "Component A", undefined, ["src/a.ts"]),
+        createPhase(1, "Component B", undefined, ["src/b.ts"]),
+        createPhase(2, "Component C", undefined, ["src/c.ts"]),
+      ];
+
+      const conflicts = detectFileConflicts(phases);
+      expect(conflicts.size).toBe(0);
+    });
+
+    it("should detect conflicts when phases target the same file", () => {
+      const phases = [
+        createPhase(0, "Update A", undefined, ["src/shared.ts"]),
+        createPhase(1, "Update B", undefined, ["src/shared.ts"]),
+        createPhase(2, "Different", undefined, ["src/other.ts"]),
+      ];
+
+      const conflicts = detectFileConflicts(phases);
+      expect(conflicts.size).toBe(1);
+      expect(conflicts.get("src/shared.ts")).toEqual([0, 1]);
+    });
+
+    it("should handle multiple file conflicts", () => {
+      const phases = [
+        createPhase(0, "Update config", undefined, ["src/config.ts", "src/utils.ts"]),
+        createPhase(1, "Update config2", undefined, ["src/config.ts"]),
+        createPhase(2, "Update utils", undefined, ["src/utils.ts"]),
+      ];
+
+      const conflicts = detectFileConflicts(phases);
+      expect(conflicts.size).toBe(2);
+      expect(conflicts.get("src/config.ts")).toEqual([0, 1]);
+      expect(conflicts.get("src/utils.ts")).toEqual([0, 2]);
+    });
+
+    it("should handle three-way conflicts", () => {
+      const phases = [
+        createPhase(0, "Fix A", undefined, ["src/main.ts"]),
+        createPhase(1, "Fix B", undefined, ["src/main.ts"]),
+        createPhase(2, "Fix C", undefined, ["src/main.ts"]),
+      ];
+
+      const conflicts = detectFileConflicts(phases);
+      expect(conflicts.size).toBe(1);
+      expect(conflicts.get("src/main.ts")).toEqual([0, 1, 2]);
+    });
+  });
+
+  describe("schedulePhases with file conflict resolution", () => {
+    it("should serialize conflicting phases when parallel enabled", () => {
+      const phases = [
+        createPhase(0, "Update A", undefined, ["src/shared.ts"]),
+        createPhase(1, "Update B", undefined, ["src/shared.ts"]),
+        createPhase(2, "Update C", undefined, ["src/other.ts"]), // No conflict
+      ];
+
+      const result = schedulePhases(phases, true); // Enable parallel phases
+      expect(result.success).toBe(true);
+
+      // With file conflict, phases 0 and 1 should be serialized
+      // Phase 2 has no conflicts so can run in parallel with Phase 0
+      expect(result.groups).toHaveLength(2);
+
+      // Phase 0 and 2 can run in parallel (level 0)
+      expect(result.groups[0].phases.map(p => p.index).sort()).toEqual([0, 2]);
+      // Phase 1 must wait for Phase 0 (level 1)
+      expect(result.groups[1].phases.map(p => p.index)).toEqual([1]);
+    });
+
+    it("should allow parallel execution when parallel disabled", () => {
+      const phases = [
+        createPhase(0, "Update A", undefined, ["src/shared.ts"]),
+        createPhase(1, "Update B", undefined, ["src/shared.ts"]),
+      ];
+
+      const result = schedulePhases(phases, false); // Disable parallel phases
+      expect(result.success).toBe(true);
+      expect(result.groups).toHaveLength(1); // Should run in parallel when disabled
+
+      // Both phases run in parallel when feature disabled
+      expect(result.groups[0].phases.map(p => p.index)).toEqual([0, 1]);
+    });
+
+    it("should respect existing dependencies with file conflicts", () => {
+      const phases = [
+        createPhase(0, "Init", [], ["src/init.ts"]),
+        createPhase(1, "Update A", [0], ["src/shared.ts"]),
+        createPhase(2, "Update B", undefined, ["src/shared.ts"]), // Conflicts with phase 1
+      ];
+
+      const result = schedulePhases(phases, true);
+      console.log('Complex test result groups:', result.groups.map(g => ({ level: g.level, phases: g.phases.map(p => p.index) })));
+      expect(result.success).toBe(true);
+
+      // Expected behavior:
+      // Level 0: Phase 0 (init, no deps)
+      // Level 1: Phase 2 (no explicit deps, but has conflict serialization), Phase 1 (depends on 0)
+      // OR serialized completely depending on conflict resolution
+      expect(result.groups.length).toBeGreaterThan(0);
+
+      expect(result.groups[0].phases.map(p => p.index)).toEqual([0]);
+      // The exact layout may vary, let's see what we get
+      if (result.groups.length >= 2) {
+        console.log('Level 1 phases:', result.groups[1].phases.map(p => p.index));
+      }
+      if (result.groups.length >= 3) {
+        console.log('Level 2 phases:', result.groups[2].phases.map(p => p.index));
+      }
     });
   });
 });

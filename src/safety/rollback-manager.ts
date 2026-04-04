@@ -93,7 +93,6 @@ export async function ensureCleanState(
   options: EnsureCleanStateOptions
 ): Promise<WorktreeInfo> {
   try {
-    // First attempt: rollback to checkpoint
     logger.info(`Attempting rollback to ${hash.slice(0, 8)} for clean state...`);
     await rollbackToCheckpoint(hash, {
       cwd: options.cwd,
@@ -106,7 +105,6 @@ export async function ensureCleanState(
       branch: options.branchName
     };
   } catch (rollbackError) {
-    // Fallback: remove and recreate worktree
     logger.warn(`Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
     logger.warn("Falling back to worktree recreation for clean state...");
 

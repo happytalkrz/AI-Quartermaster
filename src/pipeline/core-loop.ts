@@ -195,7 +195,6 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
           jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
 
-          // Create checkpoint only when actually needed for retry
           let checkpoint = ctx.checkpoint;
           if (!checkpoint) {
             try {

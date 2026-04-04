@@ -93,7 +93,6 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   let claudeResult: any;
 
   try {
-    // Ensure clean state before retry
     logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index}`);
     const cleanStateResult = await ensureCleanState(
       ctx.checkpoint,
@@ -110,7 +109,6 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       }
     );
 
-    // Update worktree info in case it was recreated
     ctx.worktreeInfo = cleanStateResult;
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);

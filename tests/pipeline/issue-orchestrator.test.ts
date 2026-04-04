@@ -313,12 +313,17 @@ describe("issue-orchestrator", () => {
 
       // Check that long body is truncated to 200 chars + "..."
       expect(issuesSummary).toContain("A".repeat(200) + "...");
-      expect(issuesSummary).not.toContain("B"); // The "B" part should be truncated
 
-      // Verify the expected format
+      // Verify the expected format - body should be truncated at 200 chars
+      const expectedBody = "A".repeat(200) + "...";
       expect(issuesSummary).toBe(
-        "- #999: Long description issue\n  Body: " + "A".repeat(200) + "...\n  Labels: feature"
+        "- #999: Long description issue\n  Body: " + expectedBody + "\n  Labels: feature"
       );
+
+      // Verify that the "B" characters from the original long body are not present
+      // (excluding the "B" in "Body:" label)
+      const bodyContent = issuesSummary.split("Body: ")[1].split("\n")[0];
+      expect(bodyContent).not.toContain("B"); // The "B" part should be truncated
     });
   });
 

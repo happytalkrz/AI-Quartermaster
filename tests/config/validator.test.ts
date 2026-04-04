@@ -116,6 +116,9 @@ describe("validateConfig", () => {
       allowedLabels: ["bug", "feature"],
       rollbackStrategy: "none",
     },
+    notification: {
+      webhookUrl: undefined,
+    },
   };
 
   it("should validate and return a valid config", () => {

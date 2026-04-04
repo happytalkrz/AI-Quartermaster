@@ -31,6 +31,7 @@ export function isPathSafe(path: string): boolean {
   // Check for path traversal patterns
   const dangerousPatterns = [
     /\.\./,           // Parent directory ".."
+    /^\.\//,          // Current directory "./"
     /^[/\\]/,         // Absolute path (starts with / or \)
     /[/\\]$/,         // Ends with slash
     /[/\\]{2,}/,      // Multiple consecutive slashes

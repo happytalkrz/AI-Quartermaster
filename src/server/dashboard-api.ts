@@ -64,15 +64,17 @@ function validateAndNormalizePath(path: string, paramName: string): string {
     throw new Error(`${paramName} is required and must be a string`);
   }
 
-  // Normalize and validate path
-  const normalizedPath = normalize(path.trim());
+  const trimmedPath = path.trim();
 
-  // Check for path safety
-  if (!isPathSafe(normalizedPath)) {
+  // Check for path safety BEFORE normalization to catch patterns that normalize() might clean up
+  if (!isPathSafe(trimmedPath)) {
     throw new Error(`${paramName} contains unsafe characters or path traversal patterns`);
   }
 
-  // Additional checks for path traversal
+  // Normalize path after safety check
+  const normalizedPath = normalize(trimmedPath);
+
+  // Additional checks for path traversal on normalized path as defense in depth
   if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || normalizedPath.startsWith('\\')) {
     throw new Error(`${paramName} contains invalid path traversal characters`);
   }

@@ -618,6 +618,114 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(401);
     });
+
+    // Path Traversal security tests
+    it("should reject path with directory traversal patterns", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const maliciousPaths = [
+        "../etc/passwd",
+        "..\\windows\\system32",
+        "../../../secret",
+        "./config",
+        "folder/../escape"
+      ];
+
+      for (const maliciousPath of maliciousPaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: maliciousPath
+          })
+        });
+
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
+    });
+
+    it("should reject path with absolute paths", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const absolutePaths = [
+        "/etc/passwd",
+        "\\windows\\system32",
+        "C:\\Windows"
+      ];
+
+      for (const absolutePath of absolutePaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: absolutePath
+          })
+        });
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
+    });
+
+    it("should reject path with control characters and forbidden characters", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const forbiddenPaths = [
+        "file\x00name",
+        "file<name",
+        "file>name",
+        "file:name",
+        "file|name",
+        "file?name",
+        "file*name",
+        "folder/"
+      ];
+
+      for (const forbiddenPath of forbiddenPaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: forbiddenPath
+          })
+        });
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
+    });
   });
 
   describe("DELETE /api/projects/:repo", () => {

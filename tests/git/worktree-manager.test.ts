@@ -79,7 +79,7 @@ describe("createWorktree", () => {
 
   it("should reject directory names with absolute paths", async () => {
     await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "/etc/passwd", { cwd: "/repo" }))
-      .rejects.toThrow("Failed to create worktree");
+      .rejects.toThrow("Unsafe directory name");
   });
 
   it("should reject directory names that would escape root path", async () => {

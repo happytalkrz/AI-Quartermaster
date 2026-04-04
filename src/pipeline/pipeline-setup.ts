@@ -6,6 +6,7 @@ import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import { resolveProject, type ResolvedProject } from "../config/project-resolver.js";
 import { detectModeFromLabels } from "../config/mode-presets.js";
 import { getLogger } from "../utils/logger.js";
+import { checkFeasibility, generateSkipComment } from "./feasibility-checker.js";
 import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "./progress-tracker.js";
 import type { AQConfig, GitConfig, PipelineMode } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
@@ -24,6 +25,10 @@ export interface ProjectSetupResult {
 export type DuplicatePRCheckResult =
   | { hasDuplicatePR: false }
   | { hasDuplicatePR: true; prUrl: string };
+
+export type FeasibilityCheckResult =
+  | { feasible: true; issue: Awaited<ReturnType<typeof fetchIssue>>; mode: PipelineMode; checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void }
+  | { feasible: false; reason: string };
 
 export interface IssueSetupResult {
   issue: Awaited<ReturnType<typeof fetchIssue>>;
@@ -169,6 +174,43 @@ export async function fetchAndValidateIssue(
   const mode = resumeMode || detectModeFromLabels(issue.labels, project.mode ?? "code");
   logger.info(`Pipeline mode (초기): ${mode}`);
   jl?.log(`모드: ${mode}`);
+
+  // === Feasibility Check ===
+  const feasibilityResult = checkFeasibility(issue, project.safety.feasibilityCheck);
+  if (!feasibilityResult.feasible) {
+    logger.info(`[SKIP] Issue #${issueNumber} unfeasible: ${feasibilityResult.reason}`);
+    jl?.log(`Feasibility check 실패: ${feasibilityResult.reason}`);
+    jl?.setStep("범위 초과로 Skip");
+    jl?.setProgress(PROGRESS_DONE);
+
+    // Comment on issue explaining why it was skipped
+    try {
+      const comment = generateSkipComment(issue, feasibilityResult, project.safety.feasibilityCheck.skipReasons);
+      await runCli(
+        project.commands.ghCli.path,
+        ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+        { timeout: 10000 }
+      );
+      logger.info(`Posted skip comment on issue #${issueNumber}`);
+    } catch (error) {
+      logger.warn(`Failed to post skip comment on issue #${issueNumber}:`, error);
+      // Non-fatal error, continue with skip
+    }
+
+    // Update checkpoint with SKIPPED state
+    if (setupContext) {
+      saveCheckpoint(setupContext.dataDir, issueNumber, {
+        issueNumber, repo, state: "SKIPPED", projectRoot: setupContext.projectRoot,
+        worktreePath: setupContext.worktreePath, branchName: setupContext.branchName,
+        phaseResults: [], mode, savedAt: new Date().toISOString(),
+      });
+    }
+
+    throw new Error(`FEASIBILITY_SKIP: ${feasibilityResult.reason}`);
+  }
+
+  logger.info(`[FEASIBLE] Issue #${issueNumber} passed feasibility check`);
+  jl?.log(`Feasibility check 통과: 요구사항 ${feasibilityResult.metrics.requirementCount}개, 파일 ${feasibilityResult.metrics.fileCount}개`);
 
   const checkpoint = (overrides?: Partial<PipelineCheckpoint>) => {
     if (setupContext) {

@@ -108,6 +108,34 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
 
   } catch (error) {
+    // Check if this is a skipped issue due to feasibility check
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
+
+    if (isFeasibilitySkip) {
+      const { formatResult } = await import("./result-reporter.js");
+      const skipReason = errorMessage.slice("FEASIBILITY_SKIP:".length).trim();
+      const basicPlan = {
+        issueNumber,
+        title: `Issue #${issueNumber} skipped`,
+        problemDefinition: skipReason,
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [],
+        verificationPoints: [],
+        stopConditions: []
+      };
+      const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
+
+      return {
+        success: true,
+        state: "SKIPPED" as const,
+        report,
+        error: skipReason
+      };
+    }
+
     // Check if this is a core loop failure with detailed results
     const errorWithReport = error as Error & { failureResult?: any };
     if (errorWithReport.failureResult) {

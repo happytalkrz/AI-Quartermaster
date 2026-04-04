@@ -173,7 +173,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       // Update configuration file
-      updateConfigSection(process.cwd(), parseResult.data);
+      // Filter out undefined values to match Partial<AQConfig> type expectation
+      const cleanedData = Object.fromEntries(
+        Object.entries(parseResult.data).map(([key, value]) => [
+          key,
+          typeof value === 'object' && value !== null
+            ? Object.fromEntries(Object.entries(value).filter(([_, v]) => v !== undefined))
+            : value
+        ]).filter(([_, v]) => v !== undefined)
+      ) as Partial<AQConfig>;
+
+      updateConfigSection(process.cwd(), cleanedData);
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {

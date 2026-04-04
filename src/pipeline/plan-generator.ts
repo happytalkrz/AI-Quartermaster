@@ -1,12 +1,51 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+
+export interface PlanTemplateBaseData {
+  issue: {
+    number: string;
+    title: string;
+    body: string;
+    labels: string[];
+  };
+  repo: {
+    owner: string;
+    name: string;
+    structure: string;
+  };
+  branch: {
+    base: string;
+    work: string;
+  };
+  config: {
+    maxPhases: string;
+    sensitivePaths: string;
+  };
+}
+
+export interface PlanTemplateRetryData extends PlanTemplateBaseData {
+  retry: {
+    attempt: number;
+    maxRetries: number;
+    failureReason: string;
+    errorMessage: string;
+    previousAttempts: Array<{
+      attempt: number;
+      failureReason: string;
+      problemSummary: string;
+    }>;
+  };
+  context: ContextualizationInfo;
+}
+
+export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
 
@@ -74,7 +113,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     const startTime = Date.now();
 
     let templatePath: string;
-    let templateData: any;
+    let templateData: PlanTemplateData;
 
     // 기본 데이터 구조
     const baseData = {
@@ -116,14 +155,18 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
                 problemSummary: h.error?.slice(0, 100) || "Unknown",
               })),
             },
-            context: retryContext.contextualization || {},
+            context: retryContext.contextualization || {
+              functionSignatures: {},
+              importRelations: {},
+              typeDefinitions: {},
+            },
             ...baseData,
           }
         : baseData;
     }
 
     const template = loadTemplate(templatePath);
-    let finalPrompt = renderTemplate(template, templateData);
+    let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
     if (ctx.modeHint) {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;

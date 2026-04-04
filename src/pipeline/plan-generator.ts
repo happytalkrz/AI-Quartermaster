@@ -177,7 +177,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
 
     // Helper to update and re-render
-    const updateAndRerender = (updateFn: (data: any) => any, stage: string) => {
+    const updateAndRerender = (updateFn: (data: PlanTemplateData) => PlanTemplateData, stage: string) => {
       templateData = updateFn(templateData);
       finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
       if (ctx.modeHint) {
@@ -195,10 +195,9 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
 
       updateAndRerender(
         (data) => {
-          const baseTemplateData = data.context ? data : baseData;
           return {
             ...data,
-            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+            repo: { ...baseData.repo, structure: truncatedRepoStructure },
           };
         },
         "repo structure truncation"

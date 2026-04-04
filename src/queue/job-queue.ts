@@ -423,11 +423,17 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: result.error,
         });
-      } else {
+      } else if (result.prUrl) {
         this.store.update(job.id, {
           status: "success",
           completedAt: new Date().toISOString(),
           prUrl: result.prUrl,
+        });
+      } else {
+        this.store.update(job.id, {
+          status: "failure",
+          completedAt: new Date().toISOString(),
+          error: "Pipeline completed but no PR was created",
         });
       }
     } catch (error) {

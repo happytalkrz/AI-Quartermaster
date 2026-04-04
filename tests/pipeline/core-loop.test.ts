@@ -144,7 +144,12 @@ function makeFailureResult(phaseIndex: number, phaseName: string, error = "Test 
 describe("runCoreLoop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCheckPhaseLimit.mockImplementation(() => {});
+    // Reset all mock implementations to clear persistent mockResolvedValue
+    mockRetryPhase.mockReset();
+    mockExecutePhase.mockReset();
+    mockGeneratePlan.mockReset();
+    mockSchedulePhases.mockReset().mockReturnValue({ success: true, groups: [] });
+    mockCheckPhaseLimit.mockReset().mockImplementation(() => {});
   });
 
   describe("parallel execution", () => {
@@ -675,7 +680,7 @@ describe("runCoreLoop", () => {
       const retryResult = makeFailureResult(0, "UnknownErrorPhase", "Retry error", "TS_ERROR");
       retryResult.error = undefined; // Set error to undefined instead of deleting
 
-      mockRetryPhase.mockResolvedValue(retryResult); // Use mockResolvedValue to handle multiple calls
+      mockRetryPhase.mockResolvedValueOnce(retryResult).mockResolvedValueOnce(retryResult); // Handle multiple calls with Once
 
       await runCoreLoop(makeContext());
 
@@ -788,17 +793,16 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "Frontend"), makePhase(1, "Backend")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
-      mockSchedulePhases.mockReturnValue({
-        success: true,
-        groups: [{ level: 0, phases: phases }],
-      });
-
       const frontendResult = makeSuccessResult(0, "Frontend");
       frontendResult.costUsd = 0.030;
       const backendResult = makeSuccessResult(1, "Backend");
       backendResult.costUsd = 0.035;
 
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
       mockExecutePhase
         .mockResolvedValueOnce(frontendResult)
         .mockResolvedValueOnce(backendResult);
@@ -929,7 +933,7 @@ describe("runCoreLoop", () => {
     });
 
     it("should handle plan generation timeout and recovery", async () => {
-      const phases = [makePhase(0, "TimeoutRecoveryPhase")];
+      const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
 
       mockGeneratePlan.mockResolvedValue(plan);
@@ -937,13 +941,13 @@ describe("runCoreLoop", () => {
         success: true,
         groups: [{ level: 0, phases: phases }],
       });
-      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "TimeoutRecoveryPhase"));
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "RetryPhase"));
 
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].phaseName).toBe("TimeoutRecoveryPhase");
+      expect(result.phaseResults[0].phaseName).toBe("RetryPhase");
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 

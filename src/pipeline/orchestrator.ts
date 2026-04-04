@@ -86,11 +86,25 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       startTime
     );
 
+    // Verify that prUrl was successfully created
+    if (!finalResult.prUrl) {
+      transitionState(runtime, "FAILED");
+      const errorMessage = "Pipeline completed but failed to create PR URL";
+      return {
+        success: false,
+        state: "FAILED",
+        error: errorMessage,
+        report: finalResult.report,
+        totalCostUsd: finalResult.totalCostUsd
+      };
+    }
+
     return {
       success: true,
       state: runtime.state,
       prUrl: finalResult.prUrl,
-      report: finalResult.report
+      report: finalResult.report,
+      totalCostUsd: finalResult.totalCostUsd
     };
 
   } catch (error) {

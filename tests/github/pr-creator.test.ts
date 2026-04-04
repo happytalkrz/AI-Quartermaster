@@ -46,6 +46,7 @@ const ctx = {
   phaseResults: [{ phaseIndex: 0, phaseName: "Fix", success: true, commitHash: "abc12345", durationMs: 1000 }],
   branchName: "aq/42-fix-login",
   baseBranch: "main",
+  totalCostUsd: 0.05,
 };
 
 describe("createDraftPR", () => {

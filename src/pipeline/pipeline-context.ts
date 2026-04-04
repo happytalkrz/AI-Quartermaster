@@ -25,6 +25,7 @@ export interface OrchestratorResult {
   prUrl?: string;
   report?: PipelineReport;
   error?: string;
+  totalCostUsd?: number;
 }
 
 export interface PipelineRuntime {

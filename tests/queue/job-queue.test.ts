@@ -82,7 +82,7 @@ describe("JobQueue", () => {
       maxRunning = Math.max(maxRunning, running);
       await new Promise(r => setTimeout(r, 50));
       running--;
-      return {};
+      return { prUrl: "https://test-pr" };
     });
 
     const queue = new JobQueue(store, 2, handler);
@@ -233,6 +233,30 @@ describe("JobQueue", () => {
     const updated = store.get(job!.id);
     expect(updated?.status).toBe("failure");
     expect(updated?.error).toContain("boom");
+  });
+
+  it("should mark job as failure when handler returns no prUrl", async () => {
+    const handler: JobHandler = vi.fn().mockResolvedValue({});
+    const queue = new JobQueue(store, 1, handler);
+
+    const job = queue.enqueue(42, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+
+    const updated = store.get(job!.id);
+    expect(updated?.status).toBe("failure");
+    expect(updated?.error).toBe("Pipeline completed but no PR was created");
+  });
+
+  it("should mark job as failure when handler returns explicit error", async () => {
+    const handler: JobHandler = vi.fn().mockResolvedValue({ error: "Phase execution failed" });
+    const queue = new JobQueue(store, 1, handler);
+
+    const job = queue.enqueue(43, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+
+    const updated = store.get(job!.id);
+    expect(updated?.status).toBe("failure");
+    expect(updated?.error).toBe("Phase execution failed");
   });
 
   describe("retryJob integration tests", () => {

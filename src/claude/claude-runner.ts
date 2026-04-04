@@ -76,7 +76,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
   const startTime = Date.now();
 
-  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number }>((resolve) => {
+  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number; usage?: UsageInfo }>((resolve) => {
     const child = spawn(config.path, args, {
       cwd,
       env: process.env,
@@ -89,7 +89,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     let stderr = "";
     let streamBuffer = "";
-    let finalResult: { output: string; costUsd?: number; isError: boolean } | undefined;
+    let finalResult: { output: string; costUsd?: number; usage?: UsageInfo; isError: boolean } | undefined;
 
     child.stdout?.on("data", (data: Buffer) => {
       streamBuffer += data.toString();
@@ -112,6 +112,12 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
             message?: { content?: Array<{ type: string; text?: string }> };
             result?: string;
             total_cost_usd?: number;
+            usage?: {
+              input_tokens: number;
+              output_tokens: number;
+              cache_creation_input_tokens?: number;
+              cache_read_input_tokens?: number;
+            };
             is_error?: boolean;
             structured_output?: unknown;
           };
@@ -129,18 +135,21 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
               finalResult = {
                 output: "Claude max turns exceeded — increase commands.claudeCli.maxTurns in config",
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: true,
               };
             } else if (event.structured_output) {
               finalResult = {
                 output: JSON.stringify(event.structured_output),
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: event.is_error === true,
               };
             } else {
               finalResult = {
                 output: event.result ?? "",
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: event.is_error === true,
               };
             }
@@ -178,6 +187,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
           stderr: finalResult.isError ? finalResult.output : "",
           exitCode: finalResult.isError ? 1 : 0,
           costUsd: finalResult.costUsd,
+          usage: finalResult.usage,
         });
       } else {
         resolve({ stdout: streamBuffer, stderr, exitCode: code ?? 1 });
@@ -213,6 +223,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       success: false,
       output: result.stderr || result.stdout,
       costUsd: result.costUsd,
+      usage: result.usage,
       durationMs,
     };
   }
@@ -221,6 +232,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     success: true,
     output: result.stdout,
     costUsd: result.costUsd,
+    usage: result.usage,
     durationMs,
   };
 }

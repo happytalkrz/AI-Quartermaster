@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractJson, type ClaudeRunOptions } from "../../src/claude/claude-runner.js";
+import { extractJson, type ClaudeRunOptions, type ClaudeRunResult } from "../../src/claude/claude-runner.js";
 
 describe("extractJson", () => {
   it("should parse plain JSON string", () => {
@@ -65,5 +65,41 @@ describe("ClaudeRunOptions", () => {
 
     expect(options.maxTurns).toBeUndefined();
     expect(options.enableAgents).toBeUndefined();
+  });
+});
+
+describe("ClaudeRunResult", () => {
+  it("should include usage information in result type", () => {
+    // Type-only test: verify ClaudeRunResult includes usage field
+    const result: ClaudeRunResult = {
+      success: true,
+      output: "test output",
+      costUsd: 0.05,
+      durationMs: 1000,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 10,
+        cache_read_input_tokens: 20
+      }
+    };
+
+    expect(result.usage).toBeDefined();
+    expect(result.usage?.input_tokens).toBe(100);
+    expect(result.usage?.output_tokens).toBe(50);
+    expect(result.usage?.cache_creation_input_tokens).toBe(10);
+    expect(result.usage?.cache_read_input_tokens).toBe(20);
+  });
+
+  it("should work without usage information for backward compatibility", () => {
+    // Verify backward compatibility - usage is optional
+    const result: ClaudeRunResult = {
+      success: false,
+      output: "error message",
+      durationMs: 500
+    };
+
+    expect(result.usage).toBeUndefined();
+    expect(result.costUsd).toBeUndefined();
   });
 });

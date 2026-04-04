@@ -205,6 +205,7 @@ export interface ProjectConfig {
   baseBranch?: string;    // override git.defaultBaseBranch
   branchTemplate?: string; // override git.branchTemplate
   mode?: PipelineMode;    // default pipeline mode for this project
+  concurrency?: number;   // override general.concurrency for this project
   commands?: Partial<CommandsConfig>;  // override commands (test, lint, build, etc.)
   review?: Partial<ReviewConfig>;      // override review settings
   pr?: Partial<PrConfig>;             // override PR settings

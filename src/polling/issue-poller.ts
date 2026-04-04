@@ -27,6 +27,7 @@ export class IssuePoller {
   private notifiedPrs = new Set<string>(); // 알림한 PR 추적 (repo:prNumber 형식)
   private selfUpdater: SelfUpdater | undefined;
   private onUpdateAvailable?: UpdateAvailableCallback;
+  private pollingErrors = new Map<string, { count: number; lastErrorAt: number }>(); // repo -> error state
 
   constructor(
     config: AQConfig,
@@ -77,19 +78,39 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
+    // Filter out paused projects (with safety check for mock compatibility)
+    const activeProjects = projects.filter(p => {
+      if (typeof this.queue.isProjectPaused !== 'function') {
+        return true; // Skip filtering if method not available (e.g., in tests)
+      }
+
+      const isPaused = this.queue.isProjectPaused(p.repo);
+      if (isPaused) {
+        const status = this.queue.getProjectStatus?.(p.repo);
+        const remainingMs = status?.pausedUntil ? status.pausedUntil - Date.now() : 0;
+        logger.info(`프로젝트 ${p.repo} 일시 정지 중 (${Math.round(remainingMs / 1000)}초 남음, 연속실패: ${status?.consecutiveFailures || 0})`);
+      }
+      return !isPaused;
+    });
+
+    if (activeProjects.length < projects.length) {
+      logger.warn(`일시 정지로 인해 ${projects.length - activeProjects.length}개 프로젝트 폴링 제외`);
+    }
+
     // Check for updates if auto-update is enabled
     if (this.config.general.autoUpdate && this.onUpdateAvailable) {
       await this.checkForUpdates();
     }
 
-    // 1. GitHub 이슈 폴링
-    const issueTasks = projects.flatMap(p =>
-      triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
-    );
+    // 1. GitHub 이슈 폴링 (활성 프로젝트만)
+    const issueTasks = activeProjects.flatMap(p => {
+      const projectTimeout = p.commands?.ghCli?.timeout ?? ghTimeout;
+      return triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, projectTimeout));
+    });
     await Promise.allSettled(issueTasks);
 
-    // PR 충돌 체크
-    const prTasks = projects.map(p => this.checkProjectPrConflicts(p.repo, ghPath));
+    // PR 충돌 체크 (활성 프로젝트만)
+    const prTasks = activeProjects.map(p => this.checkProjectPrConflicts(p.repo, ghPath));
     await Promise.allSettled(prTasks);
 
     // 2. Failed job 감지 및 재큐잉
@@ -136,12 +157,17 @@ export class IssuePoller {
 
       if (result.exitCode !== 0) {
         logger.warn(`이슈 목록 조회 실패 (${repo}, label=${label}): ${result.stderr || result.stdout}`);
+        this.trackPollingFailure(repo, `이슈 목록 조회 실패 (exit ${result.exitCode})`);
         return;
       }
 
       issues = JSON.parse(result.stdout) as RawIssue[];
+      // Polling success - reset error count
+      this.resetPollingErrors(repo);
     } catch (err: unknown) {
-      logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${getErrorMessage(err)}`);
+      const errorMsg = getErrorMessage(err);
+      logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${errorMsg}`);
+      this.trackPollingFailure(repo, errorMsg);
       return;
     }
 
@@ -259,6 +285,58 @@ _자동 생성된 알림 — AQM PR 모니터링_`;
       }
     } catch (err: unknown) {
       logger.warn(`Failed job 폴링 중 오류: ${getErrorMessage(err)}`);
+    }
+  }
+
+  /**
+   * Tracks a polling failure for a project and pauses the project if threshold is reached.
+   */
+  private trackPollingFailure(repo: string, errorMsg: string): void {
+    const project = this.config?.projects?.find(p => p.repo === repo);
+
+    const pauseThreshold = project?.pauseThreshold || 3;
+    const pauseDurationMs = project?.pauseDurationMs || 30 * 60 * 1000; // 30분 기본값
+
+    const now = Date.now();
+    const errorState = this.pollingErrors.get(repo) || { count: 0, lastErrorAt: 0 };
+
+    // Reset count if last error was more than 1 hour ago (indicates intermittent issues)
+    if (now - errorState.lastErrorAt > 60 * 60 * 1000) {
+      errorState.count = 0;
+    }
+
+    errorState.count++;
+    errorState.lastErrorAt = now;
+    this.pollingErrors.set(repo, errorState);
+
+    logger.warn(`프로젝트 ${repo} 폴링 실패 (${errorState.count}/${pauseThreshold}): ${errorMsg}`);
+
+    if (errorState.count >= pauseThreshold) {
+      // Pause the project using JobQueue's pause mechanism (with safety check)
+      if (typeof this.queue.pauseProject === 'function') {
+        this.queue.pauseProject(repo, pauseDurationMs);
+        logger.error(
+          `프로젝트 ${repo} 폴링 연속 실패로 일시 정지 — ${Math.round(pauseDurationMs / 60000)}분간 폴링 제외`
+        );
+      } else {
+        logger.error(
+          `프로젝트 ${repo} 폴링 연속 실패 ${errorState.count}회 도달 — 일시 정지 기능 사용 불가 (테스트 모드)`
+        );
+      }
+
+      // Reset polling error count after pause
+      this.pollingErrors.delete(repo);
+    }
+  }
+
+  /**
+   * Resets polling error count for a project on successful polling.
+   */
+  private resetPollingErrors(repo: string): void {
+    const errorState = this.pollingErrors.get(repo);
+    if (errorState && errorState.count > 0) {
+      logger.info(`프로젝트 ${repo} 폴링 성공 — 에러 카운트 리셋 (이전: ${errorState.count})`);
+      this.pollingErrors.delete(repo);
     }
   }
 }

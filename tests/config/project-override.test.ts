@@ -3,26 +3,30 @@ import { resolveProject } from "../../src/config/project-resolver.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import type { AQConfig } from "../../src/types/config.js";
 
+const createTestConfig = (
+  repo: string,
+  path: string,
+  overrides: Partial<AQConfig["projects"][0]>
+): AQConfig => ({
+  ...structuredClone(DEFAULT_CONFIG),
+  general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+  git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+  projects: [{ repo, path, ...overrides }],
+});
+
 describe("Project Override Integration Tests", () => {
   describe("commands override", () => {
     it("should override specific commands while preserving others", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/custom-commands",
-          path: "/home/user/custom-commands",
-          commands: {
-            test: "yarn vitest",
-            build: "npm run build:prod",
-            claudeCli: {
-              model: "claude-haiku-4-5-20251001",
-              maxTurns: 100,
-            },
+      const config = createTestConfig("myorg/custom-commands", "/home/user/custom-commands", {
+        commands: {
+          test: "yarn vitest",
+          build: "npm run build:prod",
+          claudeCli: {
+            model: "claude-haiku-4-5-20251001",
+            maxTurns: 100,
           },
-        }],
-      };
+        },
+      });
 
       const resolved = resolveProject("myorg/custom-commands", config);
 
@@ -40,25 +44,18 @@ describe("Project Override Integration Tests", () => {
     });
 
     it("should merge nested claudeCli config with deep merge", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/claude-override",
-          path: "/home/user/claude-override",
-          commands: {
-            claudeCli: {
-              models: {
-                plan: "claude-sonnet-4-20250514",
-                // phase and review inherit from default
-              },
-              additionalArgs: ["--custom-flag"],
-              // other claudeCli properties inherit from default
+      const config = createTestConfig("myorg/claude-override", "/home/user/claude-override", {
+        commands: {
+          claudeCli: {
+            models: {
+              plan: "claude-sonnet-4-20250514",
+              // phase and review inherit from default
             },
+            additionalArgs: ["--custom-flag"],
+            // other claudeCli properties inherit from default
           },
-        }],
-      };
+        },
+      });
 
       const resolved = resolveProject("myorg/claude-override", config);
 
@@ -77,22 +74,15 @@ describe("Project Override Integration Tests", () => {
 
   describe("safety override", () => {
     it("should override specific safety settings while preserving others", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/high-security",
-          path: "/home/user/high-security",
-          safety: {
-            maxPhases: 5,
-            maxRetries: 1,
-            maxFileChanges: 10,
-            sensitivePaths: [".env.prod", "secrets/**", "*.key"],
-            allowedLabels: ["bug", "security"],
-          },
-        }],
-      };
+      const config = createTestConfig("myorg/high-security", "/home/user/high-security", {
+        safety: {
+          maxPhases: 5,
+          maxRetries: 1,
+          maxFileChanges: 10,
+          sensitivePaths: [".env.prod", "secrets/**", "*.key"],
+          allowedLabels: ["bug", "security"],
+        },
+      });
 
       const resolved = resolveProject("myorg/high-security", config);
 
@@ -113,26 +103,19 @@ describe("Project Override Integration Tests", () => {
     });
 
     it("should merge nested timeouts config with deep merge", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/custom-timeouts",
-          path: "/home/user/custom-timeouts",
-          safety: {
-            timeouts: {
-              planGeneration: 300000,
-              phaseImplementation: 900000,
-              // reviewRound and prCreation inherit from default
-            },
-            feasibilityCheck: {
-              maxRequirements: 8,
-              // other feasibilityCheck properties inherit from default
-            },
+      const config = createTestConfig("myorg/custom-timeouts", "/home/user/custom-timeouts", {
+        safety: {
+          timeouts: {
+            planGeneration: 300000,
+            phaseImplementation: 900000,
+            // reviewRound and prCreation inherit from default
           },
-        }],
-      };
+          feasibilityCheck: {
+            maxRequirements: 8,
+            // other feasibilityCheck properties inherit from default
+          },
+        },
+      });
 
       const resolved = resolveProject("myorg/custom-timeouts", config);
 
@@ -152,38 +135,31 @@ describe("Project Override Integration Tests", () => {
 
   describe("review override", () => {
     it("should override specific review settings while preserving others", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/custom-review",
-          path: "/home/user/custom-review",
-          review: {
-            enabled: false,
-            unifiedMode: true,
-            rounds: [
-              {
-                name: "security-review",
-                promptTemplate: "Focus on security vulnerabilities:\n\n{diff}",
-                failAction: "block",
-                maxRetries: 3,
-                model: "claude-opus-4-5",
-                blind: false,
-                adversarial: false,
-              },
-              {
-                name: "performance-review",
-                promptTemplate: "Analyze performance implications:\n\n{diff}",
-                failAction: "warn",
-                maxRetries: 1,
-                model: null,
-                blind: true,
-              },
-            ],
-          },
-        }],
-      };
+      const config = createTestConfig("myorg/custom-review", "/home/user/custom-review", {
+        review: {
+          enabled: false,
+          unifiedMode: true,
+          rounds: [
+            {
+              name: "security-review",
+              promptTemplate: "Focus on security vulnerabilities:\n\n{diff}",
+              failAction: "block",
+              maxRetries: 3,
+              model: "claude-opus-4-5",
+              blind: false,
+              adversarial: false,
+            },
+            {
+              name: "performance-review",
+              promptTemplate: "Analyze performance implications:\n\n{diff}",
+              failAction: "warn",
+              maxRetries: 1,
+              model: null,
+              blind: true,
+            },
+          ],
+        },
+      });
 
       const resolved = resolveProject("myorg/custom-review", config);
 
@@ -216,21 +192,14 @@ describe("Project Override Integration Tests", () => {
     });
 
     it("should merge nested simplify config with deep merge", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/custom-simplify",
-          path: "/home/user/custom-simplify",
-          review: {
-            simplify: {
-              enabled: false,
-              // promptTemplate inherits from default
-            },
+      const config = createTestConfig("myorg/custom-simplify", "/home/user/custom-simplify", {
+        review: {
+          simplify: {
+            enabled: false,
+            // promptTemplate inherits from default
           },
-        }],
-      };
+        },
+      });
 
       const resolved = resolveProject("myorg/custom-simplify", config);
 
@@ -249,27 +218,20 @@ describe("Project Override Integration Tests", () => {
 
   describe("multiple overrides combined", () => {
     it("should handle project with all three override types simultaneously", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/comprehensive-override",
-          path: "/home/user/comprehensive-override",
-          commands: {
-            test: "jest --coverage",
-            claudeCli: { model: "claude-sonnet-4-20250514" },
-          },
-          safety: {
-            maxPhases: 15,
-            allowedLabels: ["enhancement"],
-          },
-          review: {
-            enabled: true,
-            unifiedMode: true,
-          },
-        }],
-      };
+      const config = createTestConfig("myorg/comprehensive-override", "/home/user/comprehensive-override", {
+        commands: {
+          test: "jest --coverage",
+          claudeCli: { model: "claude-sonnet-4-20250514" },
+        },
+        safety: {
+          maxPhases: 15,
+          allowedLabels: ["enhancement"],
+        },
+        review: {
+          enabled: true,
+          unifiedMode: true,
+        },
+      });
 
       const resolved = resolveProject("myorg/comprehensive-override", config);
 
@@ -295,18 +257,11 @@ describe("Project Override Integration Tests", () => {
 
   describe("edge cases", () => {
     it("should handle empty override objects", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/empty-overrides",
-          path: "/home/user/empty-overrides",
-          commands: {},
-          safety: {},
-          review: {},
-        }],
-      };
+      const config = createTestConfig("myorg/empty-overrides", "/home/user/empty-overrides", {
+        commands: {},
+        safety: {},
+        review: {},
+      });
 
       const resolved = resolveProject("myorg/empty-overrides", config);
 
@@ -317,16 +272,7 @@ describe("Project Override Integration Tests", () => {
     });
 
     it("should handle project with no overrides defined", () => {
-      const config: AQConfig = {
-        ...structuredClone(DEFAULT_CONFIG),
-        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
-        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
-        projects: [{
-          repo: "myorg/no-overrides",
-          path: "/home/user/no-overrides",
-          // No commands, safety, or review overrides
-        }],
-      };
+      const config = createTestConfig("myorg/no-overrides", "/home/user/no-overrides", {});
 
       const resolved = resolveProject("myorg/no-overrides", config);
 

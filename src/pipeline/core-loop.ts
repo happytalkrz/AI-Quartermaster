@@ -246,7 +246,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       if (!result.success) {
         logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
         jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
-        return { plan, phaseResults, success: false };
+        const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
+        return { plan, phaseResults, success: false, totalCostUsd };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -257,11 +258,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);
   }
 
-  // Calculate total cost from phase results
-  const totalCostUsd = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  // Calculate total cost from phase results and plan generation
+  const phasesTotalCost = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  const totalCostUsd = phasesTotalCost + (planCostUsd ?? 0);
 
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);
-  logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)}`);
+  logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)} (plan: $${(planCostUsd ?? 0).toFixed(4)}, phases: $${phasesTotalCost.toFixed(4)})`);
 
   return { plan, phaseResults, success: true, totalCostUsd };
 }

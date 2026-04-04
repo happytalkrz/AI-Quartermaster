@@ -491,6 +491,8 @@ async function statsCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
   const patternStore = new PatternStore(dataDir);
+  const jobStore = new JobStore(dataDir);
+
   const stats = patternStore.getStats(args.repo);
   const successRate = stats.total > 0 ? ((stats.successes / stats.total) * 100).toFixed(1) : "N/A";
 
@@ -518,6 +520,21 @@ async function statsCommand(args: CliArgs): Promise<void> {
       if (e.phaseName) console.log(`    Phase: ${e.phaseName}`);
     }
   }
+
+  // Cost Statistics 섹션 추가
+  const costStats = jobStore.getCostStats(args.repo);
+  console.log(`\nCost Statistics${args.repo ? ` (${args.repo})` : ""}:`);
+  console.log(`  Total cost   : $${costStats.totalCostUsd.toFixed(2)}`);
+  console.log(`  Average cost : $${costStats.avgCostUsd.toFixed(2)}`);
+  console.log(`  Job count    : ${costStats.jobCount}`);
+
+  if (costStats.topExpensiveJobs.length > 0) {
+    console.log("\nTop Expensive Jobs:");
+    for (const job of costStats.topExpensiveJobs.slice(0, 5)) {
+      console.log(`  #${job.issueNumber.toString().padEnd(5)} ${job.repo.padEnd(20)} $${job.totalCostUsd.toFixed(2)}`);
+    }
+  }
+
   console.log();
 }
 

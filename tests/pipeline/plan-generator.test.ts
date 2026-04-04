@@ -417,8 +417,8 @@ describe("generatePlan", () => {
 
     // Verify schema compliance
     expect(result.plan.mode).toBe("content");
-    expect(result.phases[0].verificationCriteria).toContain("Schema valid");
-    expect(typeof result.issueNumber).toBe("number");
+    expect(result.plan.phases[0].verificationCriteria).toContain("Schema valid");
+    expect(typeof result.plan.issueNumber).toBe("number");
   });
 
   it("should handle large and complex issue descriptions", async () => {
@@ -559,11 +559,11 @@ tests/
     });
 
     expect(result.plan.requirements).toHaveLength(5);
-    expect(result.affectedFiles.length).toBeGreaterThan(3);
+    expect(result.plan.affectedFiles.length).toBeGreaterThan(3);
     expect(result.plan.risks).toContain("Performance regression");
     expect(result.plan.phases).toHaveLength(2);
-    expect(result.phases[1].dependsOn).toEqual([0]);
-    expect(result.verificationPoints.length).toBeGreaterThan(2);
+    expect(result.plan.phases[1].dependsOn).toEqual([0]);
+    expect(result.plan.verificationPoints.length).toBeGreaterThan(2);
     expect(result.plan.stopConditions).toContain("Performance regression detected");
   });
 
@@ -632,7 +632,7 @@ tests/
 
     expect(result.plan.mode).toBe("content");
     expect(result.plan.phases).toHaveLength(2);
-    expect(result.phases[1].dependsOn).toEqual([0]);
+    expect(result.plan.phases[1].dependsOn).toEqual([0]);
     expect(result.plan.issueNumber).toBe(555);
   });
 
@@ -688,16 +688,16 @@ tests/
     });
 
     // Verify indices are normalized
-    expect(result.phases[0].index).toBe(0);
-    expect(result.phases[1].index).toBe(1);
+    expect(result.plan.phases[0].index).toBe(0);
+    expect(result.plan.phases[1].index).toBe(1);
 
     // Verify missing arrays are filled
-    expect(result.phases[0].targetFiles).toEqual([]);
-    expect(result.phases[0].verificationCriteria).toEqual([]);
-    expect(result.phases[0].dependsOn).toEqual([]);
-    expect(result.phases[1].targetFiles).toEqual([]);
-    expect(result.phases[1].verificationCriteria).toEqual([]);
-    expect(result.phases[1].dependsOn).toEqual([]);
+    expect(result.plan.phases[0].targetFiles).toEqual([]);
+    expect(result.plan.phases[0].verificationCriteria).toEqual([]);
+    expect(result.plan.phases[0].dependsOn).toEqual([]);
+    expect(result.plan.phases[1].targetFiles).toEqual([]);
+    expect(result.plan.phases[1].verificationCriteria).toEqual([]);
+    expect(result.plan.phases[1].dependsOn).toEqual([]);
   });
 
   // Phase 6: 재시도 로직 테스트 케이스 추가

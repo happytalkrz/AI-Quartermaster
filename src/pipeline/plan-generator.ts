@@ -133,28 +133,12 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       config: { maxPhases, sensitivePaths },
     };
 
-    // 캐시된 레이어 활용 또는 원본 템플릿 로드
+    // Plan은 항상 경량 템플릿만 사용 (cachedLayers는 Phase용)
     let finalPrompt: string;
     let templateData = baseData;
-    let template: string;
-
-    if (ctx.cachedLayers) {
-      // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
-      logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
-      const dynamicSection = buildDynamicSection({
-        issue: baseData.issue,
-        repo: baseData.repo,
-        branch: baseData.branch,
-        config: baseData.config,
-      });
-      finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
-      template = "";
-    } else {
-      // 기존 방식: 원본 템플릿 로드
-      const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-      template = loadTemplate(templatePath);
-      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
-    }
+    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    const template = loadTemplate(templatePath);
+    finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
     // retry 시에는 retry 섹션을 append
     if (attempt > 1) {
@@ -197,20 +181,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     // Helper to update and re-render
     const updateAndRerender = (updateFn: (data: PlanTemplateData) => PlanTemplateData, stage: string) => {
       templateData = updateFn(templateData);
-
-      if (ctx.cachedLayers) {
-        // 캐시된 레이어 사용 시 동적 섹션 재구성
-        const dynamicSection = buildDynamicSection({
-          issue: templateData.issue,
-          repo: templateData.repo,
-          branch: templateData.branch,
-          config: templateData.config,
-        });
-        finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
-      } else {
-        // 기존 방식
-        finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
-      }
+      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
       if (ctx.modeHint) {
         finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;

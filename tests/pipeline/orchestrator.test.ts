@@ -64,6 +64,9 @@ vi.mock("../../src/pipeline/pipeline-setup.js", () => ({
   checkDuplicatePR: vi.fn(),
   fetchAndValidateIssue: vi.fn(),
 }));
+vi.mock("../../src/github/github-cache.js", () => ({
+  clearCache: vi.fn(),
+}));
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
@@ -80,6 +83,7 @@ import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
 import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "../../src/pipeline/pipeline-setup.js";
+import { clearCache } from "../../src/github/github-cache.js";
 
 const mockFetchIssue = vi.mocked(fetchIssue);
 const mockCreateDraftPR = vi.mocked(createDraftPR);
@@ -105,6 +109,7 @@ const mockValidateBeforePush = vi.mocked(validateBeforePush);
 const mockResolveResolvedProject = vi.mocked(resolveResolvedProject);
 const mockCheckDuplicatePR = vi.mocked(checkDuplicatePR);
 const mockFetchAndValidateIssue = vi.mocked(fetchAndValidateIssue);
+const mockClearCache = vi.mocked(clearCache);
 
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 
@@ -183,6 +188,8 @@ describe("runPipeline", () => {
     expect(result.success).toBe(true);
     expect(result.state).toBe("DONE");
     expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
+    // 파이프라인 종료 시 캐시가 정리되었는지 확인
+    expect(mockClearCache).toHaveBeenCalledTimes(1);
   });
 
   it("should fail if repo not in allowedRepos", async () => {
@@ -195,6 +202,8 @@ describe("runPipeline", () => {
     expect(result.success).toBe(false);
     expect(result.state).toBe("FAILED");
     expect(result.error).toContain("not configured");
+    // 실패 케이스에서도 캐시가 정리되었는지 확인
+    expect(mockClearCache).toHaveBeenCalledTimes(1);
   });
 
   it("should fail if core loop fails", async () => {

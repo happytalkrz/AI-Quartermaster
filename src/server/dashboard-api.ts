@@ -643,16 +643,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/jobs", (c) => {
     try {
       // Parse query parameters using Zod schema
-      const queryParams = {
-        include: c.req.query("include"),
+      const queryParamsForValidation = {
         project: c.req.query("project"),
         status: c.req.query("status"),
         limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
         offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
       };
+      const includeArchived = c.req.query("include") === "archived";
 
       // Validate query parameters (excluding the legacy 'include' parameter)
-      const parseResult = GetJobsQuerySchema.safeParse(queryParams);
+      const parseResult = GetJobsQuerySchema.safeParse(queryParamsForValidation);
       if (!parseResult.success) {
         return c.json({
           error: "Invalid query parameters",
@@ -661,7 +661,6 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       const { project, status, limit, offset } = parseResult.data;
-      const includeArchived = queryParams.include === "archived";
 
       // Get base job list
       let jobs = includeArchived ? store.list() : store.list().filter(j => j.status !== "archived");

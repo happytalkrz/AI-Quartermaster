@@ -3,6 +3,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
+import { parseEnvVars } from "./env-parser.js";
 
 export interface TryLoadConfigResult {
   config: AQConfig | null;
@@ -94,7 +95,15 @@ export function deepMerge<T = Record<string, unknown>>(target: unknown, source: 
   return result as T;
 }
 
-export function loadConfig(projectRoot: string): AQConfig {
+export interface LoadConfigOptions {
+  envVars?: Record<string, string | undefined>;
+  configOverrides?: Record<string, unknown>;
+}
+
+// Overloaded function signatures
+export function loadConfig(projectRoot: string): AQConfig;
+export function loadConfig(projectRoot: string, options: LoadConfigOptions): AQConfig;
+export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQConfig {
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
 
@@ -104,18 +113,34 @@ export function loadConfig(projectRoot: string): AQConfig {
     throw new Error(`config.yml not found at ${baseConfigPath}`);
   }
 
+  // 1. Load and merge base config.yml
   const baseRaw = parseYamlSafely(readFileSync(baseConfigPath, "utf-8"), baseConfigPath);
   config = deepMerge(config, baseRaw);
 
+  // 2. Load and merge config.local.yml if exists
   if (existsSync(localConfigPath)) {
     const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
     config = deepMerge(config, localRaw);
   }
 
+  // 3. Apply environment variables (AQM_*)
+  if (options?.envVars !== undefined) {
+    const envConfig = parseEnvVars(options.envVars);
+    config = deepMerge(config, envConfig);
+  }
+
+  // 4. Apply CLI config overrides
+  if (options?.configOverrides) {
+    config = deepMerge(config, options.configOverrides);
+  }
+
   return validateConfig(config);
 }
 
-export function tryLoadConfig(projectRoot: string): TryLoadConfigResult {
+// Overloaded function signatures for tryLoadConfig
+export function tryLoadConfig(projectRoot: string): TryLoadConfigResult;
+export function tryLoadConfig(projectRoot: string, options: LoadConfigOptions): TryLoadConfigResult;
+export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions): TryLoadConfigResult {
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
 
@@ -158,6 +183,37 @@ export function tryLoadConfig(projectRoot: string): TryLoadConfigResult {
         error: {
           type: 'yaml_syntax',
           message: `Failed to parse config.local.yml: ${err.message}`
+        }
+      };
+    }
+  }
+
+  // Apply environment variables (AQM_*)
+  if (options?.envVars !== undefined) {
+    try {
+      const envConfig = parseEnvVars(options.envVars);
+      config = deepMerge(config, envConfig);
+    } catch (err: unknown) {
+      return {
+        config: null,
+        error: {
+          type: 'validation',
+          message: `Failed to parse environment variables: ${err instanceof Error ? err.message : 'Unknown error'}`
+        }
+      };
+    }
+  }
+
+  // Apply CLI config overrides
+  if (options?.configOverrides) {
+    try {
+      config = deepMerge(config, options.configOverrides);
+    } catch (err: unknown) {
+      return {
+        config: null,
+        error: {
+          type: 'validation',
+          message: `Failed to apply config overrides: ${err instanceof Error ? err.message : 'Unknown error'}`
         }
       };
     }

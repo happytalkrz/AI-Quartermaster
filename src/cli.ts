@@ -34,6 +34,7 @@ interface CliArgs {
   execute?: boolean;
   job?: string;
   nonInteractive?: boolean;
+  configOverrides?: Record<string, unknown>;
 }
 
 async function runCommand(args: CliArgs): Promise<void> {
@@ -732,6 +733,7 @@ Options:
   --interval <sec>    폴링 간격 (초, 기본: 60)
   --daemon, -d        백그라운드 실행
   --dry-run           외부 작업 스킵 (push, PR 생성)
+  --config-override <key=value>  설정 오버라이드 (복수 지정 가능)
   --execute           plan 후 자동 실행
   --non-interactive   비인터랙티브 모드 (setup 명령용)
 
@@ -776,6 +778,15 @@ function parseArgs(argv: string[]): CliArgs {
       result.job = argv[++i];
     } else if (argv[i] === "--non-interactive") {
       result.nonInteractive = true;
+    } else if (argv[i] === "--config-override" && argv[i + 1]) {
+      const overrideStr = argv[++i];
+      const eqIdx = overrideStr.indexOf("=");
+      if (eqIdx > 0) {
+        const key = overrideStr.slice(0, eqIdx);
+        const value = overrideStr.slice(eqIdx + 1);
+        if (!result.configOverrides) result.configOverrides = {};
+        result.configOverrides[key] = value;
+      }
     }
   }
   return result;

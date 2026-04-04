@@ -17,12 +17,17 @@ function sumUsage(usages: (import("../types/pipeline.js").UsageInfo | undefined)
   const validUsages = usages.filter((usage): usage is import("../types/pipeline.js").UsageInfo => !!usage);
   if (validUsages.length === 0) return undefined;
 
-  return {
-    input_tokens: validUsages.reduce((sum, usage) => sum + usage.input_tokens, 0),
-    output_tokens: validUsages.reduce((sum, usage) => sum + usage.output_tokens, 0),
-    cache_creation_input_tokens: validUsages.reduce((sum, usage) => sum + (usage.cache_creation_input_tokens ?? 0), 0),
-    cache_read_input_tokens: validUsages.reduce((sum, usage) => sum + (usage.cache_read_input_tokens ?? 0), 0),
-  };
+  return validUsages.reduce((acc, usage) => ({
+    input_tokens: acc.input_tokens + usage.input_tokens,
+    output_tokens: acc.output_tokens + usage.output_tokens,
+    cache_creation_input_tokens: acc.cache_creation_input_tokens + (usage.cache_creation_input_tokens ?? 0),
+    cache_read_input_tokens: acc.cache_read_input_tokens + (usage.cache_read_input_tokens ?? 0),
+  }), {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  });
 }
 
 function addErrorToHistory(

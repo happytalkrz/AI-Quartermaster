@@ -197,33 +197,22 @@ function mergeAnalystResults(results: AnalystResult[], totalDurationMs: number):
   }
 
   // 비용과 usage 누적
-  let totalCostUsd: number | undefined;
-  let totalUsage: UsageInfo | undefined;
-
-  for (const result of results) {
-    if (result.costUsd !== undefined) {
-      totalCostUsd = (totalCostUsd || 0) + result.costUsd;
-    }
-
-    if (result.usage) {
-      if (!totalUsage) {
-        totalUsage = {
-          input_tokens: 0,
-          output_tokens: 0,
-          cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
-        };
-      }
-      totalUsage.input_tokens += result.usage.input_tokens;
-      totalUsage.output_tokens += result.usage.output_tokens;
-      if (result.usage.cache_creation_input_tokens) {
-        totalUsage.cache_creation_input_tokens = (totalUsage.cache_creation_input_tokens || 0) + result.usage.cache_creation_input_tokens;
-      }
-      if (result.usage.cache_read_input_tokens) {
-        totalUsage.cache_read_input_tokens = (totalUsage.cache_read_input_tokens || 0) + result.usage.cache_read_input_tokens;
-      }
-    }
-  }
+  const totalCostUsd = results.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) || undefined;
+  const totalUsage = (() => {
+    const usages = results.map(r => r.usage).filter((u): u is UsageInfo => !!u);
+    if (usages.length === 0) return undefined;
+    return usages.reduce((acc, usage) => ({
+      input_tokens: acc.input_tokens + usage.input_tokens,
+      output_tokens: acc.output_tokens + usage.output_tokens,
+      cache_creation_input_tokens: acc.cache_creation_input_tokens + (usage.cache_creation_input_tokens ?? 0),
+      cache_read_input_tokens: acc.cache_read_input_tokens + (usage.cache_read_input_tokens ?? 0),
+    }), {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+  })();
 
   // findings 병합 및 중복 제거
   const allFindings = results.flatMap(result => result.findings);

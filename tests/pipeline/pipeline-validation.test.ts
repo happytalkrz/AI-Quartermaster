@@ -9,6 +9,7 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
 }));
 vi.mock("../../src/claude/model-router.js", () => ({
   configForTask: vi.fn(),
+  configForTaskWithMode: vi.fn(),
 }));
 vi.mock("../../src/git/commit-helper.js", () => ({
   autoCommitIfDirty: vi.fn(),
@@ -38,15 +39,17 @@ vi.mock("path", () => ({
 import { runValidationPhase } from "../../src/pipeline/pipeline-validation.js";
 import { runFinalValidation } from "../../src/pipeline/final-validator.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
-import { configForTask } from "../../src/claude/model-router.js";
+import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
 import { formatResult, printResult } from "../../src/pipeline/result-reporter.js";
 import type { ValidationPhaseContext } from "../../src/types/pipeline.js";
+import type { ExecutionMode } from "../../src/types/config.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 
 const mockRunFinalValidation = vi.mocked(runFinalValidation);
 const mockRunClaude = vi.mocked(runClaude);
 const mockConfigForTask = vi.mocked(configForTask);
+const mockConfigForTaskWithMode = vi.mocked(configForTaskWithMode);
 const mockAutoCommitIfDirty = vi.mocked(autoCommitIfDirty);
 const mockFormatResult = vi.mocked(formatResult);
 const mockPrintResult = vi.mocked(printResult);
@@ -111,6 +114,7 @@ describe("runValidationPhase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigForTask.mockReturnValue({ path: "claude", model: "haiku" });
+    mockConfigForTaskWithMode.mockReturnValue({ path: "claude", model: "haiku" });
     mockAutoCommitIfDirty.mockResolvedValue(undefined);
     mockFormatResult.mockReturnValue({} as any);
     mockPrintResult.mockReturnValue(undefined);
@@ -127,6 +131,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       true, // skipFinalValidation
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -152,6 +157,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -187,6 +193,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -201,6 +208,7 @@ describe("runValidationPhase", () => {
     expect(mockRunFinalValidation).toHaveBeenCalledWith(
       makeFullCommands(),
       { cwd: "/tmp/project" },
+      "standard",
       "git"
     );
     expect(checkpoint).toHaveBeenCalled();
@@ -240,6 +248,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -284,6 +293,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -317,6 +327,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",
@@ -346,6 +357,7 @@ describe("runValidationPhase", () => {
       timer as any,
       isPastState,
       false,
+      "standard" as ExecutionMode,
       checkpoint,
       42,
       "test/repo",

@@ -32,7 +32,7 @@ describe("runFinalValidation", () => {
 
   it("should pass when all checks pass", async () => {
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
     expect(result.success).toBe(true);
     expect(result.checks).toHaveLength(4); // test, lint, build, typecheck
     expect(result.checks.every(c => c.passed)).toBe(true);
@@ -52,7 +52,8 @@ describe("runFinalValidation", () => {
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
     const result = await runFinalValidation(
       { ...commands, typecheck: "", build: "" },
-      { cwd: "/tmp" }
+      { cwd: "/tmp" },
+      "thorough"
     );
     expect(result.checks).toHaveLength(2); // only test and lint
   });
@@ -67,7 +68,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }); // build
     mockAutoCommitIfDirty.mockResolvedValue("abc123");
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.success).toBe(true);
     expect(mockRunShell).toHaveBeenCalledWith("npm run lint --fix", expect.any(Object));
@@ -85,7 +86,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }); // build
     mockAutoCommitIfDirty.mockResolvedValue(undefined);
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.success).toBe(false);
     expect(result.checks.find(c => c.name === "lint")?.passed).toBe(false);
@@ -99,7 +100,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }) // lint pass
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }); // build pass
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.success).toBe(false);
     expect(result.checks).toHaveLength(4);
@@ -116,7 +117,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }) // lint pass
       .mockResolvedValueOnce({ stdout: "Build failed", stderr: "compilation error", exitCode: 1 }); // build fail
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.success).toBe(false);
     expect(result.checks.filter(c => !c.passed)).toHaveLength(3);
@@ -156,7 +157,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: testStdout, stderr: testStderr, exitCode: 1 })
       .mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.checks[0].output).toBe(`${testStdout}\n${testStderr}`);
     expect(result.checks[0].passed).toBe(false);
@@ -172,7 +173,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }); // build
     mockAutoCommitIfDirty.mockResolvedValue("def456");
 
-    await runFinalValidation(commands, { cwd: "/tmp" }, "/custom/git");
+    await runFinalValidation(commands, { cwd: "/tmp" }, "thorough", "/custom/git");
 
     expect(mockAutoCommitIfDirty).toHaveBeenCalledWith("/custom/git", "/tmp", "style: lint autofix");
   });
@@ -184,7 +185,7 @@ describe("runFinalValidation", () => {
       .mockResolvedValueOnce({ stdout: "ok", stderr: "", exitCode: 0 }) // lint
       .mockResolvedValueOnce({ stdout: "Build output", stderr: "Build failed", exitCode: 1 }); // build fail
 
-    const result = await runFinalValidation(commands, { cwd: "/tmp" });
+    const result = await runFinalValidation(commands, { cwd: "/tmp" }, "thorough");
 
     expect(result.success).toBe(false);
     expect(result.checks.find(c => c.name === "build")?.passed).toBe(false);

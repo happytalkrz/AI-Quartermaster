@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate, TemplateVariables } from "../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
@@ -141,34 +141,14 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     if (ctx.cachedLayers) {
       // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
       logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
-
-      const dynamicSection = `
-# 이슈 정보
-
-**번호**: #${baseData.issue.number}
-**제목**: ${baseData.issue.title}
-**라벨**: ${baseData.issue.labels.join(", ")}
-
-**본문**:
-${baseData.issue.body}
-
-# 저장소 정보
-
-**소유자**: ${baseData.repo.owner}
-**이름**: ${baseData.repo.name}
-**구조**:
-${baseData.repo.structure}
-
-**브랜치**: ${baseData.branch.base} → ${baseData.branch.work}
-
-# 설정
-
-**최대 Phase 수**: ${baseData.config.maxPhases}
-**민감한 경로**: ${baseData.config.sensitivePaths}
-`;
-
+      const dynamicSection = buildDynamicSection({
+        issue: baseData.issue as { number: number; title: string; body: string; labels: string[] },
+        repo: baseData.repo,
+        branch: baseData.branch,
+        config: baseData.config,
+      });
       finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
-      template = ""; // 캐시된 레이어 사용 시에는 템플릿이 필요 없음
+      template = "";
     } else {
       // 기존 방식: 원본 템플릿 로드
       const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
@@ -220,30 +200,12 @@ ${baseData.repo.structure}
 
       if (ctx.cachedLayers) {
         // 캐시된 레이어 사용 시 동적 섹션 재구성
-        const dynamicSection = `
-# 이슈 정보
-
-**번호**: #${templateData.issue.number}
-**제목**: ${templateData.issue.title}
-**라벨**: ${templateData.issue.labels.join(", ")}
-
-**본문**:
-${templateData.issue.body}
-
-# 저장소 정보
-
-**소유자**: ${templateData.repo.owner}
-**이름**: ${templateData.repo.name}
-**구조**:
-${templateData.repo.structure}
-
-**브랜치**: ${templateData.branch.base} → ${templateData.branch.work}
-
-# 설정
-
-**최대 Phase 수**: ${templateData.config.maxPhases}
-**민감한 경로**: ${templateData.config.sensitivePaths}
-`;
+        const dynamicSection = buildDynamicSection({
+          issue: templateData.issue as { number: number; title: string; body: string; labels: string[] },
+          repo: templateData.repo,
+          branch: templateData.branch,
+          config: templateData.config,
+        });
         finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
       } else {
         // 기존 방식

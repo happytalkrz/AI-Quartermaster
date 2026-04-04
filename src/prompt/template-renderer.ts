@@ -216,6 +216,77 @@ export function buildPhaseLayer(config: {
 }
 
 /**
+ * 동적 섹션(이슈, 저장소, 설정)을 구성합니다.
+ */
+export function buildDynamicSection(data: {
+  issue: { number: number; title: string; body: string; labels: string[] };
+  repo: { owner: string; name: string; structure: string };
+  branch: { base: string; work: string };
+  config: { maxPhases: number; sensitivePaths: string };
+}): string {
+  return `
+# 이슈 정보
+
+**번호**: #${data.issue.number}
+**제목**: ${data.issue.title}
+**라벨**: ${data.issue.labels.join(", ")}
+
+**본문**:
+${data.issue.body}
+
+# 저장소 정보
+
+**소유자**: ${data.repo.owner}
+**이름**: ${data.repo.name}
+**구조**:
+${data.repo.structure}
+
+**브랜치**: ${data.branch.base} → ${data.branch.work}
+
+# 설정
+
+**최대 Phase 수**: ${data.config.maxPhases}
+**민감한 경로**: ${data.config.sensitivePaths}
+`;
+}
+
+/**
+ * 정적 레이어(Base + Project)를 조립한 콘텐츠를 생성합니다.
+ */
+export function buildStaticContent(baseLayer: BaseLayer, projectLayer: ProjectLayer): string {
+  return `# ${baseLayer.role}
+
+${baseLayer.rules.map(rule => `- ${rule}`).join('\n')}
+
+${baseLayer.outputFormat}
+
+${baseLayer.progressReporting}
+
+${baseLayer.parallelWorkGuide}
+
+## 프로젝트 컨벤션
+
+${projectLayer.conventions}
+
+## 프로젝트 구조
+
+${projectLayer.structure}
+
+## 설정
+
+- 테스트 명령어: ${projectLayer.testCommand}
+- 린트 명령어: ${projectLayer.lintCommand}
+
+## 안전 규칙
+
+${projectLayer.safetyRules.map(rule => `- ${rule}`).join('\n')}
+
+${projectLayer.skillsContext ? `## 스킬 컨텍스트\n\n${projectLayer.skillsContext}` : ''}
+
+${projectLayer.pastFailures ? `## 과거 실패 사례\n\n${projectLayer.pastFailures}` : ''}`;
+}
+
+/**
  * 전체 프롬프트 레이어를 조립합니다.
  */
 export function assemblePrompt(
@@ -279,7 +350,7 @@ export function assemblePrompt(
   return {
     content: assembledContent,
     cacheKey,
-    cacheHit: false, // 실제 캐시 구현에서는 이 값을 적절히 설정
+    cacheHit: false,
     assemblyTimeMs: assemblyTime,
   };
 }

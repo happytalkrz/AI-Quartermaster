@@ -10,7 +10,6 @@ import {
   SAFETY_MARGIN,
   CHARS_PER_TOKEN,
   CHARS_PER_TOKEN_BY_TYPE,
-  type ContentType,
 } from "../../src/review/token-estimator.js";
 
 describe("token-estimator", () => {

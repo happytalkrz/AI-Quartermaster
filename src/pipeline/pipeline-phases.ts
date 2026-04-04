@@ -14,7 +14,7 @@ import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from 
 import { PipelineTimer } from "../safety/timeout-manager.js";
 import { formatResult } from "./result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "./pipeline-context.js";
-import { pollCiStatus, getCiFailureLogs, type CiPollingConfig } from "./ci-checker.js";
+import { pollCiStatus, getCiFailureLogs, autoFixCiFailures, type CiPollingConfig } from "./ci-checker.js";
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
@@ -567,31 +567,70 @@ export async function executePostProcessingPhases(
       jl?.setProgress(PROGRESS_DONE);
 
     } else if (ciStatus.overall === "failure") {
-      // CI 실패 - CI_FIXING 상태로 전환하고 worktree 유지
+      // CI 실패 - CI_FIXING 상태로 전환하고 자동 수정 시도
       logger.warn(`CI failed for PR #${prNumber}`);
-      jl?.log(`CI 실패 감지. 실패 로그 수집 중...`);
+      jl?.log(`CI 실패 감지. 자동 수정 시작...`);
 
       transitionState(runtime, "CI_FIXING");
 
-      // 실패 로그 수집 (추후 자동 수정을 위해)
+      // CI 자동 수정 루프 실행
       try {
-        const failureLogs = await getCiFailureLogs(prNumber, repo, project.commands.ghCli);
-        if (failureLogs.length > 0) {
-          logger.info(`Collected ${failureLogs.length} failure logs`);
-          // 로그는 수집되었지만 차후 Phase에서 필요 시 다시 가져올 수 있음
-          checkpoint({
+        jl?.log("CI 자동 수정 루프 시작...");
+
+        const fixResult = await autoFixCiFailures({
+          prNumber,
+          repo,
+          issueNumber,
+          cwd: runtime.worktreePath!,
+          promptsDir: resolve(runtime.projectRoot, "prompts"),
+          gitPath: runtime.gitConfig.path,
+          ghConfig: project.commands.ghCli,
+          claudeConfig: project.commands.claudeCli,
+          maxFixAttempts: 3,
+          dryRun: false
+        });
+
+        if (fixResult.success) {
+          // CI 자동 수정 성공 - DONE 상태로 전환
+          logger.info(`CI auto-fix succeeded after ${fixResult.attempts} attempts`);
+          jl?.log(`✅ CI 자동 수정 성공! (${fixResult.attempts}회 시도)`);
+
+          // 성공 시 cleanup 진행
+          const cleanupContext = {
+            worktreePath: runtime.worktreePath,
+            branchName: runtime.branchName,
+            gitConfig: runtime.gitConfig,
+            projectRoot: runtime.projectRoot,
+            cleanupOnSuccess: config.worktree.cleanupOnSuccess,
+            cleanupOnFailure: config.worktree.cleanupOnFailure,
+            issueNumber,
+            repo,
             plan: coreResult.plan,
-            phaseResults: coreResult.phaseResults
-          });
+            phaseResults: coreResult.phaseResults,
+            startTime,
+            prUrl,
+            config,
+            aqRoot,
+            dataDir: resolve(aqRoot ?? runtime.projectRoot, "data"),
+          };
+
+          await cleanupOnSuccess(cleanupContext);
+          transitionState(runtime, "DONE");
+          jl?.setProgress(PROGRESS_DONE);
+        } else {
+          // CI 자동 수정 실패
+          logger.error(`CI auto-fix failed after ${fixResult.attempts} attempts: ${fixResult.error}`);
+          jl?.log(`❌ CI 자동 수정 실패 (${fixResult.attempts}회 시도): ${fixResult.error}`);
+
+          // 실패 시 worktree 유지 (수동 수정을 위해)
+          jl?.log("CI 실패로 인해 worktree를 유지함. 수동으로 수정해주세요.");
         }
-      } catch (logErr: unknown) {
-        logger.warn(`Failed to collect CI logs: ${getErrorMessage(logErr)}`);
+      } catch (fixErr: unknown) {
+        // 자동 수정 시도 중 에러 발생
+        logger.error(`CI auto-fix error: ${getErrorMessage(fixErr)}`);
+        jl?.log(`CI 자동 수정 중 오류 발생: ${getErrorMessage(fixErr)}`);
+        jl?.log("worktree를 유지하고 수동 수정이 필요합니다.");
       }
-
-      jl?.log("CI 실패로 인해 worktree를 유지하고 CI_FIXING 상태로 전환됨");
-
-      // CI 실패 시에는 cleanup하지 않고 worktree를 유지
-      // 추후 Phase에서 자동 수정 루프가 이어질 수 있도록 함
 
     } else {
       // pending 상태 (타임아웃 등) - 현재 상태 유지

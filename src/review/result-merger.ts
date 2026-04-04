@@ -58,22 +58,16 @@ export function mergeReviewResults(
   };
 }
 
-/**
- * ReviewFinding 배열에서 중복을 제거합니다.
- *
- * 중복 기준:
- * - file, line, message가 모두 동일한 경우
- * - file이나 line이 undefined인 경우, message만으로 비교
- *
- * @param findings 중복을 제거할 findings 배열
- * @returns 중복이 제거된 findings 배열
- */
 export function deduplicateFindings(findings: ReviewFinding[]): ReviewFinding[] {
   const seen = new Set<string>();
   const result: ReviewFinding[] = [];
 
   for (const finding of findings) {
-    const key = generateFindingKey(finding);
+    const key = finding.file && finding.line !== undefined
+      ? `${finding.file}:${finding.line}:${finding.message}`
+      : finding.file
+        ? `${finding.file}::${finding.message}`
+        : `::${finding.message}`;
 
     if (!seen.has(key)) {
       seen.add(key);
@@ -82,27 +76,6 @@ export function deduplicateFindings(findings: ReviewFinding[]): ReviewFinding[] 
   }
 
   return result;
-}
-
-/**
- * ReviewFinding의 고유 키를 생성합니다.
- *
- * @param finding ReviewFinding 객체
- * @returns 고유 키 문자열
- */
-function generateFindingKey(finding: ReviewFinding): string {
-  // file과 line이 있는 경우: file:line:message
-  if (finding.file && finding.line !== undefined) {
-    return `${finding.file}:${finding.line}:${finding.message}`;
-  }
-
-  // file만 있는 경우: file::message
-  if (finding.file) {
-    return `${finding.file}::${finding.message}`;
-  }
-
-  // file이 없는 경우: ::message
-  return `::${finding.message}`;
 }
 
 

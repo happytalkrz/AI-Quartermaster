@@ -122,6 +122,8 @@ export async function runAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
  */
 async function runSplitAnalyst(ctx: AnalystContext, tokenBudget: number): Promise<AnalystResult> {
   const startTime = Date.now();
+  const templatePath = resolve(ctx.promptsDir, "analyst-requirements.md");
+  const template = loadTemplate(templatePath);
 
   // diff 추출 및 분할
   const fullDiff = (ctx.variables.diff as { full: string }).full;
@@ -133,8 +135,6 @@ async function runSplitAnalyst(ctx: AnalystContext, tokenBudget: number): Promis
   }
 
   // 템플릿에서 diff 부분을 제외한 나머지 내용 계산
-  const templatePath = resolve(ctx.promptsDir, "analyst-requirements.md");
-  const template = loadTemplate(templatePath);
   const templateWithoutDiff = renderTemplate(template, { ...ctx.variables, diff: { full: "" } });
 
   // 파일들을 토큰 예산에 맞게 그룹화
@@ -190,15 +190,10 @@ function mergeAnalystResults(results: AnalystResult[], totalDurationMs: number):
   const uniqueFindings = deduplicateAnalystFindings(allFindings);
 
   // verdict 결정: MISALIGNED > INCOMPLETE > COMPLETE
-  let verdict: "COMPLETE" | "INCOMPLETE" | "MISALIGNED" = "COMPLETE";
-  for (const result of results) {
-    if (result.verdict === "MISALIGNED") {
-      verdict = "MISALIGNED";
-      break;
-    } else if (result.verdict === "INCOMPLETE") {
-      verdict = "INCOMPLETE";
-    }
-  }
+  const verdictPriority = { "MISALIGNED": 3, "INCOMPLETE": 2, "COMPLETE": 1 };
+  const verdict = results.reduce((highest, r) =>
+    verdictPriority[r.verdict] > verdictPriority[highest] ? r.verdict : highest
+  , "COMPLETE" as "COMPLETE" | "INCOMPLETE" | "MISALIGNED");
 
   // coverage 병합
   const coverage = {
@@ -219,16 +214,12 @@ function mergeAnalystResults(results: AnalystResult[], totalDurationMs: number):
   return createAnalystResult(verdict, totalDurationMs, uniqueFindings, summary, coverage);
 }
 
-/**
- * AnalystFinding 배열에서 중복을 제거합니다.
- */
 function deduplicateAnalystFindings(findings: AnalystFinding[]): AnalystFinding[] {
   const seen = new Set<string>();
   const result: AnalystFinding[] = [];
 
   for (const finding of findings) {
-    const key = generateAnalystFindingKey(finding);
-
+    const key = `${finding.type}:${finding.requirement}:${finding.message}`;
     if (!seen.has(key)) {
       seen.add(key);
       result.push(finding);
@@ -236,11 +227,4 @@ function deduplicateAnalystFindings(findings: AnalystFinding[]): AnalystFinding[
   }
 
   return result;
-}
-
-/**
- * AnalystFinding의 고유 키를 생성합니다.
- */
-function generateAnalystFindingKey(finding: AnalystFinding): string {
-  return `${finding.type}:${finding.requirement}:${finding.message}`;
 }

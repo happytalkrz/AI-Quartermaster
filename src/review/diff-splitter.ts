@@ -59,23 +59,9 @@ export function splitDiffByFiles(fullDiff: string): FileDiff[] {
   return fileDiffs;
 }
 
-/**
- * diff 섹션에서 파일 경로를 추출합니다.
- *
- * @param diffSection diff 섹션 문자열
- * @returns 파일 경로 또는 null
- */
 function extractFilePathFromDiff(diffSection: string): string | null {
-  // diff --git a/path/to/file.ts b/path/to/file.ts 형태에서 파일 경로 추출
   const match = diffSection.match(/^diff --git a\/(.+?) b\/(.+?)$/m);
-
-  if (match) {
-    // a/ 경로와 b/ 경로가 다를 수 있으므로 b/ 경로를 사용 (새로운 파일 경로)
-    return match[2];
-  }
-
-  // 파일 경로를 찾을 수 없는 경우
-  return null;
+  return match ? match[2] : null;
 }
 
 /**

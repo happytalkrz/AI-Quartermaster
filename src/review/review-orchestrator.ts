@@ -126,16 +126,7 @@ async function runSplitReview(
   }
 
   // 결과 병합
-  const mergedResult = mergeReviewResults(
-    splitResults.map(sr => ({
-      roundName: sr.roundName,
-      verdict: sr.verdict,
-      findings: sr.findings,
-      summary: sr.summary,
-      durationMs: sr.durationMs,
-    })),
-    round.name
-  );
+  const mergedResult = mergeReviewResults(splitResults, round.name);
 
   logger.info(`Completed split review for "${round.name}": ${mergedResult.verdict}`);
   return mergedResult;

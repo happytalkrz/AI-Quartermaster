@@ -72,19 +72,20 @@ export class ConfigWatcher extends EventEmitter {
     logger.info('Stopped watching config files - all resources cleaned');
   }
 
+  private registerWatcher(filePath: string, type: 'base' | 'local', watcher: FSWatcher): void {
+    watcher.on('error', (error) => {
+      this.handleWatcherError(filePath, type, error);
+    });
+    this.watchers.set(filePath, watcher);
+    this.errorCounts.set(filePath, 0);
+  }
+
   private watchFile(filePath: string, type: 'base' | 'local'): void {
     try {
       const watcher = watch(filePath, { persistent: false }, (eventType) => {
         this.handleFileEvent(filePath, type, eventType);
       });
-
-      // Add error handler to the watcher
-      watcher.on('error', (error) => {
-        this.handleWatcherError(filePath, type, error);
-      });
-
-      this.watchers.set(filePath, watcher);
-      this.errorCounts.set(filePath, 0); // Reset error count
+      this.registerWatcher(filePath, type, watcher);
       logger.debug(`Started watching file: ${filePath}`);
     } catch (err) {
       logger.error(`Failed to watch file ${filePath}: ${err}`);
@@ -99,14 +100,7 @@ export class ConfigWatcher extends EventEmitter {
           this.handleDirectoryEvent(eventType, filename);
         }
       });
-
-      // Add error handler to the directory watcher
-      watcher.on('error', (error) => {
-        this.handleWatcherError(this.projectRoot, 'local', error);
-      });
-
-      this.watchers.set(this.projectRoot, watcher);
-      this.errorCounts.set(this.projectRoot, 0); // Reset error count
+      this.registerWatcher(this.projectRoot, 'local', watcher);
       logger.debug(`Started watching directory: ${this.projectRoot}`);
     } catch (err) {
       logger.error(`Failed to watch directory ${this.projectRoot}: ${err}`);

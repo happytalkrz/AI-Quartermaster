@@ -33,29 +33,46 @@ const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
 const CLIENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-function broadcastToAllClients(event: string, data: any): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  const clientsToRemove: string[] = [];
+function removeStaleClients(): void {
   const now = Date.now();
+  const clientsToRemove: string[] = [];
 
   for (const [clientId, client] of sseClients) {
-    try {
-      // Check if client is too old or hasn't responded to heartbeat
-      if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
-        clientsToRemove.push(clientId);
-        continue;
-      }
-
-      client.controller.enqueue(encoder.encode(message));
-      // Update heartbeat timestamp on successful message send
-      client.lastHeartbeat = now;
-    } catch (error) {
-      // Client disconnected or stream closed, mark for removal
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
       clientsToRemove.push(clientId);
     }
   }
 
-  // Clean up disconnected or timed-out clients
+  for (const clientId of clientsToRemove) {
+    try {
+      const client = sseClients.get(clientId);
+      client?.controller.close();
+    } catch {
+      // Ignore errors when closing already closed streams
+    }
+    sseClients.delete(clientId);
+  }
+}
+
+function broadcastToAllClients(event: string, data: any): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const now = Date.now();
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
+      clientsToRemove.push(clientId);
+      continue;
+    }
+
+    try {
+      client.controller.enqueue(encoder.encode(message));
+      client.lastHeartbeat = now;
+    } catch {
+      clientsToRemove.push(clientId);
+    }
+  }
+
   for (const clientId of clientsToRemove) {
     sseClients.delete(clientId);
   }
@@ -68,31 +85,6 @@ function pruneExpiredTokens(): void {
   }
 }
 
-function pruneStaleClients(): void {
-  const now = Date.now();
-  const clientsToRemove: string[] = [];
-
-  for (const [clientId, client] of sseClients) {
-    // Remove clients that haven't been active for too long
-    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
-      clientsToRemove.push(clientId);
-    }
-  }
-
-  for (const clientId of clientsToRemove) {
-    try {
-      const client = sseClients.get(clientId);
-      if (client) {
-        // Try to close the stream gracefully
-        client.controller.close();
-      }
-    } catch {
-      // Ignore errors when closing already closed streams
-    }
-    sseClients.delete(clientId);
-  }
-}
-
 function sendHeartbeat(): void {
   const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
   const clientsToRemove: string[] = [];
@@ -101,12 +93,10 @@ function sendHeartbeat(): void {
     try {
       client.controller.enqueue(encoder.encode(heartbeatMessage));
     } catch {
-      // Client disconnected, mark for removal
       clientsToRemove.push(clientId);
     }
   }
 
-  // Clean up disconnected clients
   for (const clientId of clientsToRemove) {
     sseClients.delete(clientId);
   }
@@ -124,7 +114,7 @@ function startPeriodicCleanup(): void {
   // Start heartbeat interval
   heartbeatInterval = setInterval(() => {
     sendHeartbeat();
-    pruneStaleClients();
+    removeStaleClients();
   }, HEARTBEAT_INTERVAL_MS);
 }
 

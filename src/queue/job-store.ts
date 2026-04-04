@@ -29,11 +29,24 @@ export interface Job {
     commit?: string;
     durationMs: number;
     error?: string;
+    costUsd?: number;
+    usage?: {
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   }>;
   progress?: number;  // 0-100 overall pipeline progress
   isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
   costUsd?: number;
   totalCostUsd?: number;
+  totalUsage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export class JobStore extends EventEmitter {
@@ -171,7 +184,8 @@ export class JobStore extends EventEmitter {
       progress: dbJob.progress,
       isRetry: dbJob.isRetry,
       costUsd: dbJob.costUsd,
-      totalCostUsd: dbJob.totalCostUsd
+      totalCostUsd: dbJob.totalCostUsd,
+      totalUsage: dbJob.totalUsage
     };
 
     // Phase 결과를 phaseResults 배열로 변환
@@ -182,7 +196,14 @@ export class JobStore extends EventEmitter {
         success: phase.success,
         commit: phase.commitHash,
         durationMs: phase.durationMs,
-        error: phase.error
+        error: phase.error,
+        costUsd: phase.costUsd,
+        usage: phase.inputTokens !== undefined ? {
+          input_tokens: phase.inputTokens,
+          output_tokens: phase.outputTokens || 0,
+          cache_creation_input_tokens: phase.cacheCreationInputTokens,
+          cache_read_input_tokens: phase.cacheReadInputTokens
+        } : undefined
       }));
     }
 
@@ -215,11 +236,12 @@ export class JobStore extends EventEmitter {
       progress: job.progress,
       isRetry: job.isRetry,
       costUsd: job.costUsd,
-      totalCostUsd: job.totalCostUsd
+      totalCostUsd: job.totalCostUsd,
+      totalUsage: job.totalUsage
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: Job['phaseResults']): Job {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: Job = {
       id,
@@ -229,11 +251,34 @@ export class JobStore extends EventEmitter {
       createdAt: new Date().toISOString(),
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       ...(isRetry ? { isRetry } : {}),
+      ...(initialPhaseResults && initialPhaseResults.length > 0 ? { phaseResults: initialPhaseResults } : {}),
     };
 
     // SQLite에 저장
     const dbJob = this.jobToDbJob(job);
     this.db.createJob(dbJob);
+
+    // 초기 Phase results가 있다면 별도로 저장
+    if (initialPhaseResults && initialPhaseResults.length > 0) {
+      for (let index = 0; index < initialPhaseResults.length; index++) {
+        const phaseResult = initialPhaseResults[index];
+        const dbPhase: DatabasePhase = {
+          jobId: id,
+          phaseIndex: index,
+          phaseName: phaseResult.name,
+          success: phaseResult.success,
+          commitHash: phaseResult.commit,
+          durationMs: phaseResult.durationMs,
+          error: phaseResult.error,
+          costUsd: phaseResult.costUsd,
+          inputTokens: phaseResult.usage?.input_tokens,
+          outputTokens: phaseResult.usage?.output_tokens,
+          cacheCreationInputTokens: phaseResult.usage?.cache_creation_input_tokens,
+          cacheReadInputTokens: phaseResult.usage?.cache_read_input_tokens
+        };
+        this.db.createPhase(dbPhase);
+      }
+    }
 
     // 캐시에 추가 (queued 상태이므로)
     this.addToCache(job);
@@ -285,7 +330,12 @@ export class JobStore extends EventEmitter {
           success: phaseResult.success,
           commitHash: phaseResult.commit,
           durationMs: phaseResult.durationMs,
-          error: phaseResult.error
+          error: phaseResult.error,
+          costUsd: phaseResult.costUsd,
+          inputTokens: phaseResult.usage?.input_tokens,
+          outputTokens: phaseResult.usage?.output_tokens,
+          cacheCreationInputTokens: phaseResult.usage?.cache_creation_input_tokens,
+          cacheReadInputTokens: phaseResult.usage?.cache_read_input_tokens
         };
         this.db.createPhase(dbPhase);
       }

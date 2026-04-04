@@ -85,7 +85,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       skillsContext: envResult.skillsContext,
       preset: coreResult.preset,
       timer: setupResult.timer,
-      checkpoint: checkpointFn
+      checkpoint: checkpointFn,
+      jobLogger: input.jobLogger
     };
 
     const finalResult = await executePostProcessingPhases(

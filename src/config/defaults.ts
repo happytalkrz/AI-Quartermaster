@@ -40,7 +40,12 @@ export const DEFAULT_CONFIG: AQConfig = {
         review: "claude-haiku-4-5-20251001",
         fallback: "claude-sonnet-4-20250514",
       },
-      maxTurns: 50,
+      maxTurns: 60,
+      maxTurnsPerMode: {
+        economy: 30,
+        standard: 60,
+        thorough: 120,
+      },
       timeout: 600000,
       additionalArgs: [],
       retry: {
@@ -147,4 +152,5 @@ export const DEFAULT_CONFIG: AQConfig = {
       ],
     },
   },
+  executionMode: "standard",
 };

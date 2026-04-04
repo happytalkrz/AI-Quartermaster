@@ -392,7 +392,7 @@ export class JobQueue {
 
       // If another call was made while processing, handle it now
       if (this.needsReprocess) {
-        setTimeout(() => this.processNext(), 0);
+        setImmediate(() => this.processNext());
       }
     }
   }
@@ -444,8 +444,8 @@ export class JobQueue {
       });
     } finally {
       this.running.delete(job.id);
-      // Process next in queue (defer via setTimeout to avoid deep call stacks)
-      setTimeout(() => this.processNext(), 0);
+      // Process next in queue (defer via setImmediate to avoid deep call stacks)
+      setImmediate(() => this.processNext());
     }
   }
 }

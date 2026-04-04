@@ -62,6 +62,7 @@ export interface ClaudeCliConfig {
   model: string;            // 글로벌 기본 모델 (routing 미설정 시 사용)
   models: ModelRouting;     // 태스크별 모델 라우팅
   maxTurns: number;
+  maxTurnsPerMode?: Record<ExecutionMode, number>; // 실행 모드별 maxTurns 제한
   timeout: number;
   additionalArgs: string[];
   retry?: RetryConfig;
@@ -153,7 +154,19 @@ export interface SafetyConfig {
   feasibilityCheck: FeasibilityCheckConfig;
 }
 
+export interface ExecutionModePreset {
+  reviewRounds: number;
+  enableAdvancedReview: boolean;
+  enableSimplify: boolean;
+  enableFinalValidation: boolean;
+  maxPhases: number;
+  maxRetries: number;
+  strictSafety: boolean;
+  description: string;
+}
+
 export type PipelineMode = "code" | "content";
+export type ExecutionMode = "economy" | "standard" | "thorough";
 export type ServerMode = "polling" | "webhook";
 
 /** Setup wizard options */
@@ -205,5 +218,6 @@ export interface AQConfig {
   review: ReviewConfig;
   pr: PrConfig;
   safety: SafetyConfig;
+  executionMode: ExecutionMode;
   projects?: ProjectConfig[];  // per-project overrides
 }

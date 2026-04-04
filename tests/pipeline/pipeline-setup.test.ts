@@ -19,6 +19,7 @@ vi.mock("../../src/config/project-resolver.js", () => ({
 }));
 vi.mock("../../src/config/mode-presets.js", () => ({
   detectModeFromLabels: vi.fn(),
+  detectExecutionModeFromLabels: vi.fn(),
 }));
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -41,7 +42,7 @@ import { runCli } from "../../src/utils/cli-runner.js";
 import { validateIssue } from "../../src/safety/safety-checker.js";
 import { saveCheckpoint, removeCheckpoint } from "../../src/pipeline/checkpoint.js";
 import { resolveProject } from "../../src/config/project-resolver.js";
-import { detectModeFromLabels } from "../../src/config/mode-presets.js";
+import { detectModeFromLabels, detectExecutionModeFromLabels } from "../../src/config/mode-presets.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 import type { AQConfig } from "../../src/types/config.js";
 import type { ResolvedProject } from "../../src/config/project-resolver.js";
@@ -54,6 +55,7 @@ const mockSaveCheckpoint = vi.mocked(saveCheckpoint);
 const mockRemoveCheckpoint = vi.mocked(removeCheckpoint);
 const mockResolveProject = vi.mocked(resolveProject);
 const mockDetectModeFromLabels = vi.mocked(detectModeFromLabels);
+const mockDetectExecutionModeFromLabels = vi.mocked(detectExecutionModeFromLabels);
 
 function makeConfig(): AQConfig {
   const config = structuredClone(DEFAULT_CONFIG);
@@ -251,6 +253,7 @@ describe("fetchAndValidateIssue", () => {
     vi.clearAllMocks();
     mockFetchIssue.mockResolvedValue(makeIssue());
     mockDetectModeFromLabels.mockReturnValue("code");
+    mockDetectExecutionModeFromLabels.mockReturnValue("standard");
     mockValidateIssue.mockImplementation(() => {});
   });
 
@@ -283,9 +286,11 @@ describe("fetchAndValidateIssue", () => {
     });
     expect(mockValidateIssue).toHaveBeenCalledWith(makeIssue(), project.safety);
     expect(mockDetectModeFromLabels).toHaveBeenCalledWith(["bug"], "code");
+    expect(mockDetectExecutionModeFromLabels).toHaveBeenCalledWith(["bug"], "standard");
     expect(mockSaveCheckpoint).toHaveBeenCalled();
     expect(result.issue).toEqual(makeIssue());
     expect(result.mode).toBe("code");
+    expect(result.executionMode).toBe("standard");
     expect(mockJobLogger.setStep).toHaveBeenCalledWith("이슈 정보 가져오는 중...");
     expect(mockJobLogger.log).toHaveBeenCalledWith("이슈: Fix bug");
     expect(mockJobLogger.setProgress).toHaveBeenCalledWith(25);

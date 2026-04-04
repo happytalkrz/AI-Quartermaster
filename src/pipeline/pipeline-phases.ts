@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { runCoreLoop } from "./core-loop.js";
-import { getModePreset } from "../config/mode-presets.js";
+import { getModePreset, getExecutionModePreset, detectExecutionModeFromLabels } from "../config/mode-presets.js";
 import { resolveProject } from "../config/project-resolver.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
@@ -17,7 +17,7 @@ import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
 } from "./progress-tracker.js";
-import type { AQConfig, PipelineMode, GitConfig } from "../types/config.js";
+import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
 import type { OrchestratorInput } from "./pipeline-context.js";
 import type { CoreLoopResult } from "./core-loop.js";
@@ -40,6 +40,7 @@ export interface InitialSetupResult {
   duplicatePRUrl?: string;
   issue?: GitHubIssue;
   mode?: PipelineMode;
+  executionMode?: ExecutionMode;
   checkpoint?: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
@@ -138,6 +139,7 @@ export async function executeInitialSetupPhases(
 
   const { issue, checkpoint } = issueResult;
   const mode = issueResult.mode;
+  const executionMode = issueResult.executionMode;
   transitionState(runtime, "VALIDATED");
 
   return {
@@ -149,6 +151,7 @@ export async function executeInitialSetupPhases(
     timer,
     issue,
     mode,
+    executionMode,
     checkpoint
   };
 }
@@ -247,6 +250,8 @@ export async function executeCoreLoopPhase(
   const projectConfig = { ...config, commands: project.commands, safety: project.safety };
   const patternStore = new PatternStore(dataDir);
   const preset = getModePreset(mode);
+  const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
+  const executionModePreset = getExecutionModePreset(executionMode);
 
   const coreResult = await runCoreLoop({
     issue,
@@ -341,6 +346,10 @@ export async function executePostProcessingPhases(
   const { issueNumber, repo, aqRoot } = input;
   const jl = input.jobLogger;
 
+  // Detect execution mode and preset
+  const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
+  const executionModePreset = getExecutionModePreset(executionMode);
+
   jl?.setProgress(PROGRESS_REVIEW_START);
 
   // Review Phase
@@ -357,7 +366,7 @@ export async function executePostProcessingPhases(
     checkpoint
   };
 
-  const reviewResult = await runReviewPhase(reviewContext, preset, runtime.state, isPastState);
+  const reviewResult = await runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState);
 
   if (!reviewResult.success) {
     const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -381,7 +390,7 @@ export async function executePostProcessingPhases(
       checkpoint
     };
 
-    const simplifyResult = await runSimplifyPhase(simplifyContext, preset, runtime.state, isPastState);
+    const simplifyResult = await runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState);
 
     if (!simplifyResult.success) {
       const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -410,6 +419,7 @@ export async function executePostProcessingPhases(
     timer,
     (checkState: string) => isPastState(runtime.state, checkState as PipelineState),
     preset.skipFinalValidation,
+    detectExecutionModeFromLabels(issue.labels, "standard"),
     (overrides?: Partial<PipelineCheckpoint>) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
     issueNumber,
     repo,

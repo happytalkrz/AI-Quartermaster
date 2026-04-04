@@ -120,18 +120,11 @@ describe("runClaude retry behavior", () => {
       },
     };
 
-    const runPromise = runClaude(options);
-
-    // Simulate first attempt - rate limit error
-    setTimeout(() => {
-      mockChild.stderr.emit("data", Buffer.from("Error: rate limit exceeded"));
-      mockChild.emit("close", 1);
-    }, 10);
-
-    // Simulate second attempt - success
-    setTimeout(() => {
-      const secondMockChild = Object.assign(new EventEmitter(), {
-        pid: 12346,
+    let callCount = 0;
+    mockSpawn.mockImplementation(() => {
+      callCount++;
+      const child = Object.assign(new EventEmitter(), {
+        pid: 12345 + callCount,
         stdin: { write: vi.fn(), end: vi.fn() },
         stdout: new EventEmitter(),
         stderr: new EventEmitter(),
@@ -139,18 +132,27 @@ describe("runClaude retry behavior", () => {
         killed: false,
       });
 
-      mockSpawn.mockReturnValueOnce(secondMockChild as any);
-
       setTimeout(() => {
-        secondMockChild.stdout.emit("data", Buffer.from('{"type": "result", "result": "success"}\n'));
-        secondMockChild.emit("close", 0);
-      }, 150);
-    }, 120);
+        if (callCount === 1) {
+          // First attempt - rate limit error
+          child.stderr.emit("data", Buffer.from("Error: rate limit exceeded"));
+          child.emit("close", 1);
+        } else {
+          // Second attempt - success
+          child.stdout.emit("data", Buffer.from('{"type": "result", "result": "success"}\n'));
+          child.emit("close", 0);
+        }
+      }, 10);
+
+      return child as any;
+    });
+
+    const runPromise = runClaude(options);
 
     const result = await runPromise;
     expect(result.success).toBe(true);
     expect(mockSpawn).toHaveBeenCalledTimes(2); // First attempt + retry
-  });
+  }, 10000);
 
   it("should retry on prompt too long error", async () => {
     const options: ClaudeRunOptions = {

@@ -4,6 +4,7 @@ import { getModePreset, getExecutionModePreset, detectExecutionModeFromLabels } 
 import { resolveProject } from "../config/project-resolver.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { handleCoreLoopFailure } from "./pipeline-error-handler.js";
 import { runReviewPhase, runSimplifyPhase, type ReviewContext, type SimplifyContext } from "./pipeline-review.js";
 import { runValidationPhase } from "./pipeline-validation.js";
@@ -13,6 +14,7 @@ import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from 
 import { PipelineTimer } from "../safety/timeout-manager.js";
 import { formatResult } from "./result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "./pipeline-context.js";
+import { pollCiStatus, getCiFailureLogs, type CiPollingConfig } from "./ci-checker.js";
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
@@ -467,28 +469,111 @@ export async function executePostProcessingPhases(
   const prUrl = publishResult.prUrl;
   transitionState(runtime, "DRAFT_PR_CREATED");
 
-  // Cleanup on success
-  const cleanupContext = {
-    worktreePath: runtime.worktreePath,
-    gitConfig,
-    projectRoot: runtime.projectRoot,
-    cleanupOnSuccess: config.worktree.cleanupOnSuccess,
-    cleanupOnFailure: config.worktree.cleanupOnFailure,
-    issueNumber,
-    repo,
-    plan: coreResult.plan,
-    phaseResults: coreResult.phaseResults,
-    startTime,
-    prUrl,
-    config,
-    aqRoot,
-    dataDir: resolve(aqRoot ?? runtime.projectRoot, "data"),
+  // CI 체크 Phase - PR 번호 추출
+  if (!prUrl) {
+    throw new Error("PR URL이 없어서 CI 체크를 진행할 수 없습니다");
+  }
+
+  const prNumberMatch = prUrl.match(/\/pull\/(\d+)$/);
+  if (!prNumberMatch) {
+    throw new Error(`PR URL에서 PR 번호를 추출할 수 없습니다: ${prUrl}`);
+  }
+
+  const prNumber = parseInt(prNumberMatch[1], 10);
+  logger.info(`Starting CI check for PR #${prNumber}`);
+  jl?.setStep("CI 상태 확인 중...");
+  transitionState(runtime, "CI_CHECKING");
+
+  // CI 폴링 설정
+  const ciPollingConfig: CiPollingConfig = {
+    intervalMs: 30000, // 30초마다 체크
+    maxDurationMs: 1800000, // 최대 30분 대기
+    failOnTimeout: false, // 타임아웃 시에도 실패로 처리하지 않고 현재 상태 유지
   };
 
-  await cleanupOnSuccess(cleanupContext);
+  try {
+    // CI 상태 폴링
+    const ciStatus = await pollCiStatus(
+      prNumber,
+      repo,
+      project.commands.ghCli,
+      ciPollingConfig,
+      (status) => {
+        // CI 상태 업데이트 콜백
+        jl?.log(`CI 상태: ${status.overall} (${status.pendingChecks.length}개 대기, ${status.failedChecks.length}개 실패)`);
+      }
+    );
 
-  transitionState(runtime, "DONE");
-  jl?.setProgress(PROGRESS_DONE);
+    if (ciStatus.overall === "success") {
+      // CI 성공 - 정상 완료 처리
+      logger.info(`CI passed for PR #${prNumber}`);
+      jl?.log("CI 통과! 작업 완료 처리 중...");
+
+      // Cleanup on success
+      const cleanupContext = {
+        worktreePath: runtime.worktreePath,
+        gitConfig,
+        projectRoot: runtime.projectRoot,
+        cleanupOnSuccess: config.worktree.cleanupOnSuccess,
+        cleanupOnFailure: config.worktree.cleanupOnFailure,
+        issueNumber,
+        repo,
+        plan: coreResult.plan,
+        phaseResults: coreResult.phaseResults,
+        startTime,
+        prUrl,
+        config,
+        aqRoot,
+        dataDir: resolve(aqRoot ?? runtime.projectRoot, "data"),
+      };
+
+      await cleanupOnSuccess(cleanupContext);
+      transitionState(runtime, "DONE");
+      jl?.setProgress(PROGRESS_DONE);
+
+    } else if (ciStatus.overall === "failure") {
+      // CI 실패 - CI_FIXING 상태로 전환하고 worktree 유지
+      logger.warn(`CI failed for PR #${prNumber}`);
+      jl?.log(`CI 실패 감지. 실패 로그 수집 중...`);
+
+      transitionState(runtime, "CI_FIXING");
+
+      // 실패 로그 수집 (추후 자동 수정을 위해)
+      try {
+        const failureLogs = await getCiFailureLogs(prNumber, repo, project.commands.ghCli);
+        if (failureLogs.length > 0) {
+          logger.info(`Collected ${failureLogs.length} failure logs`);
+          // 로그는 수집되었지만 차후 Phase에서 필요 시 다시 가져올 수 있음
+          checkpoint({
+            plan: coreResult.plan,
+            phaseResults: coreResult.phaseResults
+          });
+        }
+      } catch (logErr: unknown) {
+        logger.warn(`Failed to collect CI logs: ${getErrorMessage(logErr)}`);
+      }
+
+      jl?.log("CI 실패로 인해 worktree를 유지하고 CI_FIXING 상태로 전환됨");
+
+      // CI 실패 시에는 cleanup하지 않고 worktree를 유지
+      // 추후 Phase에서 자동 수정 루프가 이어질 수 있도록 함
+
+    } else {
+      // pending 상태 (타임아웃 등) - 현재 상태 유지
+      logger.warn(`CI check ended with pending status for PR #${prNumber}`);
+      jl?.log("CI 확인 타임아웃. 수동으로 CI 상태를 확인해주세요.");
+
+      // 타임아웃의 경우 worktree를 유지하고 사용자가 수동으로 처리하도록 함
+    }
+
+  } catch (ciErr: unknown) {
+    // CI 체크 자체에서 에러 발생
+    logger.error(`CI check error for PR #${prNumber}: ${getErrorMessage(ciErr)}`);
+    jl?.log(`CI 체크 중 오류 발생: ${getErrorMessage(ciErr)}`);
+
+    // 에러 시에도 worktree 유지하고 사용자가 처리하도록 함
+    transitionState(runtime, "CI_FIXING");
+  }
 
   return {
     prUrl,

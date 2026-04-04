@@ -3,6 +3,7 @@ import { createSlugWithFallback } from "../utils/slug.js";
 import { renderTemplate } from "../prompt/template-renderer.js";
 import type { GitConfig } from "../types/config.js";
 import { getLogger } from "../utils/logger.js";
+import { sanitizeGitError } from "../utils/error-sanitizer.js";
 
 const logger = getLogger();
 
@@ -30,7 +31,7 @@ export async function syncBaseBranch(
 
   const result = await runCli(gitConfig.gitPath, fetchArgs, { cwd: options.cwd });
   if (result.exitCode !== 0) {
-    throw new Error(`git fetch failed: ${result.stderr}`);
+    throw new Error(sanitizeGitError(result.stderr, "fetch"));
   }
   logger.info(`Synced ${gitConfig.defaultBaseBranch} from ${gitConfig.remoteAlias}`);
 }
@@ -83,7 +84,7 @@ export async function createWorkBranch(
     { cwd: options.cwd }
   );
   if (createResult.exitCode !== 0) {
-    throw new Error(`Failed to create branch ${workBranch}: ${createResult.stderr}`);
+    throw new Error(`Failed to create branch ${workBranch}: ${sanitizeGitError(createResult.stderr, "branch create")}`);
   }
 
   logger.info(`Created branch ${workBranch} from ${baseRef}`);
@@ -110,7 +111,7 @@ export async function checkConflicts(
     { cwd: options.cwd }
   );
   if (mergeBaseResult.exitCode !== 0) {
-    logger.warn(`Could not determine merge base: ${mergeBaseResult.stderr}`);
+    logger.warn(`Could not determine merge base: ${sanitizeGitError(mergeBaseResult.stderr, "merge-base")}`);
     return { hasConflicts: false, conflictFiles: [] };
   }
 
@@ -171,10 +172,10 @@ export async function attemptRebase(
     { cwd: options.cwd }
   );
   if (abortResult.exitCode !== 0) {
-    logger.warn(`git rebase --abort failed: ${abortResult.stderr}`);
+    logger.warn(`git rebase --abort failed: ${sanitizeGitError(abortResult.stderr, "rebase --abort")}`);
   }
 
-  const error = rebaseResult.stderr || rebaseResult.stdout;
+  const error = sanitizeGitError(rebaseResult.stderr || rebaseResult.stdout, "rebase");
   logger.warn(`Rebase failed: ${error}`);
   return { success: false, error };
 }
@@ -193,7 +194,7 @@ export async function deleteRemoteBranch(
     { cwd: options.cwd }
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to delete remote branch ${branchName}: ${result.stderr}`);
+    throw new Error(`Failed to delete remote branch ${branchName}: ${sanitizeGitError(result.stderr, "push --delete")}`);
   }
   logger.info(`Deleted remote branch ${branchName} from ${gitConfig.remoteAlias}`);
 }
@@ -212,7 +213,7 @@ export async function pushBranch(
     { cwd: options.cwd }
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to push branch ${branchName}: ${result.stderr}`);
+    throw new Error(`Failed to push branch ${branchName}: ${sanitizeGitError(result.stderr, "push")}`);
   }
   logger.info(`Pushed branch ${branchName} to ${gitConfig.remoteAlias}`);
 }

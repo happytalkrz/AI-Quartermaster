@@ -1,7 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { resolve } from "path";
+import { resolve, normalize } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -12,6 +12,7 @@ import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 import { CreateProjectRequestSchema, UpdateConfigRequestSchema } from "../types/api.js";
 import { SelfUpdater } from "../update/self-updater.js";
+import { isPathSafe } from "../utils/slug.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -68,6 +69,27 @@ function isValidSessionToken(token: string): boolean {
   pruneExpiredTokens();
   const expiry = sessionTokens.get(token);
   return expiry !== undefined && Date.now() <= expiry;
+}
+
+/**
+ * Validates and normalizes path parameters to prevent path traversal attacks.
+ */
+function validateAndNormalizePath(path: string, paramName: string): string {
+  if (!path || typeof path !== 'string') {
+    throw new Error(`${paramName} is required and must be a string`);
+  }
+
+  const trimmedPath = path.trim();
+
+  // Check for path safety BEFORE normalization to catch patterns that normalize() might clean up
+  if (!isPathSafe(trimmedPath)) {
+    throw new Error(`${paramName} contains unsafe characters or path traversal patterns`);
+  }
+
+  // Normalize path after safety check
+  const normalizedPath = normalize(trimmedPath);
+
+  return normalizedPath;
 }
 
 /**
@@ -255,9 +277,18 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       const { repo, path, baseBranch, mode } = parseResult.data;
 
+      // Validate and normalize path
+      let normalizedPath: string;
+      try {
+        normalizedPath = validateAndNormalizePath(path, "path");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Invalid path";
+        return c.json({ error: message }, 400);
+      }
+
       const project: ProjectConfig = {
         repo: repo.trim(),
-        path: path.trim(),
+        path: normalizedPath,
         baseBranch: baseBranch?.trim() || undefined,
         mode,
       };
@@ -353,10 +384,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
 
       if (path !== undefined) {
-        if (typeof path !== "string" || path.trim() === "") {
-          return c.json({ error: "path must be a non-empty string" }, 400);
+        try {
+          updates.path = validateAndNormalizePath(path, "path");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Invalid path";
+          return c.json({ error: message }, 400);
         }
-        updates.path = path.trim();
       }
 
       if (baseBranch !== undefined) {

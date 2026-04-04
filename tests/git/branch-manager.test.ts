@@ -37,7 +37,7 @@ describe("syncBaseBranch", () => {
 
   it("should throw on fetch failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "network error", exitCode: 1 });
-    await expect(syncBaseBranch(defaultGitConfig, { cwd: "/tmp" })).rejects.toThrow("git fetch failed");
+    await expect(syncBaseBranch(defaultGitConfig, { cwd: "/tmp" })).rejects.toThrow("Git fetch failed: network error");
   });
 });
 

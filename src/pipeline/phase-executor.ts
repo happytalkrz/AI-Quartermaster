@@ -46,7 +46,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
-    const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
+const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
     const rendered = renderTemplate(template, {
       issue: {

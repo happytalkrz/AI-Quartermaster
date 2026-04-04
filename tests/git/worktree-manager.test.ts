@@ -70,6 +70,33 @@ describe("createWorktree", () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "error", exitCode: 1 });
     await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "test", { cwd: "/repo" })).rejects.toThrow("Failed to create worktree");
   });
+
+  // Path traversal security tests
+  it("should reject directory names with path traversal", async () => {
+    await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "../escape", { cwd: "/repo" }))
+      .rejects.toThrow("Unsafe directory name");
+  });
+
+  it("should reject directory names with absolute paths", async () => {
+    await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "/etc/passwd", { cwd: "/repo" }))
+      .rejects.toThrow("Unsafe directory name");
+  });
+
+  it("should reject directory names that would escape root path", async () => {
+    const maliciousConfig = {
+      ...worktreeConfig,
+      dirTemplate: "../{slug}" // Template itself tries to escape
+    };
+
+    await expect(createWorktree(gitConfig, maliciousConfig, "branch", 1, "test", { cwd: "/repo" }))
+      .rejects.toThrow("Unsafe directory name");
+  });
+
+  it("should validate worktree path is within root", async () => {
+    // Using a directory name that when combined would try to escape
+    await expect(createWorktree(gitConfig, worktreeConfig, "branch", 1, "..%2F..%2Fetc", { cwd: "/repo" }))
+      .rejects.toThrow("Unsafe directory name");
+  });
 });
 
 describe("removeWorktree", () => {

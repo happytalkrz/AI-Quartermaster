@@ -220,7 +220,7 @@ export class JobStore extends EventEmitter {
   }
 
   create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job {
-    const id = `aq-${issueNumber}-${Date.now()}`;
+    const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: Job = {
       id,
       issueNumber,

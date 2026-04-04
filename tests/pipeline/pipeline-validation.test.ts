@@ -371,4 +371,162 @@ describe("runValidationPhase", () => {
     expect(context.jl?.setStep).toHaveBeenCalledWith("최종 검증 중...");
     expect(context.jl?.setProgress).toHaveBeenCalledWith(85);
   });
+
+  describe("execution mode integration", () => {
+    it("should run validation in economy mode when enableFinalValidation is true", async () => {
+      const context = makeValidationContext();
+      const timer = makeTimer();
+      const isPastState = vi.fn().mockReturnValue(false);
+      const checkpoint = vi.fn();
+
+      mockRunFinalValidation.mockResolvedValue({
+        success: true,
+        checks: [{ name: "test", passed: true }],
+      });
+
+      const result = await runValidationPhase(
+        context,
+        timer as any,
+        isPastState,
+        false, // enableFinalValidation = true (economy can still validate if explicitly enabled)
+        "economy" as ExecutionMode,
+        checkpoint,
+        42,
+        "test/repo",
+        Date.now(),
+        DEFAULT_CONFIG,
+        makeFullCommands(),
+        "/tmp/aq",
+        "/tmp/project"
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockRunFinalValidation).toHaveBeenCalledWith(
+        makeFullCommands(),
+        { cwd: "/tmp/project" },
+        "economy",
+        "git"
+      );
+    });
+
+    it("should run validation in standard mode", async () => {
+      const context = makeValidationContext();
+      const timer = makeTimer();
+      const isPastState = vi.fn().mockReturnValue(false);
+      const checkpoint = vi.fn();
+
+      mockRunFinalValidation.mockResolvedValue({
+        success: true,
+        checks: [
+          { name: "build", passed: true },
+          { name: "test", passed: true },
+          { name: "lint", passed: true },
+        ],
+      });
+
+      const result = await runValidationPhase(
+        context,
+        timer as any,
+        isPastState,
+        false,
+        "standard" as ExecutionMode,
+        checkpoint,
+        42,
+        "test/repo",
+        Date.now(),
+        DEFAULT_CONFIG,
+        makeFullCommands(),
+        "/tmp/aq",
+        "/tmp/project"
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockRunFinalValidation).toHaveBeenCalledWith(
+        makeFullCommands(),
+        { cwd: "/tmp/project" },
+        "standard",
+        "git"
+      );
+    });
+
+    it("should run validation in thorough mode with comprehensive checks", async () => {
+      const context = makeValidationContext();
+      const timer = makeTimer();
+      const isPastState = vi.fn().mockReturnValue(false);
+      const checkpoint = vi.fn();
+
+      mockRunFinalValidation.mockResolvedValue({
+        success: true,
+        checks: [
+          { name: "build", passed: true },
+          { name: "test", passed: true },
+          { name: "lint", passed: true },
+          { name: "typecheck", passed: true },
+        ],
+      });
+
+      const result = await runValidationPhase(
+        context,
+        timer as any,
+        isPastState,
+        false,
+        "thorough" as ExecutionMode,
+        checkpoint,
+        42,
+        "test/repo",
+        Date.now(),
+        DEFAULT_CONFIG,
+        makeFullCommands(),
+        "/tmp/aq",
+        "/tmp/project"
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockRunFinalValidation).toHaveBeenCalledWith(
+        makeFullCommands(),
+        { cwd: "/tmp/project" },
+        "thorough",
+        "git"
+      );
+    });
+
+    it("should use different retry counts based on execution mode", async () => {
+      const context = makeValidationContext();
+      context.maxRetries = 1; // economy mode retry count
+      const timer = makeTimer();
+      const isPastState = vi.fn().mockReturnValue(false);
+      const checkpoint = vi.fn();
+
+      // First validation fails, second succeeds (1 retry for economy mode)
+      mockRunFinalValidation
+        .mockResolvedValueOnce({
+          success: false,
+          checks: [{ name: "test", passed: false, output: "Test failed" }],
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          checks: [{ name: "test", passed: true }],
+        });
+
+      const result = await runValidationPhase(
+        context,
+        timer as any,
+        isPastState,
+        false,
+        "economy" as ExecutionMode,
+        checkpoint,
+        42,
+        "test/repo",
+        Date.now(),
+        DEFAULT_CONFIG,
+        makeFullCommands(),
+        "/tmp/aq",
+        "/tmp/project"
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockRunFinalValidation).toHaveBeenCalledTimes(2); // Initial + 1 retry for economy
+      expect(mockRunClaude).toHaveBeenCalledTimes(1); // 1 fix attempt
+    });
+  });
 });

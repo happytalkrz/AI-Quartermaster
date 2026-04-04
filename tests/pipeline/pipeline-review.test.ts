@@ -563,4 +563,101 @@ describe("pipeline-review", () => {
       ).rejects.toThrow("Test command not configured");
     });
   });
+
+  describe("execution mode integration", () => {
+    it("should skip review in economy mode (reviewRounds: 0)", async () => {
+      const ctx = makeReviewContext();
+      const economyPreset = makeExecutionModePreset({
+        reviewRounds: 0,
+        enableAdvancedReview: false,
+        enableSimplify: false
+      });
+
+      const result = await runReviewPhase(ctx, economyPreset, "PLAN_GENERATED", mockIsPastState);
+
+      expect(result.success).toBe(true);
+      expect(mockRunReviews).not.toHaveBeenCalled();
+      expect(mockRunAnalyst).not.toHaveBeenCalled();
+    });
+
+    it("should run standard review in standard mode (reviewRounds: 1)", async () => {
+      const ctx = makeReviewContext();
+      mockExistsSync.mockReturnValue(false); // No analyst template
+
+      const standardPreset = makeExecutionModePreset({
+        reviewRounds: 1,
+        enableAdvancedReview: true,
+        enableSimplify: true
+      });
+
+      const mockReviewResult = {
+        rounds: [{ roundName: "basic", verdict: "PASS", findings: [], summary: "Good", durationMs: 1000 }],
+        allPassed: true,
+      };
+      mockRunReviews.mockResolvedValue(mockReviewResult);
+
+      const result = await runReviewPhase(ctx, standardPreset, "PLAN_GENERATED", mockIsPastState);
+
+      expect(result.success).toBe(true);
+      expect(mockRunReviews).toHaveBeenCalledWith(expect.objectContaining({
+        maxRounds: 1
+      }));
+    });
+
+    it("should run thorough review in thorough mode (reviewRounds: 3)", async () => {
+      const ctx = makeReviewContext();
+      mockExistsSync.mockReturnValue(false); // No analyst template
+
+      const thoroughPreset = makeExecutionModePreset({
+        reviewRounds: 3,
+        enableAdvancedReview: true,
+        enableSimplify: true,
+        maxRetries: 3
+      });
+
+      const mockReviewResult = {
+        rounds: [
+          { roundName: "basic", verdict: "PASS", findings: [], summary: "Good", durationMs: 1000 },
+          { roundName: "security", verdict: "PASS", findings: [], summary: "Secure", durationMs: 1200 },
+          { roundName: "performance", verdict: "PASS", findings: [], summary: "Fast", durationMs: 800 }
+        ],
+        allPassed: true,
+      };
+      mockRunReviews.mockResolvedValue(mockReviewResult);
+
+      const result = await runReviewPhase(ctx, thoroughPreset, "PLAN_GENERATED", mockIsPastState);
+
+      expect(result.success).toBe(true);
+      expect(mockRunReviews).toHaveBeenCalledWith(expect.objectContaining({
+        maxRounds: 3
+      }));
+    });
+
+    it("should skip simplify in economy mode (enableSimplify: false)", async () => {
+      const ctx = makeSimplifyContext();
+      const economyPreset = makeExecutionModePreset({
+        enableSimplify: false
+      });
+
+      const result = await runSimplifyPhase(ctx, economyPreset, "REVIEWING", mockIsPastState);
+
+      expect(result.success).toBe(true);
+      expect(mockRunSimplify).not.toHaveBeenCalled();
+    });
+
+    it("should run simplify in thorough mode (enableSimplify: true)", async () => {
+      const ctx = makeSimplifyContext();
+      const thoroughPreset = makeExecutionModePreset({
+        enableSimplify: true
+      });
+
+      const result = await runSimplifyPhase(ctx, thoroughPreset, "REVIEWING", mockIsPastState);
+
+      expect(result.success).toBe(true);
+      expect(mockRunSimplify).toHaveBeenCalledWith(expect.objectContaining({
+        promptTemplate: "simplify.md",
+        cwd: "/tmp/worktree"
+      }));
+    });
+  });
 });

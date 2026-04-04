@@ -4,7 +4,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-import { syncBaseBranch, createWorkBranch, deleteRemoteBranch } from "../../src/git/branch-manager.js";
+import { syncBaseBranch, createWorkBranch, deleteRemoteBranch, checkConflicts, attemptRebase, pushBranch } from "../../src/git/branch-manager.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 
 const mockRunCli = vi.mocked(runCli);
@@ -93,5 +93,139 @@ describe("deleteRemoteBranch", () => {
   it("should throw on delete failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "permission denied", exitCode: 1 });
     await expect(deleteRemoteBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" })).rejects.toThrow("Failed to delete remote branch feature-branch");
+  });
+});
+
+describe("checkConflicts", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should return no conflicts when merge-tree succeeds without conflicts", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "abc123", stderr: "", exitCode: 0 }) // merge-base
+      .mockResolvedValueOnce({ stdout: "clean merge output", stderr: "", exitCode: 0 }); // merge-tree
+
+    const result = await checkConflicts(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result).toEqual({ hasConflicts: false, conflictFiles: [] });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["merge-base", "HEAD", "origin/master"], { cwd: "/tmp" });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["merge-tree", "abc123", "HEAD", "origin/master"], { cwd: "/tmp" });
+  });
+
+  it("should detect conflicts from merge-tree output", async () => {
+    const conflictOutput = `changed in both
+  base   100644 abc123 src/file1.ts
+  our    100644 def456 src/file1.ts
+  their  100644 789abc src/file1.ts
+<<<<<<< HEAD
+our changes
+=======
+their changes
+>>>>>>> origin/master`;
+
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "abc123", stderr: "", exitCode: 0 }) // merge-base
+      .mockResolvedValueOnce({ stdout: conflictOutput, stderr: "", exitCode: 0 }); // merge-tree
+
+    const result = await checkConflicts(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result.hasConflicts).toBe(true);
+    expect(result.conflictFiles).toContain("src/file1.ts");
+  });
+
+  it("should handle merge-base failure gracefully", async () => {
+    mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "no merge base", exitCode: 1 }); // merge-base fails
+
+    const result = await checkConflicts(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result).toEqual({ hasConflicts: false, conflictFiles: [] });
+    expect(mockRunCli).toHaveBeenCalledTimes(1);
+  });
+
+  it("should return generic conflict when unable to parse specific files", async () => {
+    const malformedOutput = `changed in both
+<<<<<<< HEAD
+some content
+=======
+other content
+>>>>>>> origin/master`;
+
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "abc123", stderr: "", exitCode: 0 }) // merge-base
+      .mockResolvedValueOnce({ stdout: malformedOutput, stderr: "", exitCode: 0 }); // merge-tree
+
+    const result = await checkConflicts(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result.hasConflicts).toBe(true);
+    expect(result.conflictFiles).toEqual([]);
+  });
+});
+
+describe("attemptRebase", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should succeed when rebase completes without conflicts", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "Successfully rebased", stderr: "", exitCode: 0 });
+
+    const result = await attemptRebase(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result).toEqual({ success: true });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["rebase", "origin/master"], { cwd: "/tmp" });
+  });
+
+  it("should abort and return error when rebase fails", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "CONFLICT: merge conflict in file.ts", exitCode: 1 }) // rebase fails
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // rebase --abort succeeds
+
+    const result = await attemptRebase(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Merge conflict");
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["rebase", "origin/master"], { cwd: "/tmp" });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["rebase", "--abort"], { cwd: "/tmp" });
+  });
+
+  it("should handle rebase abort failure", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "rebase conflict", exitCode: 1 }) // rebase fails
+      .mockResolvedValueOnce({ stdout: "", stderr: "abort failed", exitCode: 1 }); // rebase --abort fails
+
+    const result = await attemptRebase(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("rebase conflict");
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["rebase", "--abort"], { cwd: "/tmp" });
+  });
+
+  it("should use stdout as error message when stderr is empty", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "stdout error message", stderr: "", exitCode: 1 }) // rebase fails
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // rebase --abort succeeds
+
+    const result = await attemptRebase(defaultGitConfig, "master", { cwd: "/tmp" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("stdout error message");
+  });
+});
+
+describe("pushBranch", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should push branch with upstream tracking", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+
+    await pushBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" });
+    expect(mockRunCli).toHaveBeenCalledWith("git", ["push", "-u", "origin", "feature-branch"], { cwd: "/tmp" });
+  });
+
+  it("should throw on push failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "remote rejected", exitCode: 1 });
+
+    await expect(pushBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" })).rejects.toThrow("Failed to push branch feature-branch");
+  });
+
+  it("should handle network errors during push", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "fatal: unable to access 'https://github.com/': Could not resolve host", exitCode: 128 });
+
+    await expect(pushBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" })).rejects.toThrow("Failed to push branch feature-branch");
+  });
+
+  it("should handle permission denied errors", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "Permission denied (publickey)", exitCode: 128 });
+
+    await expect(pushBranch(defaultGitConfig, "feature-branch", { cwd: "/tmp" })).rejects.toThrow("Failed to push branch feature-branch");
   });
 });

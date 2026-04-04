@@ -3,8 +3,45 @@ import { configForTask } from "../claude/model-router.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { estimateTokenCount } from "../review/token-estimator.js";
+import type { ClaudeCliConfig } from "../types/config.js";
 
 const logger = getLogger();
+
+/** Token budget for fix prompts (in tokens) */
+const FIX_PROMPT_TOKEN_BUDGET = 8000;
+
+/** Characters to preserve from the beginning of the prompt */
+const FIX_PROMPT_FIRST_PART = 1500;
+
+/** Characters to preserve from the end of the prompt */
+const FIX_PROMPT_LAST_PART = 1000;
+
+/**
+ * Truncates a fix prompt if it exceeds the token budget
+ * @param prompt The original prompt
+ * @returns Truncated prompt if necessary
+ */
+export function truncateFixPrompt(prompt: string): string {
+  const tokenCount = estimateTokenCount(prompt);
+
+  if (tokenCount <= FIX_PROMPT_TOKEN_BUDGET) {
+    return prompt;
+  }
+
+  const estimatedChars = FIX_PROMPT_TOKEN_BUDGET * 4; // 4 chars per token
+
+  if (prompt.length <= estimatedChars) {
+    return prompt;
+  }
+
+  const first = prompt.slice(0, FIX_PROMPT_FIRST_PART).trim();
+  const last = prompt.slice(-FIX_PROMPT_LAST_PART).trim();
+
+  logger.warn(`[RETRY_WITH_FIX] Truncating fix prompt: ${tokenCount} tokens -> ~${estimateTokenCount(first + last)} tokens`);
+
+  return `${first}\n\n[... 중간 내용 생략 (토큰 예산 초과로 인한 자동 truncate) ...]\n\n${last}`;
+}
 
 export interface RetryWithFixOptions<T> {
   /**
@@ -30,7 +67,7 @@ export interface RetryWithFixOptions<T> {
   maxRetries: number;
 
   /** Claude CLI 설정 */
-  claudeConfig: any;
+  claudeConfig: ClaudeCliConfig;
 
   /** 작업 디렉토리 */
   cwd: string;
@@ -102,7 +139,8 @@ export async function retryWithClaudeFix<T>(
 
   // 재시도 루프
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const fixPrompt = buildFixPromptFn(currentResult);
+    const rawFixPrompt = buildFixPromptFn(currentResult);
+    const fixPrompt = truncateFixPrompt(rawFixPrompt);
     const description = extractDescriptionFromPrompt(fixPrompt);
 
     logger.info(`[RETRY_WITH_FIX] Attempt ${attempt}/${maxRetries} — fixing: ${description}`);

@@ -138,7 +138,8 @@ export class JsonMigrator {
 
     // Phase 결과들을 phases 테이블로 마이그레이션
     if (job.phaseResults && job.phaseResults.length > 0) {
-      for (const [index, phaseResult] of job.phaseResults.entries()) {
+      for (let index = 0; index < job.phaseResults.length; index++) {
+        const phaseResult = job.phaseResults[index];
         const dbPhase: DatabasePhase = {
           jobId: job.id,
           phaseIndex: index,

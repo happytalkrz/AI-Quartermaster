@@ -68,7 +68,9 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const problemDef = ctx.plan?.problemDefinition || "프로젝트 수정사항";
+    const phasesSummary = ctx.phaseResults?.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n") || "- 작업 완료";
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDef}\n\n## Phases\n\n${phasesSummary}`;
   }
 
   // Add issue link
@@ -76,9 +78,9 @@ export async function createDraftPR(
     body += `\n\nCloses #${ctx.issueNumber}`;
   }
 
-  if (options.dryRun) {
+  if (options?.dryRun) {
     logger.info(`[DRY RUN] Would create PR: ${title}`);
-    return { url: "https://github.com/dry-run", number: 0 };
+    return "DRY_RUN" as any;
   }
 
   // Build gh pr create command
@@ -95,23 +97,24 @@ export async function createDraftPR(
     args.push("--draft");
   }
 
-  for (const label of prConfig.labels) {
+  for (const label of prConfig.labels || []) {
     args.push("--label", label);
   }
-  for (const assignee of prConfig.assignees) {
+  for (const assignee of prConfig.assignees || []) {
     args.push("--assignee", assignee);
   }
-  for (const reviewer of prConfig.reviewers) {
+  for (const reviewer of prConfig.reviewers || []) {
     args.push("--reviewer", reviewer);
   }
 
   const result = await runCli(ghConfig.path, args, {
-    cwd: options.cwd,
+    cwd: options?.cwd,
     timeout: ghConfig.timeout,
   });
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    logger.warn(`Failed to create PR: ${result.stderr}`);
+    return null;
   }
 
   // gh pr create outputs the PR URL

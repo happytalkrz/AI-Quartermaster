@@ -171,7 +171,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
     return {
-      phaseIndex: ctx.phase.index,
+      phaseIndex: ctx.phase.index + 1,
       phaseName: ctx.phase.name,
       success: true,
       commitHash,
@@ -182,7 +182,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
     return {
-      phaseIndex: ctx.phase.index,
+      phaseIndex: ctx.phase.index + 1,
       phaseName: ctx.phase.name,
       success: false,
       error: errMsg,

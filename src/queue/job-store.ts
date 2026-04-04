@@ -211,6 +211,46 @@ export class JobStore extends EventEmitter {
     }
   }
 
+  getCostStats(repo?: string): {
+    totalCostUsd: number;
+    avgCostUsd: number;
+    jobCount: number;
+    topExpensiveJobs: Array<{ id: string; issueNumber: number; totalCostUsd: number; repo: string }>;
+  } {
+    const allJobs = Array.from(this.cache.values());
+    const filteredJobs = repo ? allJobs.filter(job => job.repo === repo) : allJobs;
+    const jobsWithCost = filteredJobs.filter(job => job.totalCostUsd != null && job.totalCostUsd > 0);
+
+    if (jobsWithCost.length === 0) {
+      return {
+        totalCostUsd: 0,
+        avgCostUsd: 0,
+        jobCount: 0,
+        topExpensiveJobs: []
+      };
+    }
+
+    const totalCostUsd = jobsWithCost.reduce((sum, job) => sum + (job.totalCostUsd || 0), 0);
+    const avgCostUsd = totalCostUsd / jobsWithCost.length;
+
+    const topExpensiveJobs = jobsWithCost
+      .sort((a, b) => (b.totalCostUsd || 0) - (a.totalCostUsd || 0))
+      .slice(0, 10)
+      .map(job => ({
+        id: job.id,
+        issueNumber: job.issueNumber,
+        totalCostUsd: job.totalCostUsd || 0,
+        repo: job.repo
+      }));
+
+    return {
+      totalCostUsd: Math.round(totalCostUsd * 100) / 100, // Round to 2 decimal places
+      avgCostUsd: Math.round(avgCostUsd * 100) / 100, // Round to 2 decimal places
+      jobCount: jobsWithCost.length,
+      topExpensiveJobs
+    };
+  }
+
   private save(job: Job): void {
     writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
     this.cache.set(job.id, job);

@@ -317,4 +317,127 @@ describe("JobStore", () => {
       store.stopWatching();
     });
   });
+
+  describe("getCostStats", () => {
+    it("should return zero stats when no jobs exist", () => {
+      const stats = store.getCostStats();
+
+      expect(stats.totalCostUsd).toBe(0);
+      expect(stats.avgCostUsd).toBe(0);
+      expect(stats.jobCount).toBe(0);
+      expect(stats.topExpensiveJobs).toEqual([]);
+    });
+
+    it("should return zero stats when no jobs have cost data", () => {
+      store.create(42, "test/repo");
+      store.create(43, "test/repo");
+
+      const stats = store.getCostStats();
+
+      expect(stats.totalCostUsd).toBe(0);
+      expect(stats.avgCostUsd).toBe(0);
+      expect(stats.jobCount).toBe(0);
+      expect(stats.topExpensiveJobs).toEqual([]);
+    });
+
+    it("should calculate stats correctly for jobs with cost data", () => {
+      const job1 = store.create(42, "test/repo");
+      store.update(job1.id, { totalCostUsd: 10.50 });
+
+      const job2 = store.create(43, "test/repo");
+      store.update(job2.id, { totalCostUsd: 5.25 });
+
+      const job3 = store.create(44, "test/repo");
+      store.update(job3.id, { totalCostUsd: 20.00 });
+
+      const stats = store.getCostStats();
+
+      expect(stats.totalCostUsd).toBe(35.75);
+      expect(stats.avgCostUsd).toBe(11.92); // (10.50 + 5.25 + 20.00) / 3 = 11.916... rounded to 11.92
+      expect(stats.jobCount).toBe(3);
+      expect(stats.topExpensiveJobs).toHaveLength(3);
+      expect(stats.topExpensiveJobs[0].totalCostUsd).toBe(20.00);
+      expect(stats.topExpensiveJobs[1].totalCostUsd).toBe(10.50);
+      expect(stats.topExpensiveJobs[2].totalCostUsd).toBe(5.25);
+    });
+
+    it("should filter by repo when repo parameter is provided", () => {
+      const job1 = store.create(42, "repo/a");
+      store.update(job1.id, { totalCostUsd: 10.00 });
+
+      const job2 = store.create(43, "repo/b");
+      store.update(job2.id, { totalCostUsd: 5.00 });
+
+      const job3 = store.create(44, "repo/a");
+      store.update(job3.id, { totalCostUsd: 15.00 });
+
+      const stats = store.getCostStats("repo/a");
+
+      expect(stats.totalCostUsd).toBe(25.00);
+      expect(stats.avgCostUsd).toBe(12.50);
+      expect(stats.jobCount).toBe(2);
+      expect(stats.topExpensiveJobs).toHaveLength(2);
+      expect(stats.topExpensiveJobs[0].repo).toBe("repo/a");
+      expect(stats.topExpensiveJobs[1].repo).toBe("repo/a");
+    });
+
+    it("should ignore jobs with zero or negative cost", () => {
+      const job1 = store.create(42, "test/repo");
+      store.update(job1.id, { totalCostUsd: 10.00 });
+
+      const job2 = store.create(43, "test/repo");
+      store.update(job2.id, { totalCostUsd: 0 });
+
+      const job3 = store.create(44, "test/repo");
+      store.update(job3.id, { totalCostUsd: -5.00 });
+
+      const stats = store.getCostStats();
+
+      expect(stats.totalCostUsd).toBe(10.00);
+      expect(stats.avgCostUsd).toBe(10.00);
+      expect(stats.jobCount).toBe(1);
+      expect(stats.topExpensiveJobs).toHaveLength(1);
+    });
+
+    it("should limit top expensive jobs to 10 items", () => {
+      // Create 15 jobs with different costs
+      for (let i = 1; i <= 15; i++) {
+        const job = store.create(40 + i, "test/repo");
+        store.update(job.id, { totalCostUsd: i * 2.5 });
+      }
+
+      const stats = store.getCostStats();
+
+      expect(stats.topExpensiveJobs).toHaveLength(10);
+      expect(stats.topExpensiveJobs[0].totalCostUsd).toBe(37.50); // 15 * 2.5
+      expect(stats.topExpensiveJobs[9].totalCostUsd).toBe(15.00); // 6 * 2.5
+    });
+
+    it("should include all required fields in topExpensiveJobs", () => {
+      const job = store.create(42, "test/repo");
+      store.update(job.id, { totalCostUsd: 10.50 });
+
+      const stats = store.getCostStats();
+
+      expect(stats.topExpensiveJobs).toHaveLength(1);
+      const topJob = stats.topExpensiveJobs[0];
+      expect(topJob.id).toBe(job.id);
+      expect(topJob.issueNumber).toBe(42);
+      expect(topJob.totalCostUsd).toBe(10.50);
+      expect(topJob.repo).toBe("test/repo");
+    });
+
+    it("should round costs to 2 decimal places", () => {
+      const job1 = store.create(42, "test/repo");
+      store.update(job1.id, { totalCostUsd: 10.123456 });
+
+      const job2 = store.create(43, "test/repo");
+      store.update(job2.id, { totalCostUsd: 5.876543 });
+
+      const stats = store.getCostStats();
+
+      expect(stats.totalCostUsd).toBe(16.00); // 10.123456 + 5.876543 = 16.0 (rounded)
+      expect(stats.avgCostUsd).toBe(8.00); // 16.0 / 2 = 8.0
+    });
+  });
 });

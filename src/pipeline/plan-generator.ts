@@ -135,6 +135,9 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
 
     // 캐시된 레이어 활용 또는 원본 템플릿 로드
     let finalPrompt: string;
+    let templateData = baseData;
+    let template: string;
+
     if (ctx.cachedLayers) {
       // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
       logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
@@ -165,11 +168,11 @@ ${baseData.repo.structure}
 `;
 
       finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
+      template = ""; // 캐시된 레이어 사용 시에는 템플릿이 필요 없음
     } else {
       // 기존 방식: 원본 템플릿 로드
       const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-      let templateData = baseData;
-      const template = loadTemplate(templatePath);
+      template = loadTemplate(templatePath);
       finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
     }
 
@@ -214,7 +217,39 @@ ${baseData.repo.structure}
     // Helper to update and re-render
     const updateAndRerender = (updateFn: (data: PlanTemplateData) => PlanTemplateData, stage: string) => {
       templateData = updateFn(templateData);
-      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+
+      if (ctx.cachedLayers) {
+        // 캐시된 레이어 사용 시 동적 섹션 재구성
+        const dynamicSection = `
+# 이슈 정보
+
+**번호**: #${templateData.issue.number}
+**제목**: ${templateData.issue.title}
+**라벨**: ${templateData.issue.labels.join(", ")}
+
+**본문**:
+${templateData.issue.body}
+
+# 저장소 정보
+
+**소유자**: ${templateData.repo.owner}
+**이름**: ${templateData.repo.name}
+**구조**:
+${templateData.repo.structure}
+
+**브랜치**: ${templateData.branch.base} → ${templateData.branch.work}
+
+# 설정
+
+**최대 Phase 수**: ${templateData.config.maxPhases}
+**민감한 경로**: ${templateData.config.sensitivePaths}
+`;
+        finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
+      } else {
+        // 기존 방식
+        finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+      }
+
       if (ctx.modeHint) {
         finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
       }

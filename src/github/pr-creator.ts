@@ -68,7 +68,8 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const problemDefinition = ctx.plan?.problemDefinition || "No problem definition available";
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
   }
 
   // Add issue link

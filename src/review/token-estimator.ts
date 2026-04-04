@@ -41,41 +41,13 @@ export function isCodeContent(text: string): boolean {
     return false;
   }
 
-  // Performance optimization: limit analysis for very large texts
-  // Take sample from beginning, middle, and end for large texts
+  // Performance optimization: sample large texts
   let sampleText = text;
   if (text.length > 50_000) {
     const start = text.substring(0, 5000);
     const middle = text.substring(Math.floor(text.length / 2) - 2500, Math.floor(text.length / 2) + 2500);
     const end = text.substring(text.length - 5000);
     sampleText = start + '\n' + middle + '\n' + end;
-  }
-
-  // Early detection of natural language patterns
-  const naturalLanguagePatterns = [
-    /^#+\s+.+/m, // Markdown headers
-    /^>\s+.+/m, // Blockquotes
-    /^[-*]\s+.+/m, // List items
-    /\w+\.\s+[A-Z]/m, // Sentences ending with period followed by capital letter
-    /^## \w+/m, // Section headers
-    /^### \w+/m, // Subsection headers
-    /\b(the|and|or|but|in|on|at|to|for|of|with|by)\s+\w+/gi, // Common English words
-  ];
-
-  let naturalLanguageScore = 0;
-  for (const pattern of naturalLanguagePatterns) {
-    const matches = sampleText.match(pattern);
-    if (matches) {
-      naturalLanguageScore += matches.length;
-    }
-  }
-
-  // If we have strong natural language indicators, be very conservative
-  if (naturalLanguageScore >= 3) {
-    // Only detect as code if we have very strong code indicators
-    return (/^```\w*\n[\s\S]*?```/m.test(sampleText) &&
-            /^\s*(function|class|interface|import|export)/m.test(sampleText)) ||
-           sampleText.includes('diff --git');
   }
 
   // Check for diff headers (strong indicator of code review context)
@@ -93,70 +65,52 @@ export function isCodeContent(text: string): boolean {
     return true;
   }
 
-  // Check for code-like patterns (class, interface, type declarations)
+  // Check for type/class declarations
   if (/^\s*(class|interface|type|enum)\s+\w+/m.test(sampleText)) {
     return true;
   }
 
-  // Check for JSON structure (strong indicator)
-  if (/^\s*\{[\s\S]*"[^"]+"\s*:\s*[^}]+\}$/m.test(sampleText) && sampleText.includes('"')) {
+  // Check for JSON structure
+  if (/[{[][\s\S]*"[^"]+"\s*:/.test(sampleText)) {
     return true;
   }
 
-  // Check for common programming language keywords (but not in prose)
+  // Check for programming keywords
   const keywordMatches = sampleText.match(/\b(if|else|for|while|switch|case|return|throw|try|catch|finally)\b/g) || [];
-  const totalWords = sampleText.split(/\s+/).length;
-
-  // If more than 5% of words are programming keywords, likely code
-  if (keywordMatches.length > 0 && totalWords > 0 && (keywordMatches.length / totalWords) > 0.05) {
+  if (keywordMatches.length > sampleText.split(/\s+/).length * 0.05) {
     return true;
   }
 
-  // Analyze character density for code patterns, but be more conservative
+  // Analyze line patterns for code vs natural language
   const lines = sampleText.split('\n');
-  let codePatternScore = 0;
-  let totalLines = 0;
-  let strongCodeLineCount = 0;
-  let naturalLanguageLineCount = 0;
+  let strongCodeLines = 0;
+  let naturalLanguageLines = 0;
 
-  // Limit analysis to first 200 lines for performance
-  const linesToAnalyze = lines.slice(0, 200);
-
-  for (const line of linesToAnalyze) {
+  for (const line of lines.slice(0, 200)) {
     const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+    if (!trimmed) continue;
 
-    totalLines++;
-
-    // Strong code indicators (more specific patterns)
-    if (/^\s*[\w\$]+\s*[:=].*[{;]$|^\s*[\w\$]+\([^)]*\)\s*[{=>]|^\s*\/\/.*$|^\s*\/\*.*\*\/$/.test(line)) {
-      strongCodeLineCount++;
-      codePatternScore += 2; // Higher weight for strong indicators
-    }
-
-    // Strong natural language indicators (sentences, markdown headers, lists)
+    // Check for natural language patterns (markdown, sentences)
     if (/^#+\s+|^-\s+|^\*\s+|^>\s+|\.\s*$|[.!?]\s+[A-Z]/.test(trimmed)) {
-      naturalLanguageLineCount++;
+      naturalLanguageLines++;
       continue;
     }
 
-    // Count structural code characters: brackets, semicolons (but not general punctuation)
-    const structuralChars = (trimmed.match(/[{}();]/g) || []).length;
-    const structuralRatio = structuralChars / trimmed.length;
-
-    // Only count lines with significant structural patterns
-    if (structuralRatio > 0.15 && trimmed.length > 5) {
-      codePatternScore++;
+    // Check for code patterns
+    if (/^\s*[\w\$]+\s*[:=].*[{;]$|^\s*[\w\$]+\([^)]*\)\s*[{=>]|^\s*\/\/|^\s*\/\*/.test(line)) {
+      strongCodeLines++;
     }
   }
 
-  // If we have significant natural language patterns, be more conservative
-  if (naturalLanguageLineCount > totalLines * 0.3) {
-    return strongCodeLineCount > totalLines * 0.4; // Need 40% strong code indicators
+  const totalLines = strongCodeLines + naturalLanguageLines;
+  if (totalLines === 0) return false;
+
+  // If >30% natural language, need >40% strong code indicators
+  if (naturalLanguageLines > totalLines * 0.3) {
+    return strongCodeLines > totalLines * 0.4;
   }
 
-  // Otherwise, use the existing logic with higher threshold
-  return strongCodeLineCount > 0 || (totalLines > 0 && (codePatternScore / totalLines) > 0.6);
+  return strongCodeLines > 0;
 }
 
 /**

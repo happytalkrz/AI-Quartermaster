@@ -1,6 +1,7 @@
 import { runCli } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import type { PlanRetryContext, ContextualizationInfo } from "../types/pipeline.js";
+import type { WebhookPayload, WebhookMessage } from "../types/notification.js";
 
 const logger = getLogger();
 
@@ -153,4 +154,64 @@ function formatImportSection(
     }
   }
   return section;
+}
+
+/**
+ * Discord/Slack webhook으로 job 실패 알림을 전송합니다.
+ * fetch API 사용, 실패 시 console.error로만 로깅하여 파이프라인을 블로킹하지 않습니다.
+ */
+export async function sendWebhookNotification(
+  webhookUrl: string,
+  payload: WebhookPayload
+): Promise<void> {
+  try {
+    const message = formatWebhookMessage(payload);
+    const webhookMessage: WebhookMessage = {
+      text: message,      // Slack 호환
+      content: message,   // Discord 호환
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(webhookMessage),
+    });
+
+    if (!response.ok) {
+      logger.error(`Webhook notification failed: ${response.status} ${response.statusText}`);
+      return;
+    }
+
+    logger.info(`Webhook notification sent for issue #${payload.issueNumber}`);
+  } catch (error) {
+    // 파이프라인을 블로킹하지 않도록 에러만 로깅
+    logger.error(`Failed to send webhook notification: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * WebhookPayload를 사용자 친화적인 메시지로 포맷합니다.
+ */
+function formatWebhookMessage(payload: WebhookPayload): string {
+  const { repo, issueNumber, error, errorCategory, prUrl } = payload;
+
+  let message = `🚨 **AI Quartermaster - Job 실패**\n\n`;
+  message += `**Repository**: ${repo}\n`;
+  message += `**Issue**: #${issueNumber}\n`;
+
+  if (errorCategory) {
+    message += `**Error Category**: ${errorCategory}\n`;
+  }
+
+  message += `**Error**: ${error.slice(0, 500)}${error.length > 500 ? '...' : ''}\n`;
+
+  if (prUrl) {
+    message += `**PR**: ${prUrl}\n`;
+  }
+
+  message += `\n수동 확인이 필요합니다.`;
+
+  return message;
 }

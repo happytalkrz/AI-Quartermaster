@@ -6,6 +6,45 @@ import { AQM_HOME } from "../config/project-resolver.js";
 
 const logger = getLogger();
 
+// SQLite row types (snake_case columns)
+interface JobRow {
+  id: string;
+  issue_number: number;
+  repo: string;
+  status: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  pr_url: string | null;
+  error: string | null;
+  last_updated_at: string | null;
+  current_step: string | null;
+  dependencies: string | null;
+  progress: number | null;
+  is_retry: number;
+  cost_usd: number | null;
+  total_cost_usd: number | null;
+}
+
+interface PhaseRow {
+  id: number;
+  job_id: string;
+  phase_index: number;
+  phase_name: string;
+  success: number;
+  commit_hash: string | null;
+  duration_ms: number | null;
+  error: string | null;
+  cost_usd: number | null;
+}
+
+interface LogRow {
+  id: number;
+  job_id: string;
+  message: string;
+  timestamp: string;
+}
+
 export interface DatabaseJob {
   id: string;
   issueNumber: number;
@@ -152,7 +191,7 @@ export class AQDatabase {
 
   getJob(id: string): DatabaseJob | undefined {
     const stmt = this.db.prepare("SELECT * FROM jobs WHERE id = ?");
-    const row = stmt.get(id) as any;
+    const row = stmt.get(id) as JobRow | undefined;
     return row ? this.mapRowToJob(row) : undefined;
   }
 
@@ -195,7 +234,7 @@ export class AQDatabase {
       ${limitClause} ${offsetClause}
     `);
 
-    const rows = stmt.all() as any[];
+    const rows = stmt.all() as JobRow[];
     return rows.map(row => this.mapRowToJob(row));
   }
 
@@ -208,7 +247,7 @@ export class AQDatabase {
       LIMIT 1
     `);
 
-    const row = stmt.get(issueNumber, repo) as any;
+    const row = stmt.get(issueNumber, repo) as JobRow | undefined;
     return row ? this.mapRowToJob(row) : undefined;
   }
 
@@ -248,7 +287,7 @@ export class AQDatabase {
 
   getPhasesByJob(jobId: string): DatabasePhase[] {
     const stmt = this.db.prepare("SELECT * FROM phases WHERE job_id = ? ORDER BY phase_index");
-    const rows = stmt.all(jobId) as any[];
+    const rows = stmt.all(jobId) as PhaseRow[];
 
     return rows.map(row => ({
       id: row.id,
@@ -256,10 +295,10 @@ export class AQDatabase {
       phaseIndex: row.phase_index,
       phaseName: row.phase_name,
       success: row.success === 1,
-      commitHash: row.commit_hash,
-      durationMs: row.duration_ms,
-      error: row.error,
-      costUsd: row.cost_usd
+      commitHash: row.commit_hash ?? undefined,
+      durationMs: row.duration_ms ?? 0,
+      error: row.error ?? undefined,
+      costUsd: row.cost_usd ?? undefined
     }));
   }
 
@@ -285,7 +324,7 @@ export class AQDatabase {
       ${limitClause}
     `);
 
-    const rows = stmt.all(jobId) as any[];
+    const rows = stmt.all(jobId) as LogRow[];
     return rows.map(row => ({
       id: row.id,
       jobId: row.job_id,
@@ -296,7 +335,7 @@ export class AQDatabase {
 
   // === Utility ===
 
-  private jobToParams(job: DatabaseJob): any[] {
+  private jobToParams(job: DatabaseJob): (string | number | null)[] {
     return [
       job.id,
       job.issueNumber,
@@ -317,24 +356,24 @@ export class AQDatabase {
     ];
   }
 
-  private mapRowToJob(row: any): DatabaseJob {
+  private mapRowToJob(row: JobRow): DatabaseJob {
     return {
       id: row.id,
       issueNumber: row.issue_number,
       repo: row.repo,
-      status: row.status,
+      status: row.status as DatabaseJob["status"],
       createdAt: row.created_at,
-      startedAt: row.started_at,
-      completedAt: row.completed_at,
-      prUrl: row.pr_url,
-      error: row.error,
-      lastUpdatedAt: row.last_updated_at,
-      currentStep: row.current_step,
+      startedAt: row.started_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
+      prUrl: row.pr_url ?? undefined,
+      error: row.error ?? undefined,
+      lastUpdatedAt: row.last_updated_at ?? undefined,
+      currentStep: row.current_step ?? undefined,
       dependencies: row.dependencies ? JSON.parse(row.dependencies) : undefined,
-      progress: row.progress,
+      progress: row.progress ?? undefined,
       isRetry: row.is_retry === 1,
-      costUsd: row.cost_usd,
-      totalCostUsd: row.total_cost_usd
+      costUsd: row.cost_usd ?? undefined,
+      totalCostUsd: row.total_cost_usd ?? undefined
     };
   }
 

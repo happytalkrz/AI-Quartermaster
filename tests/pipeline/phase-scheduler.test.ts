@@ -375,4 +375,56 @@ describe("phase-scheduler", () => {
       expect(result.groups[2].phases.map(p => p.index)).toEqual([2]); // Phase 2 serialized after 1 due to conflict
     });
   });
+
+  describe("feature flag integration", () => {
+    it("should respect enableParallelPhases parameter", () => {
+      const phases = [
+        createPhase(0, "Update shared", undefined, ["src/shared.ts"]),
+        createPhase(1, "Update other", undefined, ["src/shared.ts"]),
+      ];
+
+      // When parallel phases enabled, should serialize conflicting phases
+      const resultEnabled = schedulePhases(phases, true);
+      expect(resultEnabled.success).toBe(true);
+      expect(resultEnabled.groups).toHaveLength(2);
+      expect(resultEnabled.groups[0].phases.map(p => p.index)).toEqual([0]);
+      expect(resultEnabled.groups[1].phases.map(p => p.index)).toEqual([1]);
+
+      // When parallel phases disabled, should allow parallel execution despite conflicts
+      const resultDisabled = schedulePhases(phases, false);
+      expect(resultDisabled.success).toBe(true);
+      expect(resultDisabled.groups).toHaveLength(1);
+      expect(resultDisabled.groups[0].phases.map(p => p.index).sort()).toEqual([0, 1]);
+    });
+
+    it("should default to enableParallelPhases=true when parameter omitted", () => {
+      const phases = [
+        createPhase(0, "Test A", undefined, ["src/test.ts"]),
+        createPhase(1, "Test B", undefined, ["src/test.ts"]),
+      ];
+
+      // Default behavior (enableParallelPhases omitted) should be true
+      const result = schedulePhases(phases);
+      expect(result.success).toBe(true);
+      expect(result.groups).toHaveLength(2); // Should serialize conflicting phases
+    });
+
+    it("should not affect scheduling when no file conflicts exist", () => {
+      const phases = [
+        createPhase(0, "Test A", undefined, ["src/a.ts"]),
+        createPhase(1, "Test B", undefined, ["src/b.ts"]),
+      ];
+
+      const resultEnabled = schedulePhases(phases, true);
+      const resultDisabled = schedulePhases(phases, false);
+
+      // Both should have same result when no conflicts
+      expect(resultEnabled.success).toBe(true);
+      expect(resultDisabled.success).toBe(true);
+      expect(resultEnabled.groups).toHaveLength(1);
+      expect(resultDisabled.groups).toHaveLength(1);
+      expect(resultEnabled.groups[0].phases.map(p => p.index).sort()).toEqual([0, 1]);
+      expect(resultDisabled.groups[0].phases.map(p => p.index).sort()).toEqual([0, 1]);
+    });
+  });
 });

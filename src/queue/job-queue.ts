@@ -28,12 +28,27 @@ export class JobQueue {
   private stuckAborted: Set<string> = new Set();
   private isProcessing: boolean = false;
   private needsReprocess: boolean = false;
+  private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
+  private runningByRepo: Map<string, Set<string>> = new Map(); // repo -> Set of running job IDs
 
-  constructor(store: JobStore, concurrency: number, handler: JobHandler, stuckTimeoutMs: number = 600000) {
+  constructor(
+    store: JobStore,
+    concurrency: number,
+    handler: JobHandler,
+    stuckTimeoutMs: number = 600000,
+    projectConcurrency?: Record<string, number>
+  ) {
     this.store = store;
     this.concurrency = concurrency;
     this.handler = handler;
     this.stuckTimeoutMs = stuckTimeoutMs;
+
+    // Initialize project-specific concurrency settings
+    if (projectConcurrency) {
+      for (const [repo, limit] of Object.entries(projectConcurrency)) {
+        this.projectConcurrency.set(repo, limit);
+      }
+    }
 
     // Periodically check for stuck jobs
     this.stuckChecker = setInterval(() => this.checkStuckJobs(), STUCK_CHECK_INTERVAL_MS);
@@ -318,6 +333,51 @@ export class JobQueue {
     };
   }
 
+  /**
+   * Returns the number of running jobs for a specific repo.
+   */
+  private getRunningCountForRepo(repo: string): number {
+    const runningJobs = this.runningByRepo.get(repo);
+    return runningJobs ? runningJobs.size : 0;
+  }
+
+  /**
+   * Checks if a new job can be started for the given repo based on project-specific concurrency limits.
+   */
+  private canStartJobForRepo(repo: string): boolean {
+    const projectLimit = this.projectConcurrency.get(repo);
+    if (!projectLimit) {
+      // No project-specific limit, only global limit applies
+      return true;
+    }
+
+    const currentRunning = this.getRunningCountForRepo(repo);
+    return currentRunning < projectLimit;
+  }
+
+  /**
+   * Adds a job to the repo's running set.
+   */
+  private addJobToRepo(jobId: string, repo: string): void {
+    if (!this.runningByRepo.has(repo)) {
+      this.runningByRepo.set(repo, new Set());
+    }
+    this.runningByRepo.get(repo)!.add(jobId);
+  }
+
+  /**
+   * Removes a job from the repo's running set.
+   */
+  private removeJobFromRepo(jobId: string, repo: string): void {
+    const runningJobs = this.runningByRepo.get(repo);
+    if (runningJobs) {
+      runningJobs.delete(jobId);
+      if (runningJobs.size === 0) {
+        this.runningByRepo.delete(repo);
+      }
+    }
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -372,7 +432,15 @@ export class JobQueue {
           }
         }
 
+        // Check project-specific concurrency limits
+        if (!this.canStartJobForRepo(job.repo)) {
+          logger.info(`Job ${jobId} deferred due to project concurrency limit for repo ${job.repo}`);
+          deferred.push(jobId);
+          continue;
+        }
+
         this.running.add(jobId);
+        this.addJobToRepo(jobId, job.repo);
         this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
 
         logger.info(`Job started: ${jobId}`);
@@ -444,6 +512,7 @@ export class JobQueue {
       });
     } finally {
       this.running.delete(job.id);
+      this.removeJobFromRepo(job.id, job.repo);
       // Process next in queue (defer via setImmediate to avoid deep call stacks)
       setImmediate(() => this.processNext());
     }

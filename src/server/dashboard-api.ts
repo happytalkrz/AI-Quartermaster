@@ -1,5 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -8,6 +10,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
+import { SelfUpdater } from "../update/self-updater.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -124,6 +127,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/config", bearerAuth);
     api.use("/api/projects", bearerAuth);
     api.use("/api/projects/*", bearerAuth);
+    api.use("/api/version", bearerAuth);
+    api.use("/api/update", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -552,6 +557,104 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         "Connection": "keep-alive",
       },
     });
+  });
+
+  // Get version information (current version + update check)
+  api.get("/api/version", async (c) => {
+    try {
+      // Read current version from package.json
+      const packageJsonPath = resolve(process.cwd(), "package.json");
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+      const currentVersion = packageJson.version;
+
+      // Initialize SelfUpdater to check for updates
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+
+      try {
+        const updateInfo = await selfUpdater.checkForUpdates();
+        return c.json({
+          currentVersion,
+          currentHash: updateInfo.currentHash.substring(0, 8),
+          remoteHash: updateInfo.remoteHash.substring(0, 8),
+          hasUpdates: updateInfo.hasUpdates,
+          packageLockChanged: updateInfo.packageLockChanged,
+        });
+      } catch (updateError) {
+        // Return version info even if update check fails
+        const logger = getLogger();
+        const errMsg = updateError instanceof Error ? updateError.message : "Unknown error";
+        logger.warn(`업데이트 확인 실패: ${errMsg}`);
+
+        return c.json({
+          currentVersion,
+          currentHash: "unknown",
+          remoteHash: "unknown",
+          hasUpdates: false,
+          packageLockChanged: false,
+          error: "업데이트 확인에 실패했습니다",
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: `버전 정보 조회 실패: ${message}` }, 500);
+    }
+  });
+
+  // Perform self-update
+  api.post("/api/update", async (c) => {
+    try {
+      // Check for running jobs first
+      const runningJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
+      if (runningJobs.length > 0) {
+        return c.json({
+          error: "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
+          runningJobs: runningJobs.map(job => ({ id: job.id, type: job.type, status: job.status })),
+        }, 409);
+      }
+
+      // Initialize SelfUpdater and perform update
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+
+      const logger = getLogger();
+      logger.info("사용자 요청으로 업데이트 시작");
+
+      const result = await selfUpdater.performSelfUpdate();
+
+      if (result.updated) {
+        // Broadcast update completion to SSE clients
+        broadcastToAllClients('updateCompleted', {
+          updated: result.updated,
+          needsRestart: result.needsRestart,
+          timestamp: new Date().toISOString()
+        });
+
+        return c.json({
+          message: "업데이트가 완료되었습니다",
+          updated: result.updated,
+          needsRestart: result.needsRestart,
+        });
+      } else {
+        return c.json({
+          message: "이미 최신 버전입니다",
+          updated: false,
+          needsRestart: false,
+        });
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      const logger = getLogger();
+      logger.error(`업데이트 실패: ${message}`);
+
+      // Broadcast update failure to SSE clients
+      broadcastToAllClients('updateFailed', {
+        error: message,
+        timestamp: new Date().toISOString()
+      });
+
+      return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
   });
 
   return api;

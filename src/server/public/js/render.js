@@ -9,7 +9,7 @@ function renderJobListItem(job, isSelected) {
   var dur = fmtDuration(job);
   var relative = relativeTime(job.createdAt);
 
-  var isTablet = window.innerWidth <= 1080;
+  var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
   var expandedClass = (isTablet && isSelected) ? ' job-row-expanded' : '';
   var activeBg = isSelected ? 'bg-surface-container-high border-l-4 border-primary' : 'bg-surface-container-low hover:bg-surface-container';
   var activeRing = isSelected ? 'ring-1 ring-outline-variant/20' : 'ring-1 ring-outline-variant/10';
@@ -430,7 +430,7 @@ function renderFromState() {
     selectedJobId = (firstActive || filtered[0]).id;
   }
 
-  var isTablet = window.innerWidth <= 1080;
+  var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
 
   // Render job list (with inline accordion on tablet)
   listEl.innerHTML = filtered.map(function(j) {
@@ -468,7 +468,7 @@ function renderFromState() {
    Select Job
    ══════════════════════════════════════════════════════════════ */
 function selectJob(id) {
-  var isTablet = window.innerWidth <= 1080;
+  var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
   // Tablet accordion toggle: clicking same row closes it
   if (isTablet && selectedJobId === id) {
     selectedJobId = null;

@@ -58,11 +58,40 @@ const mockExtractJson = vi.mocked(extractJson);
 
 const claudeConfig = { path: "claude", model: "test", maxTurns: 1, timeout: 1000, additionalArgs: [] };
 
+const defaultUnifiedReviewResponse = {
+  functionalCompliance: { verdict: "PASS", findings: [], summary: "Functional requirements met" },
+  architectureDesign: { verdict: "PASS", findings: [], summary: "Architecture is clean" },
+  simplification: { verdict: "PASS", findings: [], summary: "Code is well-structured" },
+  overall: { verdict: "PASS", criticalIssues: [], summary: "Overall implementation looks good" }
+};
+
 function passResult(name: string): ReviewResult {
   return { roundName: name, verdict: "PASS", findings: [], summary: "OK", durationMs: 100 };
 }
+
 function failResult(name: string): ReviewResult {
   return { roundName: name, verdict: "FAIL", findings: [{ severity: "error", message: "fail" }], summary: "Bad", durationMs: 100 };
+}
+
+function unifiedReviewContext(overrides = {}) {
+  return {
+    reviewConfig: {
+      enabled: true,
+      rounds: [],
+      simplify: { enabled: false, promptTemplate: "" },
+      unifiedMode: true,
+      ...overrides.reviewConfig,
+    },
+    claudeConfig,
+    promptsDir: "/prompts",
+    cwd: "/tmp",
+    variables: {
+      issue: { number: "123", title: "Test Issue", body: "Test body" },
+      plan: { summary: "Test plan" },
+      diff: { full: "test diff" },
+      ...overrides.variables,
+    },
+  };
 }
 
 describe("runReviews", () => {
@@ -83,12 +112,7 @@ describe("runReviews", () => {
     mockConfigForTask.mockReturnValue(claudeConfig);
     mockRunClaude.mockResolvedValue({
       success: true,
-      output: JSON.stringify({
-        functionalCompliance: { verdict: "PASS", findings: [], summary: "Functional requirements met" },
-        architectureDesign: { verdict: "PASS", findings: [], summary: "Architecture is clean" },
-        simplification: { verdict: "PASS", findings: [], summary: "Code is well-structured" },
-        overall: { verdict: "PASS", criticalIssues: [], summary: "Overall implementation looks good" }
-      })
+      output: JSON.stringify(defaultUnifiedReviewResponse)
     });
     mockExtractJson.mockImplementation((output) => JSON.parse(output));
   });
@@ -453,22 +477,7 @@ describe("runReviews", () => {
 
   describe("unified review mode", () => {
     it("should run unified review when unifiedMode is enabled", async () => {
-      const result = await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [], // rounds are ignored in unified mode
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: true,
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      const result = await runReviews(unifiedReviewContext());
 
       expect(result.allPassed).toBe(true);
       expect(result.rounds).toHaveLength(3); // 3 perspectives converted to 3 rounds
@@ -492,33 +501,17 @@ describe("runReviews", () => {
     });
 
     it("should handle unified review failure correctly", async () => {
-      // Mock a failing unified review response
+      const failingResponse = {
+        ...defaultUnifiedReviewResponse,
+        functionalCompliance: { verdict: "FAIL", findings: [{ severity: "error", message: "Missing feature" }], summary: "Requirements not met" },
+        overall: { verdict: "FAIL", criticalIssues: ["Missing critical feature"], summary: "Overall implementation has issues" }
+      };
       mockRunClaude.mockResolvedValueOnce({
         success: true,
-        output: JSON.stringify({
-          functionalCompliance: { verdict: "FAIL", findings: [{ severity: "error", message: "Missing feature" }], summary: "Requirements not met" },
-          architectureDesign: { verdict: "PASS", findings: [], summary: "Architecture is clean" },
-          simplification: { verdict: "PASS", findings: [], summary: "Code is well-structured" },
-          overall: { verdict: "FAIL", criticalIssues: ["Missing critical feature"], summary: "Overall implementation has issues" }
-        })
+        output: JSON.stringify(failingResponse)
       });
 
-      const result = await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [],
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: true,
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      const result = await runReviews(unifiedReviewContext());
 
       expect(result.allPassed).toBe(false);
       expect(result.rounds).toHaveLength(3);
@@ -533,22 +526,7 @@ describe("runReviews", () => {
         output: "Claude error occurred"
       });
 
-      const result = await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [],
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: true,
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      const result = await runReviews(unifiedReviewContext());
 
       expect(result.allPassed).toBe(false);
       expect(result.rounds).toHaveLength(0); // No perspectives when Claude fails
@@ -563,44 +541,14 @@ describe("runReviews", () => {
         throw new Error("JSON parsing failed");
       });
 
-      const result = await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [],
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: true,
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      const result = await runReviews(unifiedReviewContext());
 
       expect(result.allPassed).toBe(true); // Fallback detected "pass" in output
       expect(result.rounds).toHaveLength(0); // No perspectives when JSON parsing fails
     });
 
     it("should use reviewer variables correctly in unified review", async () => {
-      await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [],
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: true,
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      await runReviews(unifiedReviewContext());
 
       // Verify that renderTemplate was called with correct reviewer variables
       expect(mockRenderTemplate).toHaveBeenCalledWith("template content", {
@@ -615,24 +563,16 @@ describe("runReviews", () => {
     it("should fall back to traditional rounds when unifiedMode is disabled", async () => {
       mockRunReview.mockResolvedValue(passResult("Traditional Round"));
 
-      const result = await runReviews({
-        reviewConfig: {
-          enabled: true,
-          rounds: [
-            { name: "Traditional Round", promptTemplate: "traditional.md", failAction: "block", maxRetries: 0, model: null },
-          ],
-          simplify: { enabled: false, promptTemplate: "" },
-          unifiedMode: false, // Explicitly disabled
-        },
-        claudeConfig,
-        promptsDir: "/prompts",
-        cwd: "/tmp",
-        variables: {
-          issue: { number: "123", title: "Test Issue", body: "Test body" },
-          plan: { summary: "Test plan" },
-          diff: { full: "test diff" }
-        },
-      });
+      const result = await runReviews(
+        unifiedReviewContext({
+          reviewConfig: {
+            rounds: [
+              { name: "Traditional Round", promptTemplate: "traditional.md", failAction: "block", maxRetries: 0, model: null },
+            ],
+            unifiedMode: false,
+          },
+        })
+      );
 
       expect(result.allPassed).toBe(true);
       expect(result.rounds).toHaveLength(1);

@@ -10,6 +10,16 @@ import { resolve } from "path";
 import type { ReviewConfig, ReviewRound, ClaudeCliConfig } from "../types/config.js";
 import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective } from "../types/review.js";
 
+// 통합 리뷰 API 응답 타입
+type UnifiedReviewResponse = {
+  functionalCompliance: { verdict: "PASS" | "FAIL"; findings: ReviewFinding[]; summary: string };
+  architectureDesign: { verdict: "PASS" | "FAIL"; findings: ReviewFinding[]; summary: string };
+  simplification: { verdict: "PASS" | "FAIL"; findings: ReviewFinding[]; summary: string };
+  overall: { verdict: "PASS" | "FAIL"; criticalIssues: string[]; summary: string };
+};
+
+type ReviewFinding = { severity: string; message: string; [key: string]: unknown };
+
 const logger = getLogger();
 
 export interface ReviewOrchestratorContext {
@@ -134,6 +144,32 @@ async function runSplitReview(
 }
 
 /**
+ * 통합 리뷰 응답을 관점 객체로 변환합니다.
+ */
+function parsePerspectives(parsed: UnifiedReviewResponse): UnifiedReviewPerspective[] {
+  return [
+    {
+      perspective: "functionality",
+      verdict: parsed.functionalCompliance.verdict,
+      findings: parsed.functionalCompliance.findings || [],
+      summary: parsed.functionalCompliance.summary || "",
+    },
+    {
+      perspective: "architecture",
+      verdict: parsed.architectureDesign.verdict,
+      findings: parsed.architectureDesign.findings || [],
+      summary: parsed.architectureDesign.summary || "",
+    },
+    {
+      perspective: "simplification",
+      verdict: parsed.simplification.verdict,
+      findings: parsed.simplification.findings || [],
+      summary: parsed.simplification.summary || "",
+    },
+  ];
+}
+
+/**
  * 통합 리뷰를 실행합니다.
  * 1회 호출로 기능 정합성, 구조/설계, 단순화 관점을 모두 평가합니다.
  */
@@ -177,56 +213,16 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
   }
 
   try {
-    // JSON 응답 파싱
-    const parsed = extractJson<{
-      functionalCompliance: {
-        verdict: "PASS" | "FAIL";
-        findings: any[];
-        summary: string;
-      };
-      architectureDesign: {
-        verdict: "PASS" | "FAIL";
-        findings: any[];
-        summary: string;
-      };
-      simplification: {
-        verdict: "PASS" | "FAIL";
-        findings: any[];
-        summary: string;
-      };
-      overall: {
-        verdict: "PASS" | "FAIL";
-        criticalIssues: string[];
-        summary: string;
-      };
-    }>(result.output);
-
-    // 관점별 결과 변환
-    const perspectives: UnifiedReviewPerspective[] = [
-      {
-        perspective: "functionality",
-        verdict: parsed.functionalCompliance.verdict,
-        findings: parsed.functionalCompliance.findings || [],
-        summary: parsed.functionalCompliance.summary || "",
-      },
-      {
-        perspective: "architecture",
-        verdict: parsed.architectureDesign.verdict,
-        findings: parsed.architectureDesign.findings || [],
-        summary: parsed.architectureDesign.summary || "",
-      },
-      {
-        perspective: "simplification",
-        verdict: parsed.simplification.verdict,
-        findings: parsed.simplification.findings || [],
-        summary: parsed.simplification.summary || "",
-      },
-    ];
-
+    const parsed = extractJson<UnifiedReviewResponse>(result.output);
+    const perspectives = parsePerspectives(parsed);
     const durationMs = Date.now() - startTime;
 
     logger.info(`Unified review completed in ${durationMs}ms: ${parsed.overall.verdict}`);
-    logger.info(`Perspectives: functionality=${parsed.functionalCompliance.verdict}, architecture=${parsed.architectureDesign.verdict}, simplification=${parsed.simplification.verdict}`);
+    logger.info(
+      `Perspectives: functionality=${parsed.functionalCompliance.verdict}, ` +
+      `architecture=${parsed.architectureDesign.verdict}, ` +
+      `simplification=${parsed.simplification.verdict}`
+    );
 
     return {
       overallVerdict: parsed.overall.verdict,
@@ -237,7 +233,6 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
     };
   } catch (err: unknown) {
     logger.error(`Failed to parse unified review JSON response: ${err}`);
-    // 파싱 실패 시 폴백
     const output = result.output.toLowerCase();
     const verdict = output.includes('"pass"') || output.includes("verdict: pass") ? "PASS" : "FAIL";
 

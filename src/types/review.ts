@@ -45,6 +45,8 @@ export interface AnalystResult {
     excess: string[];
   };
   durationMs: number;
+  costUsd?: number;
+  usage?: import("./pipeline.js").UsageInfo;
 }
 
 export interface ReviewFixAttempt {

@@ -46,6 +46,12 @@ export interface Phase {
   dependsOn?: number[];
 }
 
+export interface PlanWithCost {
+  plan: Plan;
+  costUsd?: number;
+  usage?: UsageInfo;
+}
+
 export type ErrorCategory =
   | "TS_ERROR"
   | "TIMEOUT"

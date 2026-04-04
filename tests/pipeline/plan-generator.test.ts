@@ -99,9 +99,9 @@ describe("generatePlan", () => {
       cwd: testDir,
     });
 
-    expect(result.issueNumber).toBe(42);
-    expect(result.phases).toHaveLength(1);
-    expect(result.problemDefinition).toBe("Need to add login");
+    expect(result.plan.issueNumber).toBe(42);
+    expect(result.plan.phases).toHaveLength(1);
+    expect(result.plan.problemDefinition).toBe("Need to add login");
   });
 
   it("should throw on Claude failure", async () => {
@@ -181,7 +181,7 @@ describe("generatePlan", () => {
       cwd: testDir,
     });
 
-    expect(result.title).toBe("Template Test");
+    expect(result.plan.title).toBe("Template Test");
     expect(result.issueNumber).toBe(111);
   });
 
@@ -333,7 +333,7 @@ describe("generatePlan", () => {
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
     expect(result.mode).toBe("content");
-    expect(result.title).toBe("Update docs");
+    expect(result.plan.title).toBe("Update docs");
   });
 
   it("should fail after max retries on repeated JSON parsing failures", async () => {

@@ -76,3 +76,23 @@ export interface ReviewPipelineResult {
   fixAttempts?: ReviewFixAttempt[];
   allPassed: boolean;
 }
+
+/**
+ * 분할 리뷰 정보를 나타내는 인터페이스
+ */
+export interface SplitReviewInfo {
+  /** 총 분할 수 */
+  totalSplits: number;
+  /** 현재 분할 인덱스 (0부터 시작) */
+  currentSplit: number;
+  /** 분할 기준 (예: "file", "size") */
+  splitBy: string;
+}
+
+/**
+ * 분할 리뷰 결과에 분할 정보를 포함하는 확장된 인터페이스
+ */
+export interface SplitReviewResult extends ReviewResult {
+  /** 분할 리뷰 정보 */
+  splitInfo?: SplitReviewInfo;
+}

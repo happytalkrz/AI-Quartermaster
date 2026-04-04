@@ -9,8 +9,10 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 }));
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: vi.fn(() => ({
+    debug: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
+    error: vi.fn(),
   })),
 }));
 import {

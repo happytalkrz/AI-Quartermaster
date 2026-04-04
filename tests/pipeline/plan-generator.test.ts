@@ -11,9 +11,15 @@ vi.mock("../../src/notification/notifier.js", () => ({
   notifyPlanRetryContext: vi.fn(),
 }));
 
+// Mock model-router before importing
+vi.mock("../../src/claude/model-router.js", () => ({
+  configForTaskWithMode: vi.fn(),
+}));
+
 import { generatePlan, collectContextualizationInfo } from "../../src/pipeline/plan-generator.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
 import { notifyPlanRetryContext } from "../../src/notification/notifier.js";
+import { configForTaskWithMode } from "../../src/claude/model-router.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -24,6 +30,7 @@ describe("generatePlan", () => {
   const mockRunClaude = vi.mocked(runClaude);
   const mockExtractJson = vi.mocked(extractJson);
   const mockNotifyPlanRetryContext = vi.mocked(notifyPlanRetryContext);
+  const mockConfigForTaskWithMode = vi.mocked(configForTaskWithMode);
 
   beforeEach(() => {
     testDir = join(tmpdir(), `aq-plan-test-${Date.now()}`);
@@ -38,6 +45,9 @@ describe("generatePlan", () => {
 
     // Reset all mocks and set defaults
     vi.clearAllMocks();
+
+    // Mock configForTaskWithMode to return the input config (preserves model)
+    mockConfigForTaskWithMode.mockImplementation((config) => config);
 
     // Ensure extractJson is properly mocked by default
     mockExtractJson.mockImplementation((text: string) => {
@@ -90,7 +100,7 @@ describe("generatePlan", () => {
       repoStructure: "src/\n  index.ts",
       claudeConfig: {
         path: "claude",
-        model: "claude-sonnet-4-20250514",
+        model: "claude-opus-4-5",
         maxTurns: 50,
         timeout: 600000,
         additionalArgs: [],
@@ -1096,7 +1106,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         repoStructure: "src/\n  small.ts",
         claudeConfig: {
           path: "claude",
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-5",
           maxTurns: 10,
           timeout: 30000,
           additionalArgs: [],
@@ -1111,7 +1121,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       // Verify that Claude was called with appropriate prompt
       const claudeCall = mockRunClaude.mock.calls[0];
       expect(claudeCall[0].prompt).toBeDefined();
-      expect(claudeCall[0].config.model).toBe("claude-sonnet-4-20250514");
+      expect(claudeCall[0].config.model).toBe("claude-opus-4-5");
     });
 
     it("should truncate repo structure when prompt exceeds token limit", async () => {
@@ -1161,7 +1171,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         repoStructure: largeRepoStructure,
         claudeConfig: {
           path: "claude",
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-5",
           maxTurns: 10,
           timeout: 60000,
           additionalArgs: [],
@@ -1238,7 +1248,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         repoStructure: hugeRepoStructure,
         claudeConfig: {
           path: "claude",
-          model: "claude-sonnet-4-20250514",
+          model: "claude-opus-4-5",
           maxTurns: 10,
           timeout: 120000,
           additionalArgs: [],
@@ -1292,7 +1302,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       // Test with different models
       const models = [
         "claude-opus-4-5",
-        "claude-sonnet-4-6",
+        "claude-opus-4-5",
         "claude-haiku-4-5-20251001",
       ];
 

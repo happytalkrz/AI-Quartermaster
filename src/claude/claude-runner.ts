@@ -1,5 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ClaudeCliConfig } from "../types/config.js";
+import { withRetry } from "../utils/rate-limiter.js";
+import { classifyError } from "../pipeline/error-classifier.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
 
@@ -39,7 +41,7 @@ export interface ClaudeRunOptions {
   enableAgents?: boolean;  // enable Agent tools for specialized task delegation
 }
 
-export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
+async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
   const { prompt, cwd, config, systemPrompt, maxTurns, enableAgents } = options;
 
   // When jsonSchema is set, use direct -p arg with --max-turns 1 (no file editing needed)
@@ -73,7 +75,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
   const startTime = Date.now();
 
-  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number }>((resolve) => {
+  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number }>((resolve, reject) => {
     const child = spawn(config.path, args, {
       cwd,
       env: process.env,
@@ -87,6 +89,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     let stderr = "";
     let streamBuffer = "";
     let finalResult: { output: string; costUsd?: number; isError: boolean } | undefined;
+    let detectedRetryableError: string | undefined;
 
     child.stdout?.on("data", (data: Buffer) => {
       streamBuffer += data.toString();
@@ -154,6 +157,12 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
         const entry = activeProcesses.get(child.pid);
         if (entry) entry.lastActivity = Date.now();
       }
+
+      // Rate limit 및 prompt too long 에러 감지
+      const errorCategory = classifyError(chunk);
+      if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
+        detectedRetryableError = chunk;
+      }
     });
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -169,6 +178,14 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     child.on("close", (code) => {
       cleanup();
+
+      // 재시도 가능한 에러가 감지되었다면 reject
+      if (detectedRetryableError) {
+        const error = new Error(detectedRetryableError.trim());
+        (error as any).retryable = true;
+        return reject(error);
+      }
+
       if (finalResult) {
         resolve({
           stdout: finalResult.output,
@@ -183,6 +200,15 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     child.on("error", (err) => {
       cleanup();
+
+      // 에러 타입 분류하여 재시도 가능 여부 판단
+      const errorCategory = classifyError(err.message);
+      if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
+        const error = new Error(err.message);
+        (error as any).retryable = true;
+        return reject(error);
+      }
+
       resolve({ stdout: streamBuffer, stderr: err.message, exitCode: 1 });
     });
 
@@ -220,6 +246,21 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     costUsd: result.costUsd,
     durationMs,
   };
+}
+
+export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
+  const retryConfig = options.config.retry;
+
+  if (!retryConfig) {
+    // retry 설정이 없으면 기존 로직 사용
+    return _runClaudeInternal(options);
+  }
+
+  return withRetry(
+    () => _runClaudeInternal(options),
+    retryConfig,
+    "Claude CLI"
+  );
 }
 
 export function extractJson<T = unknown>(text: string): T {

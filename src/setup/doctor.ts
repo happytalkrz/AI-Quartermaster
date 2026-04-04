@@ -263,9 +263,10 @@ async function checkDiskSpace(path: string): Promise<void> {
       return;
     }
 
-    const availableKB = parseInt(lines[1].trim(), 10);
+    const availableStr = lines[1].trim();
+    const availableKB = parseInt(availableStr, 10);
     if (isNaN(availableKB)) {
-      warn("디스크 용량", `df 출력 파싱 실패: "${lines[1].trim()}"은 유효한 숫자가 아닙니다`);
+      warn("디스크 용량", `df 출력 파싱 실패: "${availableStr}"은 유효한 숫자가 아닙니다`);
       return;
     }
 

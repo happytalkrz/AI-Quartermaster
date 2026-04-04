@@ -303,6 +303,8 @@ const projectConfigSchema = z.object({
     maxPhases: z.number().int().positive(),
     maxFileChanges: z.number().int().positive(),
   }).partial().optional(),
+  pauseThreshold: z.number().int().min(1).max(100).optional(),
+  pauseDurationMs: z.number().int().min(60000).optional(), // 최소 1분
 }).strict();
 
 const hooksConfigSchema = z.record(

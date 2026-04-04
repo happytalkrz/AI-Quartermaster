@@ -248,3 +248,115 @@ export interface PlanRetryContext {
   /** 재시도 가능 여부 */
   canRetry: boolean;
 }
+
+// 프롬프트 레이어 분리를 위한 타입 정의
+
+/**
+ * 기본 레이어 - 역할과 규칙 등 정적 내용
+ */
+export interface BaseLayer {
+  /** AI 역할 정의 (예: "시니어 개발자", "소프트웨어 아키텍트") */
+  role: string;
+  /** 기본 규칙과 지침 */
+  rules: string[];
+  /** 출력 포맷 지침 */
+  outputFormat: string;
+  /** 진행 보고 규칙 */
+  progressReporting: string;
+  /** 병렬 작업 가이드 */
+  parallelWorkGuide: string;
+}
+
+/**
+ * 프로젝트 레이어 - 프로젝트 수준 설정 (정적)
+ */
+export interface ProjectLayer {
+  /** 프로젝트 컨벤션 (CLAUDE.md 내용) */
+  conventions: string;
+  /** 프로젝트 구조 정보 */
+  structure: string;
+  /** 스킬 컨텍스트 */
+  skillsContext?: string;
+  /** 과거 실패 사례 */
+  pastFailures?: string;
+  /** 테스트 명령어 */
+  testCommand: string;
+  /** 린트 명령어 */
+  lintCommand: string;
+  /** 프로젝트 특정 안전 규칙 */
+  safetyRules: string[];
+}
+
+/**
+ * Phase 레이어 - 현재 실행 컨텍스트 (동적)
+ */
+export interface PhaseLayer {
+  /** 이슈 정보 */
+  issue: {
+    number: number;
+    title: string;
+    body: string;
+    labels: string[];
+  };
+  /** 전체 계획 요약 */
+  planSummary: string;
+  /** 현재 Phase 정보 */
+  currentPhase: {
+    index: number;
+    totalCount: number;
+    name: string;
+    description: string;
+    targetFiles: string[];
+  };
+  /** 이전 Phase 결과 요약 */
+  previousResults: string;
+  /** 저장소 정보 */
+  repository: {
+    owner: string;
+    name: string;
+    baseBranch: string;
+    workBranch: string;
+  };
+  /** 로케일 설정 */
+  locale?: string;
+}
+
+/**
+ * 조합된 프롬프트 레이어
+ */
+export interface PromptLayer {
+  /** 기본 레이어 (정적) */
+  base: BaseLayer;
+  /** 프로젝트 레이어 (정적) */
+  project: ProjectLayer;
+  /** Phase 레이어 (동적) */
+  phase: PhaseLayer;
+}
+
+/**
+ * 캐시된 프롬프트 레이어 (Base + Project는 1회만 조립)
+ */
+export interface CachedPromptLayer {
+  /** 정적 레이어 조합 결과 (Base + Project) */
+  staticContent: string;
+  /** 정적 레이어 캐시 키 (프로젝트 루트 + 컨벤션 해시) */
+  cacheKey: string;
+  /** 캐시 생성 시각 */
+  createdAt: string;
+  /** Phase 레이어 템플릿 (동적 부분만) */
+  phaseTemplate: string;
+}
+
+/**
+ * 프롬프트 조립 결과
+ */
+export interface AssembledPrompt {
+  /** 최종 조립된 프롬프트 */
+  content: string;
+  /** 사용된 캐시 키 */
+  cacheKey?: string;
+  /** 캐시 히트 여부 */
+  cacheHit: boolean;
+  /** 조립에 소요된 시간 (ms) */
+  assemblyTimeMs: number;
+}

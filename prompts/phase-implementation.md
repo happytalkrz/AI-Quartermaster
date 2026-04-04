@@ -68,7 +68,7 @@
 
 1. **이 Phase의 대상 파일만 수정하세요.** 범위를 벗어난 파일은 수정하지 마세요.
 2. 구현이 완료되면 반드시 **git add + git commit**을 수행하세요.
-3. 커밋 메시지 형식: `[#{{issue.number}}] Phase {{phase.index}}: {{phase.name}}`
+3. 커밋 메시지 형식: `[#{{issue.number}}] Phase {{phase.index}}: {{phase.name}}` — `Co-Authored-By` 줄 절대 금지.
 4. 구현 후 아래 검증 명령을 실행하세요:
    - 테스트: `{{config.testCommand}}`
    - 린트: `{{config.lintCommand}}`

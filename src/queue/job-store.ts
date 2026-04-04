@@ -1,8 +1,9 @@
-import { writeFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, watch, FSWatcher } from "fs";
 import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog } from "../store/database.js";
+import { JsonMigrator } from "./json-migrator.js";
 
 const logger = getLogger();
 
@@ -36,40 +37,190 @@ export interface Job {
 }
 
 export class JobStore extends EventEmitter {
+  private db: AQDatabase;
   private dataDir: string;
-  private cache: Map<string, Job> = new Map();
-  private watcher: FSWatcher | null = null;
-  private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
-  private internalDeletes: Set<string> = new Set();
   private maxJobs: number;
+  // 메모리 캐시: running/queued 상태의 job만 캐싱
+  private cache: Map<string, Job> = new Map();
 
   constructor(dataDir: string, maxJobs: number = 1000) {
     super();
-    this.dataDir = resolve(dataDir, "jobs");
+    this.dataDir = dataDir;
     this.maxJobs = maxJobs;
-    mkdirSync(this.dataDir, { recursive: true });
-    this.loadAll();
-    this.startWatching();
+
+    // SQLite 데이터베이스 초기화
+    this.db = new AQDatabase(resolve(dataDir, "aqm.db"));
+
+    // JSON → SQLite 자동 마이그레이션 (백그라운드에서 실행)
+    this.migrateFromJson().catch(err => {
+      logger.error(`JSON migration failed: ${getErrorMessage(err)}`);
+    });
+
+    // 시작 시 running/queued job을 캐시로 로드
+    this.loadActiveJobsToCache();
   }
 
-  private loadAll(): void {
+  /**
+   * 시작 시 running/queued 상태의 job들을 캐시로 로드
+   */
+  private loadActiveJobsToCache(): void {
     try {
-      const files = readdirSync(this.dataDir).filter(f => f.endsWith(".json"));
-      for (const f of files) {
-        try {
-          const job = JSON.parse(readFileSync(resolve(this.dataDir, f), "utf-8")) as Job;
+      const allDbJobs = this.db.listJobs();
+      let loadedCount = 0;
+
+      for (const dbJob of allDbJobs) {
+        if (dbJob.status === "queued" || dbJob.status === "running") {
+          const job = this.dbJobToJob(dbJob);
           this.cache.set(job.id, job);
-        } catch { /* skip corrupt files */ }
+          loadedCount++;
+        }
       }
-    } catch { /* empty dir */ }
+
+      if (loadedCount > 0) {
+        logger.info(`Loaded ${loadedCount} active jobs to cache`);
+      }
+    } catch (err: unknown) {
+      logger.error(`Failed to load active jobs to cache: ${getErrorMessage(err)}`);
+    }
   }
 
-  private jobPath(id: string): string {
-    return resolve(this.dataDir, `${id}.json`);
+  /**
+   * job을 캐시에 추가 (running/queued 상태만)
+   */
+  private addToCache(job: Job): void {
+    if (job.status === "queued" || job.status === "running") {
+      this.cache.set(job.id, job);
+      logger.debug(`Job cached: ${job.id} (${job.status})`);
+    }
+  }
+
+  /**
+   * 캐시에서 job 제거
+   */
+  private removeFromCache(id: string): void {
+    if (this.cache.delete(id)) {
+      logger.debug(`Job removed from cache: ${id}`);
+    }
+  }
+
+  /**
+   * 캐시 업데이트 및 동기화
+   */
+  private updateCache(job: Job): void {
+    if (job.status === "queued" || job.status === "running") {
+      // running/queued 상태면 캐시에 추가/업데이트
+      this.cache.set(job.id, job);
+      logger.debug(`Job cache updated: ${job.id} (${job.status})`);
+    } else {
+      // 다른 상태로 변경되면 캐시에서 제거
+      this.removeFromCache(job.id);
+    }
+  }
+
+  /**
+   * 캐시에서 job 조회
+   */
+  private getCachedJob(id: string): Job | undefined {
+    return this.cache.get(id);
+  }
+
+  /**
+   * 캐시된 모든 job 조회
+   */
+  private getCachedJobs(): Job[] {
+    return Array.from(this.cache.values());
+  }
+
+  /**
+   * 기존 JSON 파일들을 SQLite로 자동 마이그레이션
+   */
+  private async migrateFromJson(): Promise<void> {
+    try {
+      // JsonMigrator가 별도 DB 인스턴스를 사용하도록 함 (DB 파일 경로만 전달)
+      const dbPath = resolve(this.dataDir, "aqm.db");
+      const migrator = new JsonMigrator(new AQDatabase(dbPath), resolve(this.dataDir, "jobs"));
+      const stats = await migrator.migrate(false);
+
+      if (stats.migratedJobs > 0) {
+        logger.info(`JSON migration completed: ${stats.migratedJobs} jobs migrated`);
+      }
+
+      migrator.close(); // 별도 DB 인스턴스 닫기
+    } catch (err: unknown) {
+      logger.error(`JSON migration failed: ${getErrorMessage(err)}`);
+    }
+  }
+
+  /**
+   * DatabaseJob을 Job 인터페이스로 변환
+   */
+  private dbJobToJob(dbJob: DatabaseJob): Job {
+    const job: Job = {
+      id: dbJob.id,
+      issueNumber: dbJob.issueNumber,
+      repo: dbJob.repo,
+      status: dbJob.status,
+      createdAt: dbJob.createdAt,
+      startedAt: dbJob.startedAt,
+      completedAt: dbJob.completedAt,
+      prUrl: dbJob.prUrl,
+      error: dbJob.error,
+      lastUpdatedAt: dbJob.lastUpdatedAt,
+      currentStep: dbJob.currentStep,
+      dependencies: dbJob.dependencies,
+      progress: dbJob.progress,
+      isRetry: dbJob.isRetry,
+      costUsd: dbJob.costUsd,
+      totalCostUsd: dbJob.totalCostUsd
+    };
+
+    // Phase 결과를 phaseResults 배열로 변환
+    const phases = this.db.getPhasesByJob(dbJob.id);
+    if (phases.length > 0) {
+      job.phaseResults = phases.map(phase => ({
+        name: phase.phaseName,
+        success: phase.success,
+        commit: phase.commitHash,
+        durationMs: phase.durationMs,
+        error: phase.error
+      }));
+    }
+
+    // 로그를 logs 배열로 변환
+    const logs = this.db.getLogsByJob(dbJob.id);
+    if (logs.length > 0) {
+      job.logs = logs.map(log => log.message);
+    }
+
+    return job;
+  }
+
+  /**
+   * Job을 DatabaseJob으로 변환
+   */
+  private jobToDbJob(job: Job): DatabaseJob {
+    return {
+      id: job.id,
+      issueNumber: job.issueNumber,
+      repo: job.repo,
+      status: job.status,
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      prUrl: job.prUrl,
+      error: job.error,
+      lastUpdatedAt: job.lastUpdatedAt,
+      currentStep: job.currentStep,
+      dependencies: job.dependencies,
+      progress: job.progress,
+      isRetry: job.isRetry,
+      costUsd: job.costUsd,
+      totalCostUsd: job.totalCostUsd
+    };
   }
 
   create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job {
-    const id = `aq-${issueNumber}-${Date.now()}`;
+    const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: Job = {
       id,
       issueNumber,
@@ -79,12 +230,20 @@ export class JobStore extends EventEmitter {
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       ...(isRetry ? { isRetry } : {}),
     };
-    this.save(job);
+
+    // SQLite에 저장
+    const dbJob = this.jobToDbJob(job);
+    this.db.createJob(dbJob);
+
+    // 캐시에 추가 (queued 상태이므로)
+    this.addToCache(job);
+
     logger.info(`Job created: ${id}`);
     this.emit('jobCreated', job);
 
-    // Auto-prune if cache size exceeds maxJobs
-    if (this.cache.size > this.maxJobs) {
+    // Auto-prune if needed
+    const allJobs = this.db.listJobs();
+    if (allJobs.length > this.maxJobs) {
       const pruned = this.prune(this.maxJobs);
       if (pruned > 0) {
         logger.info(`Auto-pruned ${pruned} jobs due to cache size limit (${this.maxJobs})`);
@@ -95,35 +254,107 @@ export class JobStore extends EventEmitter {
   }
 
   get(id: string): Job | undefined {
-    return this.cache.get(id);
+    // 캐시 우선 조회
+    const cachedJob = this.getCachedJob(id);
+    if (cachedJob) {
+      return cachedJob;
+    }
+
+    // 캐시 미스 시 SQLite에서 조회
+    const dbJob = this.db.getJob(id);
+    return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
 
   update(id: string, updates: Partial<Job>): Job | undefined {
-    const job = this.get(id);
-    if (!job) return undefined;
-    const previousJob = { ...job };
-    Object.assign(job, updates);
-    this.save(job);
-    this.emit('jobUpdated', job, previousJob);
-    return job;
+    const currentJob = this.get(id);
+    if (!currentJob) return undefined;
+
+    const previousJob = { ...currentJob };
+    const updatedJob = { ...currentJob, ...updates };
+
+    // Phase results가 업데이트되었다면 별도로 처리
+    if (updates.phaseResults) {
+      // 기존 phases 삭제 (외래키 제약조건으로 자동 삭제됨)
+      // 새로운 phases 추가
+      for (let index = 0; index < updates.phaseResults.length; index++) {
+        const phaseResult = updates.phaseResults[index];
+        const dbPhase: DatabasePhase = {
+          jobId: id,
+          phaseIndex: index,
+          phaseName: phaseResult.name,
+          success: phaseResult.success,
+          commitHash: phaseResult.commit,
+          durationMs: phaseResult.durationMs,
+          error: phaseResult.error
+        };
+        this.db.createPhase(dbPhase);
+      }
+    }
+
+    // Logs가 업데이트되었다면 별도로 처리
+    if (updates.logs) {
+      // 기존 logs 삭제하고 새로 추가하는 대신, 추가만 수행
+      // (보통 logs는 append only)
+      for (const logMessage of updates.logs) {
+        const dbLog: DatabaseLog = {
+          jobId: id,
+          message: logMessage,
+          timestamp: new Date().toISOString()
+        };
+        this.db.createLog(dbLog);
+      }
+    }
+
+    // Job 기본 정보 업데이트
+    const dbJob = this.jobToDbJob(updatedJob);
+    this.db.updateJob(id, dbJob);
+
+    // 캐시 동기화
+    this.updateCache(updatedJob);
+
+    this.emit('jobUpdated', updatedJob, previousJob);
+    return updatedJob;
   }
 
   list(): Job[] {
-    return Array.from(this.cache.values())
+    const dbJobs = this.db.listJobs();
+    const allJobs = dbJobs.map(dbJob => this.dbJobToJob(dbJob));
+
+    // 캐시된 job들로 업데이트 (최신 상태 반영)
+    const cachedJobs = this.getCachedJobs();
+    const jobMap = new Map<string, Job>();
+
+    // 먼저 SQLite에서 가져온 모든 job을 맵에 추가
+    for (const job of allJobs) {
+      jobMap.set(job.id, job);
+    }
+
+    // 캐시된 job으로 덮어쓰기 (더 최신 상태)
+    for (const cachedJob of cachedJobs) {
+      jobMap.set(cachedJob.id, cachedJob);
+    }
+
+    return Array.from(jobMap.values())
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   findByIssue(issueNumber: number, repo: string): Job | undefined {
-    for (const job of this.cache.values()) {
-      if (job.issueNumber === issueNumber && job.repo === repo && (job.status === "queued" || job.status === "running")) {
+    // 캐시에서 우선 조회 (running/queued 상태만 캐싱됨)
+    const cachedJobs = this.getCachedJobs();
+    for (const job of cachedJobs) {
+      if (job.issueNumber === issueNumber && job.repo === repo) {
         return job;
       }
     }
-    return undefined;
+
+    // 캐시 미스 시 SQLite에서 조회
+    const dbJob = this.db.findJobByIssue(issueNumber, repo);
+    return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
 
   findCompletedByIssue(issueNumber: number, repo: string): Job | undefined {
-    for (const job of this.cache.values()) {
+    const allJobs = this.list();
+    for (const job of allJobs) {
       if (job.issueNumber === issueNumber && job.repo === repo && job.status === "success") {
         return job;
       }
@@ -132,7 +363,8 @@ export class JobStore extends EventEmitter {
   }
 
   findAnyByIssue(issueNumber: number, repo: string): Job | undefined {
-    for (const job of this.cache.values()) {
+    const allJobs = this.list();
+    for (const job of allJobs) {
       if (job.issueNumber === issueNumber && job.repo === repo && job.status !== "archived") {
         return job;
       }
@@ -141,19 +373,15 @@ export class JobStore extends EventEmitter {
   }
 
   shouldBlockRepickup(issueNumber: number, repo: string): boolean {
-    for (const job of this.cache.values()) {
-      if (job.issueNumber === issueNumber && job.repo === repo && job.status === "success") {
-        return true;
-      }
-    }
-    return false;
+    return this.findCompletedByIssue(issueNumber, repo) !== undefined;
   }
 
   findFailedJobsForRetry(): Job[] {
     const now = Date.now();
     const RETRY_DELAY_MS = 10 * 60 * 1000; // 10분 대기 후 재시도
 
-    return Array.from(this.cache.values()).filter(job => {
+    const allJobs = this.list();
+    return allJobs.filter(job => {
       // failed 상태이고 retry가 아닌 job만
       if (job.status !== "failure" || job.isRetry === true) {
         return false;
@@ -168,19 +396,23 @@ export class JobStore extends EventEmitter {
   archive(id: string): boolean {
     const job = this.get(id);
     if (!job) return false;
+
     const previousJob = { ...job };
-    job.status = "archived";
-    this.save(job);
-    logger.info(`Job archived: ${id}`);
-    this.emit('jobArchived', job, previousJob);
-    return true;
+    const updatedJob = this.update(id, { status: "archived" });
+
+    if (updatedJob) {
+      logger.info(`Job archived: ${id}`);
+      this.emit('jobArchived', updatedJob, previousJob);
+      return true;
+    }
+    return false;
   }
 
   prune(maxJobs: number): number {
-    const all = this.list();
-    if (all.length <= maxJobs) return 0;
+    const allJobs = this.list();
+    if (allJobs.length <= maxJobs) return 0;
 
-    const completed = all
+    const completed = allJobs
       .filter(j => j.status === "success" || j.status === "failure" || j.status === "cancelled")
       .sort((a, b) => {
         const ta = a.completedAt ? new Date(a.completedAt).getTime() : new Date(a.createdAt).getTime();
@@ -188,7 +420,7 @@ export class JobStore extends EventEmitter {
         return ta - tb; // oldest first
       });
 
-    const excess = all.length - maxJobs;
+    const excess = allJobs.length - maxJobs;
     const toDelete = completed.slice(0, excess);
 
     for (const job of toDelete) {
@@ -196,31 +428,27 @@ export class JobStore extends EventEmitter {
     }
 
     if (toDelete.length > 0) {
-      logger.info(`Job pruning: ${toDelete.length}개 완료 작업 삭제 (총 ${all.length} → ${all.length - toDelete.length})`);
+      logger.info(`Job pruning: ${toDelete.length}개 완료 작업 삭제 (총 ${allJobs.length} → ${allJobs.length - toDelete.length})`);
     }
 
     return toDelete.length;
   }
 
   remove(id: string): boolean {
-    const job = this.cache.get(id);
-    try {
-      // Mark as internal delete to avoid duplicate processing in watcher
-      this.internalDeletes.add(id);
-      unlinkSync(this.jobPath(id));
-      this.cache.delete(id);
+    const job = this.get(id);
+    const success = this.db.deleteJob(id);
+
+    if (success) {
+      // 캐시에서도 제거
+      this.removeFromCache(id);
+
       logger.info(`Job deleted: ${id}`);
       if (job) {
         this.emit('jobDeleted', job);
       }
-      // Clean up internal delete flag after a short delay
-      setTimeout(() => this.internalDeletes.delete(id), 100);
       return true;
-    } catch (err: unknown) {
-      this.internalDeletes.delete(id); // Clean up on error
-      if (err && typeof err === 'object' && 'code' in err && err.code === "ENOENT") return false;
-      return false;
     }
+    return false;
   }
 
   getCostStats(repo?: string): {
@@ -229,7 +457,7 @@ export class JobStore extends EventEmitter {
     jobCount: number;
     topExpensiveJobs: Array<{ id: string; issueNumber: number; totalCostUsd: number; repo: string }>;
   } {
-    const allJobs = Array.from(this.cache.values());
+    const allJobs = this.list();
     const filteredJobs = repo ? allJobs.filter(job => job.repo === repo) : allJobs;
     const jobsWithCost = filteredJobs.filter(job => job.totalCostUsd != null && job.totalCostUsd > 0);
 
@@ -256,105 +484,28 @@ export class JobStore extends EventEmitter {
     };
   }
 
-  private save(job: Job): void {
-    mkdirSync(this.dataDir, { recursive: true });
-    writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
-    this.cache.set(job.id, job);
-  }
-
+  /**
+   * 파일시스템 감시 시작 (SQLite 전환 후 no-op)
+   */
   startWatching(): void {
-    if (this.watcher) {
-      return; // Already watching
-    }
-
-    try {
-      this.watcher = watch(this.dataDir, { persistent: false }, (eventType, filename) => {
-        if (!filename || !filename.endsWith('.json')) {
-          return;
-        }
-
-        const jobId = filename.replace('.json', '');
-
-        // Clear existing debounce timer
-        const existingTimer = this.debounceTimers.get(jobId);
-        if (existingTimer) {
-          clearTimeout(existingTimer);
-        }
-
-        // Set new debounce timer
-        const timer = setTimeout(() => {
-          this.handleFileEvent(eventType, jobId);
-          this.debounceTimers.delete(jobId);
-        }, 100); // 100ms debounce
-
-        this.debounceTimers.set(jobId, timer);
-      });
-
-      logger.info(`Started watching job store directory: ${this.dataDir}`);
-    } catch (err: unknown) {
-      logger.error(`Failed to start watching job store directory: ${getErrorMessage(err)}`);
-    }
+    // SQLite 기반으로 전환하면서 파일시스템 감시는 불필요
+    // 호환성을 위해 메서드는 유지하지만 실제 동작은 하지 않음
+    logger.debug("startWatching called but no-op in SQLite mode");
   }
 
+  /**
+   * 파일시스템 감시 중지 (SQLite 전환 후 no-op)
+   */
   stopWatching(): void {
-    if (this.watcher) {
-      this.watcher.close();
-      this.watcher = null;
-      logger.info('Stopped watching job store directory');
-    }
-
-    // Clear all debounce timers
-    for (const timer of this.debounceTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.debounceTimers.clear();
+    // SQLite 기반으로 전환하면서 파일시스템 감시는 불필요
+    // 호환성을 위해 메서드는 유지하지만 실제 동작은 하지 않음
+    logger.debug("stopWatching called but no-op in SQLite mode");
   }
 
-  private handleFileEvent(eventType: string, jobId: string): void {
-    try {
-      const filePath = this.jobPath(jobId);
-
-      if (eventType === 'rename') {
-        // File was deleted or renamed
-        if (this.internalDeletes.has(jobId)) {
-          // This was an internal delete, ignore
-          return;
-        }
-
-        const existingJob = this.cache.get(jobId);
-        if (existingJob) {
-          this.cache.delete(jobId);
-          logger.info(`Job removed from cache due to external deletion: ${jobId}`);
-          this.emit('jobDeleted', existingJob);
-        }
-      } else if (eventType === 'change') {
-        // File was modified, reload it
-        try {
-          const jobData = readFileSync(filePath, 'utf-8');
-          const job = JSON.parse(jobData) as Job;
-          const previousJob = this.cache.get(jobId);
-
-          this.cache.set(jobId, job);
-          logger.info(`Job reloaded from external change: ${jobId}`);
-
-          if (previousJob) {
-            this.emit('jobUpdated', job, previousJob);
-          } else {
-            this.emit('jobCreated', job);
-          }
-        } catch (err: unknown) {
-          logger.warn(`Failed to reload job file ${jobId}: ${getErrorMessage(err)}`);
-          // If file is corrupt, remove from cache
-          const existingJob = this.cache.get(jobId);
-          if (existingJob) {
-            this.cache.delete(jobId);
-            logger.info(`Job removed from cache due to corrupt file: ${jobId}`);
-            this.emit('jobDeleted', existingJob);
-          }
-        }
-      }
-    } catch (err: unknown) {
-      logger.error(`Error handling file event for ${jobId}: ${getErrorMessage(err)}`);
-    }
+  /**
+   * 데이터베이스 연결 종료
+   */
+  close(): void {
+    this.db.close();
   }
 }

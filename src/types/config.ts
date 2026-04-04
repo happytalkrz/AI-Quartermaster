@@ -201,6 +201,16 @@ export interface InitCommandOptions {
 }
 
 /** Per-project configuration. Overrides global defaults for a specific repo. */
+/** 프로젝트별 에러 상태 추적 */
+export interface ProjectErrorState {
+  /** 연속 실패 횟수 */
+  consecutiveFailures: number;
+  /** 일시 정지 만료 시간 (ms timestamp, null이면 정지되지 않음) */
+  pausedUntil: number | null;
+  /** 마지막 실패 시간 (ms timestamp) */
+  lastFailureAt: number | null;
+}
+
 export interface ProjectConfig {
   repo: string;           // "owner/repo"
   path: string;           // absolute path to local clone
@@ -212,6 +222,10 @@ export interface ProjectConfig {
   review?: Partial<ReviewConfig>;      // override review settings
   pr?: Partial<PrConfig>;             // override PR settings
   safety?: Partial<SafetyConfig>;     // override safety settings
+  /** 연속 실패 임계값 (기본값: 3) */
+  pauseThreshold?: number;
+  /** 일시 정지 지속 시간 ms (기본값: 30분) */
+  pauseDurationMs?: number;
 }
 
 export interface AQConfig {

@@ -17,6 +17,9 @@ export class ConfigWatcher extends EventEmitter {
   private watchers: Map<string, FSWatcher> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
   private pendingChanges: Set<string> = new Set();
+  private errorCounts: Map<string, number> = new Map();
+  private readonly maxErrorRetries = 3;
+  private readonly errorRetryDelay = 1000; // 1 second
 
   constructor(projectRoot: string) {
     super();
@@ -49,19 +52,24 @@ export class ConfigWatcher extends EventEmitter {
       this.debounceTimer = null;
     }
 
-    // Close all watchers
+    // Close all watchers with enhanced error handling
     for (const [path, watcher] of this.watchers.entries()) {
       try {
+        // Remove all listeners to prevent memory leaks
+        watcher.removeAllListeners();
         watcher.close();
         logger.debug(`Stopped watching: ${path}`);
       } catch (err) {
         logger.warn(`Error closing watcher for ${path}: ${err}`);
       }
     }
+
+    // Clear all maps and sets
     this.watchers.clear();
     this.pendingChanges.clear();
+    this.errorCounts.clear();
 
-    logger.info('Stopped watching config files');
+    logger.info('Stopped watching config files - all resources cleaned');
   }
 
   private watchFile(filePath: string, type: 'base' | 'local'): void {
@@ -70,10 +78,17 @@ export class ConfigWatcher extends EventEmitter {
         this.handleFileEvent(filePath, type, eventType);
       });
 
+      // Add error handler to the watcher
+      watcher.on('error', (error) => {
+        this.handleWatcherError(filePath, type, error);
+      });
+
       this.watchers.set(filePath, watcher);
+      this.errorCounts.set(filePath, 0); // Reset error count
       logger.debug(`Started watching file: ${filePath}`);
     } catch (err) {
       logger.error(`Failed to watch file ${filePath}: ${err}`);
+      this.handleWatcherError(filePath, type, err);
     }
   }
 
@@ -85,10 +100,17 @@ export class ConfigWatcher extends EventEmitter {
         }
       });
 
+      // Add error handler to the directory watcher
+      watcher.on('error', (error) => {
+        this.handleWatcherError(this.projectRoot, 'local', error);
+      });
+
       this.watchers.set(this.projectRoot, watcher);
+      this.errorCounts.set(this.projectRoot, 0); // Reset error count
       logger.debug(`Started watching directory: ${this.projectRoot}`);
     } catch (err) {
       logger.error(`Failed to watch directory ${this.projectRoot}: ${err}`);
+      this.handleWatcherError(this.projectRoot, 'local', err);
     }
   }
 
@@ -176,5 +198,60 @@ export class ConfigWatcher extends EventEmitter {
 
     logger.info(`Config changed: ${eventType} (${paths.join(', ')})`);
     this.emit('configChanged', event);
+  }
+
+  private handleWatcherError(filePath: string, type: 'base' | 'local', error: unknown): void {
+    const errorCount = (this.errorCounts.get(filePath) || 0) + 1;
+    this.errorCounts.set(filePath, errorCount);
+
+    logger.warn(`Watcher error for ${filePath} (attempt ${errorCount}/${this.maxErrorRetries}): ${error}`);
+
+    // Close and remove the problematic watcher
+    const existingWatcher = this.watchers.get(filePath);
+    if (existingWatcher) {
+      try {
+        existingWatcher.removeAllListeners();
+        existingWatcher.close();
+      } catch (closeError) {
+        logger.warn(`Error closing watcher for ${filePath}: ${closeError}`);
+      }
+      this.watchers.delete(filePath);
+    }
+
+    // Attempt to restart the watcher if we haven't exceeded retry limit
+    if (errorCount <= this.maxErrorRetries) {
+      logger.info(`Attempting to restart watcher for ${filePath} in ${this.errorRetryDelay}ms`);
+      setTimeout(() => {
+        this.restartWatcher(filePath, type);
+      }, this.errorRetryDelay);
+    } else {
+      logger.error(`Maximum retry attempts exceeded for ${filePath}. Disabling watcher for this file.`);
+      this.errorCounts.delete(filePath); // Clean up error count
+
+      // Emit a warning event for graceful degradation
+      this.emit('watcherDisabled', { filePath, type, reason: 'max_retries_exceeded' });
+    }
+  }
+
+  private restartWatcher(filePath: string, type: 'base' | 'local'): void {
+    try {
+      // Check if file/directory still exists before restarting
+      if (!existsSync(filePath)) {
+        logger.info(`${filePath} no longer exists, not restarting watcher`);
+        this.errorCounts.delete(filePath);
+        return;
+      }
+
+      logger.info(`Restarting watcher for ${filePath}`);
+
+      if (filePath === this.projectRoot) {
+        this.watchDirectory();
+      } else {
+        this.watchFile(filePath, type);
+      }
+    } catch (restartError) {
+      logger.error(`Failed to restart watcher for ${filePath}: ${restartError}`);
+      this.handleWatcherError(filePath, type, restartError);
+    }
   }
 }

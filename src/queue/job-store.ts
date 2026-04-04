@@ -29,6 +29,13 @@ export interface Job {
     commit?: string;
     durationMs: number;
     error?: string;
+    costUsd?: number;
+    usage?: {
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
   }>;
   progress?: number;  // 0-100 overall pipeline progress
   isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
@@ -182,7 +189,14 @@ export class JobStore extends EventEmitter {
         success: phase.success,
         commit: phase.commitHash,
         durationMs: phase.durationMs,
-        error: phase.error
+        error: phase.error,
+        costUsd: phase.costUsd,
+        usage: phase.inputTokens !== undefined ? {
+          input_tokens: phase.inputTokens,
+          output_tokens: phase.outputTokens || 0,
+          cache_creation_input_tokens: phase.cacheCreationInputTokens,
+          cache_read_input_tokens: phase.cacheReadInputTokens
+        } : undefined
       }));
     }
 
@@ -285,7 +299,12 @@ export class JobStore extends EventEmitter {
           success: phaseResult.success,
           commitHash: phaseResult.commit,
           durationMs: phaseResult.durationMs,
-          error: phaseResult.error
+          error: phaseResult.error,
+          costUsd: phaseResult.costUsd,
+          inputTokens: phaseResult.usage?.input_tokens,
+          outputTokens: phaseResult.usage?.output_tokens,
+          cacheCreationInputTokens: phaseResult.usage?.cache_creation_input_tokens,
+          cacheReadInputTokens: phaseResult.usage?.cache_read_input_tokens
         };
         this.db.createPhase(dbPhase);
       }

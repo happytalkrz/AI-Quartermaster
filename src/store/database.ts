@@ -36,6 +36,10 @@ interface PhaseRow {
   duration_ms: number | null;
   error: string | null;
   cost_usd: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+  cache_read_input_tokens: number | null;
 }
 
 interface LogRow {
@@ -74,6 +78,10 @@ export interface DatabasePhase {
   durationMs: number;
   error?: string;
   costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
 }
 
 export interface DatabaseLog {
@@ -135,6 +143,10 @@ export class AQDatabase {
         duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
         error TEXT,
         cost_usd REAL CHECK (cost_usd >= 0),
+        input_tokens INTEGER CHECK (input_tokens >= 0),
+        output_tokens INTEGER CHECK (output_tokens >= 0),
+        cache_creation_input_tokens INTEGER CHECK (cache_creation_input_tokens >= 0),
+        cache_read_input_tokens INTEGER CHECK (cache_read_input_tokens >= 0),
         FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
       )
     `);
@@ -266,8 +278,8 @@ export class AQDatabase {
 
   createPhase(phase: DatabasePhase): number {
     const stmt = this.db.prepare(`
-      INSERT INTO phases (job_id, phase_index, phase_name, success, commit_hash, duration_ms, error, cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO phases (job_id, phase_index, phase_name, success, commit_hash, duration_ms, error, cost_usd, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -278,7 +290,11 @@ export class AQDatabase {
       phase.commitHash || null,
       phase.durationMs,
       phase.error || null,
-      phase.costUsd || null
+      phase.costUsd || null,
+      phase.inputTokens || null,
+      phase.outputTokens || null,
+      phase.cacheCreationInputTokens || null,
+      phase.cacheReadInputTokens || null
     );
 
     logger.debug(`Phase created for job ${phase.jobId}: ${phase.phaseName}`);
@@ -298,7 +314,11 @@ export class AQDatabase {
       commitHash: row.commit_hash ?? undefined,
       durationMs: row.duration_ms ?? 0,
       error: row.error ?? undefined,
-      costUsd: row.cost_usd ?? undefined
+      costUsd: row.cost_usd ?? undefined,
+      inputTokens: row.input_tokens ?? undefined,
+      outputTokens: row.output_tokens ?? undefined,
+      cacheCreationInputTokens: row.cache_creation_input_tokens ?? undefined,
+      cacheReadInputTokens: row.cache_read_input_tokens ?? undefined
     }));
   }
 

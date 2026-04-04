@@ -8,6 +8,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema } from "../types/api.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -172,12 +173,27 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const body = await c.req.json();
 
-      if (!body || typeof body !== "object") {
-        return c.json({ error: "Invalid request body" }, 400);
+      // Zod 스키마 검증
+      const parseResult = UpdateConfigRequestSchema.safeParse(body);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid request body",
+          details: parseResult.error
+        }, 400);
       }
 
       // Update configuration file
-      updateConfigSection(process.cwd(), body);
+      // Filter out undefined values to match Partial<AQConfig> type expectation
+      const cleanedData = Object.fromEntries(
+        Object.entries(parseResult.data).map(([key, value]) => [
+          key,
+          typeof value === 'object' && value !== null
+            ? Object.fromEntries(Object.entries(value).filter(([_, v]) => v !== undefined))
+            : value
+        ]).filter(([_, v]) => v !== undefined)
+      ) as Partial<AQConfig>;
+
+      updateConfigSection(process.cwd(), cleanedData);
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {
@@ -221,25 +237,22 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const body = await c.req.json();
 
-      if (!body || typeof body !== "object") {
-        return c.json({ error: "Invalid request body" }, 400);
+      // Zod 스키마 검증
+      const parseResult = CreateProjectRequestSchema.safeParse(body);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid request body",
+          details: parseResult.error
+        }, 400);
       }
 
-      const { repo, path, baseBranch, mode } = body;
-
-      if (!repo || typeof repo !== "string" || repo.trim() === "") {
-        return c.json({ error: "repo is required and must be a non-empty string" }, 400);
-      }
-
-      if (!path || typeof path !== "string" || path.trim() === "") {
-        return c.json({ error: "path is required and must be a non-empty string" }, 400);
-      }
+      const { repo, path, baseBranch, mode } = parseResult.data;
 
       const project: ProjectConfig = {
         repo: repo.trim(),
         path: path.trim(),
         baseBranch: baseBranch?.trim() || undefined,
-        mode: mode as "code" | "content" | undefined,
+        mode,
       };
 
       try {

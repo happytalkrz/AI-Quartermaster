@@ -1,0 +1,169 @@
+import { z } from "zod";
+
+// CreateProject 요청 스키마 (POST /api/projects)
+export const CreateProjectRequestSchema = z.object({
+  repo: z.string().min(1),
+  path: z.string().min(1),
+  baseBranch: z.string().optional(),
+  mode: z.enum(["code", "content"]).optional(),
+}).strict();
+
+export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
+
+// UpdateConfig 요청 스키마 (PUT /api/config)
+// AQConfig의 부분 업데이트를 위한 스키마
+const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+const localeSchema = z.enum(["ko", "en"]);
+const reviewFailActionSchema = z.enum(["block", "warn", "retry"]);
+const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
+
+const generalConfigUpdateSchema = z.object({
+  projectName: z.string().min(1),
+  logLevel: logLevelSchema,
+  logDir: z.string(),
+  dryRun: z.boolean(),
+  locale: localeSchema,
+  concurrency: z.number().int().positive(),
+  targetRoot: z.string(),
+  stuckTimeoutMs: z.number().int().min(60000),
+  pollingIntervalMs: z.number().int().min(10000),
+  maxJobs: z.number().int().min(1),
+  autoUpdate: z.boolean(),
+}).partial().strict();
+
+const gitConfigUpdateSchema = z.object({
+  defaultBaseBranch: z.string(),
+  branchTemplate: z
+    .string()
+    .refine((val) => val.includes("{{issueNumber}}") || val.includes("{issueNumber}"), {
+      message: "branchTemplate must contain {{issueNumber}} or {issueNumber}",
+    }),
+  commitMessageTemplate: z.string(),
+  remoteAlias: z.string(),
+  allowedRepos: z.array(z.string()),
+  gitPath: z.string(),
+  fetchDepth: z.number().int().nonnegative(),
+  signCommits: z.boolean(),
+}).partial().strict();
+
+const worktreeConfigUpdateSchema = z.object({
+  rootPath: z.string(),
+  cleanupOnSuccess: z.boolean(),
+  cleanupOnFailure: z.boolean(),
+  maxAge: z.string(),
+  dirTemplate: z.string(),
+}).partial().strict();
+
+const modelRoutingUpdateSchema = z.object({
+  plan: z.string(),
+  phase: z.string(),
+  review: z.string(),
+  fallback: z.string(),
+}).partial().strict();
+
+const claudeCliConfigUpdateSchema = z.object({
+  path: z.string(),
+  model: z.string(),
+  models: modelRoutingUpdateSchema,
+  maxTurns: z.number().int().positive(),
+  timeout: z.number().positive(),
+  additionalArgs: z.array(z.string()),
+}).partial().strict();
+
+const ghCliConfigUpdateSchema = z.object({
+  path: z.string(),
+  timeout: z.number().positive(),
+}).partial().strict();
+
+const commandsConfigUpdateSchema = z.object({
+  claudeCli: claudeCliConfigUpdateSchema,
+  ghCli: ghCliConfigUpdateSchema,
+  test: z.string(),
+  lint: z.string(),
+  build: z.string(),
+  typecheck: z.string(),
+  preInstall: z.string(),
+  claudeMdPath: z.string(),
+}).partial().strict();
+
+const reviewRoundUpdateSchema = z.object({
+  name: z.string(),
+  promptTemplate: z.string(),
+  failAction: reviewFailActionSchema,
+  maxRetries: z.number().int().nonnegative(),
+  model: z.string().nullable(),
+  blind: z.boolean().optional(),
+  adversarial: z.boolean().optional(),
+}).partial().strict();
+
+const simplifyConfigUpdateSchema = z.object({
+  enabled: z.boolean(),
+  promptTemplate: z.string(),
+}).partial().strict();
+
+const reviewConfigUpdateSchema = z.object({
+  enabled: z.boolean(),
+  rounds: z.array(reviewRoundUpdateSchema),
+  simplify: simplifyConfigUpdateSchema,
+}).partial().strict();
+
+const prConfigUpdateSchema = z.object({
+  targetBranch: z.string(),
+  draft: z.boolean(),
+  titleTemplate: z.string(),
+  bodyTemplate: z.string(),
+  labels: z.array(z.string()),
+  assignees: z.array(z.string()),
+  reviewers: z.array(z.string()),
+  linkIssue: z.boolean(),
+  autoMerge: z.boolean(),
+  mergeMethod: mergeMethodSchema,
+}).partial().strict();
+
+const timeoutsConfigUpdateSchema = z.object({
+  planGeneration: z.number().positive(),
+  phaseImplementation: z.number().positive(),
+  reviewRound: z.number().positive(),
+  prCreation: z.number().positive(),
+}).partial().strict();
+
+const safetyConfigUpdateSchema = z.object({
+  sensitivePaths: z.array(z.string()),
+  maxPhases: z.number().int().min(1).max(20),
+  maxRetries: z.number().int().min(1).max(10),
+  maxTotalDurationMs: z.number().positive(),
+  maxFileChanges: z.number().int().positive(),
+  maxInsertions: z.number().int().positive(),
+  maxDeletions: z.number().int().positive(),
+  requireTests: z.boolean(),
+  blockDirectBasePush: z.boolean(),
+  timeouts: timeoutsConfigUpdateSchema,
+  stopConditions: z.array(z.string()),
+  allowedLabels: z.array(z.string()),
+  rollbackStrategy: z.enum(["none", "all", "failed-only"]),
+}).partial().strict();
+
+const projectConfigUpdateSchema = z.object({
+  repo: z.string().min(1),
+  path: z.string().min(1),
+  baseBranch: z.string(),
+  branchTemplate: z.string(),
+  mode: z.enum(["code", "content"]),
+  commands: commandsConfigUpdateSchema,
+  review: reviewConfigUpdateSchema,
+  pr: prConfigUpdateSchema,
+  safety: safetyConfigUpdateSchema,
+}).partial().strict();
+
+export const UpdateConfigRequestSchema = z.object({
+  general: generalConfigUpdateSchema,
+  git: gitConfigUpdateSchema,
+  worktree: worktreeConfigUpdateSchema,
+  commands: commandsConfigUpdateSchema,
+  review: reviewConfigUpdateSchema,
+  pr: prConfigUpdateSchema,
+  safety: safetyConfigUpdateSchema,
+  projects: z.array(projectConfigUpdateSchema),
+}).partial().strict();
+
+export type UpdateConfigRequest = z.infer<typeof UpdateConfigRequestSchema>;

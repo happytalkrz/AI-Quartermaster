@@ -252,16 +252,90 @@ describe("Dashboard API - PUT /api/config", () => {
       expect(response.status).toBe(400);
       const result = await response.json();
       expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
       expect(mockUpdateConfigSection).not.toHaveBeenCalled();
     });
 
-    it("should return 400 for validation errors", async () => {
+    it("should return 400 for invalid logLevel value", async () => {
       const updates = {
         general: { logLevel: "invalid-level" },
       };
 
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for negative concurrency value", async () => {
+      const updates = {
+        general: { concurrency: -1 },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for invalid safety maxPhases value", async () => {
+      const updates = {
+        safety: { maxPhases: 0 }, // Should be min 1
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for extra unexpected fields", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+        unexpectedSection: { value: "test" },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for config loader validation errors", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
       mockUpdateConfigSection.mockImplementation(() => {
-        throw new Error("Configuration validation failed: Invalid log level");
+        throw new Error("Configuration validation failed: Invalid config structure");
       });
 
       const response = await app.request("/api/config", {
@@ -272,7 +346,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("Configuration validation failed: Configuration validation failed: Invalid log level");
+      expect(result.error).toBe("Configuration validation failed: Configuration validation failed: Invalid config structure");
     });
 
     it("should return 400 for config file not found", async () => {
@@ -408,7 +482,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
     it("should handle validation errors with authentication", async () => {
       const updates = {
-        safety: { maxPhases: 100 }, // Too big, should trigger validation error
+        safety: { maxPhases: 15 }, // Valid value to pass Zod validation
       };
 
       mockUpdateConfigSection.mockImplementation(() => {
@@ -594,19 +668,92 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.error).toContain("already exists");
     });
 
-    it("should return 400 for invalid request body", async () => {
+    it("should return 400 for missing repo field", async () => {
       const response = await app.request("/api/projects", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ invalid: "data" })
+        body: JSON.stringify({ path: "/path/to/repo" })
       });
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("repo is required");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for missing path field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ repo: "owner/test-repo" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for empty repo field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ repo: "", path: "/path/to/repo" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for invalid mode field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          mode: "invalid"
+        })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for extra unexpected fields", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          unexpectedField: "value"
+        })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
     });
 
     it("should return 401 without proper authentication", async () => {

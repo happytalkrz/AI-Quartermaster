@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createSlug, isPathSafe, createSlugWithFallback } from "../../src/utils/slug.js";
+import { createSlug, isPathSafe, isDirectoryNameSafe, createSlugWithFallback } from "../../src/utils/slug.js";
 
 describe("createSlug", () => {
   it("should convert simple English text to slug", () => {
@@ -95,6 +95,51 @@ describe("isPathSafe", () => {
     expect(isPathSafe("")).toBe(false);
     expect(isPathSafe(null as any)).toBe(false);
     expect(isPathSafe(undefined as any)).toBe(false);
+  });
+});
+
+describe("isDirectoryNameSafe", () => {
+  it("should return false for path traversal patterns", () => {
+    expect(isDirectoryNameSafe("../etc/passwd")).toBe(false);
+    expect(isDirectoryNameSafe("..\\windows")).toBe(false);
+    expect(isDirectoryNameSafe("../")).toBe(false);
+    expect(isDirectoryNameSafe("..")).toBe(false);
+  });
+
+  it("should return false for absolute paths", () => {
+    expect(isDirectoryNameSafe("/etc/passwd")).toBe(false);
+    expect(isDirectoryNameSafe("\\windows\\system32")).toBe(false);
+    expect(isDirectoryNameSafe("C:\\Windows")).toBe(false);
+  });
+
+  it("should return false for any slashes (stricter than isPathSafe)", () => {
+    expect(isDirectoryNameSafe("folder/subfolder")).toBe(false);
+    expect(isDirectoryNameSafe("folder\\subfolder")).toBe(false);
+    expect(isDirectoryNameSafe("1-/etc/passwd")).toBe(false);
+  });
+
+  it("should return false for control characters and forbidden characters", () => {
+    expect(isDirectoryNameSafe("file\x00name")).toBe(false);
+    expect(isDirectoryNameSafe("file<name")).toBe(false);
+    expect(isDirectoryNameSafe("file>name")).toBe(false);
+    expect(isDirectoryNameSafe("file:name")).toBe(false);
+    expect(isDirectoryNameSafe("file|name")).toBe(false);
+    expect(isDirectoryNameSafe("file?name")).toBe(false);
+    expect(isDirectoryNameSafe("file*name")).toBe(false);
+  });
+
+  it("should return true for safe directory names", () => {
+    expect(isDirectoryNameSafe("normal-file")).toBe(true);
+    expect(isDirectoryNameSafe("folder")).toBe(true);
+    expect(isDirectoryNameSafe("file-123")).toBe(true);
+    expect(isDirectoryNameSafe("validname")).toBe(true);
+    expect(isDirectoryNameSafe("42-fix-bug")).toBe(true);
+  });
+
+  it("should return false for invalid input", () => {
+    expect(isDirectoryNameSafe("")).toBe(false);
+    expect(isDirectoryNameSafe(null as any)).toBe(false);
+    expect(isDirectoryNameSafe(undefined as any)).toBe(false);
   });
 });
 

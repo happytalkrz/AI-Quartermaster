@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
-import { isPathSafe } from "../utils/slug.js";
+import { isDirectoryNameSafe } from "../utils/slug.js";
 import type { WorktreeConfig, GitConfig } from "../types/config.js";
 
 const logger = getLogger();
@@ -19,7 +19,7 @@ export interface WorktreeInfo {
  */
 function validateWorktreePath(rootPath: string, dirName: string): string {
   // Validate dirName for path safety
-  if (!isPathSafe(dirName)) {
+  if (!isDirectoryNameSafe(dirName)) {
     throw new Error(`Unsafe directory name: ${dirName}`);
   }
 

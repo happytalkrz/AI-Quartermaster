@@ -24,6 +24,7 @@ export function createSlug(text: string): string {
 /**
  * Validates that a string contains no path traversal characters.
  * Returns true if safe, false if contains dangerous characters.
+ * Allows slashes for file paths.
  */
 export function isPathSafe(path: string): boolean {
   if (!path || typeof path !== 'string') return false;
@@ -41,6 +42,28 @@ export function isPathSafe(path: string): boolean {
   ];
 
   return !dangerousPatterns.some(pattern => pattern.test(path));
+}
+
+/**
+ * Validates that a directory name is safe (stricter than isPathSafe).
+ * Prevents any slashes or directory separators.
+ * Used specifically for directory/folder names.
+ */
+export function isDirectoryNameSafe(dirName: string): boolean {
+  if (!dirName || typeof dirName !== 'string') return false;
+
+  // Check for path traversal and directory separator patterns
+  const dangerousPatterns = [
+    /\.\./,           // Parent directory ".."
+    /^\.\//,          // Current directory "./"
+    /^[/\\]/,         // Absolute path (starts with / or \)
+    /[/\\]/,          // Any slash or backslash (prevents directory separators)
+    // eslint-disable-next-line no-control-regex
+    /[\x00-\x1f]/,   // Control characters
+    /[<>:"|?*]/       // Windows forbidden characters
+  ];
+
+  return !dangerousPatterns.some(pattern => pattern.test(dirName));
 }
 
 /**

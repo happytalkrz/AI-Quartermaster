@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { retryWithClaudeFix, type RetryWithFixOptions } from "../../src/pipeline/retry-with-fix.js";
+import { retryWithClaudeFix, truncateFixPrompt, type RetryWithFixOptions } from "../../src/pipeline/retry-with-fix.js";
 
 // Mock dependencies
 vi.mock("../../src/claude/claude-runner.js", () => ({
@@ -293,5 +293,110 @@ describe("retryWithClaudeFix", () => {
         prompt: shortPrompt,
       })
     );
+  });
+});
+
+describe("truncateFixPrompt", () => {
+  it("should not truncate prompt when within token budget", () => {
+    const shortPrompt = "Fix this small error.";
+
+    const result = truncateFixPrompt(shortPrompt);
+
+    expect(result).toBe(shortPrompt);
+  });
+
+  it("should truncate prompt when exceeding token budget", () => {
+    // Create a very long prompt that exceeds 8000 tokens (40000+ chars)
+    const longContent = "This is a very long prompt content that will exceed the token budget. ".repeat(600);
+    const longPrompt = `Fix the following errors:\n\n${longContent}\n\nPlease fix these issues.`;
+
+    const result = truncateFixPrompt(longPrompt);
+
+    // Should be truncated and contain truncation marker
+    expect(result).toContain("[... 중간 내용 생략 (토큰 예산 초과로 인한 자동 truncate) ...]");
+    expect(result.length).toBeLessThan(longPrompt.length);
+
+    // Should start with first part of original prompt
+    expect(result).toMatch(/^Fix the following errors:/);
+
+    // Should end with last part of original prompt
+    expect(result).toMatch(/Please fix these issues\.$/);
+  });
+
+  it("should preserve first and last parts when truncating", () => {
+    // Create a structured prompt with clear first and last sections
+    const firstPart = "FIRST SECTION: Important context that should be preserved.";
+    const middlePart = "MIDDLE SECTION: This is very long content that will be truncated. ".repeat(600); // This will be truncated
+    const lastPart = "LAST SECTION: Critical instructions for fixing.";
+    const longPrompt = `${firstPart}\n\n${middlePart}\n\n${lastPart}`;
+
+    const result = truncateFixPrompt(longPrompt);
+
+    // Should contain truncation marker
+    expect(result).toContain("[... 중간 내용 생략 (토큰 예산 초과로 인한 자동 truncate) ...]");
+
+    // Should preserve important first and last sections
+    expect(result).toContain("FIRST SECTION: Important context");
+    expect(result).toContain("LAST SECTION: Critical instructions");
+
+    // Middle section should be mostly truncated
+    const middleRepeats = (result.match(/MIDDLE SECTION:/g) || []).length;
+    expect(middleRepeats).toBeLessThan(100); // Should be much less than the original 600
+  });
+
+  it("should result in prompt within token budget after truncation", () => {
+    // Create a very long prompt
+    const veryLongPrompt = "X".repeat(100000); // Much longer than budget
+
+    const result = truncateFixPrompt(veryLongPrompt);
+
+    // Estimate token count of result (should be within budget)
+    const resultTokens = Math.ceil(result.length / 4); // 4 chars per token
+    expect(resultTokens).toBeLessThanOrEqual(8000); // Should be within FIX_PROMPT_TOKEN_BUDGET
+  });
+
+  it("should handle edge case with empty prompt", () => {
+    const emptyPrompt = "";
+
+    const result = truncateFixPrompt(emptyPrompt);
+
+    expect(result).toBe("");
+  });
+
+  it("should handle edge case with prompt exactly at budget limit", () => {
+    // Create a prompt exactly at 8000 tokens (32000 chars)
+    const exactBudgetPrompt = "X".repeat(32000);
+
+    const result = truncateFixPrompt(exactBudgetPrompt);
+
+    expect(result).toBe(exactBudgetPrompt); // Should not be truncated
+  });
+
+  it("should maintain valid context structure after truncation", () => {
+    // Create a prompt with structured content
+    const structuredPrompt = `
+## Error Report
+The following errors were found:
+
+${"- Error detail line\n".repeat(500)}
+
+## Instructions
+Please fix all the above errors by:
+1. Reviewing each error
+2. Making necessary changes
+3. Testing the fixes
+    `.trim();
+
+    const result = truncateFixPrompt(structuredPrompt);
+
+    if (result.includes("[... 중간 내용 생략")) {
+      // If truncated, should still contain essential structure
+      expect(result).toContain("## Error Report");
+      expect(result).toContain("## Instructions");
+      expect(result).toContain("Please fix all the above errors");
+    } else {
+      // If not truncated, should be identical
+      expect(result).toBe(structuredPrompt);
+    }
   });
 });

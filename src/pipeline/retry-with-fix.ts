@@ -22,7 +22,7 @@ const FIX_PROMPT_LAST_PART = 1000;
  * @param prompt The original prompt
  * @returns Truncated prompt if necessary
  */
-function truncateFixPrompt(prompt: string): string {
+export function truncateFixPrompt(prompt: string): string {
   const tokenCount = estimateTokenCount(prompt);
 
   if (tokenCount <= FIX_PROMPT_TOKEN_BUDGET) {

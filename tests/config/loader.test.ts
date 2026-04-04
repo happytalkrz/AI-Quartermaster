@@ -1029,7 +1029,8 @@ describe("initProject", () => {
       return { exitCode: 1, stdout: "", stderr: "" };
     });
 
-    await initProject(testDir, {});
+    // Use existing testDir as project path instead of mocked cwd
+    await initProject(testDir, { projectPath: testDir });
 
     const configPath = join(testDir, "config.yml");
     expect(existsSync(configPath)).toBe(true);

@@ -8,6 +8,7 @@ import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner
 import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
+import { ProjectErrorState } from "../types/config.js";
 
 const logger = getLogger();
 
@@ -30,6 +31,7 @@ export class JobQueue {
   private needsReprocess: boolean = false;
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
+  private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
 
   constructor(
     store: JobStore,
@@ -363,6 +365,113 @@ export class JobQueue {
     }
   }
 
+  /**
+   * Checks if a project is currently paused due to consecutive failures.
+   */
+  isProjectPaused(repo: string): boolean {
+    const errorState = this.projectErrorState.get(repo);
+    if (!errorState || !errorState.pausedUntil) {
+      return false;
+    }
+
+    // Check if pause has expired
+    if (Date.now() >= errorState.pausedUntil) {
+      // Auto-resume expired pause
+      this.resumeProject(repo);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Manually pauses a project for the specified duration.
+   */
+  pauseProject(repo: string, durationMs: number): void {
+    const errorState = this.projectErrorState.get(repo) || {
+      consecutiveFailures: 0,
+      pausedUntil: null,
+      lastFailureAt: null,
+    };
+
+    errorState.pausedUntil = Date.now() + durationMs;
+    this.projectErrorState.set(repo, errorState);
+
+    logger.warn(`Project ${repo} manually paused for ${Math.round(durationMs / 1000)}s`);
+  }
+
+  /**
+   * Resumes a paused project.
+   */
+  resumeProject(repo: string): void {
+    const errorState = this.projectErrorState.get(repo);
+    if (errorState) {
+      errorState.pausedUntil = null;
+      this.projectErrorState.set(repo, errorState);
+      logger.info(`Project ${repo} resumed`);
+    }
+  }
+
+  /**
+   * Gets the error status of a project.
+   */
+  getProjectStatus(repo: string): ProjectErrorState | null {
+    return this.projectErrorState.get(repo) || null;
+  }
+
+  /**
+   * Tracks a project failure and potentially pauses the project.
+   */
+  private trackProjectFailure(repo: string): void {
+    let project = undefined;
+    try {
+      const config = loadConfig(process.cwd());
+      project = config?.projects?.find(p => p.repo === repo);
+    } catch (error: unknown) {
+      // If config loading fails (e.g. in test environment), use defaults
+      logger.debug(`Failed to load config for project failure tracking: ${getErrorMessage(error)}`);
+    }
+
+    const pauseThreshold = project?.pauseThreshold || 3;
+    const pauseDurationMs = project?.pauseDurationMs || 30 * 60 * 1000; // 30분 기본값
+
+    const errorState = this.projectErrorState.get(repo) || {
+      consecutiveFailures: 0,
+      pausedUntil: null,
+      lastFailureAt: null,
+    };
+
+    errorState.consecutiveFailures++;
+    errorState.lastFailureAt = Date.now();
+
+    if (errorState.consecutiveFailures >= pauseThreshold) {
+      errorState.pausedUntil = Date.now() + pauseDurationMs;
+      logger.error(
+        `Project ${repo} paused for ${Math.round(pauseDurationMs / 60000)}min after ${errorState.consecutiveFailures} consecutive failures`
+      );
+    } else {
+      logger.warn(
+        `Project ${repo} failure count: ${errorState.consecutiveFailures}/${pauseThreshold}`
+      );
+    }
+
+    this.projectErrorState.set(repo, errorState);
+  }
+
+  /**
+   * Tracks a project success and resets failure count.
+   */
+  private trackProjectSuccess(repo: string): void {
+    const errorState = this.projectErrorState.get(repo);
+    if (errorState && errorState.consecutiveFailures > 0) {
+      logger.info(`Project ${repo} success - resetting failure count (was ${errorState.consecutiveFailures})`);
+      errorState.consecutiveFailures = 0;
+      errorState.lastFailureAt = null;
+      // Keep pausedUntil if manually set
+      this.projectErrorState.set(repo, errorState);
+    }
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -424,6 +533,15 @@ export class JobQueue {
           continue;
         }
 
+        // Check if project is paused due to consecutive failures
+        if (this.isProjectPaused(job.repo)) {
+          const errorState = this.projectErrorState.get(job.repo);
+          const remainingMs = errorState!.pausedUntil! - Date.now();
+          logger.info(`Job ${jobId} deferred due to project pause (${job.repo}). Resume in ${Math.round(remainingMs / 1000)}s`);
+          deferred.push(jobId);
+          continue;
+        }
+
         this.running.add(jobId);
         this.addJobToRepo(jobId, job.repo);
         this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
@@ -476,18 +594,21 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: result.error,
         });
+        this.trackProjectFailure(job.repo);
       } else if (result.prUrl) {
         this.store.update(job.id, {
           status: "success",
           completedAt: new Date().toISOString(),
           prUrl: result.prUrl,
         });
+        this.trackProjectSuccess(job.repo);
       } else {
         this.store.update(job.id, {
           status: "failure",
           completedAt: new Date().toISOString(),
           error: "Pipeline completed but no PR was created",
         });
+        this.trackProjectFailure(job.repo);
       }
     } catch (error: unknown) {
       this.store.update(job.id, {
@@ -495,6 +616,7 @@ export class JobQueue {
         completedAt: new Date().toISOString(),
         error: getErrorMessage(error),
       });
+      this.trackProjectFailure(job.repo);
     } finally {
       this.running.delete(job.id);
       this.removeJobFromRepo(job.id, job.repo);

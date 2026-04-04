@@ -366,7 +366,7 @@ describe("executePhase", () => {
     const result = await executePhase(ctx);
 
     expect(result.success).toBe(true);
-    expect(mockAnalyzeTokenUsage).toHaveBeenCalledWith("rendered prompt", "claude-sonnet-4-6");
+    expect(mockAnalyzeTokenUsage).toHaveBeenCalledWith("rendered prompt", "claude-sonnet-4-6", "en");
   });
 
   it("includes usage when Claude returns usage information", async () => {

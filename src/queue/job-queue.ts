@@ -226,13 +226,13 @@ export class JobQueue {
     let recovered = 0;
 
     for (const job of jobs) {
-      if (job.status === "running") {
+      if (isRunningJob(job)) {
         // Was running when server died — reset to queued
         this.store.update(job.id, { status: "queued", startedAt: undefined });
         this.pending.push(job.id);
         recovered++;
         logger.info(`Job recovered (was running): ${job.id}`);
-      } else if (job.status === "queued") {
+      } else if (isQueuedJob(job)) {
         this.pending.push(job.id);
         recovered++;
         logger.info(`Job recovered (was queued): ${job.id}`);
@@ -306,18 +306,22 @@ export class JobQueue {
     // Check for existing job
     const existing = this.store.findAnyByIssue(issueNumber, repo);
     if (existing) {
-      if (existing.status === "success") {
+      if (isSuccessJob(existing)) {
         logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing.id}`);
         return undefined;
       }
 
-      if (existing.status === "failure" || existing.status === "cancelled") {
+      if (isFailureJob(existing) || isCancelledJob(existing)) {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
         this.cleanupFailedJobArtifacts(issueNumber);
         this.store.archive(existing.id);
-      } else {
+      } else if (isActiveJob(existing)) {
         // queued/running statuses should still block
         logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
+        return undefined;
+      } else {
+        // archived status - should not happen but log for debugging
+        logger.warn(`Job for issue #${issueNumber} (${repo}) in unexpected state: ${existing.id} (status: ${existing.status})`);
         return undefined;
       }
     }
@@ -340,7 +344,7 @@ export class JobQueue {
   retryJob(jobId: string): Job | undefined {
     const oldJob = this.store.get(jobId);
     if (!oldJob) return undefined;
-    if (oldJob.status !== "failure" && oldJob.status !== "cancelled") return undefined;
+    if (!isFailureJob(oldJob) && !isCancelledJob(oldJob)) return undefined;
 
     // PR이 이미 생성된 job은 재시도 방지 (stuck 오판으로 failure 표시된 경우)
     const logs = oldJob.logs ?? [];
@@ -593,7 +597,7 @@ export class JobQueue {
             let depFailed = false;
             for (const depNum of job.dependencies) {
               const depJob = this.store.findAnyByIssue(depNum, job.repo);
-              if (depJob && (depJob.status === "failure" || depJob.status === "cancelled")) {
+              if (depJob && (isFailureJob(depJob) || isCancelledJob(depJob))) {
                 logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
                 this.store.update(jobId, {
                   status: "failure",

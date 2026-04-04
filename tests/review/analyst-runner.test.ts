@@ -25,6 +25,7 @@ vi.mock("../../src/review/diff-splitter.js", () => ({
 
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: vi.fn(() => ({
+    debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),

@@ -7,6 +7,7 @@ import type { AnalystResult, AnalystFinding } from "../types/review.js";
 import { analyzeTokenUsage } from "./token-estimator.js";
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs, generateSplitStats } from "./diff-splitter.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 
@@ -87,7 +88,8 @@ async function runSingleAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
       parsed.summary || "",
       parsed.coverage || EMPTY_COVERAGE
     );
-  } catch {
+  } catch (err: unknown) {
+    logger.debug(`JSON parsing failed, falling back to text extraction: ${getErrorMessage(err)}`);
     return createAnalystResult(
       extractVerdictFromText(result.output),
       durationMs(),

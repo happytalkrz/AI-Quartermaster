@@ -47,7 +47,7 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter; con
 
     const bodyContent = lines.slice(endIndex + 1).join('\n').trim();
     return { frontmatter, content: bodyContent };
-  } catch (error) {
+  } catch (error: unknown) {
     return null;
   }
 }
@@ -65,7 +65,7 @@ export function loadSkills(skillsPath: string): SkillContent[] {
       logger.warn(`Skills path is not a directory: ${resolvedPath}`);
       return [];
     }
-  } catch (error) {
+  } catch (error: unknown) {
     logger.debug(`Skills directory not found: ${resolvedPath}`);
     return [];
   }
@@ -110,12 +110,12 @@ export function loadSkills(skillsPath: string): SkillContent[] {
             });
 
             logger.debug(`Loaded skill: ${category}/${skillName} (${parsed.frontmatter.name})`);
-          } catch (error) {
+          } catch (error: unknown) {
             logger.warn(`Error reading skill file ${skillFilePath}:`, error);
             continue;
           }
         }
-      } catch (error) {
+      } catch (error: unknown) {
         logger.warn(`Error reading category directory ${categoryPath}:`, error);
         continue;
       }
@@ -123,7 +123,7 @@ export function loadSkills(skillsPath: string): SkillContent[] {
 
     logger.info(`Loaded ${skills.length} skills from ${resolvedPath}`);
     return skills;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error(`Error loading skills from ${resolvedPath}:`, error);
     return [];
   }

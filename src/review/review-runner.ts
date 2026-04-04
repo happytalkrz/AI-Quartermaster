@@ -3,6 +3,7 @@ import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { ReviewVerdict, ReviewFinding, ReviewResult } from "../types/review.js";
 
@@ -55,8 +56,9 @@ export async function runReviewRound(ctx: ReviewRunnerContext): Promise<ReviewRe
       summary: parsed.summary || "",
       durationMs: Date.now() - startTime,
     };
-  } catch {
+  } catch (err: unknown) {
     // If Claude output isn't parseable JSON, try to determine verdict from text
+    logger.debug(`JSON parsing failed, falling back to text extraction: ${getErrorMessage(err)}`);
     const output = result.output.toLowerCase();
     const verdict: ReviewVerdict = output.includes('"pass"') || output.includes("verdict: pass") ? "PASS" : "FAIL";
     return {

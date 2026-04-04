@@ -6,6 +6,7 @@ import { AQConfig } from "../types/config.js";
 import { checkPrConflict, commentOnIssue, listOpenPrs } from "../github/pr-creator.js";
 import type { PrConflictInfo } from "../types/pipeline.js";
 import { SelfUpdater, UpdateInfo } from "../update/self-updater.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 
@@ -107,8 +108,8 @@ export class IssuePoller {
         logger.info(`새 업데이트 감지 — ${updateInfo.currentHash.substring(0, 8)} -> ${updateInfo.remoteHash.substring(0, 8)}`);
         await this.onUpdateAvailable(updateInfo);
       }
-    } catch (err) {
-      logger.warn(`업데이트 확인 중 오류: ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`업데이트 확인 중 오류: ${getErrorMessage(err)}`);
     }
   }
 
@@ -139,8 +140,8 @@ export class IssuePoller {
       }
 
       issues = JSON.parse(result.stdout) as RawIssue[];
-    } catch (err) {
-      logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${getErrorMessage(err)}`);
       return;
     }
 
@@ -211,8 +212,8 @@ export class IssuePoller {
           logger.debug(`PR #${pr.number} (${repo}) — 충돌 없음`);
         }
       }
-    } catch (error) {
-      logger.warn(`${repo} PR 충돌 체크 중 오류: ${error}`);
+    } catch (err: unknown) {
+      logger.warn(`${repo} PR 충돌 체크 중 오류: ${getErrorMessage(err)}`);
     }
   }
 
@@ -256,8 +257,8 @@ _자동 생성된 알림 — AQM PR 모니터링_`;
           logger.warn(`재큐잉 실패 — #${job.issueNumber} (${job.repo})`);
         }
       }
-    } catch (err) {
-      logger.warn(`Failed job 폴링 중 오류: ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed job 폴링 중 오류: ${getErrorMessage(err)}`);
     }
   }
 }

@@ -54,7 +54,7 @@ export class ConfigWatcher extends EventEmitter {
       try {
         watcher.close();
         logger.debug(`Stopped watching: ${path}`);
-      } catch (err) {
+      } catch (err: unknown) {
         logger.warn(`Error closing watcher for ${path}: ${err}`);
       }
     }
@@ -72,7 +72,7 @@ export class ConfigWatcher extends EventEmitter {
 
       this.watchers.set(filePath, watcher);
       logger.debug(`Started watching file: ${filePath}`);
-    } catch (err) {
+    } catch (err: unknown) {
       logger.error(`Failed to watch file ${filePath}: ${err}`);
     }
   }
@@ -87,7 +87,7 @@ export class ConfigWatcher extends EventEmitter {
 
       this.watchers.set(this.projectRoot, watcher);
       logger.debug(`Started watching directory: ${this.projectRoot}`);
-    } catch (err) {
+    } catch (err: unknown) {
       logger.error(`Failed to watch directory ${this.projectRoot}: ${err}`);
     }
   }

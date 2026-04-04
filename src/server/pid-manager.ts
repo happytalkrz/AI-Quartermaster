@@ -17,7 +17,7 @@ export function readPidFile(pidPath: string): number | null {
     const content = readFileSync(pidPath, "utf-8").trim();
     const pid = parseInt(content, 10);
     return isNaN(pid) ? null : pid;
-  } catch {
+  } catch (error: unknown) {
     return null;
   }
 }
@@ -29,11 +29,11 @@ export function isProcessRunning(pid: number): boolean {
     try {
       const stat = readFileSync(`/proc/${pid}/status`, "utf-8");
       if (stat.includes("State:\tZ")) return false; // zombie
-    } catch {
+    } catch (error: unknown) {
       // /proc not available (non-Linux) — trust kill(0)
     }
     return true;
-  } catch {
+  } catch (error: unknown) {
     return false;
   }
 }
@@ -90,7 +90,7 @@ export function findProcessByPort(port: number): number | null {
     }
 
     return null;
-  } catch {
+  } catch (error: unknown) {
     // lsof command failed (port not in use, permission denied, etc.)
     return null;
   }

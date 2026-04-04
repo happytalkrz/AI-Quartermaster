@@ -8,6 +8,7 @@ import { createSlugWithFallback } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
 import { withRepoLock } from "../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { getLogger } from "../utils/logger.js";
 import type { GitConfig, WorktreeConfig } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
@@ -130,13 +131,13 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
             await removeWorktree(input.gitConfig, expectedPath, { cwd: input.projectRoot, force: true });
             logger.info(`[RETRY] Removed worktree: ${expectedPath}`);
             input.jl?.log("재시도 작업 - 기존 worktree 정리 완료");
-          } catch (e) {
-            logger.warn(`[RETRY] Primary cleanup failed: ${e}`);
+          } catch (err: unknown) {
+            logger.warn(`[RETRY] Primary cleanup failed: ${getErrorMessage(err)}`);
             try {
               await runCli(input.gitConfig.gitPath, ["worktree", "prune"], { cwd: input.projectRoot });
               logger.info(`[RETRY] Pruned stale entries`);
-            } catch (pruneError) {
-              logger.warn(`[RETRY] Prune failed: ${pruneError}`);
+            } catch (pruneError: unknown) {
+              logger.warn(`[RETRY] Prune failed: ${getErrorMessage(pruneError)}`);
             }
             logger.warn(`[RETRY] Cleanup failed; continuing (branch-manager handles full cleanup)`);
             input.jl?.log("워크트리 정리 실패했지만 계속 진행 (branch-manager에서 완전 정리 예정)");
@@ -182,8 +183,8 @@ export async function prepareWorkEnvironment(input: EnvironmentPrepInput): Promi
       const hash = await createCheckpoint({ cwd: input.worktreePath, gitPath: input.gitConfig.gitPath });
       rollbackHash = hash;
       logger.info(`Rollback checkpoint set: ${hash.slice(0, 8)}`);
-    } catch (e) {
-      logger.warn(`Failed to create rollback checkpoint: ${e}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed to create rollback checkpoint: ${getErrorMessage(err)}`);
     }
   }
 

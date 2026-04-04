@@ -142,7 +142,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
               };
             }
           }
-        } catch {
+        } catch (_err: unknown) {
           // Not valid JSON line, skip
         }
       }
@@ -226,7 +226,7 @@ export function extractJson<T = unknown>(text: string): T {
   // 1. Try the entire text as JSON
   try {
     return JSON.parse(text) as T;
-  } catch {
+  } catch (_err: unknown) {
     // continue
   }
 
@@ -235,7 +235,7 @@ export function extractJson<T = unknown>(text: string): T {
   if (codeBlockMatch) {
     try {
       return JSON.parse(codeBlockMatch[1].trim()) as T;
-    } catch {
+    } catch (_err: unknown) {
       // continue
     }
   }

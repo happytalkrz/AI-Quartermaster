@@ -27,7 +27,7 @@ describe("checkSensitivePaths", () => {
   it("should list all violations in error", () => {
     try {
       checkSensitivePaths([".env", "key.pem"], [".env*", "**/*.pem"]);
-    } catch (e: any) {
+    } catch (e: unknown) {
       expect(e.details.violations).toHaveLength(2);
     }
   });

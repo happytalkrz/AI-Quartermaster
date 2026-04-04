@@ -109,15 +109,16 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
   } catch (error) {
     // Check if this is a skipped issue due to feasibility check
-    const errorWithSkipped = error as Error & { isSkipped?: boolean; metrics?: any };
-    if (errorWithSkipped.isSkipped) {
-      // Issue was skipped due to feasibility check - this is a successful completion
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
+
+    if (isFeasibilitySkip) {
       const { formatResult } = await import("./result-reporter.js");
-      const errorMessage = error instanceof Error ? error.message : "Issue skipped due to feasibility check";
+      const skipReason = errorMessage.slice("FEASIBILITY_SKIP:".length).trim();
       const basicPlan = {
         issueNumber,
         title: `Issue #${issueNumber} skipped`,
-        problemDefinition: errorMessage,
+        problemDefinition: skipReason,
         requirements: [],
         affectedFiles: [],
         risks: [],
@@ -131,7 +132,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         success: true,
         state: "SKIPPED" as const,
         report,
-        error: errorMessage
+        error: skipReason
       };
     }
 

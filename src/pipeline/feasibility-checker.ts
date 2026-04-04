@@ -64,16 +64,10 @@ function extractFilePaths(issueBody: string): string[] {
  * 대소문자를 구분하지 않고 부분 매칭을 수행합니다.
  */
 function detectBlockedKeywords(issueBody: string, blockedKeywords: string[]): string[] {
-  const detectedKeywords: string[] = [];
   const lowerBody = issueBody.toLowerCase();
-
-  blockedKeywords.forEach(keyword => {
-    if (lowerBody.includes(keyword.toLowerCase())) {
-      detectedKeywords.push(keyword);
-    }
-  });
-
-  return detectedKeywords;
+  return blockedKeywords.filter(keyword =>
+    lowerBody.includes(keyword.toLowerCase())
+  );
 }
 
 /**
@@ -103,9 +97,8 @@ export function checkFeasibility(
 
   // 메트릭 수집
   const requirementCount = parseRequirementCount(issueBody);
-  const filePaths = extractFilePaths(issueBody);
-  const fileCount = filePaths.length;
-  const blockedKeywords = detectBlockedKeywords(issueBody, config?.blockedKeywords || []);
+  const fileCount = extractFilePaths(issueBody).length;
+  const blockedKeywords = detectBlockedKeywords(issueBody, config.blockedKeywords);
 
   const metrics = {
     requirementCount,
@@ -116,14 +109,14 @@ export function checkFeasibility(
   logger.info(`Feasibility metrics for issue #${issue.number}: requirements=${metrics.requirementCount}, files=${metrics.fileCount}, blockedKeywords=${metrics.blockedKeywords.length}`);
 
   // 체크 1: 요구사항 수
-  if (config && requirementCount > config.maxRequirements) {
+  if (requirementCount > config.maxRequirements) {
     const reason = `Too many requirements (${requirementCount} > ${config.maxRequirements})`;
     logger.info(`Issue #${issue.number} unfeasible: ${reason}`);
     return { feasible: false, reason, metrics };
   }
 
   // 체크 2: 파일 수
-  if (config && fileCount > config.maxFiles) {
+  if (fileCount > config.maxFiles) {
     const reason = `Too many files affected (${fileCount} > ${config.maxFiles})`;
     logger.info(`Issue #${issue.number} unfeasible: ${reason}`);
     return { feasible: false, reason, metrics };

@@ -621,11 +621,9 @@ describe("runPipeline", () => {
         },
       });
       mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
-      mockFetchAndValidateIssue.mockResolvedValue({
-        issue: issueWithManyRequirements,
-        mode: "code",
-        checkpoint: vi.fn(),
-      });
+      mockFetchAndValidateIssue.mockRejectedValue(
+        new Error("FEASIBILITY_SKIP: Too many requirements (5 > 3)")
+      );
 
       // Setup mock for commentOnIssue
       mockCommentOnIssue.mockResolvedValue(undefined);
@@ -682,11 +680,9 @@ describe("runPipeline", () => {
         },
       });
       mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
-      mockFetchAndValidateIssue.mockResolvedValue({
-        issue: issueWithBlockedKeyword,
-        mode: "code",
-        checkpoint: vi.fn(),
-      });
+      mockFetchAndValidateIssue.mockRejectedValue(
+        new Error("FEASIBILITY_SKIP: Blocked keywords found: architecture, refactor")
+      );
 
       const result = await runPipeline({
         issueNumber: 42,

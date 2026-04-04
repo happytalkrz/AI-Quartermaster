@@ -318,6 +318,94 @@ describe("JobStore", () => {
     });
   });
 
+  describe("Cache Size Management", () => {
+    it("should use default maxJobs when not specified", () => {
+      const defaultStore = new JobStore(dataDir);
+      expect(defaultStore).toBeTruthy();
+      // Can't directly access private field, but test via behavior
+
+      // Create jobs up to default limit and verify no auto-pruning occurs
+      for (let i = 1; i <= 10; i++) {
+        defaultStore.create(i, "test/repo");
+      }
+      expect(defaultStore.list().length).toBe(10);
+      defaultStore.stopWatching();
+    });
+
+    it("should use custom maxJobs when specified", () => {
+      const customStore = new JobStore(dataDir, 5);
+
+      // Create 3 jobs - should not trigger pruning
+      for (let i = 1; i <= 3; i++) {
+        customStore.create(i, "test/repo");
+      }
+      expect(customStore.list().length).toBe(3);
+
+      // Complete 2 jobs to make them eligible for pruning
+      const jobs = customStore.list();
+      customStore.update(jobs[0].id, { status: "success", completedAt: new Date().toISOString() });
+      customStore.update(jobs[1].id, { status: "failure", completedAt: new Date().toISOString() });
+
+      // Create more jobs to exceed limit and trigger auto-pruning
+      for (let i = 4; i <= 7; i++) {
+        customStore.create(i, "test/repo");
+      }
+
+      // Should have pruned oldest completed jobs
+      const finalJobs = customStore.list();
+      expect(finalJobs.length).toBeLessThanOrEqual(5);
+
+      customStore.stopWatching();
+    });
+
+    it("should auto-prune when cache size exceeds maxJobs", () => {
+      const smallStore = new JobStore(dataDir, 3);
+
+      // Create and complete 2 jobs
+      const job1 = smallStore.create(1, "test/repo");
+      const job2 = smallStore.create(2, "test/repo");
+      smallStore.update(job1.id, { status: "success", completedAt: new Date().toISOString() });
+      smallStore.update(job2.id, { status: "failure", completedAt: new Date().toISOString() });
+
+      // Create 2 more jobs (total 4, exceeds limit of 3)
+      const job3 = smallStore.create(3, "test/repo");
+      const job4 = smallStore.create(4, "test/repo"); // This should trigger pruning
+
+      const remainingJobs = smallStore.list();
+      expect(remainingJobs.length).toBeLessThanOrEqual(3);
+
+      // Verify that newer jobs are kept
+      const remainingIds = remainingJobs.map(j => j.id);
+      expect(remainingIds).toContain(job3.id);
+      expect(remainingIds).toContain(job4.id);
+
+      smallStore.stopWatching();
+    });
+
+    it("should not prune running or queued jobs", () => {
+      const smallStore = new JobStore(dataDir, 2);
+
+      // Create 2 running/queued jobs
+      const job1 = smallStore.create(1, "test/repo");
+      const job2 = smallStore.create(2, "test/repo");
+      smallStore.update(job1.id, { status: "running", startedAt: new Date().toISOString() });
+      // job2 stays queued
+
+      // Create third job - should not prune running/queued jobs
+      const job3 = smallStore.create(3, "test/repo");
+
+      const remainingJobs = smallStore.list();
+      expect(remainingJobs.length).toBe(3); // No pruning occurred
+
+      const remainingIds = remainingJobs.map(j => j.id);
+      expect(remainingIds).toContain(job1.id);
+      expect(remainingIds).toContain(job2.id);
+      expect(remainingIds).toContain(job3.id);
+
+      smallStore.stopWatching();
+    });
+  });
+
   describe("getCostStats", () => {
     it("should return zero stats when no jobs exist", () => {
       const stats = store.getCostStats();

@@ -144,7 +144,12 @@ function makeFailureResult(phaseIndex: number, phaseName: string, error = "Test 
 describe("runCoreLoop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCheckPhaseLimit.mockImplementation(() => {});
+    // Reset all mock implementations to clear persistent mockResolvedValue
+    mockRetryPhase.mockReset();
+    mockExecutePhase.mockReset();
+    mockGeneratePlan.mockReset();
+    mockSchedulePhases.mockReset().mockReturnValue({ success: true, groups: [] });
+    mockCheckPhaseLimit.mockReset().mockImplementation(() => {});
   });
 
   describe("parallel execution", () => {
@@ -675,7 +680,7 @@ describe("runCoreLoop", () => {
       const retryResult = makeFailureResult(0, "UnknownErrorPhase", "Retry error", "TS_ERROR");
       retryResult.error = undefined; // Set error to undefined instead of deleting
 
-      mockRetryPhase.mockResolvedValue(retryResult); // Use mockResolvedValue to handle multiple calls
+      mockRetryPhase.mockResolvedValueOnce(retryResult).mockResolvedValueOnce(retryResult); // Handle multiple calls with Once
 
       await runCoreLoop(makeContext());
 

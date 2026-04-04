@@ -858,7 +858,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue({ plan });
+      mockGeneratePlan.mockResolvedValue({ plan, costUsd: 0 });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],

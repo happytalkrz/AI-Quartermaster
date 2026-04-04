@@ -52,7 +52,6 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
     config,
     aqRoot,
     projectRoot,
-    dataDir,
     patternStore,
     jl,
     checkpoint,

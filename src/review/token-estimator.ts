@@ -225,7 +225,7 @@ export function truncateRepoStructure(structure: string, maxTokens: number): str
   // Priority patterns (higher priority = more important)
   const priorities = [
     { pattern: /(README|package\.json|tsconfig|\.gitignore)/i, priority: 10 },
-    { pattern: /^[^\/\s]/, priority: 9 }, // Root level files
+    { pattern: /^[^/\s]/, priority: 9 }, // Root level files
     { pattern: /\/(src|lib|app)\//, priority: 8 }, // Source directories
     { pattern: /\.(ts|tsx|js|jsx)$/i, priority: 7 }, // TypeScript/JavaScript files
     { pattern: /\/(test|spec)\/.*\.(test|spec)\./i, priority: 6 }, // Test files

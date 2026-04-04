@@ -6,10 +6,10 @@ import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, ErrorCategory } from "../types/pipeline.js";
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
-import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget, getEffectiveTokenLimit } from "../review/token-estimator.js";
+import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../review/token-estimator.js";
 
 const logger = getLogger();
 

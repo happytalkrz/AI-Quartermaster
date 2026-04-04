@@ -2,11 +2,9 @@ import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
-import { getLogger } from "../utils/logger.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { ReviewVerdict, ReviewFinding, ReviewResult } from "../types/review.js";
 
-const logger = getLogger();
 
 export interface ReviewRunnerContext {
   roundName: string;

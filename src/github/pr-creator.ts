@@ -31,7 +31,7 @@ export async function createDraftPR(
   ghConfig: GhCliConfig,
   ctx: PrContext,
   options: { cwd: string; promptsDir: string; dryRun?: boolean }
-): Promise<PrCreateResult> {
+): Promise<PrCreateResult | null> {
   // Build PR title
   const title = renderTemplate(prConfig.titleTemplate, {
     issueNumber: String(ctx.issueNumber),
@@ -68,7 +68,9 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const problemDef = ctx.plan?.problemDefinition || "Issue resolution";
+    const phases = ctx.phaseResults?.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n") || "No phase results available";
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDef}\n\n## Phases\n\n${phases}`;
   }
 
   // Add issue link
@@ -76,7 +78,7 @@ export async function createDraftPR(
     body += `\n\nCloses #${ctx.issueNumber}`;
   }
 
-  if (options.dryRun) {
+  if (options?.dryRun) {
     logger.info(`[DRY RUN] Would create PR: ${title}`);
     return { url: "https://github.com/dry-run", number: 0 };
   }
@@ -95,32 +97,38 @@ export async function createDraftPR(
     args.push("--draft");
   }
 
-  for (const label of prConfig.labels) {
+  for (const label of prConfig.labels || []) {
     args.push("--label", label);
   }
-  for (const assignee of prConfig.assignees) {
+  for (const assignee of prConfig.assignees || []) {
     args.push("--assignee", assignee);
   }
-  for (const reviewer of prConfig.reviewers) {
+  for (const reviewer of prConfig.reviewers || []) {
     args.push("--reviewer", reviewer);
   }
 
-  const result = await runCli(ghConfig.path, args, {
-    cwd: options.cwd,
-    timeout: ghConfig.timeout,
-  });
+  try {
+    const result = await runCli(ghConfig.path, args, {
+      cwd: options.cwd,
+      timeout: ghConfig.timeout,
+    });
 
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    if (result.exitCode !== 0) {
+      logger.warn(`Failed to create PR: ${result.stderr}`);
+      return null;
+    }
+
+    // gh pr create outputs the PR URL
+    const url = result.stdout.trim();
+    const prNumberMatch = url.match(/\/pull\/(\d+)/);
+    const number = prNumberMatch ? parseInt(prNumberMatch[1], 10) : 0;
+
+    logger.info(`Created draft PR: ${url}`);
+    return { url, number };
+  } catch (error) {
+    logger.warn(`Error creating PR: ${error}`);
+    return null;
   }
-
-  // gh pr create outputs the PR URL
-  const url = result.stdout.trim();
-  const prNumberMatch = url.match(/\/pull\/(\d+)/);
-  const number = prNumberMatch ? parseInt(prNumberMatch[1], 10) : 0;
-
-  logger.info(`Created draft PR: ${url}`);
-  return { url, number };
 }
 
 /**

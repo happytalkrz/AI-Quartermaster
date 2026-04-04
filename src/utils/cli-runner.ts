@@ -140,29 +140,31 @@ function shouldIncludeHeaders(args: string[]): boolean {
  */
 function parseRateLimitHeaders(result: CliRunResult): void {
   const fullOutput = result.stdout + result.stderr;
+  const lines = fullOutput.split(/\r?\n/);
 
-  // HTTP 헤더 섹션 찾기 (gh CLI의 --include-headers 출력)
-  const headerMatch = fullOutput.match(/^(HTTP\/[\d.]+\s+\d+.*?\r?\n(?:.*:\s*.*\r?\n)*)\r?\n/m);
-  if (!headerMatch) {
-    logger.debug("No HTTP headers found in gh CLI output");
-    return;
-  }
-
-  const headerSection = headerMatch[1];
   const headers: Record<string, string> = {};
+  let inHeaderSection = false;
 
-  // 헤더 파싱
-  const headerLines = headerSection.split(/\r?\n/);
-  for (const line of headerLines) {
-    const match = line.match(/^([^:]+):\s*(.*)$/);
-    if (match) {
-      const [, key, value] = match;
-      headers[key.toLowerCase()] = value;
+  for (const line of lines) {
+    if (line.startsWith("HTTP/")) {
+      inHeaderSection = true;
+      continue;
+    }
+    if (inHeaderSection && line === "") break; // End of headers
+    if (inHeaderSection) {
+      const colonIdx = line.indexOf(":");
+      if (colonIdx !== -1) {
+        const key = line.slice(0, colonIdx).toLowerCase();
+        const value = line.slice(colonIdx + 1).trim();
+        headers[key] = value;
+      }
     }
   }
 
-  logger.debug(`Parsed GitHub headers: ${Object.keys(headers).join(", ")}`);
-  githubRateLimiter.updateFromHeaders(headers);
+  if (Object.keys(headers).length > 0) {
+    logger.debug(`Parsed GitHub headers: ${Object.keys(headers).join(", ")}`);
+    githubRateLimiter.updateFromHeaders(headers);
+  }
 }
 
 /**

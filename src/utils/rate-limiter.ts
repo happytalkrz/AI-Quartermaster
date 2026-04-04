@@ -80,11 +80,9 @@ export class ExponentialBackoff {
 
   constructor(config: RetryConfig) {
     this.config = {
-      maxRetries: config.maxRetries,
-      initialDelayMs: config.initialDelayMs,
-      maxDelayMs: config.maxDelayMs,
-      jitterFactor: Math.max(0, Math.min(1, config.jitterFactor)), // 0-1 범위 보장
-    };
+      ...config,
+      jitterFactor: Math.max(0, Math.min(1, config.jitterFactor)),
+    } as Required<RetryConfig>;
   }
 
   /**
@@ -126,6 +124,17 @@ export class ExponentialBackoff {
   }
 }
 
+const RETRYABLE_MESSAGES = [
+  "rate limit",
+  "too many requests",
+  "timeout",
+  "network error",
+  "connection reset",
+  "econnreset",
+  "prompt is too long",
+  "temporarily unavailable",
+];
+
 /**
  * 재시도 가능한 에러 타입 판단
  */
@@ -136,23 +145,12 @@ function isRetryableError(error: unknown): boolean {
 
   // HTTP 상태 코드 기반 판단
   if (typeof err.status === "number") {
-    return err.status >= 500 || err.status === 429; // 5xx 또는 Too Many Requests
+    return err.status >= 500 || err.status === 429;
   }
 
   // 에러 메시지 기반 판단
   const message = err.message?.toLowerCase() || "";
-  const retryableMessages = [
-    "rate limit",
-    "too many requests",
-    "timeout",
-    "network error",
-    "connection reset",
-    "econnreset",
-    "prompt is too long", // Claude specific
-    "temporarily unavailable",
-  ];
-
-  return retryableMessages.some(msg => message.includes(msg));
+  return RETRYABLE_MESSAGES.some(msg => message.includes(msg));
 }
 
 /**

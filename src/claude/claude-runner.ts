@@ -158,10 +158,11 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
         if (entry) entry.lastActivity = Date.now();
       }
 
-      // Rate limit 및 prompt too long 에러 감지
-      const errorCategory = classifyError(chunk);
-      if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
-        detectedRetryableError = chunk;
+      if (!detectedRetryableError) {
+        const errorCategory = classifyError(chunk);
+        if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
+          detectedRetryableError = chunk;
+        }
       }
     });
 

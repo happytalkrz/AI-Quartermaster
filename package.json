@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "AI 병참부 - GitHub Issue to Draft PR automation pipeline",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/cli.js",
   "bin": {
     "aqm": "dist/cli.js"
@@ -27,6 +29,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
+    "better-sqlite3": "^12.8.0",
     "hono": "^4.12.8",
     "minimatch": "^9.0.9",
     "tsx": "^4.7.0",
@@ -34,6 +37,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",

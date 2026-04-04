@@ -328,7 +328,7 @@ describe("retryPhase", () => {
       expect(mockAutoCommitIfDirty).toHaveBeenCalledWith(
         "git",
         "/tmp/project",
-        "[#42] Phase 0 fix: TestPhase"
+        "[#42] Phase 1 fix: TestPhase"
       );
     });
   });

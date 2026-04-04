@@ -1135,7 +1135,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         cwd: testDir,
       });
 
-      expect(result.issueNumber).toBe(100);
+      expect(result.plan.issueNumber).toBe(100);
       expect(mockRunClaude).toHaveBeenCalledTimes(1);
 
       // Verify that Claude was called with appropriate prompt
@@ -1200,7 +1200,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         cwd: testDir,
       });
 
-      expect(result.issueNumber).toBe(200);
+      expect(result.plan.issueNumber).toBe(200);
       expect(mockRunClaude).toHaveBeenCalledTimes(1);
 
       // Verify that the prompt was reasonably sized (not excessive)
@@ -1277,7 +1277,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
         cwd: testDir,
       });
 
-      expect(result.issueNumber).toBe(300);
+      expect(result.plan.issueNumber).toBe(300);
       expect(mockRunClaude).toHaveBeenCalledTimes(1);
 
       // Verify that the prompt was generated successfully
@@ -1348,7 +1348,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
           cwd: testDir,
         });
 
-        expect(result.issueNumber).toBe(400);
+        expect(result.plan.issueNumber).toBe(400);
 
         // Verify that the correct model was used
         const claudeCall = mockRunClaude.mock.calls[mockRunClaude.mock.calls.length - 1];

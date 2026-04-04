@@ -529,6 +529,350 @@ describe("JobStore", () => {
     });
   });
 
+  describe("Phase Results and Cost Tracking", () => {
+    it("should store and retrieve phase results with cost and usage data", () => {
+      const job = store.create(42, "test/repo");
+
+      const phaseResults = [{
+        name: "phase-1",
+        success: true,
+        commit: "abc123",
+        durationMs: 5000,
+        costUsd: 0.25,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_creation_input_tokens: 100,
+          cache_read_input_tokens: 200
+        }
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob).toBeTruthy();
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.25);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(1000);
+      expect(retrievedJob?.phaseResults?.[0].usage?.output_tokens).toBe(500);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_creation_input_tokens).toBe(100);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_read_input_tokens).toBe(200);
+    });
+
+    it("should create job with initial phase results", () => {
+      const initialPhaseResults = [{
+        name: "setup",
+        success: true,
+        durationMs: 1500,
+        costUsd: 0.15,
+        usage: {
+          input_tokens: 800,
+          output_tokens: 400
+        }
+      }];
+
+      const job = store.create(43, "test/repo", undefined, false, initialPhaseResults);
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob).toBeTruthy();
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].name).toBe("setup");
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.15);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(800);
+      expect(retrievedJob?.phaseResults?.[0].usage?.output_tokens).toBe(400);
+    });
+
+    it("should handle multiple phase results with different cost data", () => {
+      const job = store.create(44, "test/repo");
+
+      const phaseResults = [
+        {
+          name: "phase-1",
+          success: true,
+          durationMs: 3000,
+          costUsd: 0.20,
+          usage: {
+            input_tokens: 500,
+            output_tokens: 250
+          }
+        },
+        {
+          name: "phase-2",
+          success: false,
+          durationMs: 2000,
+          error: "Test error",
+          costUsd: 0.10,
+          usage: {
+            input_tokens: 300,
+            output_tokens: 150,
+            cache_read_input_tokens: 100
+          }
+        }
+      ];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(2);
+
+      const phase1 = retrievedJob?.phaseResults?.[0];
+      expect(phase1?.name).toBe("phase-1");
+      expect(phase1?.success).toBe(true);
+      expect(phase1?.costUsd).toBe(0.20);
+      expect(phase1?.usage?.input_tokens).toBe(500);
+
+      const phase2 = retrievedJob?.phaseResults?.[1];
+      expect(phase2?.name).toBe("phase-2");
+      expect(phase2?.success).toBe(false);
+      expect(phase2?.error).toBe("Test error");
+      expect(phase2?.costUsd).toBe(0.10);
+      expect(phase2?.usage?.cache_read_input_tokens).toBe(100);
+    });
+
+    it("should handle phase results without usage data", () => {
+      const job = store.create(45, "test/repo");
+
+      const phaseResults = [{
+        name: "simple-phase",
+        success: true,
+        durationMs: 1000,
+        costUsd: 0.05
+        // No usage data
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.05);
+      expect(retrievedJob?.phaseResults?.[0].usage).toBeUndefined();
+    });
+
+    it("should handle phase results without cost data", () => {
+      const job = store.create(46, "test/repo");
+
+      const phaseResults = [{
+        name: "no-cost-phase",
+        success: true,
+        durationMs: 2500,
+        usage: {
+          input_tokens: 600,
+          output_tokens: 300
+        }
+        // No costUsd
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBeUndefined();
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(600);
+    });
+
+    it("should persist phase results across store restart", () => {
+      const job = store.create(47, "test/repo");
+
+      const phaseResults = [{
+        name: "persistent-phase",
+        success: true,
+        durationMs: 4000,
+        costUsd: 0.30,
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 600,
+          cache_creation_input_tokens: 50
+        }
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      // Create new store instance (simulating restart)
+      const newStore = new JobStore(dataDir);
+
+      const retrievedJob = newStore.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].name).toBe("persistent-phase");
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.30);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(1200);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_creation_input_tokens).toBe(50);
+
+      newStore.close();
+    });
+  });
+
+  describe("Phase Results and Cost Tracking", () => {
+    it("should store and retrieve phase results with cost and usage data", () => {
+      const job = store.create(42, "test/repo");
+
+      const phaseResults = [{
+        name: "phase-1",
+        success: true,
+        commit: "abc123",
+        durationMs: 5000,
+        costUsd: 0.25,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_creation_input_tokens: 100,
+          cache_read_input_tokens: 200
+        }
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob).toBeTruthy();
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.25);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(1000);
+      expect(retrievedJob?.phaseResults?.[0].usage?.output_tokens).toBe(500);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_creation_input_tokens).toBe(100);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_read_input_tokens).toBe(200);
+    });
+
+    it("should create job with initial phase results", () => {
+      const initialPhaseResults = [{
+        name: "setup",
+        success: true,
+        durationMs: 1500,
+        costUsd: 0.15,
+        usage: {
+          input_tokens: 800,
+          output_tokens: 400
+        }
+      }];
+
+      const job = store.create(43, "test/repo", undefined, false, initialPhaseResults);
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob).toBeTruthy();
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].name).toBe("setup");
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.15);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(800);
+      expect(retrievedJob?.phaseResults?.[0].usage?.output_tokens).toBe(400);
+    });
+
+    it("should handle multiple phase results with different cost data", () => {
+      const job = store.create(44, "test/repo");
+
+      const phaseResults = [
+        {
+          name: "phase-1",
+          success: true,
+          durationMs: 3000,
+          costUsd: 0.20,
+          usage: {
+            input_tokens: 500,
+            output_tokens: 250
+          }
+        },
+        {
+          name: "phase-2",
+          success: false,
+          durationMs: 2000,
+          error: "Test error",
+          costUsd: 0.10,
+          usage: {
+            input_tokens: 300,
+            output_tokens: 150,
+            cache_read_input_tokens: 100
+          }
+        }
+      ];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(2);
+
+      const phase1 = retrievedJob?.phaseResults?.[0];
+      expect(phase1?.name).toBe("phase-1");
+      expect(phase1?.success).toBe(true);
+      expect(phase1?.costUsd).toBe(0.20);
+      expect(phase1?.usage?.input_tokens).toBe(500);
+
+      const phase2 = retrievedJob?.phaseResults?.[1];
+      expect(phase2?.name).toBe("phase-2");
+      expect(phase2?.success).toBe(false);
+      expect(phase2?.error).toBe("Test error");
+      expect(phase2?.costUsd).toBe(0.10);
+      expect(phase2?.usage?.cache_read_input_tokens).toBe(100);
+    });
+
+    it("should handle phase results without usage data", () => {
+      const job = store.create(45, "test/repo");
+
+      const phaseResults = [{
+        name: "simple-phase",
+        success: true,
+        durationMs: 1000,
+        costUsd: 0.05
+        // No usage data
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.05);
+      expect(retrievedJob?.phaseResults?.[0].usage).toBeUndefined();
+    });
+
+    it("should handle phase results without cost data", () => {
+      const job = store.create(46, "test/repo");
+
+      const phaseResults = [{
+        name: "no-cost-phase",
+        success: true,
+        durationMs: 2500,
+        usage: {
+          input_tokens: 600,
+          output_tokens: 300
+        }
+        // No costUsd
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBeUndefined();
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(600);
+    });
+
+    it("should persist phase results across store restart", () => {
+      const job = store.create(47, "test/repo");
+
+      const phaseResults = [{
+        name: "persistent-phase",
+        success: true,
+        durationMs: 4000,
+        costUsd: 0.30,
+        usage: {
+          input_tokens: 1200,
+          output_tokens: 600,
+          cache_creation_input_tokens: 50
+        }
+      }];
+
+      store.update(job.id, { phaseResults });
+
+      // Create new store instance (simulating restart)
+      const newStore = new JobStore(dataDir);
+
+      const retrievedJob = newStore.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].name).toBe("persistent-phase");
+      expect(retrievedJob?.phaseResults?.[0].costUsd).toBe(0.30);
+      expect(retrievedJob?.phaseResults?.[0].usage?.input_tokens).toBe(1200);
+      expect(retrievedJob?.phaseResults?.[0].usage?.cache_creation_input_tokens).toBe(50);
+
+      newStore.close();
+    });
+  });
+
   describe("Memory Cache Optimization", () => {
     it("should cache running/queued jobs for fast access", () => {
       // Create jobs in different states

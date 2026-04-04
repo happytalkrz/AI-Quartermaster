@@ -233,7 +233,7 @@ export class JobStore extends EventEmitter {
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: Job['phaseResults']): Job {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: Job = {
       id,
@@ -243,11 +243,34 @@ export class JobStore extends EventEmitter {
       createdAt: new Date().toISOString(),
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       ...(isRetry ? { isRetry } : {}),
+      ...(initialPhaseResults && initialPhaseResults.length > 0 ? { phaseResults: initialPhaseResults } : {}),
     };
 
     // SQLite에 저장
     const dbJob = this.jobToDbJob(job);
     this.db.createJob(dbJob);
+
+    // 초기 Phase results가 있다면 별도로 저장
+    if (initialPhaseResults && initialPhaseResults.length > 0) {
+      for (let index = 0; index < initialPhaseResults.length; index++) {
+        const phaseResult = initialPhaseResults[index];
+        const dbPhase: DatabasePhase = {
+          jobId: id,
+          phaseIndex: index,
+          phaseName: phaseResult.name,
+          success: phaseResult.success,
+          commitHash: phaseResult.commit,
+          durationMs: phaseResult.durationMs,
+          error: phaseResult.error,
+          costUsd: phaseResult.costUsd,
+          inputTokens: phaseResult.usage?.input_tokens,
+          outputTokens: phaseResult.usage?.output_tokens,
+          cacheCreationInputTokens: phaseResult.usage?.cache_creation_input_tokens,
+          cacheReadInputTokens: phaseResult.usage?.cache_read_input_tokens
+        };
+        this.db.createPhase(dbPhase);
+      }
+    }
 
     // 캐시에 추가 (queued 상태이므로)
     this.addToCache(job);

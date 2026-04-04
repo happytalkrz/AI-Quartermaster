@@ -12,14 +12,13 @@ export class HookRegistry {
   }
 
   hasHooks(timing: HookTiming): boolean {
-    const hooks = this.config[timing];
-    return hooks !== undefined && hooks.length > 0;
+    return (this.config[timing]?.length ?? 0) > 0;
   }
 
   getAllTimings(): HookTiming[] {
-    return Object.keys(this.config).filter(
-      timing => this.config[timing as HookTiming] && this.config[timing as HookTiming]!.length > 0
-    ) as HookTiming[];
+    return Object.entries(this.config)
+      .filter(([_, hooks]) => hooks && hooks.length > 0)
+      .map(([timing]) => timing as HookTiming);
   }
 
   updateConfig(newConfig: HooksConfig, merge = false): void {

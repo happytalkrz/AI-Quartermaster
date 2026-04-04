@@ -179,7 +179,7 @@ describe("fetchIssue", () => {
     });
 
     await expect(fetchIssue("test/repo", 404)).rejects.toThrow(
-      "Failed to fetch issue #404 from test/repo: Issue not found"
+      "Failed to fetch issue #404 from test/repo: GitHub issue view failed: Resource not found"
     );
   });
 
@@ -191,7 +191,7 @@ describe("fetchIssue", () => {
     });
 
     await expect(fetchIssue("invalid/repo", 123)).rejects.toThrow(
-      "Failed to fetch issue #123 from invalid/repo: Error: repository 'invalid/repo' not found"
+      "Failed to fetch issue #123 from invalid/repo: GitHub issue view failed: Resource not found"
     );
   });
 

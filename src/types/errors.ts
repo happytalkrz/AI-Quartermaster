@@ -1,12 +1,4 @@
 /**
- * @deprecated Use getErrorMessage from src/utils/error-utils.ts instead
- */
-export function errorMessage(err: unknown): string {
-  // Delegate to the new function to maintain compatibility
-  return err instanceof Error ? err.message : String(err);
-}
-
-/**
  * Base error class for AI-Quartermaster with standardized error handling
  */
 export abstract class AQMError extends Error {
@@ -48,35 +40,5 @@ export class RollbackError extends AQMError {
     message: string
   ) {
     super("ROLLBACK_FAILED", `Rollback to ${targetHash} failed: ${message}`);
-  }
-}
-
-export class PipelineError extends AQMError {
-  constructor(
-    public readonly phase: string,
-    message: string,
-    public readonly context?: Record<string, unknown>
-  ) {
-    super("PIPELINE_ERROR", `Pipeline error in ${phase}: ${message}`);
-  }
-}
-
-export class ConfigError extends AQMError {
-  constructor(
-    public readonly configKey: string,
-    message: string,
-    public readonly configFile?: string
-  ) {
-    super("CONFIG_ERROR", `Configuration error for '${configKey}': ${message}`);
-  }
-}
-
-export class GitError extends AQMError {
-  constructor(
-    public readonly operation: string,
-    message: string,
-    public readonly repository?: string
-  ) {
-    super("GIT_ERROR", `Git operation '${operation}' failed: ${message}`);
   }
 }

@@ -249,13 +249,13 @@ describe("AQDatabase", () => {
       db.createJob(job);
       const retrieved = db.getJob(job.id);
 
-      expect(retrieved?.startedAt).toBeNull();
-      expect(retrieved?.completedAt).toBeNull();
-      expect(retrieved?.prUrl).toBeNull();
-      expect(retrieved?.error).toBeNull();
+      expect(retrieved?.startedAt).toBeUndefined();
+      expect(retrieved?.completedAt).toBeUndefined();
+      expect(retrieved?.prUrl).toBeUndefined();
+      expect(retrieved?.error).toBeUndefined();
       expect(retrieved?.dependencies).toBeUndefined();
-      expect(retrieved?.progress).toBeNull();
-      expect(retrieved?.costUsd).toBeNull();
+      expect(retrieved?.progress).toBeUndefined();
+      expect(retrieved?.costUsd).toBeUndefined();
     });
 
     it("should enforce status check constraints", () => {

@@ -36,7 +36,6 @@ function truncateFixPrompt(prompt: string): string {
 
   const first = prompt.slice(0, FIX_PROMPT_FIRST_PART).trim();
   const last = prompt.slice(-FIX_PROMPT_LAST_PART).trim();
-  const truncatedLength = first.length + last.length + 50; // 50 for separator
 
   logger.warn(`[RETRY_WITH_FIX] Truncating fix prompt: ${tokenCount} tokens -> ~${estimateTokenCount(first + last)} tokens`);
 
@@ -67,7 +66,7 @@ export interface RetryWithFixOptions<T> {
   maxRetries: number;
 
   /** Claude CLI 설정 */
-  claudeConfig: any;
+  claudeConfig: unknown;
 
   /** 작업 디렉토리 */
   cwd: string;

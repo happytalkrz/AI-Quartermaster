@@ -1,5 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
+import { normalize } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -8,6 +9,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
+import { isPathSafe } from "../utils/slug.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -52,6 +54,30 @@ function isValidSessionToken(token: string): boolean {
   pruneExpiredTokens();
   const expiry = sessionTokens.get(token);
   return expiry !== undefined && Date.now() <= expiry;
+}
+
+/**
+ * Validates and normalizes path parameters to prevent path traversal attacks.
+ */
+function validateAndNormalizePath(path: string, paramName: string): string {
+  if (!path || typeof path !== 'string') {
+    throw new Error(`${paramName} is required and must be a string`);
+  }
+
+  // Normalize and validate path
+  const normalizedPath = normalize(path.trim());
+
+  // Check for path safety
+  if (!isPathSafe(normalizedPath)) {
+    throw new Error(`${paramName} contains unsafe characters or path traversal patterns`);
+  }
+
+  // Additional checks for path traversal
+  if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || normalizedPath.startsWith('\\')) {
+    throw new Error(`${paramName} contains invalid path traversal characters`);
+  }
+
+  return normalizedPath;
 }
 
 /**
@@ -221,13 +247,18 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: "repo is required and must be a non-empty string" }, 400);
       }
 
-      if (!path || typeof path !== "string" || path.trim() === "") {
-        return c.json({ error: "path is required and must be a non-empty string" }, 400);
+      // Validate and normalize path
+      let normalizedPath: string;
+      try {
+        normalizedPath = validateAndNormalizePath(path, "path");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Invalid path";
+        return c.json({ error: message }, 400);
       }
 
       const project: ProjectConfig = {
         repo: repo.trim(),
-        path: path.trim(),
+        path: normalizedPath,
         baseBranch: baseBranch?.trim() || undefined,
         mode: mode as "code" | "content" | undefined,
       };
@@ -323,10 +354,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
 
       if (path !== undefined) {
-        if (typeof path !== "string" || path.trim() === "") {
-          return c.json({ error: "path must be a non-empty string" }, 400);
+        try {
+          updates.path = validateAndNormalizePath(path, "path");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Invalid path";
+          return c.json({ error: message }, 400);
         }
-        updates.path = path.trim();
       }
 
       if (baseBranch !== undefined) {

@@ -1,8 +1,9 @@
-import { resolve } from "path";
+import { resolve, relative, isAbsolute } from "path";
 import { existsSync } from "fs";
 import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
+import { isPathSafe } from "../utils/slug.js";
 import type { WorktreeConfig, GitConfig } from "../types/config.js";
 
 const logger = getLogger();
@@ -13,8 +14,39 @@ export interface WorktreeInfo {
 }
 
 /**
+ * Validates that the worktree path is safe and within the allowed root directory.
+ * Prevents path traversal attacks by ensuring the final path doesn't escape rootPath.
+ */
+function validateWorktreePath(rootPath: string, dirName: string): string {
+  // Validate dirName for path safety
+  if (!isPathSafe(dirName)) {
+    throw new Error(`Unsafe directory name: ${dirName}`);
+  }
+
+  // Resolve absolute paths
+  const absoluteRootPath = resolve(rootPath);
+  const absoluteWorktreePath = resolve(absoluteRootPath, dirName);
+
+  // Check if worktree path is within root path (prevent path traversal)
+  const relativePath = relative(absoluteRootPath, absoluteWorktreePath);
+
+  // If relative path starts with ".." or is absolute, it's outside the root
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error(`Worktree path "${absoluteWorktreePath}" is outside allowed root "${absoluteRootPath}"`);
+  }
+
+  // Additional check: ensure no path separators in the relative path that could indicate traversal
+  if (relativePath.includes("..")) {
+    throw new Error(`Worktree path contains directory traversal: ${relativePath}`);
+  }
+
+  return absoluteWorktreePath;
+}
+
+/**
  * Creates an isolated git worktree for the given branch.
  * The worktree path is derived from worktreeConfig.rootPath + dirTemplate.
+ * Includes path validation to prevent directory traversal attacks.
  */
 export async function createWorktree(
   gitConfig: GitConfig,
@@ -31,7 +63,9 @@ export async function createWorktree(
 
   // Resolve rootPath relative to cwd if not absolute
   const rootPath = resolve(options.cwd, worktreeConfig.rootPath);
-  const worktreePath = resolve(rootPath, dirName);
+
+  // Validate and get safe worktree path
+  const worktreePath = validateWorktreePath(rootPath, dirName);
 
   // Clean up existing worktree at same path if it exists
   if (existsSync(worktreePath)) {

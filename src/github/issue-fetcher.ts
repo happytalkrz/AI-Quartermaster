@@ -1,4 +1,5 @@
 import { runCli, CliRunOptions } from "../utils/cli-runner.js";
+import { sanitizeGhError, sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 
 export interface GitHubIssue {
   number: number;
@@ -25,7 +26,7 @@ export async function fetchIssue(
 
   if (result.exitCode !== 0) {
     throw new Error(
-      `Failed to fetch issue #${issueNumber} from ${repo}: ${result.stderr || result.stdout}`
+      `Failed to fetch issue #${issueNumber} from ${repo}: ${sanitizeGhError(result.stderr, result.stdout, "issue view")}`
     );
   }
 
@@ -40,7 +41,7 @@ export async function fetchIssue(
     parsed = JSON.parse(result.stdout);
   } catch {
     throw new Error(
-      `Failed to parse gh output for issue #${issueNumber}: ${result.stdout}`
+      `Failed to parse gh output for issue #${issueNumber}: ${sanitizeErrorMessage(result.stdout)}`
     );
   }
 

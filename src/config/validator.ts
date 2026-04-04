@@ -296,26 +296,21 @@ const projectConfigSchema = z.object({
   }).partial().optional(),
 }).strict();
 
-// Hook validation schemas
-const hookDefinitionSchema = z.object({
-  command: z.string().min(1),
-  timeout: z.number().int().positive().optional(),
-});
-
-const hookTimingSchema = z.enum([
-  "pre-plan",
-  "post-plan",
-  "pre-phase",
-  "post-phase",
-  "pre-review",
-  "post-review",
-  "pre-pr",
-  "post-pr",
-]);
-
 const hooksConfigSchema = z.record(
-  hookTimingSchema,
-  z.array(hookDefinitionSchema)
+  z.enum([
+    "pre-plan",
+    "post-plan",
+    "pre-phase",
+    "post-phase",
+    "pre-review",
+    "post-review",
+    "pre-pr",
+    "post-pr",
+  ]),
+  z.array(z.object({
+    command: z.string().min(1),
+    timeout: z.number().int().positive().optional(),
+  }))
 ).optional();
 
 const aqConfigSchema = z.object({

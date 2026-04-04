@@ -124,7 +124,7 @@ function startPeriodicCleanup(): void {
   }, HEARTBEAT_INTERVAL_MS);
 }
 
-function stopPeriodicCleanup(): void {
+export function stopPeriodicCleanup(): void {
   if (tokenCleanupInterval) {
     clearInterval(tokenCleanupInterval);
     tokenCleanupInterval = undefined;
@@ -133,6 +133,30 @@ function stopPeriodicCleanup(): void {
     clearInterval(heartbeatInterval);
     heartbeatInterval = undefined;
   }
+}
+
+/**
+ * Clean up all active SSE clients by closing their connections.
+ */
+export function cleanupAllSSEClients(): void {
+  for (const [clientId, client] of sseClients) {
+    try {
+      client.controller.close();
+    } catch {
+      // Ignore errors when closing already closed streams
+    }
+  }
+  sseClients.clear();
+}
+
+/**
+ * Comprehensive cleanup function for dashboard resources.
+ * Should be called when the server is shutting down.
+ */
+export function cleanupDashboardResources(): void {
+  stopPeriodicCleanup();
+  cleanupAllSSEClients();
+  sessionTokens.clear();
 }
 
 function isValidSessionToken(token: string): boolean {

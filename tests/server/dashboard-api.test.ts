@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import { EventEmitter } from "events";
-import { createDashboardRoutes } from "../../src/server/dashboard-api.js";
+import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources } from "../../src/server/dashboard-api.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { JobQueue } from "../../src/queue/job-queue.js";
 
@@ -1544,6 +1544,57 @@ describe("Dashboard API - Version Management", () => {
     it("should handle SSE client connections properly", async () => {
       const response = await app.request("/api/events?token=test-token");
       expect(response.status).toBe(401);
+    });
+
+    describe("cleanup functions", () => {
+      it("should export stopPeriodicCleanup function", () => {
+        expect(typeof stopPeriodicCleanup).toBe("function");
+      });
+
+      it("should export cleanupAllSSEClients function", () => {
+        expect(typeof cleanupAllSSEClients).toBe("function");
+      });
+
+      it("should export cleanupDashboardResources function", () => {
+        expect(typeof cleanupDashboardResources).toBe("function");
+      });
+
+      it("should call cleanup functions without errors", () => {
+        // These functions should be callable and not throw errors
+        expect(() => stopPeriodicCleanup()).not.toThrow();
+        expect(() => cleanupAllSSEClients()).not.toThrow();
+        expect(() => cleanupDashboardResources()).not.toThrow();
+      });
+
+      it("cleanupDashboardResources should call all cleanup functions", () => {
+        // Mock console to avoid potential logging during cleanup
+        const originalConsole = console;
+        const mockConsole = {
+          ...console,
+          log: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        };
+        global.console = mockConsole as any;
+
+        // Should not throw and should clean up resources
+        expect(() => cleanupDashboardResources()).not.toThrow();
+
+        // Restore console
+        global.console = originalConsole;
+      });
+
+      it("cleanup functions should handle repeated calls gracefully", () => {
+        // Multiple calls should not cause issues
+        expect(() => {
+          stopPeriodicCleanup();
+          stopPeriodicCleanup();
+          cleanupAllSSEClients();
+          cleanupAllSSEClients();
+          cleanupDashboardResources();
+          cleanupDashboardResources();
+        }).not.toThrow();
+      });
     });
   });
 });

@@ -632,6 +632,20 @@ async function cleanupCommand(args: CliArgs): Promise<void> {
   logger.info(`Cleanup complete. Removed ${removed.length} worktree(s).`);
 }
 
+async function versionCommand(): Promise<void> {
+  try {
+    // Read package.json from the AQM installation root
+    const packagePath = resolve(process.cwd(), "package.json");
+    const packageContent = readFileSync(packagePath, "utf-8");
+    const packageData = JSON.parse(packageContent);
+
+    console.log(`AI Quartermaster v${packageData.version}`);
+  } catch (error) {
+    console.error("버전 정보를 읽을 수 없습니다.");
+    process.exit(1);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const command = args.command || "run";
@@ -663,6 +677,8 @@ async function main() {
     await statsCommand(args);
   } else if (command === "resume") {
     await resumeCommand(args);
+  } else if (command === "version") {
+    await versionCommand();
   } else if (command === "help") {
     printHelp();
   } else {

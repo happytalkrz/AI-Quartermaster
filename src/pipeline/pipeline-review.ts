@@ -127,7 +127,7 @@ export async function runReviewPhase(
           promptsDir: ctx.promptsDir,
           claudeConfig: ctx.project.commands.claudeCli,
           cwd: ctx.worktreePath,
-          variables: reviewVariables as TemplateVariables,
+          variables: reviewVariables as unknown as TemplateVariables,
         });
         ctx.jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
       } else {
@@ -147,7 +147,7 @@ export async function runReviewPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.worktreePath,
-        variables: reviewVariables as TemplateVariables,
+        variables: reviewVariables as unknown as TemplateVariables,
       });
 
       if (analystResult) {
@@ -229,7 +229,7 @@ export async function runReviewPhase(
               claudeConfig: claudeCliConfig,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,
-              variables: reviewVariables as TemplateVariables,
+              variables: reviewVariables as unknown as TemplateVariables,
             });
 
             let retryAnalystResult: AnalystResult | undefined;
@@ -238,7 +238,7 @@ export async function runReviewPhase(
                 promptsDir: ctx.promptsDir,
                 claudeConfig: claudeCliConfig,
                 cwd: ctx.worktreePath,
-                variables: reviewVariables as TemplateVariables,
+                variables: reviewVariables as unknown as TemplateVariables,
               });
             }
 
@@ -357,7 +357,7 @@ export async function runSimplifyPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         cwd: ctx.worktreePath,
         testCommand: ctx.project.commands.test,
-        variables: ctx.reviewVariables as TemplateVariables,
+        variables: ctx.reviewVariables as unknown as TemplateVariables,
         gitPath: ctx.gitConfig.gitPath,
       });
 

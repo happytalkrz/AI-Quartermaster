@@ -51,7 +51,7 @@ function formatYamlTabError(error: unknown, filePath: string): Error {
 function parseYamlSafely(content: string, filePath: string): any {
   try {
     return parseYaml(content);
-  } catch (error) {
+  } catch (error: unknown) {
     throw formatYamlTabError(error, filePath);
   }
 }
@@ -487,7 +487,7 @@ export async function initProject(aqRoot: string, options: InitCommandOptions = 
       }
 
       addProjectToConfig(configPath, project);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error && error.message.includes('config.yml not found')) {
         // loadConfig 실패 시 파일은 있지만 유효하지 않음
         throw new Error('config.yml 파일이 손상되었습니다. 수동으로 수정하거나 백업 후 다시 생성하세요.');

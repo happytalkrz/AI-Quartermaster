@@ -3,7 +3,7 @@ import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
-import { errorMessage } from "../types/errors.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
@@ -127,8 +127,8 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
     };
-  } catch (error) {
-    const errMsg = errorMessage(error);
+  } catch (error: unknown) {
+    const errMsg = getErrorMessage(error);
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,

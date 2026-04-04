@@ -9,6 +9,7 @@ import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 
@@ -181,9 +182,9 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
 
       logger.info(`Plan generation succeeded on attempt ${attempt}`);
       return plan;
-    } catch (parseError) {
+    } catch (parseError: unknown) {
       errorCategory = "UNKNOWN";
-      errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      errorMessage = getErrorMessage(parseError);
 
       // 히스토리 기록
       retryContext.generationHistory.push({
@@ -275,8 +276,8 @@ async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanR
     await notifyPlanRetryContext(repo, ctx.issue.number, retryContextSnapshot, contextInfo);
 
     logger.info("Retry context collection and notification completed");
-  } catch (contextError) {
-    logger.warn(`Failed to collect retry context: ${contextError instanceof Error ? contextError.message : String(contextError)}`);
+  } catch (contextError: unknown) {
+    logger.warn(`Failed to collect retry context: ${getErrorMessage(contextError)}`);
     // 컨텍스트 수집 실패는 치명적이지 않음, 재시도는 계속 진행
   }
 }
@@ -328,8 +329,8 @@ export function collectContextualizationInfo(affectedFiles: string[], cwd: strin
       typeDefinitions[filePath] = extractTypeDefinitions(filePath, content);
 
       logger.debug(`Collected context for ${filePath}: ${functionSignatures[filePath].length} functions, ${importRelations[filePath].imports.length} imports, ${typeDefinitions[filePath].length} types`);
-    } catch (error) {
-      logger.warn(`Failed to collect context for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (error: unknown) {
+      logger.warn(`Failed to collect context for ${filePath}: ${getErrorMessage(error)}`);
       // 실패한 파일은 빈 정보로 설정
       functionSignatures[filePath] = [];
       importRelations[filePath] = { imports: [], exports: [] };

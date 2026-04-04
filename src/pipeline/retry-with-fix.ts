@@ -2,6 +2,7 @@ import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 

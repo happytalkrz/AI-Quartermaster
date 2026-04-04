@@ -9,7 +9,7 @@ import type { PipelineReport } from "./result-reporter.js";
 import { validateBeforePush } from "../safety/safety-checker.js";
 import { rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
 import { runCli } from "../utils/cli-runner.js";
-import { errorMessage } from "../types/errors.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../types/pipeline.js";
@@ -244,8 +244,8 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
     jl?.setStep("완료");
 
     return { success: true, prUrl };
-  } catch (error) {
-    const errMsg = errorMessage(error);
+  } catch (error: unknown) {
+    const errMsg = getErrorMessage(error);
     logger.error(`[pushAndCreatePR] Failed: ${errMsg}`);
     return { success: false, error: errMsg };
   }
@@ -315,7 +315,7 @@ export async function handlePipelineFailure(context: FailureHandlerContext): Pro
     jl,
   } = context;
 
-  const errMsg = errorMessage(error);
+  const errMsg = getErrorMessage(error);
   logger.error(`[FAILED] Pipeline failed at state ${state}: ${errMsg}`);
   jl?.log(`실패: ${errMsg}`);
   jl?.setStep("실패");

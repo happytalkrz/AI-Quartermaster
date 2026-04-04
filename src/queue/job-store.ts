@@ -204,9 +204,9 @@ export class JobStore extends EventEmitter {
       // Clean up internal delete flag after a short delay
       setTimeout(() => this.internalDeletes.delete(id), 100);
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.internalDeletes.delete(id); // Clean up on error
-      if (err?.code === "ENOENT") return false;
+      if (err && typeof err === 'object' && 'code' in err && err.code === "ENOENT") return false;
       return false;
     }
   }

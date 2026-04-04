@@ -340,6 +340,117 @@ function showProjectMessage(message, type) {
   }, config.timeout);
 }
 
+function createModalField(label, name, value, readonly) {
+  var inputClass = 'w-full border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none';
+  var readonlyClass = readonly ? 'bg-surface-container-high/50 cursor-not-allowed' : 'bg-surface-container-high';
+  var readonlyAttr = readonly ? ' readonly' : '';
+  return '<div>' +
+    '<label class="block text-sm font-bold text-on-surface mb-2">' + label + '</label>' +
+    '<input type="text" name="' + name + '" value="' + esc(value) + '"' + readonlyAttr + ' class="' + inputClass + ' ' + readonlyClass + '">' +
+    '</div>';
+}
+
+function editProject(repo) {
+  if (!currentConfig || !currentConfig.projects) return;
+
+  var project = currentConfig.projects.find(function(p) { return p.repo === repo; });
+  if (!project) {
+    showProjectMessage('프로젝트를 찾을 수 없습니다.', 'error');
+    return;
+  }
+
+  var existingModal = document.getElementById('edit-project-modal');
+  if (existingModal) existingModal.remove();
+
+  var fieldsHtml = createModalField('저장소 (owner/repo)', 'repo', project.repo, true);
+  fieldsHtml += createModalField('로컬 경로', 'path', project.path, false);
+  if (project.baseBranch !== undefined) {
+    fieldsHtml += createModalField('기본 브랜치', 'baseBranch', project.baseBranch || '', false);
+  }
+  if (project.mode !== undefined) {
+    fieldsHtml += createModalField('모드', 'mode', project.mode || '', false);
+  }
+
+  var modalHtml = '<div id="edit-project-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">' +
+    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20">' +
+    '<div class="flex justify-between items-center mb-4">' +
+    '<h3 class="text-lg font-bold text-on-surface">프로젝트 편집</h3>' +
+    '<button onclick="closeEditProjectModal()" class="text-outline hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>' +
+    '</div>' +
+    '<form id="edit-project-form" class="space-y-4">' +
+    fieldsHtml +
+    '<div class="flex gap-2 pt-4">' +
+    '<button type="submit" class="flex-1 bg-primary text-on-primary font-bold py-2 px-4 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"><span class="material-symbols-outlined text-sm">save</span><span>저장</span></button>' +
+    '<button type="button" onclick="closeEditProjectModal()" class="px-4 py-2 border border-outline-variant/30 rounded-lg text-outline hover:bg-surface-container-high transition-colors">취소</button>' +
+    '</div>' +
+    '</form>' +
+    '</div>' +
+    '</div>';
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+  document.getElementById('edit-project-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    submitEditProject(repo);
+  });
+
+  var firstInput = document.querySelector('#edit-project-form input[name="path"]');
+  if (firstInput) firstInput.focus();
+}
+
+function closeEditProjectModal() {
+  var modal = document.getElementById('edit-project-modal');
+  if (modal) modal.remove();
+}
+
+function submitEditProject(repo) {
+  var form = document.getElementById('edit-project-form');
+  if (!form) return;
+
+  var formData = new FormData(form);
+  var updates = {};
+
+  ['path', 'baseBranch', 'mode'].forEach(function(field) {
+    var value = formData.get(field);
+    if (field === 'path' ? value : value !== null) {
+      updates[field] = value;
+    }
+  });
+
+  // Show loading state on submit button
+  var submitButton = form.querySelector('button[type="submit"]');
+  var originalButtonContent = submitButton.innerHTML;
+  submitButton.disabled = true;
+  submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>저장 중...</span>';
+
+  // Send PUT request
+  apiFetch('/api/projects/' + encodeURIComponent(repo), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(updates)
+  })
+    .then(function(response) {
+      if (response.ok) {
+        // Success - close modal and reload settings
+        closeEditProjectModal();
+        loadSettings();
+        showProjectMessage('프로젝트가 성공적으로 수정되었습니다.', 'success');
+      } else {
+        return response.json().then(function(errorData) {
+          throw new Error(errorData.error || '프로젝트 수정에 실패했습니다.');
+        });
+      }
+    })
+    .catch(function(error) {
+      showProjectMessage(error.message || '프로젝트 수정 중 오류가 발생했습니다.', 'error');
+      // Restore submit button
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalButtonContent;
+    });
+}
+
 function deleteProject(id) {
   showConfirm(t('deleteProjectConfirm'), currentLang === 'ko' ? '이 프로젝트를 삭제하시겠습니까?' : 'Are you sure you want to delete this project?').then(function(ok) {
     if (!ok) return;
@@ -433,3 +544,5 @@ connectSSE();
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
+window.editProject = editProject;
+window.closeEditProjectModal = closeEditProjectModal;

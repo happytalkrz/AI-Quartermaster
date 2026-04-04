@@ -369,6 +369,82 @@ export function removeProjectFromConfig(configPath: string, targetRepo: string):
 }
 
 /**
+ * 기존 config.yml에서 프로젝트 업데이트 (YAML 포맷 보존)
+ */
+export function updateProjectInConfig(configPath: string, targetRepo: string, updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>>): void {
+  const content = readFileSync(configPath, 'utf-8');
+  const lines = content.split('\n');
+
+  const projectsIndex = lines.findIndex(line => line.match(/^(\s*)projects\s*:\s*$/));
+  if (projectsIndex === -1) {
+    throw new Error(`No projects section found in config`);
+  }
+
+  const indent = lines[projectsIndex].match(/^(\s*)/)![1];
+  const itemIndent = indent + '  ';
+  const fieldIndent = itemIndent + '  ';
+
+  let projectStart = -1;
+  let projectEnd = -1;
+
+  // Find target project
+  for (let i = projectsIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed === '') continue;
+    if (!line.startsWith(itemIndent) && trimmed.match(/^\w+\s*:/)) break;
+
+    if (line.startsWith(itemIndent) && line.includes('- repo:')) {
+      const match = line.match(/- repo:\s*["'](.+?)["']/);
+      if (match?.[1] !== targetRepo) continue;
+
+      projectStart = i;
+      projectEnd = i;
+
+      // Find project end
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j];
+        const nextTrimmed = nextLine.trim();
+
+        if (nextTrimmed === '') continue;
+        if (nextLine.startsWith(itemIndent) && nextLine.includes('- repo:')) break;
+        if (!nextLine.startsWith(itemIndent) && nextTrimmed.match(/^\w+\s*:/)) break;
+
+        if (nextLine.startsWith(fieldIndent)) {
+          projectEnd = j;
+        } else {
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  if (projectStart === -1) {
+    throw new Error(`Project "${targetRepo}" not found in config`);
+  }
+
+  const projectLines = lines.slice(projectStart, projectEnd + 1);
+
+  // Update or add fields
+  Object.entries(updates).forEach(([field, value]) => {
+    if (value === undefined) return;
+
+    const fieldLineIndex = projectLines.findIndex((line, i) => i > 0 && line.includes(`${field}:`));
+
+    if (fieldLineIndex !== -1) {
+      projectLines[fieldLineIndex] = `${fieldIndent}${field}: "${value}"`;
+    } else {
+      projectLines.splice(1, 0, `${fieldIndent}${field}: "${value}"`);
+    }
+  });
+
+  lines.splice(projectStart, projectEnd - projectStart + 1, ...projectLines);
+  writeFileSync(configPath, lines.join('\n'), 'utf-8');
+}
+
+/**
  * 현재 프로젝트를 config.yml에 등록
  */
 export async function initProject(aqRoot: string, options: InitCommandOptions = {}): Promise<void> {

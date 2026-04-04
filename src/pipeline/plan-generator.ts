@@ -113,7 +113,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     const startTime = Date.now();
 
     let templatePath: string;
-    let templateData: TemplateVariables;
+    let templateData: PlanTemplateData;
 
     // 기본 데이터 구조
     const baseData = {
@@ -166,7 +166,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     }
 
     const template = loadTemplate(templatePath);
-    let finalPrompt = renderTemplate(template, templateData);
+    let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
     if (ctx.modeHint) {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;

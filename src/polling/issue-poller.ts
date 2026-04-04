@@ -292,13 +292,7 @@ _자동 생성된 알림 — AQM PR 모니터링_`;
    * Tracks a polling failure for a project and pauses the project if threshold is reached.
    */
   private trackPollingFailure(repo: string, errorMsg: string): void {
-    // Get project-specific settings or use defaults
-    let project = undefined;
-    try {
-      project = this.config?.projects?.find(p => p.repo === repo);
-    } catch {
-      // Config access failed, use defaults
-    }
+    const project = this.config?.projects?.find(p => p.repo === repo);
 
     const pauseThreshold = project?.pauseThreshold || 3;
     const pauseDurationMs = project?.pauseDurationMs || 30 * 60 * 1000; // 30분 기본값

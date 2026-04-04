@@ -1,7 +1,8 @@
 import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import { JobStore, Job } from "./job-store.js";
+import { JobStore, Job as StoreJob } from "./job-store.js";
+import { Job, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -13,6 +14,78 @@ import { ProjectErrorState } from "../types/config.js";
 const logger = getLogger();
 
 export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string }>;
+
+/**
+ * StoreJob을 새로운 discriminated union Job 타입으로 변환
+ */
+function convertStoreJobToJob(storeJob: StoreJob): Job {
+  const base = {
+    id: storeJob.id,
+    issueNumber: storeJob.issueNumber,
+    repo: storeJob.repo,
+    createdAt: storeJob.createdAt,
+    lastUpdatedAt: storeJob.lastUpdatedAt,
+    logs: storeJob.logs,
+    currentStep: storeJob.currentStep,
+    dependencies: storeJob.dependencies,
+    phaseResults: storeJob.phaseResults,
+    progress: storeJob.progress,
+    isRetry: storeJob.isRetry,
+    costUsd: storeJob.costUsd,
+    totalCostUsd: storeJob.totalCostUsd,
+    totalUsage: storeJob.totalUsage
+  };
+
+  switch (storeJob.status) {
+    case "queued":
+      return {
+        ...base,
+        status: "queued"
+      };
+    case "running":
+      return {
+        ...base,
+        status: "running",
+        startedAt: storeJob.startedAt!,
+        error: storeJob.error
+      };
+    case "success":
+      return {
+        ...base,
+        status: "success",
+        startedAt: storeJob.startedAt!,
+        completedAt: storeJob.completedAt!,
+        prUrl: storeJob.prUrl!
+      };
+    case "failure":
+      return {
+        ...base,
+        status: "failure",
+        startedAt: storeJob.startedAt!,
+        completedAt: storeJob.completedAt!,
+        error: storeJob.error!
+      };
+    case "cancelled":
+      return {
+        ...base,
+        status: "cancelled",
+        completedAt: storeJob.completedAt!,
+        startedAt: storeJob.startedAt,
+        error: storeJob.error
+      };
+    case "archived":
+      return {
+        ...base,
+        status: "archived",
+        startedAt: storeJob.startedAt,
+        completedAt: storeJob.completedAt,
+        prUrl: storeJob.prUrl,
+        error: storeJob.error
+      };
+    default:
+      throw new Error(`Unknown job status: ${(storeJob as Job).status}`);
+  }
+}
 
 const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // check every minute
 
@@ -250,8 +323,8 @@ export class JobQueue {
     }
 
     const job = this.store.create(issueNumber, repo, dependencies, isRetry);
-    // Snapshot before processNext() may mutate cache entry
-    const snapshot = { ...job };
+    // Convert StoreJob to discriminated union Job type
+    const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
     logger.info(`Job enqueued: ${job.id} (pending: ${this.pending.length}, running: ${this.running.size})`);
 
@@ -549,7 +622,7 @@ export class JobQueue {
         logger.info(`Job started: ${jobId}`);
 
         // Run async - don't await, let it run in background
-        this.executeJob(job).catch((err: unknown) => {
+        this.executeJob(convertStoreJobToJob(job)).catch((err: unknown) => {
           logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
         });
       }

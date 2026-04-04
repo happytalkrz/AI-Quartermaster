@@ -479,3 +479,61 @@ export interface ArchivedJob extends JobBase {
  * 모든 Job 상태의 Union 타입
  */
 export type Job = QueuedJob | RunningJob | SuccessJob | FailureJob | CancelledJob | ArchivedJob;
+
+// Job 타입 가드 함수들
+
+/**
+ * QueuedJob 타입 가드
+ */
+export function isQueuedJob(job: Job): job is QueuedJob {
+  return job.status === "queued";
+}
+
+/**
+ * RunningJob 타입 가드
+ */
+export function isRunningJob(job: Job): job is RunningJob {
+  return job.status === "running";
+}
+
+/**
+ * SuccessJob 타입 가드
+ */
+export function isSuccessJob(job: Job): job is SuccessJob {
+  return job.status === "success";
+}
+
+/**
+ * FailureJob 타입 가드
+ */
+export function isFailureJob(job: Job): job is FailureJob {
+  return job.status === "failure";
+}
+
+/**
+ * CancelledJob 타입 가드
+ */
+export function isCancelledJob(job: Job): job is CancelledJob {
+  return job.status === "cancelled";
+}
+
+/**
+ * ArchivedJob 타입 가드
+ */
+export function isArchivedJob(job: Job): job is ArchivedJob {
+  return job.status === "archived";
+}
+
+/**
+ * Job이 완료된 상태인지 확인 (success/failure/cancelled/archived)
+ */
+export function isCompletedJob(job: Job): job is SuccessJob | FailureJob | CancelledJob | ArchivedJob {
+  return job.status === "success" || job.status === "failure" || job.status === "cancelled" || job.status === "archived";
+}
+
+/**
+ * Job이 활성 상태인지 확인 (queued/running)
+ */
+export function isActiveJob(job: Job): job is QueuedJob | RunningJob {
+  return job.status === "queued" || job.status === "running";
+}

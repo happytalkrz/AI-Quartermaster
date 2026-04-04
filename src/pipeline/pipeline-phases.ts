@@ -329,7 +329,7 @@ export async function executePostProcessingPhases(
   input: OrchestratorInput,
   config: AQConfig,
   startTime: number
-): Promise<{ prUrl?: string; report: any }> {
+): Promise<{ prUrl?: string; report: any; totalCostUsd?: number }> {
   const { issue, coreResult, gitConfig, project, worktreePath, promptsDir, skillsContext, preset, timer, checkpoint } = context;
   const { issueNumber, repo, aqRoot } = input;
   const jl = input.jobLogger;
@@ -474,6 +474,7 @@ export async function executePostProcessingPhases(
 
   return {
     prUrl,
-    report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl)
+    report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl),
+    totalCostUsd: coreResult.totalCostUsd
   };
 }

@@ -54,7 +54,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
   const useStdin = !options.jsonSchema;
 
   // Determine maxTurns: options.maxTurns overrides default logic
-  const effectiveMaxTurns = maxTurns ?? (options.jsonSchema ? 5 : config.maxTurns);
+  const effectiveMaxTurns = maxTurns ?? (options.jsonSchema ? 50 : config.maxTurns);
 
   // Add agent context if enableAgents is true
   const agentPrefix = enableAgents ? `You have access to specialized agents via the Agent tool that can help with various tasks. Consider using agents for complex work like multi-file changes, analysis, debugging, or planning. Available agent types include executor, planner, debugger, architect, and others.

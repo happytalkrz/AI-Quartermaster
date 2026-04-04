@@ -87,6 +87,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       promptTemplate:
         "Simplify the following implementation while preserving all functionality:\n\n{diff}",
     },
+    unifiedMode: false,  // 기본값은 false로 기존 동작 유지
   },
   pr: {
     targetBranch: "main",

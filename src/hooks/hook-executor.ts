@@ -48,7 +48,7 @@ export class HookExecutor {
       };
     } catch (error: unknown) {
       const duration = Date.now() - startTime;
-      const err = error as any;
+      const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
 
       logger.error(`Hook failed: ${err.message}`);
 
@@ -56,7 +56,7 @@ export class HookExecutor {
         success: false,
         stdout: err.stdout || "",
         stderr: err.stderr || "",
-        exitCode: err.code || null,
+        exitCode: typeof err.code === 'number' ? err.code : null,
         duration,
         error: err.message,
       };

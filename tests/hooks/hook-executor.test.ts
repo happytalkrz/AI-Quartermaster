@@ -171,7 +171,7 @@ describe("HookExecutor", () => {
         success: false,
         stdout: "",
         stderr: "",
-        exitCode: "TIMEOUT",
+        exitCode: null,
         duration: expect.any(Number),
         error: "Command timed out"
       });

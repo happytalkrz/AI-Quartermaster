@@ -245,12 +245,48 @@ function renderLogsView(job) {
 
   var html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status, job) + '</div>';
 
-  job.logs.forEach(function(line) {
-    html += colorizeLogLine(line);
-  });
+  // Filter logs based on search text and level filter
+  var filteredLogs = filterLogLines(job.logs);
+
+  if (filteredLogs.length === 0) {
+    html += '<div class="text-outline text-center py-8">필터 조건에 맞는 로그가 없습니다.</div>';
+  } else {
+    filteredLogs.forEach(function(line) {
+      html += colorizeLogLine(line);
+    });
+  }
 
   container.innerHTML = html;
   container.scrollTop = container.scrollHeight;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Log Lines Filtering
+   ══════════════════════════════════════════════════════════════ */
+function filterLogLines(logs) {
+  var filtered = logs;
+
+  // Apply text search filter
+  if (logsSearchText && logsSearchText.trim()) {
+    var searchTerm = logsSearchText.trim().toLowerCase();
+    filtered = filtered.filter(function(line) {
+      return line.toLowerCase().includes(searchTerm);
+    });
+  }
+
+  // Apply level filter (only show ERROR, FAIL, WARN levels when enabled)
+  if (logsLevelFilter) {
+    filtered = filtered.filter(function(line) {
+      return line.includes('[ERROR]') ||
+             line.includes('[FAIL]') ||
+             line.includes('[WARN]') ||
+             line.includes('실패') ||
+             line.includes('ERROR') ||
+             line.includes('error');
+    });
+  }
+
+  return filtered;
 }
 
 /* ══════════════════════════════════════════════════════════════

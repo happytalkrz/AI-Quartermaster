@@ -44,29 +44,18 @@ export class ClaudeTask implements AQMTask {
     this._options = { ...options, id: this.id };
   }
 
-  /**
-   * 현재 태스크 실행 상태를 반환
-   * 프로세스 상태와 연동하여 동적으로 결정
-   */
   get status(): TaskStatus {
-    // RUNNING 상태인 경우 실제 프로세스 상태 확인
+    // Detect if process ended but status wasn't updated
     if (this._status === "RUNNING" && this._processId) {
       const activePids = getActiveProcessPids();
-      if (!activePids.includes(this._processId)) {
-        // 프로세스가 종료되었지만 상태가 업데이트되지 않은 경우
-        if (!this._completedAt) {
-          this._status = TaskStatus.FAILED;
-          this._completedAt = new Date();
-        }
+      if (!activePids.includes(this._processId) && !this._completedAt) {
+        this._status = TaskStatus.FAILED;
+        this._completedAt = new Date();
       }
     }
     return this._status;
   }
 
-  /**
-   * Claude 태스크 실행
-   * claude-runner.runClaude를 호출하고 상태 관리
-   */
   async run(): Promise<ClaudeRunResult> {
     if (this._status !== "PENDING") {
       throw new Error(`Task ${this.id} is already ${this._status} and cannot be run again`);
@@ -121,10 +110,6 @@ export class ClaudeTask implements AQMTask {
     }
   }
 
-  /**
-   * 실행 중인 태스크를 강제 종료
-   * 활성 프로세스를 찾아서 SIGTERM 시그널 전송
-   */
   async kill(): Promise<void> {
     if (this._status !== "RUNNING") {
       return;
@@ -152,13 +137,14 @@ export class ClaudeTask implements AQMTask {
     this._processId = undefined;
   }
 
-  /**
-   * 태스크 정보를 JSON 직렬화 가능한 형태로 변환
-   */
   toJSON(): AQMTaskSummary {
     const durationMs = this._completedAt && this._startedAt
       ? this._completedAt.getTime() - this._startedAt.getTime()
       : undefined;
+
+    const promptPreview = this._options.prompt.length > 100
+      ? this._options.prompt.slice(0, 100) + "..."
+      : this._options.prompt;
 
     return {
       id: this.id,
@@ -169,7 +155,7 @@ export class ClaudeTask implements AQMTask {
       durationMs,
       metadata: {
         ...this._options.metadata,
-        prompt: this._options.prompt.slice(0, 100) + (this._options.prompt.length > 100 ? "..." : ""),
+        prompt: promptPreview,
         systemPrompt: this._options.systemPrompt,
         maxTurns: this._options.maxTurns,
         enableAgents: this._options.enableAgents,
@@ -180,9 +166,6 @@ export class ClaudeTask implements AQMTask {
     };
   }
 
-  /**
-   * 태스크 실행 결과 반환 (실행 완료 후에만 사용 가능)
-   */
   getResult(): ClaudeRunResult | undefined {
     return this._result;
   }

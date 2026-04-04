@@ -3,7 +3,6 @@ import { ClaudeTask, ClaudeTaskOptions } from "../../src/tasks/claude-task.js";
 import { TaskStatus } from "../../src/tasks/aqm-task.js";
 import { runClaude, getActiveProcessPids } from "../../src/claude/claude-runner.js";
 
-// Mock claude-runner 모듈
 vi.mock("../../src/claude/claude-runner.js");
 const mockRunClaude = vi.mocked(runClaude);
 const mockGetActiveProcessPids = vi.mocked(getActiveProcessPids);
@@ -25,7 +24,6 @@ describe("ClaudeTask", () => {
       }
     };
 
-    // Default mock setup
     mockGetActiveProcessPids.mockReturnValue([]);
   });
 

@@ -429,6 +429,139 @@ safety:
 
 ---
 
+## ⚡ MaxTurns 초과 (Claude 대화 턴 제한)
+
+### 현상
+```
+Error: Claude max turns exceeded — increase commands.claudeCli.maxTurns in config
+Job failed: 최대 턴 수를 초과했습니다
+Phase execution failed: maxTurns limit reached
+```
+
+### 원인
+- Claude CLI 대화가 설정된 최대 턴 수를 초과함
+- 복잡한 작업이나 긴 디버깅 과정으로 인한 초과
+- 실행 모드별 maxTurns 제한에 걸림
+
+### 해결책
+
+#### 1. 전역 maxTurns 증가
+```yaml
+# config.yml
+commands:
+  claudeCli:
+    maxTurns: 100  # 기본값 60에서 증가
+```
+
+#### 2. 실행 모드별 제한 설정
+```yaml
+# config.yml
+commands:
+  claudeCli:
+    maxTurnsPerMode:
+      code: 80        # 코드 작업용
+      content: 40     # 콘텐츠 작업용
+      debug: 120      # 디버깅용 (더 높게)
+```
+
+#### 3. 작업 분할
+큰 작업을 더 작은 Phase로 분할:
+```markdown
+# 이슈에 Phase 분할 힌트 추가
+---
+phases_hint: |
+  1. 기본 구조 구현 (5개 파일)
+  2. 테스트 추가 (3개 파일)  
+  3. 문서 업데이트 (2개 파일)
+  4. 리팩터링 및 최적화
+```
+
+#### 4. 실행 모드 조정
+```bash
+# 간단한 작업은 content 모드로
+aqm run --mode=content
+
+# 복잡한 디버깅은 debug 모드로  
+aqm run --mode=debug
+```
+
+---
+
+## 📋 Plan 실패 (계획 생성 실패)
+
+### 현상
+```
+Error: Plan generation failed after 3 attempts: Claude response timeout
+Error: Plan generation failed: JSON 파싱 실패 (3회 시도)
+Error: Plan generation failed: unexpected exit
+Plan generation Claude call failed, collecting context for retry...
+```
+
+### 원인
+- 이슈 내용이 불명확하거나 너무 복잡함
+- Claude API 응답 지연 또는 타임아웃
+- 계획 JSON 형식 파싱 실패
+- 프로젝트 컨텍스트 부족
+
+### 해결책
+
+#### 1. 이슈 명확화
+```markdown
+# 이슈 템플릿 개선
+## 문제 정의
+- 현재 상태: (구체적으로 기술)
+- 목표 상태: (명확한 결과물)
+- 제약사항: (제한사항이 있다면)
+
+## 작업 범위  
+- 수정할 파일들: src/components/*.tsx
+- 제외할 영역: 외부 API 연동
+```
+
+#### 2. 계획 생성 재시도 설정
+```yaml
+# config.yml
+pipeline:
+  planning:
+    maxRetries: 5      # 재시도 횟수 증가
+    timeout: 300000    # 타임아웃 5분으로 증가
+    enableContextCollection: true  # 컨텍스트 수집 활성화
+```
+
+#### 3. 프로젝트 컨텍스트 제공
+이슈에 프로젝트 정보 추가:
+```markdown
+## 프로젝트 컨텍스트
+- 기술 스택: React, TypeScript, Vite
+- 주요 디렉토리: src/components, src/utils  
+- 코딩 스타일: ESLint + Prettier
+- 테스트: Vitest
+```
+
+#### 4. 수동 계획 생성
+자동 계획 생성이 실패하면 수동으로 계획 제공:
+```markdown
+## 구현 계획
+### Phase 1: 컴포넌트 수정
+- 파일: src/components/UserList.tsx
+- 작업: 검색 필터 기능 추가
+
+### Phase 2: 테스트 추가  
+- 파일: tests/components/UserList.test.tsx
+- 작업: 검색 필터 테스트 케이스
+```
+
+#### 5. 로그 분석 및 디버깅
+```bash
+# 계획 생성 실패 로그 확인
+aqm logs --phase=planning --verbose
+
+# Claude 응답 내용 확인
+aqm logs --job=job-id | grep -A 10 "Plan generation"
+```
+
+---
+
 ## 🔧 일반적인 진단 방법
 
 ### 1. 로그 분석

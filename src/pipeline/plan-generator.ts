@@ -73,9 +73,6 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     retryContext.currentAttempt = attempt - 1;
     const startTime = Date.now();
 
-    let templatePath: string;
-    let templateData: any;
-
     // 기본 데이터 구조
     const baseData = {
       issue: {

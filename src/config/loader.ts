@@ -218,7 +218,7 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
     }
 
     return { repo, baseBranch };
-  } catch (error) {
+  } catch (error: unknown) {
     return { error: `Git 정보 감지 실패: ${error instanceof Error ? error.message : String(error)}` };
   }
 }

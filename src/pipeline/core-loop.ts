@@ -7,6 +7,7 @@ import type { AQConfig } from "../types/config.js";
 import type { Plan, PhaseResult, ErrorHistoryEntry } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
@@ -75,8 +76,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
     logger.info(`Plan generated: ${plan.phases.length} phases`);
     ctx.jobLogger?.log(`Plan 생성 완료: ${plan.phases.length}개 Phase`);
-  } catch (planError) {
-    const errorMessage = planError instanceof Error ? planError.message : String(planError);
+  } catch (planError: unknown) {
+    const errorMessage = getErrorMessage(planError);
     logger.error(`Plan generation failed for issue #${ctx.issue.number}: ${errorMessage}`);
     ctx.jobLogger?.log(`Plan 생성 실패: ${errorMessage}`);
 
@@ -115,8 +116,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       const patternStore = new PatternStore(ctx.dataDir);
       const recentFailures = patternStore.getRecentFailures(repoFull, 5);
       pastFailures = patternStore.formatForPrompt(recentFailures);
-    } catch {
+    } catch (patternError: unknown) {
       // non-fatal: ignore pattern load errors
+      logger.debug(`Failed to load pattern store: ${getErrorMessage(patternError)}`);
     }
   }
 

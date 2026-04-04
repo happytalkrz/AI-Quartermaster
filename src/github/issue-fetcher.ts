@@ -38,7 +38,7 @@ export async function fetchIssue(
 
   try {
     parsed = JSON.parse(result.stdout);
-  } catch {
+  } catch (err: unknown) {
     throw new Error(
       `Failed to parse gh output for issue #${issueNumber}: ${result.stdout}`
     );

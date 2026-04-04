@@ -14,7 +14,7 @@ export function verifyWebhookSignature(
 
   try {
     return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
-  } catch {
+  } catch (error: unknown) {
     return false; // different lengths
   }
 }

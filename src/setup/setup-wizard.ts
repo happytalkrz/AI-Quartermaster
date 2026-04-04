@@ -20,7 +20,7 @@ export async function runSetup(aqRoot: string, options?: SetupOptions): Promise<
     const { runCli } = await import("../utils/cli-runner.js");
     await runCli("gh", ["auth", "setup-git"], { timeout: 10000 });
     console.log("   git credential helper 설정 완료 (gh auth)");
-  } catch {
+  } catch (error: unknown) {
     console.log("   git credential helper 설정 실패 — 'gh auth setup-git' 수동 실행 권장");
   }
 
@@ -146,7 +146,7 @@ projects:
         console.log("   등록 후: aqm setup-webhook --repo <owner/repo> 로 webhook을 연결합니다");
         console.log("   (폴링 모드 사용 시 webhook 등록 불필요)");
       }
-    } catch {
+    } catch (error: unknown) {
       console.log("   config.yml 파싱 실패 — webhook 수동 등록 필요");
     }
   } else {

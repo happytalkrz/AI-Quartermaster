@@ -29,7 +29,8 @@ export class PatternStore {
     if (!existsSync(this.filePath)) return [];
     try {
       return JSON.parse(readFileSync(this.filePath, "utf-8")) as PatternEntry[];
-    } catch {
+    } catch (err: unknown) {
+      void err;
       return [];
     }
   }

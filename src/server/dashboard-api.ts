@@ -188,7 +188,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
             changes: body,
             timestamp: new Date().toISOString()
           });
-        } catch (runtimeError) {
+        } catch (runtimeError: unknown) {
           // Log runtime application error but don't fail the request
           const logger = getLogger();
           const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
@@ -237,7 +237,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
-      } catch {
+      } catch (error: unknown) {
         // Config doesn't exist yet, proceed
       }
 

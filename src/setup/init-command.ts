@@ -79,7 +79,7 @@ export async function runInitCommand(aqRoot: string, options: InitCommandOptions
     console.log("  aqm help                                           전체 명령어");
     console.log("");
 
-  } catch (error) {
+  } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`\n❌ 오류: ${msg}`);
     process.exit(1);

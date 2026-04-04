@@ -66,7 +66,7 @@ export async function createDraftPR(
         successCount: ctx.phaseResults.filter(r => r.success).length,
       },
     });
-  } catch {
+  } catch (err: unknown) {
     // Fallback body if template fails
     const phasesText = ctx.phaseResults?.length
       ? ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")

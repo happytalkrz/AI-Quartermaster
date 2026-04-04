@@ -54,7 +54,7 @@ export class ConfigWatcher extends EventEmitter {
       try {
         watcher.close();
         logger.debug(`Stopped watching: ${path}`);
-      } catch (err) {
+      } catch (err: unknown) {
         logger.warn(`Error closing watcher for ${path}: ${err}`);
       }
     }

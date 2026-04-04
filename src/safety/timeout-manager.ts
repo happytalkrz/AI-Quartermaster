@@ -23,7 +23,7 @@ export async function withTimeout<T>(
     const result = await Promise.race([operation(controller.signal), timeoutPromise]);
     clearTimeout(timer!);
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     clearTimeout(timer!);
     throw error;
   }

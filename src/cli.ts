@@ -5,6 +5,7 @@ import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
 import { runPipeline } from "./pipeline/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
+import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
@@ -247,8 +248,8 @@ async function startCommand(args: CliArgs): Promise<void> {
         });
         return { error: errorMsg };
       }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+    } catch (err: unknown) {
+      const errorMsg = getErrorMessage(err);
       await notifyFailure(job.repo, job.issueNumber, errorMsg, {
         ghPath: effectiveConfig.commands.ghCli.path,
         dryRun: effectiveConfig.general.dryRun,
@@ -283,8 +284,8 @@ async function startCommand(args: CliArgs): Promise<void> {
       effectiveConfig.projects = newEffectiveConfig.projects;
 
       logger.info('Config hot reload 완료');
-    } catch (err) {
-      logger.error(`Config hot reload 실패: ${err instanceof Error ? err.message : err}`);
+    } catch (err: unknown) {
+      logger.error(`Config hot reload 실패: ${getErrorMessage(err)}`);
     }
   });
 
@@ -320,8 +321,8 @@ async function startCommand(args: CliArgs): Promise<void> {
         child.unref();
         process.exit(0);
       }
-    } catch (err) {
-      logger.error(`graceful restart 실패: ${err}`);
+    } catch (err: unknown) {
+      logger.error(`graceful restart 실패: ${getErrorMessage(err)}`);
       // Continue running without restart
       if (poller && !poller.isRunning()) {
         poller.start();
@@ -764,7 +765,7 @@ function parseArgs(argv: string[]): CliArgs {
   return result;
 }
 
-main().catch((err) => {
-  console.error("Fatal error:", err);
+main().catch((err: unknown) => {
+  console.error("Fatal error:", getErrorMessage(err));
   process.exit(1);
 });

@@ -81,7 +81,14 @@ function setProject(projectRepo) {
   currentProject = projectRepo;
   localStorage.setItem('aqm-current-project', projectRepo);
   updateProjectDropdownUI();
-  renderFromState();
+
+  // Reload data with new project filter
+  apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
+
+  // Reconnect SSE with new project parameter
+  if (typeof connectSSE === 'function') {
+    connectSSE();
+  }
 
   // Close dropdown
   var dropdown = document.getElementById('project-dropdown');

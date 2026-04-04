@@ -128,10 +128,10 @@ function makeSuccessResult(phaseIndex: number, phaseName: string, costUsd?: numb
     commitHash: "abc12345",
     durationMs: 1000,
     usage: {
-      inputTokens: 100,
-      outputTokens: 50,
-      inputCacheReadTokens: 0,
-      inputCacheWriteTokens: 0,
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
     },
   };
 
@@ -811,7 +811,11 @@ describe("runCoreLoop", () => {
       const backendResult = makeSuccessResult(1, "Backend");
       backendResult.costUsd = 0.035;
 
-      mockGeneratePlan.mockResolvedValue({ plan });
+      mockGeneratePlan.mockResolvedValue({
+        plan,
+        costUsd: 0.015,
+        usage: { input_tokens: 200, output_tokens: 100, cache_read_input_tokens: 50, cache_creation_input_tokens: 25 }
+      });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -823,7 +827,13 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.totalCostUsd).toBe(0.065);
+      expect(result.totalCostUsd).toBe(0.080); // 0.015 (plan) + 0.030 + 0.035
+      expect(result.totalUsage).toEqual({
+        input_tokens: 400, // 200 (plan) + 100 + 100
+        output_tokens: 200, // 100 (plan) + 50 + 50
+        cache_read_input_tokens: 50, // 50 (plan) + 0 + 0
+        cache_creation_input_tokens: 25, // 25 (plan) + 0 + 0
+      });
       expect(result.phaseResults).toHaveLength(2);
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });

@@ -13,6 +13,18 @@ import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 
 const logger = getLogger();
 
+function sumUsage(usages: (import("../types/pipeline.js").UsageInfo | undefined)[]): import("../types/pipeline.js").UsageInfo | undefined {
+  const validUsages = usages.filter((usage): usage is import("../types/pipeline.js").UsageInfo => !!usage);
+  if (validUsages.length === 0) return undefined;
+
+  return {
+    input_tokens: validUsages.reduce((sum, usage) => sum + usage.input_tokens, 0),
+    output_tokens: validUsages.reduce((sum, usage) => sum + usage.output_tokens, 0),
+    cache_creation_input_tokens: validUsages.reduce((sum, usage) => sum + (usage.cache_creation_input_tokens ?? 0), 0),
+    cache_read_input_tokens: validUsages.reduce((sum, usage) => sum + (usage.cache_read_input_tokens ?? 0), 0),
+  };
+}
+
 function addErrorToHistory(
   historyMap: Map<number, ErrorHistoryEntry[]>,
   phaseIndex: number,
@@ -52,6 +64,7 @@ export interface CoreLoopResult {
   phaseResults: PhaseResult[];
   success: boolean;
   totalCostUsd?: number;
+  totalUsage?: import("../types/pipeline.js").UsageInfo;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
@@ -102,6 +115,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       phaseResults: [],
       success: false,
       totalCostUsd: 0,
+      totalUsage: undefined,
     };
   }
 
@@ -131,7 +145,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   if (!scheduleResult.success) {
     logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
     jl?.log(`Phase 스케줄링 실패: ${scheduleResult.error}`);
-    return { plan, phaseResults, success: false, totalCostUsd: planCostUsd ?? 0 };
+    return {
+      plan,
+      phaseResults,
+      success: false,
+      totalCostUsd: planCostUsd ?? 0,
+      totalUsage: planUsage,
+    };
   }
 
   logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);
@@ -247,7 +267,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
         jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
         const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
-        return { plan, phaseResults, success: false, totalCostUsd };
+        const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
+        const totalUsage = sumUsage(allUsages);
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -262,8 +284,15 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   const phasesTotalCost = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
   const totalCostUsd = phasesTotalCost + (planCostUsd ?? 0);
 
+  // Calculate total usage from plan and phase results
+  const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
+  const totalUsage = sumUsage(allUsages);
+
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);
   logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)} (plan: $${(planCostUsd ?? 0).toFixed(4)}, phases: $${phasesTotalCost.toFixed(4)})`);
+  if (totalUsage) {
+    logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
+  }
 
-  return { plan, phaseResults, success: true, totalCostUsd };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage };
 }

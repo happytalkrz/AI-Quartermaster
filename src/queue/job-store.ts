@@ -211,6 +211,39 @@ export class JobStore extends EventEmitter {
     }
   }
 
+  getCostStats(repo?: string): {
+    totalCostUsd: number;
+    avgCostUsd: number;
+    jobCount: number;
+    topExpensiveJobs: Array<{ id: string; issueNumber: number; totalCostUsd: number; repo: string }>;
+  } {
+    const allJobs = Array.from(this.cache.values());
+    const filteredJobs = repo ? allJobs.filter(job => job.repo === repo) : allJobs;
+    const jobsWithCost = filteredJobs.filter(job => job.totalCostUsd != null && job.totalCostUsd > 0);
+
+    const round = (val: number) => Math.round(val * 100) / 100;
+
+    const totalCostUsd = round(jobsWithCost.reduce((sum, job) => sum + job.totalCostUsd!, 0));
+    const avgCostUsd = jobsWithCost.length > 0 ? round(totalCostUsd / jobsWithCost.length) : 0;
+
+    const topExpensiveJobs = jobsWithCost
+      .sort((a, b) => b.totalCostUsd! - a.totalCostUsd!)
+      .slice(0, 10)
+      .map(job => ({
+        id: job.id,
+        issueNumber: job.issueNumber,
+        totalCostUsd: job.totalCostUsd!,
+        repo: job.repo
+      }));
+
+    return {
+      totalCostUsd,
+      avgCostUsd,
+      jobCount: jobsWithCost.length,
+      topExpensiveJobs
+    };
+  }
+
   private save(job: Job): void {
     writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
     this.cache.set(job.id, job);

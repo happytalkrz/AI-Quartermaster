@@ -223,16 +223,16 @@ export class JobStore extends EventEmitter {
 
     const round = (val: number) => Math.round(val * 100) / 100;
 
-    const totalCostUsd = round(jobsWithCost.reduce((sum, job) => sum + job.totalCostUsd, 0));
+    const totalCostUsd = round(jobsWithCost.reduce((sum, job) => sum + job.totalCostUsd!, 0));
     const avgCostUsd = jobsWithCost.length > 0 ? round(totalCostUsd / jobsWithCost.length) : 0;
 
     const topExpensiveJobs = jobsWithCost
-      .sort((a, b) => b.totalCostUsd - a.totalCostUsd)
+      .sort((a, b) => b.totalCostUsd! - a.totalCostUsd!)
       .slice(0, 10)
       .map(job => ({
         id: job.id,
         issueNumber: job.issueNumber,
-        totalCostUsd: job.totalCostUsd,
+        totalCostUsd: job.totalCostUsd!,
         repo: job.repo
       }));
 

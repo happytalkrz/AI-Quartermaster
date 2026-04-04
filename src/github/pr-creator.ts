@@ -68,7 +68,8 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const phasesText = ctx.phaseResults?.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`)?.join("\n") || 'No phases completed';
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan?.problemDefinition || 'Issue resolution in progress'}\n\n## Phases\n\n${phasesText}`;
   }
 
   // Add issue link
@@ -111,7 +112,8 @@ export async function createDraftPR(
   });
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    logger.error(`Failed to create PR: ${result.stderr}`);
+    return null;
   }
 
   // gh pr create outputs the PR URL

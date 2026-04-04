@@ -3,7 +3,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
-import type { Plan, PhaseResult } from "../types/pipeline.js";
+import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -20,6 +20,7 @@ export interface PrContext {
   phaseResults: PhaseResult[];
   branchName: string;
   baseBranch: string;
+  totalCostUsd?: number;
 }
 
 /**
@@ -30,7 +31,7 @@ export async function createDraftPR(
   ghConfig: GhCliConfig,
   ctx: PrContext,
   options: { cwd: string; promptsDir: string; dryRun?: boolean }
-): Promise<PrCreateResult> {
+): Promise<PrCreateResult | null> {
   // Build PR title
   const title = renderTemplate(prConfig.titleTemplate, {
     issueNumber: String(ctx.issueNumber),
@@ -59,10 +60,19 @@ export async function createDraftPR(
         base: ctx.baseBranch,
         work: ctx.branchName,
       },
+      stats: {
+        totalCostUsd: ctx.totalCostUsd?.toFixed(4) || '0.0000',
+        phaseCount: ctx.phaseResults.length,
+        successCount: ctx.phaseResults.filter(r => r.success).length,
+      },
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const phasesText = ctx.phaseResults?.length
+      ? ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")
+      : 'No phases completed';
+    const problemDef = ctx.plan?.problemDefinition || 'Issue resolution in progress';
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDef}\n\n## Phases\n\n${phasesText}`;
   }
 
   // Add issue link
@@ -105,7 +115,8 @@ export async function createDraftPR(
   });
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    logger.error(`Failed to create PR: ${result.stderr}`);
+    return null;
   }
 
   // gh pr create outputs the PR URL
@@ -128,7 +139,7 @@ export async function enableAutoMerge(
   prNumber: number,
   repo: string,
   mergeMethod: MergeMethod,
-  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; isDraft?: boolean; deleteBranch?: boolean }
 ): Promise<boolean> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -149,17 +160,50 @@ export async function enableAutoMerge(
   }
 
   // Enable auto-merge
-  const mergeResult = await runCli(
-    ghPath,
-    ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`],
-    {}
-  );
+  const mergeArgs = ["pr", "merge", String(prNumber), "--repo", repo, "--auto", `--${mergeMethod}`];
+  if (options.deleteBranch) {
+    mergeArgs.push("--delete-branch");
+  }
+
+  const mergeResult = await runCli(ghPath, mergeArgs, {});
   if (mergeResult.exitCode !== 0) {
     logger.warn(`Failed to enable auto-merge on PR #${prNumber}: ${mergeResult.stderr}`);
     return false;
   }
 
   logger.info(`Auto-merge enabled on PR #${prNumber} (method: ${mergeMethod})`);
+  return true;
+}
+
+/**
+ * Adds a comment to an issue on GitHub using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function addIssueComment(
+  issueNumber: number,
+  repo: string,
+  comment: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would add comment to issue #${issueNumber}: ${comment}`);
+    return true;
+  }
+
+  // Add comment to issue
+  const result = await runCli(
+    ghPath,
+    ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+    {}
+  );
+  if (result.exitCode !== 0) {
+    logger.warn(`Failed to comment on issue #${issueNumber}: ${result.stderr}`);
+    return false;
+  }
+
+  logger.info(`Added comment to issue #${issueNumber}`);
   return true;
 }
 
@@ -192,4 +236,155 @@ export async function closeIssue(
 
   logger.info(`Closed issue #${issueNumber}`);
   return true;
+}
+
+/**
+ * Checks PR conflict status and returns detailed conflict information.
+ * Uses gh pr view to check merge status and gh pr diff to identify conflict files.
+ */
+export async function checkPrConflict(
+  prNumber: number,
+  repo: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<PrConflictInfo | null> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would check PR #${prNumber} for conflicts`);
+    return null;
+  }
+
+  try {
+    // Check PR merge status using gh pr view
+    const viewResult = await runCli(
+      ghPath,
+      ["pr", "view", String(prNumber), "--repo", repo, "--json", "mergeStateStatus,mergeable"],
+      {}
+    );
+
+    if (viewResult.exitCode !== 0) {
+      logger.warn(`Failed to check PR #${prNumber} status: ${viewResult.stderr}`);
+      return null;
+    }
+
+    const prInfo = JSON.parse(viewResult.stdout.trim());
+    const mergeStateStatus: MergeStateStatus = prInfo.mergeStateStatus || "UNKNOWN";
+    const mergeable = prInfo.mergeable;
+
+    // If status is DIRTY or not mergeable, get conflict files
+    const conflictFiles: string[] = [];
+    if (mergeStateStatus === "DIRTY" || mergeable === false) {
+      try {
+        // Get diff to identify conflict files
+        const diffResult = await runCli(
+          ghPath,
+          ["pr", "diff", String(prNumber), "--repo", repo],
+          {}
+        );
+
+        if (diffResult.exitCode === 0) {
+          // Parse diff output to extract conflict files
+          const fileSet = new Set<string>();
+          const filePattern = /^diff --git a\/(.+) b\/(.+)$/;
+
+          for (const line of diffResult.stdout.split("\n")) {
+            const match = line.match(filePattern);
+            if (match) fileSet.add(match[1]);
+          }
+
+          conflictFiles.push(...Array.from(fileSet));
+        }
+      } catch (diffError) {
+        logger.warn(`Failed to get diff for PR #${prNumber}: ${diffError}`);
+      }
+    }
+
+    // Return conflict info if there are issues
+    if (mergeStateStatus === "DIRTY" || mergeable === false || conflictFiles.length > 0) {
+      return {
+        prNumber,
+        repo,
+        conflictFiles,
+        detectedAt: new Date().toISOString(),
+        mergeStatus: mergeStateStatus,
+      };
+    }
+
+    return null; // No conflicts detected
+  } catch (error) {
+    logger.warn(`Error checking PR #${prNumber} conflicts: ${error}`);
+    return null;
+  }
+}
+
+/**
+ * Posts a comment on a GitHub issue using gh CLI.
+ * Best-effort: returns false (with a warning) instead of throwing on failure.
+ */
+export async function commentOnIssue(
+  issueNumber: number,
+  repo: string,
+  comment: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<boolean> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would comment on issue #${issueNumber}: ${comment.slice(0, 100)}...`);
+    return true;
+  }
+
+  try {
+    const result = await runCli(
+      ghPath,
+      ["issue", "comment", String(issueNumber), "--repo", repo, "--body", comment],
+      {}
+    );
+
+    if (result.exitCode !== 0) {
+      logger.warn(`Failed to comment on issue #${issueNumber}: ${result.stderr}`);
+      return false;
+    }
+
+    logger.info(`Added comment to issue #${issueNumber}`);
+    return true;
+  } catch (error) {
+    logger.warn(`Error commenting on issue #${issueNumber}: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Lists open PRs for a repository using gh CLI.
+ */
+export async function listOpenPrs(
+  repo: string,
+  options: { ghPath?: string; dryRun?: boolean }
+): Promise<Array<{ number: number; title: string }> | null> {
+  const ghPath = options.ghPath ?? "gh";
+
+  if (options.dryRun) {
+    logger.info(`[DRY RUN] Would list open PRs for ${repo}`);
+    return [];
+  }
+
+  try {
+    const result = await runCli(
+      ghPath,
+      ["pr", "list", "--repo", repo, "--state", "open", "--json", "number,title", "--limit", "100"],
+      {}
+    );
+
+    if (result.exitCode !== 0) {
+      logger.warn(`Failed to list PRs for ${repo}: ${result.stderr}`);
+      return null;
+    }
+
+    const prs = JSON.parse(result.stdout.trim()) as Array<{ number: number; title: string }>;
+    logger.debug(`Found ${prs.length} open PRs in ${repo}`);
+    return prs;
+  } catch (error) {
+    logger.warn(`Error listing PRs for ${repo}: ${error}`);
+    return null;
+  }
 }

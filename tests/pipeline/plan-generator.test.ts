@@ -6,8 +6,14 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
   extractJson: vi.fn(),
 }));
 
-import { generatePlan } from "../../src/pipeline/plan-generator.js";
+// Mock notifier before importing
+vi.mock("../../src/notification/notifier.js", () => ({
+  notifyPlanRetryContext: vi.fn(),
+}));
+
+import { generatePlan, collectContextualizationInfo } from "../../src/pipeline/plan-generator.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
+import { notifyPlanRetryContext } from "../../src/notification/notifier.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -17,6 +23,7 @@ describe("generatePlan", () => {
   let promptsDir: string;
   const mockRunClaude = vi.mocked(runClaude);
   const mockExtractJson = vi.mocked(extractJson);
+  const mockNotifyPlanRetryContext = vi.mocked(notifyPlanRetryContext);
 
   beforeEach(() => {
     testDir = join(tmpdir(), `aq-plan-test-${Date.now()}`);
@@ -691,5 +698,342 @@ tests/
     expect(result.phases[1].targetFiles).toEqual([]);
     expect(result.phases[1].verificationCriteria).toEqual([]);
     expect(result.phases[1].dependsOn).toEqual([]);
+  });
+
+  // Phase 6: 재시도 로직 테스트 케이스 추가
+  describe("plan retry logic with contextualization", () => {
+    beforeEach(() => {
+      // Create a dummy retry template
+      writeFileSync(
+        join(promptsDir, "plan-generation-retry.md"),
+        "Retry plan generation for #{{issue.number}}: {{issue.title}}\n\nContext: {{context}}\nRetry: {{retry}}"
+      );
+
+      // Reset notification mock
+      mockNotifyPlanRetryContext.mockClear();
+    });
+
+    it("should collect contextualization info and retry successfully", async () => {
+      // Create mock files for context collection
+      const mockFilePath = join(testDir, "src", "test.ts");
+      mkdirSync(join(testDir, "src"), { recursive: true });
+      writeFileSync(mockFilePath, `
+        export interface TestInterface {
+          id: string;
+          name: string;
+        }
+
+        export async function testFunction(param: string): Promise<TestInterface> {
+          return { id: "1", name: param };
+        }
+
+        import { someUtil } from "./utils.js";
+        export { testFunction as default };
+      `);
+
+      const validPlan = {
+        mode: "code",
+        issueNumber: 123,
+        title: "Test with context",
+        problemDefinition: "Test contextualization",
+        requirements: ["Context collection"],
+        affectedFiles: ["src/test.ts"],
+        risks: ["Test risk"],
+        phases: [
+          {
+            index: 0,
+            name: "Test phase",
+            description: "Test with context",
+            targetFiles: ["src/test.ts"],
+            commitStrategy: "Single commit",
+            verificationCriteria: ["Tests pass"],
+          },
+        ],
+        verificationPoints: ["Context collected"],
+        stopConditions: [],
+      };
+
+      // First call fails, second succeeds
+      mockRunClaude
+        .mockResolvedValueOnce({
+          success: false,
+          output: "API failure",
+          durationMs: 500,
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          output: JSON.stringify(validPlan),
+          durationMs: 1000,
+        });
+      mockExtractJson.mockReturnValue(validPlan);
+
+      const result = await generatePlan({
+        issue: {
+          number: 123,
+          title: "Test with context collection",
+          body: "Please fix src/test.ts file",
+          labels: [],
+        },
+        repo: { owner: "test", name: "repo" },
+        branch: { base: "main", work: "ax/123-context" },
+        repoStructure: "src/",
+        claudeConfig: {
+          path: "claude",
+          model: "test",
+          maxTurns: 5,
+          timeout: 5000,
+          additionalArgs: [],
+        },
+        promptsDir,
+        cwd: testDir,
+      });
+
+      expect(mockRunClaude).toHaveBeenCalledTimes(2);
+      expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1);
+      expect(result.issueNumber).toBe(123);
+
+      // Verify context collection notification was called with proper structure
+      const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
+      expect(notifyCall[0]).toBe("test/repo"); // repo
+      expect(notifyCall[1]).toBe(123); // issue number
+      expect(notifyCall[2]).toMatchObject({
+        currentAttempt: expect.any(Number),
+        maxRetries: 2,
+        canRetry: true,
+        generationHistory: expect.arrayContaining([
+          expect.objectContaining({
+            success: false,
+            error: expect.stringContaining("API failure"),
+            errorCategory: "CLI_CRASH",
+            attempt: 1,
+          }),
+        ]),
+      });
+
+      // Verify contextualization info was collected
+      const contextInfo = notifyCall[3];
+      expect(contextInfo).toBeDefined();
+      expect(contextInfo.functionSignatures["src/test.ts"]).toBeDefined();
+      expect(contextInfo.importRelations["src/test.ts"]).toBeDefined();
+      expect(contextInfo.typeDefinitions["src/test.ts"]).toBeDefined();
+    });
+
+    it("should fail after max retries with context collection", async () => {
+      // Create mock file
+      const mockFilePath = join(testDir, "src", "failing.ts");
+      mkdirSync(join(testDir, "src"), { recursive: true });
+      writeFileSync(mockFilePath, `
+        export function failingFunction(): void {
+          console.log("This will fail");
+        }
+      `);
+
+      // All attempts fail
+      mockRunClaude.mockResolvedValue({
+        success: false,
+        output: "Persistent API error",
+        durationMs: 500,
+      });
+
+      await expect(
+        generatePlan({
+          issue: {
+            number: 456,
+            title: "Failing test",
+            body: "Fix src/failing.ts",
+            labels: [],
+          },
+          repo: { owner: "test", name: "repo" },
+          branch: { base: "main", work: "ax/456-fail" },
+          repoStructure: "src/",
+          claudeConfig: {
+            path: "claude",
+            model: "test",
+            maxTurns: 1,
+            timeout: 1000,
+            additionalArgs: [],
+          },
+          promptsDir,
+          cwd: testDir,
+        })
+      ).rejects.toThrow("Plan generation failed after 2 attempts");
+
+      expect(mockRunClaude).toHaveBeenCalledTimes(2); // maxRetries = 2
+      expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1); // Called once before second attempt
+
+      // Verify that context collection was attempted
+      const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
+      expect(notifyCall[2].generationHistory).toHaveLength(1);
+      expect(notifyCall[2].generationHistory[0].success).toBe(false);
+    });
+
+    it("should collect contextualization info correctly for TypeScript files", async () => {
+      // Create a complex TypeScript file for testing
+      const complexFilePath = join(testDir, "src", "complex.ts");
+      mkdirSync(join(testDir, "src"), { recursive: true });
+      writeFileSync(complexFilePath, `
+        import { readFile } from "fs/promises";
+        import type { Config } from "./config.js";
+
+        export interface User {
+          id: number;
+          name: string;
+          email: string;
+        }
+
+        export type UserStatus = "active" | "inactive" | "pending";
+
+        export enum Permission {
+          READ = "read",
+          WRITE = "write",
+          ADMIN = "admin",
+        }
+
+        export async function getUserById(id: number): Promise<User | null> {
+          // Implementation here
+          return null;
+        }
+
+        export const validateUser = (user: User): boolean => {
+          return user.id > 0 && user.email.includes("@");
+        };
+
+        export class UserManager {
+          async createUser(data: Partial<User>): Promise<User> {
+            // Implementation
+            return data as User;
+          }
+        }
+
+        export default UserManager;
+      `);
+
+      const contextInfo = collectContextualizationInfo(["src/complex.ts"], testDir);
+
+      // Verify function signatures
+      expect(contextInfo.functionSignatures["src/complex.ts"]).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("getUserById"),
+          expect.stringContaining("validateUser"),
+          expect.stringContaining("createUser"),
+        ])
+      );
+
+      // Verify import relations
+      expect(contextInfo.importRelations["src/complex.ts"].imports).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("fs/promises"),
+          expect.stringContaining("config.js"),
+        ])
+      );
+
+      expect(contextInfo.importRelations["src/complex.ts"].exports).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("export"),
+        ])
+      );
+
+      // Verify type definitions
+      expect(contextInfo.typeDefinitions["src/complex.ts"]).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("interface User"),
+          expect.stringContaining("type UserStatus"),
+          expect.stringContaining("enum Permission"),
+          expect.stringContaining("class UserManager"),
+        ])
+      );
+    });
+
+    it("should handle context collection for non-existent files gracefully", async () => {
+      const contextInfo = collectContextualizationInfo(["src/nonexistent.ts", "invalid/path.js"], testDir);
+
+      // Should return empty structures for non-existent files
+      expect(contextInfo.functionSignatures).toEqual({});
+      expect(contextInfo.importRelations).toEqual({});
+      expect(contextInfo.typeDefinitions).toEqual({});
+    });
+
+    it("should handle context collection for non-TypeScript files gracefully", async () => {
+      // Create non-TS files
+      mkdirSync(join(testDir, "docs"), { recursive: true });
+      writeFileSync(join(testDir, "docs", "README.md"), "# Test README");
+      writeFileSync(join(testDir, "config.json"), '{"test": true}');
+
+      const contextInfo = collectContextualizationInfo(["docs/README.md", "config.json"], testDir);
+
+      // Should skip non-TS files
+      expect(contextInfo.functionSignatures).toEqual({});
+      expect(contextInfo.importRelations).toEqual({});
+      expect(contextInfo.typeDefinitions).toEqual({});
+    });
+
+    it("should use retry template when available", async () => {
+      const validPlan = {
+        mode: "code",
+        issueNumber: 789,
+        title: "Retry template test",
+        problemDefinition: "Test retry template usage",
+        requirements: ["Use retry template"],
+        affectedFiles: ["src/retry.ts"],
+        risks: [],
+        phases: [
+          {
+            index: 0,
+            name: "Retry phase",
+            description: "Test retry template",
+            targetFiles: ["src/retry.ts"],
+            commitStrategy: "Single commit",
+            verificationCriteria: ["Template used"],
+          },
+        ],
+        verificationPoints: ["Retry successful"],
+        stopConditions: [],
+      };
+
+      // First call fails, second succeeds
+      mockRunClaude
+        .mockResolvedValueOnce({
+          success: false,
+          output: "Initial failure",
+          durationMs: 500,
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          output: JSON.stringify(validPlan),
+          durationMs: 1000,
+        });
+      mockExtractJson.mockReturnValue(validPlan);
+
+      const result = await generatePlan({
+        issue: {
+          number: 789,
+          title: "Retry template test",
+          body: "Test retry template functionality",
+          labels: [],
+        },
+        repo: { owner: "test", name: "repo" },
+        branch: { base: "main", work: "ax/789-retry-template" },
+        repoStructure: "src/",
+        claudeConfig: {
+          path: "claude",
+          model: "test",
+          maxTurns: 5,
+          timeout: 5000,
+          additionalArgs: [],
+        },
+        promptsDir,
+        cwd: testDir,
+      });
+
+      expect(mockRunClaude).toHaveBeenCalledTimes(2);
+      expect(result.issueNumber).toBe(789);
+
+      // Verify that the second call used the retry template
+      const secondCall = mockRunClaude.mock.calls[1];
+      const promptUsed = secondCall[0].prompt;
+      expect(promptUsed).toContain("Retry plan generation");
+      expect(promptUsed).toContain("Context:");
+      expect(promptUsed).toContain("Retry:");
+    });
   });
 });

@@ -24,6 +24,7 @@ describe("validateConfig", () => {
       stuckTimeoutMs: 600000,
       pollingIntervalMs: 60000,
       maxJobs: 100,
+      autoUpdate: false,
     },
     git: {
       defaultBaseBranch: "main",

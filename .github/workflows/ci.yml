@@ -11,4 +11,4 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npx eslint src/ tests/
-      - run: npm test
+      - run: npx vitest run --coverage

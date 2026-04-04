@@ -1,9 +1,13 @@
 import { runReviewRound } from "./review-runner.js";
 import { configForTask } from "../claude/model-router.js";
-import type { TemplateVariables } from "../prompt/template-renderer.js";
+import { loadTemplate, renderTemplate, type TemplateVariables } from "../prompt/template-renderer.js";
+import { exceedsTokenLimit, getEffectiveTokenLimit } from "./token-estimator.js";
+import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "./diff-splitter.js";
+import { mergeReviewResults } from "./result-merger.js";
 import { getLogger } from "../utils/logger.js";
+import { resolve } from "path";
 import type { ReviewConfig, ReviewRound, ClaudeCliConfig } from "../types/config.js";
-import type { ReviewResult, ReviewPipelineResult } from "../types/review.js";
+import type { ReviewResult, ReviewPipelineResult, SplitReviewResult } from "../types/review.js";
 
 const logger = getLogger();
 
@@ -53,6 +57,81 @@ function applyRoundModes(variables: TemplateVariables, round: ReviewRound): Temp
   return { ...result, reviewerRole, reviewInstructions };
 }
 
+/**
+ * 분할 리뷰를 실행합니다.
+ * diff를 파일별로 분할하여 토큰 한도 내에서 개별 리뷰를 실행하고 결과를 병합합니다.
+ */
+async function runSplitReview(
+  ctx: ReviewOrchestratorContext,
+  round: ReviewRound,
+  claudeConfig: ClaudeCliConfig,
+  template: string,
+  roundVariables: TemplateVariables
+): Promise<ReviewResult> {
+  const fullDiff = String(roundVariables.diff);
+  logger.info(`Splitting review for round "${round.name}" due to token limit exceeded`);
+
+  // diff를 파일별로 분할
+  const fileDiffs = splitDiffByFiles(fullDiff);
+  if (fileDiffs.length === 0) {
+    logger.warn("No file diffs found for split review");
+    return {
+      roundName: round.name,
+      verdict: "PASS",
+      findings: [],
+      summary: "No changes to review",
+      durationMs: 0,
+    };
+  }
+
+  // 토큰 예산 계산 (diff 외의 템플릿 콘텐츠)
+  const templateWithoutDiff = renderTemplate(template, { ...roundVariables, diff: "" });
+  const effectiveLimit = getEffectiveTokenLimit(claudeConfig.model || "default");
+
+  // 파일들을 토큰 예산에 맞춰 배치로 그룹화
+  const batches = groupFilesByTokenBudget(fileDiffs, effectiveLimit, templateWithoutDiff);
+
+  logger.info(`Split into ${batches.length} batches for review`);
+
+  // 각 배치별로 리뷰 실행
+  const splitResults: SplitReviewResult[] = [];
+
+  for (const batch of batches) {
+    const batchDiff = combineBatchDiffs(batch);
+    const batchVariables = {
+      ...roundVariables,
+      diff: batchDiff,
+    };
+
+    const result = await runReviewRound({
+      roundName: `${round.name} (Split ${batch.batchIndex + 1}/${batches.length})`,
+      promptTemplate: round.promptTemplate,
+      promptsDir: ctx.promptsDir,
+      claudeConfig,
+      cwd: ctx.cwd,
+      variables: batchVariables,
+    });
+
+    // 분할 정보 추가
+    const splitResult: SplitReviewResult = {
+      ...result,
+      splitInfo: {
+        totalSplits: batches.length,
+        currentSplit: batch.batchIndex,
+        splitBy: "file",
+      },
+    };
+
+    splitResults.push(splitResult);
+  }
+
+  // 결과 병합
+  const mergedResult = mergeReviewResults(splitResults, round.name);
+
+  logger.info(`Completed split review for "${round.name}": ${mergedResult.verdict}`);
+  return mergedResult;
+}
+
 export async function runReviews(ctx: ReviewOrchestratorContext): Promise<ReviewPipelineResult> {
   if (!ctx.reviewConfig.enabled) {
     logger.info("Reviews disabled, skipping");
@@ -78,14 +157,27 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
 
       const roundVariables = applyRoundModes(ctx.variables, round);
 
-      result = await runReviewRound({
-        roundName: round.name,
-        promptTemplate: round.promptTemplate,
-        promptsDir: ctx.promptsDir,
-        claudeConfig,
-        cwd: ctx.cwd,
-        variables: roundVariables,
-      });
+      // 토큰 체크를 위해 템플릿 미리 렌더링
+      const templatePath = resolve(ctx.promptsDir, round.promptTemplate);
+      const template = loadTemplate(templatePath);
+      const renderedPrompt = renderTemplate(template, roundVariables);
+
+      // 토큰 한도 체크
+      const modelName = claudeConfig.model || "default";
+      if (exceedsTokenLimit(renderedPrompt, modelName)) {
+        logger.info(`Token limit exceeded for round "${round.name}", using split review`);
+        result = await runSplitReview(ctx, round, claudeConfig, template, roundVariables);
+      } else {
+        logger.info(`Token limit within bounds for round "${round.name}", using standard review`);
+        result = await runReviewRound({
+          roundName: round.name,
+          promptTemplate: round.promptTemplate,
+          promptsDir: ctx.promptsDir,
+          claudeConfig,
+          cwd: ctx.cwd,
+          variables: roundVariables,
+        });
+      }
 
       if (result.verdict === "PASS") {
         logger.info(`Review "${round.name}" PASSED`);

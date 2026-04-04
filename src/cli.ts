@@ -17,6 +17,8 @@ import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
 import { PatternStore } from "./learning/pattern-store.js";
+import { SelfUpdater } from "./update/self-updater.js";
+import { ConfigWatcher } from "./config/config-watcher.js";
 
 interface CliArgs {
   command?: string;
@@ -261,16 +263,82 @@ async function startCommand(args: CliArgs): Promise<void> {
   // Prune old completed/failed jobs to prevent unbounded accumulation
   store.prune(effectiveConfig.general.maxJobs);
 
+  // === Setup ConfigWatcher for hot reload ===
+  const { applyConfigChanges } = await import("./server/dashboard-api.js");
+  const configWatcher = new ConfigWatcher(aqRoot);
+  configWatcher.on('configChanged', async () => {
+    try {
+      logger.info('Config 변경 감지 - hot reload 시작...');
+
+      // Reload configuration
+      const newConfig = loadConfig(aqRoot);
+      const newEffectiveConfig = args.dryRun
+        ? { ...newConfig, general: { ...newConfig.general, dryRun: true } }
+        : newConfig;
+
+      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue);
+
+      // Update effectiveConfig reference for future use
+      effectiveConfig.general = newEffectiveConfig.general;
+      effectiveConfig.projects = newEffectiveConfig.projects;
+
+      logger.info('Config hot reload 완료');
+    } catch (err) {
+      logger.error(`Config hot reload 실패: ${err instanceof Error ? err.message : err}`);
+    }
+  });
+
+  configWatcher.startWatching();
+  logger.info('ConfigWatcher 시작됨 - config.yml 변경을 감지합니다');
+
+  // === Graceful restart callback ===
+  const performGracefulRestart = async (): Promise<void> => {
+    logger.info("업데이트 감지됨 — graceful restart 시작...");
+
+    try {
+      // Stop poller to prevent new issues from being picked up
+      poller?.stop();
+
+      // Wait for running jobs to complete
+      logger.info("실행 중인 job 완료 대기...");
+      await queue.shutdown(300000); // 5분 타임아웃
+
+      // Apply updates
+      const selfUpdater = new SelfUpdater(effectiveConfig.git, { cwd: aqRoot });
+      const updateResult = await selfUpdater.performSelfUpdate();
+
+      if (updateResult.updated && updateResult.needsRestart) {
+        logger.info("업데이트 완료 — 프로세스 재시작 중...");
+
+        // Restart with same arguments
+        const { spawn } = await import("child_process");
+        const child = spawn(process.execPath, process.argv.slice(1), {
+          detached: true,
+          stdio: "inherit",
+        });
+
+        child.unref();
+        process.exit(0);
+      }
+    } catch (err) {
+      logger.error(`graceful restart 실패: ${err}`);
+      // Continue running without restart
+      if (poller && !poller.isRunning()) {
+        poller.start();
+      }
+    }
+  };
+
   // === Polling mode ===
   let poller: IssuePoller | undefined;
   if (isPollingMode) {
-    poller = new IssuePoller(effectiveConfig, store, queue);
+    poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
     poller.start();
   }
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
-  const dashboardRoutes = createDashboardRoutes(store, queue, apiKey);
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;
@@ -327,6 +395,7 @@ async function startCommand(args: CliArgs): Promise<void> {
   const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
     poller?.stop();
+    configWatcher.stopWatching();
     await queue.shutdown(30000);
     cleanup();
     process.exit(0);
@@ -452,6 +521,8 @@ async function statsCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
   const patternStore = new PatternStore(dataDir);
+  const jobStore = new JobStore(dataDir);
+
   const stats = patternStore.getStats(args.repo);
   const successRate = stats.total > 0 ? ((stats.successes / stats.total) * 100).toFixed(1) : "N/A";
 
@@ -479,6 +550,21 @@ async function statsCommand(args: CliArgs): Promise<void> {
       if (e.phaseName) console.log(`    Phase: ${e.phaseName}`);
     }
   }
+
+  // Cost Statistics 섹션 추가
+  const costStats = jobStore.getCostStats(args.repo);
+  console.log(`\nCost Statistics${args.repo ? ` (${args.repo})` : ""}:`);
+  console.log(`  Total cost   : $${costStats.totalCostUsd.toFixed(2)}`);
+  console.log(`  Average cost : $${costStats.avgCostUsd.toFixed(2)}`);
+  console.log(`  Job count    : ${costStats.jobCount}`);
+
+  if (costStats.topExpensiveJobs.length > 0) {
+    console.log("\nTop Expensive Jobs:");
+    for (const job of costStats.topExpensiveJobs) {
+      console.log(`  #${String(job.issueNumber).padEnd(5)} ${job.repo.padEnd(20)} $${job.totalCostUsd.toFixed(2)}`);
+    }
+  }
+
   console.log();
 }
 

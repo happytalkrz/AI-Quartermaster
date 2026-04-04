@@ -19,9 +19,15 @@ function renderJobListItem(job, isSelected) {
     badgeHtml = '<span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
   }
 
+  var issueTitle = job.issueTitle || '';
+  var truncatedTitle = issueTitle.length > 40 ? issueTitle.substring(0, 40) + '...' : issueTitle;
+
   return '<div class="' + activeBg + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
     '<div class="flex justify-between items-start mb-1">' +
-      '<span class="text-sm font-bold ' + (isSelected ? 'text-on-surface' : 'text-on-surface/80') + '">#' + job.issueNumber + ' ' + esc(job.repo) + '</span>' +
+      '<div>' +
+        '<span class="text-sm font-bold ' + (isSelected ? 'text-on-surface' : 'text-on-surface/80') + '">#' + job.issueNumber + ' ' + esc(job.repo) + '</span>' +
+        (truncatedTitle ? '<div class="text-xs text-outline mt-0.5">' + esc(truncatedTitle) + '</div>' : '') +
+      '</div>' +
       badgeHtml +
     '</div>' +
     '<div class="flex justify-between items-center">' +
@@ -60,6 +66,8 @@ function renderJobDetail(job) {
   html += '</div>';
   html += '<div class="flex items-center gap-6 text-sm text-outline font-medium">';
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
+  var costHtml = fmtCost(job.totalCostUsd);
+  if (costHtml) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + costHtml + '</span>';
   html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">calendar_today</span> ' + relativeTime(job.createdAt) + '</span>';
   html += '<span class="flex items-center gap-1.5 font-mono text-xs opacity-80">' + esc(job.id) + '</span>';
   html += '</div></div>';
@@ -149,6 +157,7 @@ function renderPhaseItem(phase, i, job) {
   var isCurrent = !isComplete && job.status === 'running';
   var dur = phase.durationMs ? fmtDurationMs(phase.durationMs) : '--:--';
   var phaseName = esc(phase.name || 'Phase ' + (i + 1));
+  var cost = fmtCost(phase.costUsd);
 
   // Determine state-specific styles and content
   var containerClass, iconHtml, nameClass, subtitleHtml, durHtml, chevronColor;
@@ -158,14 +167,14 @@ function renderPhaseItem(phase, i, job) {
     iconHtml = '<span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: \'FILL\' 1;">check_circle</span>';
     nameClass = 'text-sm font-bold';
     subtitleHtml = phase.commit ? '<div class="text-[10px] text-outline font-mono">commit: ' + esc(phase.commit) + '</div>' : '';
-    durHtml = '<span class="text-xs font-mono text-outline">' + dur + '</span>';
+    durHtml = '<span class="text-xs font-mono text-outline">' + dur + (cost ? ' • ' + cost : '') + '</span>';
     chevronColor = 'text-outline';
   } else if (isFailed) {
     containerClass = 'bg-surface-container-low p-4 flex items-center justify-between border-l-2 border-[#f85149]';
     iconHtml = '<span class="material-symbols-outlined text-[#f85149]" style="font-variation-settings: \'FILL\' 1;">cancel</span>';
     nameClass = 'text-sm font-bold text-[#f85149]';
     subtitleHtml = phase.error ? '<div class="text-[10px] text-[#f85149]/60 font-mono">' + esc(phase.error).substring(0, 80) + '</div>' : '';
-    durHtml = '<span class="text-xs font-mono text-[#f85149]">' + dur + '</span>';
+    durHtml = '<span class="text-xs font-mono text-[#f85149]">' + dur + (cost ? ' • ' + cost : '') + '</span>';
     chevronColor = 'text-[#f85149]';
   } else if (isCurrent) {
     containerClass = 'bg-surface-container p-4 flex items-center justify-between ring-1 ring-primary/30 z-10';
@@ -397,8 +406,11 @@ function renderProjectCard(project) {
   html += '<h3 class="font-bold text-on-surface">' + esc(project.repo) + '</h3>';
   html += '</div>';
   html += '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">';
-  if (project.id) {
-    html += '<button onclick="deleteProject(\'' + esc(project.id) + '\')" class="p-1 hover:text-error transition-colors" title="' + t('delete') + '">';
+  if (project.repo) {
+    html += '<button onclick="editProject(\'' + esc(project.repo) + '\')" class="p-1 hover:text-primary transition-colors" title="' + (t('edit') || 'Edit') + '">';
+    html += '<span class="material-symbols-outlined text-sm">edit</span>';
+    html += '</button>';
+    html += '<button onclick="deleteProject(\'' + esc(project.repo) + '\')" class="p-1 hover:text-error transition-colors" title="' + t('delete') + '">';
     html += '<span class="material-symbols-outlined text-sm">delete</span>';
     html += '</button>';
   }

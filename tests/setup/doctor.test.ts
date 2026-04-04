@@ -113,7 +113,7 @@ describe("runDoctor", () => {
       review: {
         enabled: true,
         rounds: [],
-        simplify: { enabled: false, promptTemplate: "" },
+        simplify: { enabled: true, promptTemplate: "" },
       },
       pr: {
         targetBranch: "main",

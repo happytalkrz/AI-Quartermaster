@@ -269,7 +269,18 @@ describe("retryPhase", () => {
         success: true,
         commitHash: "abc12345",
         durationMs: expect.any(Number),
+        costUsd: undefined,
       });
+    });
+
+    it("should include costUsd when Claude provides cost information", async () => {
+      mockRunClaude.mockResolvedValue({ success: true, output: "Claude success", costUsd: 0.033 });
+      const ctx = makeContext();
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.costUsd).toBe(0.033);
     });
 
     it("should auto-commit changes when dirty", async () => {
@@ -303,6 +314,7 @@ describe("retryPhase", () => {
         errorCategory: "CLI_CRASH",
         lastOutput: "Phase retry failed: Claude failed",
         durationMs: expect.any(Number),
+        costUsd: undefined,
       });
     });
 
@@ -326,7 +338,19 @@ describe("retryPhase", () => {
         errorCategory: "VERIFICATION_FAILED",
         lastOutput: expect.stringMatching(/Tests failed after retry/),
         durationMs: expect.any(Number),
+        costUsd: undefined,
       });
+    });
+
+    it("should include costUsd in failure result when Claude provides cost before failing", async () => {
+      mockRunClaude.mockResolvedValue({ success: false, output: "Claude failed", costUsd: 0.022 });
+      mockClassifyError.mockReturnValue("CLI_CRASH");
+      const ctx = makeContext();
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.costUsd).toBe(0.022);
     });
 
     it("should skip test verification when testCommand is empty", async () => {

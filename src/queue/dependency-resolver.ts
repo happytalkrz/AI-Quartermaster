@@ -1,4 +1,6 @@
 import { JobStore } from "./job-store.js";
+import { runCli } from "../utils/cli-runner.js";
+import { getLogger } from "../utils/logger.js";
 
 /**
  * Parses `depends: #11`, `depends: #11, #12`, `depends on #11` patterns
@@ -86,4 +88,98 @@ export function areDependenciesMet(
   return unmet.length === 0
     ? { met: true, pending: [] }
     : { met: false, pending: unmet };
+}
+
+/**
+ * Checks whether all dependency PRs have been merged on GitHub.
+ * Uses gh api to find PRs linked to each issue and check their merge status.
+ * Returns `{ merged: true }` when all dependency PRs are merged,
+ * or `{ merged: false, unmerged: [...] }` listing unmerged issue numbers.
+ */
+export async function checkDependencyPRsMerged(
+  dependencies: number[],
+  repo: string,
+  ghPath: string = "gh"
+): Promise<{ merged: boolean; unmerged: number[]; notFound: number[] }> {
+  if (dependencies.length === 0) {
+    return { merged: true, unmerged: [], notFound: [] };
+  }
+
+  const logger = getLogger();
+  const unmerged: number[] = [];
+  const notFound: number[] = [];
+
+  for (const issueNumber of dependencies) {
+    try {
+      // Find PRs linked to this issue using gh api
+      const result = await runCli(
+        ghPath,
+        [
+          "api",
+          `repos/${repo}/issues/${issueNumber}/timeline`,
+          "--jq",
+          ".[] | select(.event == \"cross-referenced\" and .source.issue.pull_request != null) | .source.issue.number"
+        ]
+      );
+
+      if (result.exitCode !== 0) {
+        logger.warn(`Failed to get timeline for issue #${issueNumber}: ${result.stderr}`);
+        notFound.push(issueNumber);
+        continue;
+      }
+
+      const prNumbers = result.stdout
+        .trim()
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => parseInt(line.trim(), 10))
+        .filter(num => !isNaN(num));
+
+      if (prNumbers.length === 0) {
+        // No PRs found for this issue
+        logger.warn(`No PRs found for issue #${issueNumber}`);
+        notFound.push(issueNumber);
+        continue;
+      }
+
+      // Check if any of the linked PRs are merged
+      let isAnyPRMerged = false;
+      for (const prNumber of prNumbers) {
+        try {
+          const prResult = await runCli(
+            ghPath,
+            [
+              "api",
+              `repos/${repo}/pulls/${prNumber}`,
+              "--jq",
+              ".merged"
+            ]
+          );
+
+          if (prResult.exitCode === 0) {
+            const isMerged = prResult.stdout.trim() === "true";
+            if (isMerged) {
+              isAnyPRMerged = true;
+              break;
+            }
+          }
+        } catch (err) {
+          logger.warn(`Failed to check PR #${prNumber} merge status: ${err}`);
+        }
+      }
+
+      if (!isAnyPRMerged) {
+        unmerged.push(issueNumber);
+      }
+    } catch (err) {
+      logger.warn(`Error checking dependency PR for issue #${issueNumber}: ${err}`);
+      notFound.push(issueNumber);
+    }
+  }
+
+  return {
+    merged: unmerged.length === 0 && notFound.length === 0,
+    unmerged,
+    notFound
+  };
 }

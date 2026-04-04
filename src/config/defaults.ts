@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     stuckTimeoutMs: 600000,
     pollingIntervalMs: 60000,
     maxJobs: 500,
+    autoUpdate: false,
   },
   git: {
     defaultBaseBranch: "main",
@@ -70,7 +71,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       },
     ],
     simplify: {
-      enabled: false,
+      enabled: true,
       promptTemplate:
         "Simplify the following implementation while preserving all functionality:\n\n{diff}",
     },

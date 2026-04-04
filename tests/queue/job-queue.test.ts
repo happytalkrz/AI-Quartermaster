@@ -16,6 +16,11 @@ vi.mock("../../src/git/worktree-manager.js", () => ({
   removeWorktree: vi.fn(),
 }));
 
+// Mock the branch manager module
+vi.mock("../../src/git/branch-manager.js", () => ({
+  deleteRemoteBranch: vi.fn(),
+}));
+
 // Mock the config loader module
 vi.mock("../../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
@@ -39,12 +44,14 @@ describe("JobQueue", () => {
   async function getMocks() {
     const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
     const { removeWorktree } = await import("../../src/git/worktree-manager.js");
+    const { deleteRemoteBranch } = await import("../../src/git/branch-manager.js");
     const { loadConfig } = await import("../../src/config/loader.js");
 
     return {
       removeCheckpoint: vi.mocked(removeCheckpoint),
       loadCheckpoint: vi.mocked(loadCheckpoint),
       removeWorktree: vi.mocked(removeWorktree),
+      deleteRemoteBranch: vi.mocked(deleteRemoteBranch),
       loadConfig: vi.mocked(loadConfig),
     };
   }
@@ -75,7 +82,7 @@ describe("JobQueue", () => {
       maxRunning = Math.max(maxRunning, running);
       await new Promise(r => setTimeout(r, 50));
       running--;
-      return {};
+      return { prUrl: "https://test-pr" };
     });
 
     const queue = new JobQueue(store, 2, handler);
@@ -226,6 +233,30 @@ describe("JobQueue", () => {
     const updated = store.get(job!.id);
     expect(updated?.status).toBe("failure");
     expect(updated?.error).toContain("boom");
+  });
+
+  it("should mark job as failure when handler returns no prUrl", async () => {
+    const handler: JobHandler = vi.fn().mockResolvedValue({});
+    const queue = new JobQueue(store, 1, handler);
+
+    const job = queue.enqueue(42, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+
+    const updated = store.get(job!.id);
+    expect(updated?.status).toBe("failure");
+    expect(updated?.error).toBe("Pipeline completed but no PR was created");
+  });
+
+  it("should mark job as failure when handler returns explicit error", async () => {
+    const handler: JobHandler = vi.fn().mockResolvedValue({ error: "Phase execution failed" });
+    const queue = new JobQueue(store, 1, handler);
+
+    const job = queue.enqueue(43, "test/repo");
+    await new Promise(r => setTimeout(r, 50));
+
+    const updated = store.get(job!.id);
+    expect(updated?.status).toBe("failure");
+    expect(updated?.error).toBe("Phase execution failed");
   });
 
   describe("retryJob integration tests", () => {
@@ -673,6 +704,304 @@ describe("JobQueue", () => {
       await new Promise(r => setTimeout(r, 50));
       const completedDependentJob = store.get(newDependentJob!.id);
       expect(completedDependentJob?.status).toBe("success");
+    });
+  });
+
+  describe("cleanupFailedJobArtifacts", () => {
+    let removeCheckpointSpy: any;
+    let loadCheckpointSpy: any;
+    let removeWorktreeSpy: any;
+    let deleteRemoteBranchSpy: any;
+    let loadConfigSpy: any;
+
+    beforeEach(async () => {
+      const mocks = await getMocks();
+      removeCheckpointSpy = mocks.removeCheckpoint;
+      loadCheckpointSpy = mocks.loadCheckpoint;
+      removeWorktreeSpy = mocks.removeWorktree;
+      deleteRemoteBranchSpy = mocks.deleteRemoteBranch;
+      loadConfigSpy = mocks.loadConfig;
+
+      // Default mock implementations
+      loadCheckpointSpy.mockReturnValue(null);
+      loadConfigSpy.mockReturnValue({ git: { gitPath: "git", remoteAlias: "origin" } });
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+    });
+
+    it("should cleanup all artifacts when checkpoint exists with worktreePath and branchName", async () => {
+      const mockCheckpoint = {
+        worktreePath: "/test/worktree/path/issue-123-test-branch",
+        branchName: "aq/123-test-branch",
+        issueNumber: 123,
+        repo: "test/repo"
+      };
+      loadCheckpointSpy.mockReturnValue(mockCheckpoint);
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      // Create and fail a job to trigger cleanup
+      const job = queue.enqueue(123, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      // Clear previous calls and re-enqueue to trigger cleanup
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      // Restore mock return values after clear
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
+      // Re-enqueue should trigger cleanupFailedJobArtifacts
+      queue.enqueue(123, "test/repo");
+
+      // Verify all cleanup steps were called
+      expect(loadCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        123
+      );
+      expect(removeWorktreeSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        mockCheckpoint.worktreePath,
+        expect.objectContaining({ force: true })
+      );
+      expect(deleteRemoteBranchSpy).toHaveBeenCalledWith(
+        expect.any(Object),
+        mockCheckpoint.branchName,
+        expect.objectContaining({ cwd: expect.any(String) })
+      );
+      expect(removeCheckpointSpy).toHaveBeenCalledWith(
+        expect.stringContaining("data"),
+        123
+      );
+    });
+
+    it("should skip worktree cleanup when checkpoint has no worktreePath", async () => {
+      const mockCheckpoint = {
+        branchName: "aq/456-test-branch",
+        issueNumber: 456,
+        repo: "test/repo"
+      };
+      loadCheckpointSpy.mockReturnValue(mockCheckpoint);
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      const job = queue.enqueue(456, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
+      queue.enqueue(456, "test/repo");
+
+      expect(removeWorktreeSpy).not.toHaveBeenCalled();
+      expect(deleteRemoteBranchSpy).toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
+    });
+
+    it("should skip branch deletion when checkpoint has no branchName", async () => {
+      const mockCheckpoint = {
+        worktreePath: "/test/worktree/path/issue-789-test-branch",
+        issueNumber: 789,
+        repo: "test/repo"
+      };
+      loadCheckpointSpy.mockReturnValue(mockCheckpoint);
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      const job = queue.enqueue(789, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
+      queue.enqueue(789, "test/repo");
+
+      expect(removeWorktreeSpy).toHaveBeenCalled();
+      expect(deleteRemoteBranchSpy).not.toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
+    });
+
+    it("should continue cleanup when worktree removal fails", async () => {
+      const mockCheckpoint = {
+        worktreePath: "/test/worktree/path/issue-111-test-branch",
+        branchName: "aq/111-test-branch",
+        issueNumber: 111,
+        repo: "test/repo"
+      };
+      loadCheckpointSpy.mockReturnValue(mockCheckpoint);
+      removeWorktreeSpy.mockRejectedValue(new Error("Failed to remove worktree"));
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      const job = queue.enqueue(111, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockRejectedValue(new Error("Failed to remove worktree"));
+      deleteRemoteBranchSpy.mockResolvedValue(undefined);
+
+      queue.enqueue(111, "test/repo");
+
+      // Should continue despite worktree removal failure
+      expect(removeWorktreeSpy).toHaveBeenCalled();
+      expect(deleteRemoteBranchSpy).toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
+    });
+
+    it("should continue cleanup when branch deletion fails", async () => {
+      const mockCheckpoint = {
+        worktreePath: "/test/worktree/path/issue-222-test-branch",
+        branchName: "aq/222-test-branch",
+        issueNumber: 222,
+        repo: "test/repo"
+      };
+      loadCheckpointSpy.mockReturnValue(mockCheckpoint);
+      deleteRemoteBranchSpy.mockRejectedValue(new Error("Failed to delete remote branch"));
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      const job = queue.enqueue(222, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      removeWorktreeSpy.mockResolvedValue(undefined);
+      deleteRemoteBranchSpy.mockRejectedValue(new Error("Failed to delete remote branch"));
+
+      queue.enqueue(222, "test/repo");
+
+      // Should continue despite branch deletion failure
+      expect(removeWorktreeSpy).toHaveBeenCalled();
+      expect(deleteRemoteBranchSpy).toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
+    });
+
+    it("should attempt checkpoint cleanup even when no checkpoint exists", async () => {
+      loadCheckpointSpy.mockReturnValue(null);
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
+      const queue = new JobQueue(store, 1, handler);
+
+      const job = queue.enqueue(333, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      loadCheckpointSpy.mockClear();
+      removeWorktreeSpy.mockClear();
+      deleteRemoteBranchSpy.mockClear();
+      removeCheckpointSpy.mockClear();
+
+      queue.enqueue(333, "test/repo");
+
+      expect(loadCheckpointSpy).toHaveBeenCalled();
+      expect(removeWorktreeSpy).not.toHaveBeenCalled();
+      expect(deleteRemoteBranchSpy).not.toHaveBeenCalled();
+      expect(removeCheckpointSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe("setConcurrency", () => {
+    it("should update concurrency and trigger processing", async () => {
+      let resolveCount = 0;
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        resolveCount++;
+        await new Promise(r => setTimeout(r, 50));
+        return {};
+      });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Enqueue 3 jobs with concurrency=1
+      queue.enqueue(1, "test/repo");
+      queue.enqueue(2, "test/repo2");
+      queue.enqueue(3, "test/repo3");
+
+      // Wait a bit, only 1 should be running
+      await new Promise(r => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(1);
+      expect(queue.getStatus().pending).toBe(2);
+
+      // Increase concurrency to 3
+      queue.setConcurrency(3);
+      expect(queue.getStatus().concurrency).toBe(3);
+
+      // Wait for all to start processing
+      await new Promise(r => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(2); // remaining 2 should now be running
+      expect(queue.getStatus().pending).toBe(0);
+
+      // Wait for all to complete
+      await new Promise(r => setTimeout(r, 100));
+      expect(resolveCount).toBe(3);
+    });
+
+    it("should validate concurrency value", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      expect(() => queue.setConcurrency(0)).toThrow("Concurrency must be a positive integer");
+      expect(() => queue.setConcurrency(-1)).toThrow("Concurrency must be a positive integer");
+      expect(() => queue.setConcurrency(1.5)).toThrow("Concurrency must be a positive integer");
+
+      // Should not throw for valid values
+      expect(() => queue.setConcurrency(1)).not.toThrow();
+      expect(() => queue.setConcurrency(5)).not.toThrow();
+    });
+
+    it("should reduce concurrency without affecting running jobs", async () => {
+      let running = 0;
+      let maxRunning = 0;
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        running++;
+        maxRunning = Math.max(maxRunning, running);
+        await new Promise(r => setTimeout(r, 100));
+        running--;
+        return {};
+      });
+
+      const queue = new JobQueue(store, 3, handler);
+
+      // Enqueue 3 jobs
+      queue.enqueue(1, "test/repo");
+      queue.enqueue(2, "test/repo2");
+      queue.enqueue(3, "test/repo3");
+
+      // Wait for all to start
+      await new Promise(r => setTimeout(r, 50));
+      expect(queue.getStatus().running).toBe(3);
+
+      // Reduce concurrency - running jobs should continue
+      queue.setConcurrency(1);
+      expect(queue.getStatus().concurrency).toBe(1);
+      expect(queue.getStatus().running).toBe(3); // still 3 running
+
+      // Wait for completion
+      await new Promise(r => setTimeout(r, 150));
+      expect(maxRunning).toBe(3); // max was still 3
     });
   });
 });

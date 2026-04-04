@@ -6,6 +6,7 @@ import {
   writeMinimalConfig,
   addProjectToConfig,
   removeProjectFromConfig,
+  updateProjectInConfig,
   initProject
 } from "../../src/config/loader.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";

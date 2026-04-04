@@ -11,6 +11,7 @@ vi.mock("../../src/config/loader.js", () => ({
   updateConfigSection: vi.fn(),
   addProjectToConfig: vi.fn(),
   removeProjectFromConfig: vi.fn(),
+  updateProjectInConfig: vi.fn(),
 }));
 
 vi.mock("../../src/utils/config-masker.js", () => ({
@@ -26,6 +27,7 @@ const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loa
 const mockUpdateConfigSection = vi.mocked(await import("../../src/config/loader.js")).updateConfigSection;
 const mockAddProjectToConfig = vi.mocked(await import("../../src/config/loader.js")).addProjectToConfig;
 const mockRemoveProjectFromConfig = vi.mocked(await import("../../src/config/loader.js")).removeProjectFromConfig;
+const mockUpdateProjectInConfig = vi.mocked(await import("../../src/config/loader.js")).updateProjectInConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
 
@@ -101,7 +103,7 @@ describe("Dashboard API - /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
     });
 
     it("should require Bearer token authentication", async () => {
@@ -338,7 +340,7 @@ describe("Dashboard API - PUT /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
     });
 
     it("should require Bearer token authentication", async () => {
@@ -523,7 +525,7 @@ describe("Dashboard API - Projects Management", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
   });
 
   describe("POST /api/projects", () => {
@@ -667,6 +669,217 @@ describe("Dashboard API - Projects Management", () => {
       });
 
       expect(response.status).toBe(401);
+    });
+  });
+
+  describe("PUT /api/projects/:repo", () => {
+    it("should update an existing project successfully", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/old/path", baseBranch: "main" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockValidateConfig.mockReturnValue(projectConfig as any);
+      mockUpdateProjectInConfig.mockReturnValue(undefined);
+
+      const updates = {
+        path: "/new/path",
+        baseBranch: "develop",
+        mode: "code"
+      };
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.message).toBe("Project updated successfully");
+      expect(result.repo).toBe("owner/test-repo");
+      expect(result.updates).toEqual({
+        path: "/new/path",
+        baseBranch: "develop",
+        mode: "code"
+      });
+      expect(mockUpdateProjectInConfig).toHaveBeenCalledWith(
+        `${process.cwd()}/config.yml`,
+        "owner/test-repo",
+        { path: "/new/path", baseBranch: "develop", mode: "code" }
+      );
+    });
+
+    it("should update project with partial fields", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockValidateConfig.mockReturnValue(projectConfig as any);
+
+      const updates = { path: "/updated/path" };
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.updates).toEqual({ path: "/updated/path" });
+    });
+
+    it("should return 404 if project does not exist", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const updates = { path: "/new/path" };
+
+      const response = await app.request("/api/projects/owner%2Fnonexistent-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      expect(response.status).toBe(404);
+      const result = await response.json();
+      expect(result.error).toContain("not found");
+    });
+
+    it("should return 400 for invalid request body", async () => {
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(null)
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+    });
+
+    it("should return 400 for invalid field types", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ path: 123 })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toContain("path must be a non-empty string");
+    });
+
+    it("should return 400 for invalid mode value", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ mode: "invalid" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toContain("mode must be 'code', 'content', or null");
+    });
+
+    it("should return 400 when no valid fields to update", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ invalidField: "value" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("No valid fields to update");
+    });
+
+    it("should return 401 without proper authentication", async () => {
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: "/new/path" })
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    it("should handle config validation errors", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [{ repo: "owner/test-repo", path: "/path" }]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockUpdateProjectInConfig.mockReturnValue(undefined);
+      mockValidateConfig.mockImplementation(() => {
+        throw new Error("Invalid configuration");
+      });
+
+      const updates = { path: "/new/path" };
+
+      const response = await app.request("/api/projects/owner%2Ftest-repo", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updates)
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toContain("Configuration validation failed");
     });
   });
 });

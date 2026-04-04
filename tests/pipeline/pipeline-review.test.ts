@@ -243,10 +243,25 @@ describe("pipeline-review", () => {
 
       expect(result.success).toBe(true);
       expect(result.reviewResult).toEqual(mockReviewResult);
-      expect(result.reviewVariables).toBeDefined();
-      expect(mockRunReviews).toHaveBeenCalled();
+      expect(result.reviewVariables).toEqual({
+        issue: { number: "42", title: "Test issue", body: "Test body" },
+        plan: { summary: "Test problem" },
+        diff: { full: "test diff content" },
+        config: { testCommand: "npm test", lintCommand: "npm run lint" },
+        skillsContext: "skills context",
+      });
+      expect(mockRunReviews).toHaveBeenCalledWith({
+        reviewConfig: ctx.project.review,
+        claudeConfig: { path: "claude", model: "sonnet" },
+        promptsDir: "/tmp/prompts",
+        cwd: "/tmp/worktree",
+        variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
+      });
       expect(mockRunAnalyst).not.toHaveBeenCalled();
-      expect(ctx.checkpoint).toHaveBeenCalled();
+      expect(ctx.checkpoint).toHaveBeenCalledWith({
+        plan: ctx.coreResult.plan,
+        phaseResults: ctx.coreResult.phaseResults,
+      });
     });
 
     it("should run successful review with analyst", async () => {
@@ -279,8 +294,19 @@ describe("pipeline-review", () => {
 
       expect(result.success).toBe(true);
       expect(result.reviewResult?.analyst).toEqual(mockAnalystResult);
-      expect(mockRunAnalyst).toHaveBeenCalled();
-      expect(mockRunReviews).toHaveBeenCalled();
+      expect(mockRunAnalyst).toHaveBeenCalledWith({
+        promptsDir: "/tmp/prompts",
+        claudeConfig: { path: "claude", model: "sonnet" },
+        cwd: "/tmp/worktree",
+        variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
+      });
+      expect(mockRunReviews).toHaveBeenCalledWith({
+        reviewConfig: ctx.project.review,
+        claudeConfig: { path: "claude", model: "sonnet" },
+        promptsDir: "/tmp/prompts",
+        cwd: "/tmp/worktree",
+        variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
+      });
     });
 
     it("should retry and succeed on review failure", async () => {
@@ -318,6 +344,8 @@ describe("pipeline-review", () => {
       const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(true);
+      expect(result.reviewResult?.rounds[0].verdict).toBe("PASS");
+      expect(result.reviewResult?.allPassed).toBe(true);
       expect(mockRunClaude).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: expect.stringContaining("Logic error"),
@@ -329,6 +357,12 @@ describe("pipeline-review", () => {
         "fix: review 오류 수정 (retry 1)"
       );
       expect(mockRunReviews).toHaveBeenCalledTimes(2);
+      expect(mockRunReviews).toHaveBeenNthCalledWith(1,
+        expect.objectContaining({ cwd: "/tmp/worktree", promptsDir: "/tmp/prompts" })
+      );
+      expect(mockRunReviews).toHaveBeenNthCalledWith(2,
+        expect.objectContaining({ cwd: "/tmp/worktree", promptsDir: "/tmp/prompts" })
+      );
     });
 
     it("should fail after max retries exhausted", async () => {
@@ -358,7 +392,12 @@ describe("pipeline-review", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Review failed after 2 retries");
+      expect(result.error).toContain("Persistent error");
+      expect(result.reviewResult?.allPassed).toBe(false);
       expect(mockRunReviews).toHaveBeenCalledTimes(3); // Initial + 2 retries
+      expect(mockAutoCommitIfDirty).toHaveBeenCalledTimes(2);
+      expect(mockAutoCommitIfDirty).toHaveBeenNthCalledWith(1, "/usr/bin/git", "/tmp/worktree", "fix: review 오류 수정 (retry 1)");
+      expect(mockAutoCommitIfDirty).toHaveBeenNthCalledWith(2, "/usr/bin/git", "/tmp/worktree", "fix: review 오류 수정 (retry 2)");
     });
 
     it("should handle critical analyst issues in retry", async () => {
@@ -456,7 +495,9 @@ describe("pipeline-review", () => {
         variables: ctx.reviewVariables,
         gitPath: "/usr/bin/git",
       });
-      expect(ctx.checkpoint).toHaveBeenCalled();
+      expect(mockRunSimplify).toHaveBeenCalledTimes(1);
+      expect(ctx.checkpoint).toHaveBeenCalledTimes(1);
+      expect(ctx.checkpoint).toHaveBeenCalledWith();
     });
 
     it("should throw error if simplify prompt template not configured", async () => {

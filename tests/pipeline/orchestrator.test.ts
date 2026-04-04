@@ -266,7 +266,13 @@ describe("runPipeline", () => {
     });
     expect(result.success).toBe(true);
     expect(result.state).toBe("DONE");
-    expect(mockCloseIssue).toHaveBeenCalled();
+    // Verify closeIssue was called with correct parameters even though it returned false
+    expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", expect.objectContaining({
+      ghPath: expect.any(String),
+      dryRun: false,
+    }));
+    // Pipeline should still produce a PR URL despite issue close failure
+    expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
   });
 
   describe("review fix loop", () => {
@@ -317,7 +323,20 @@ describe("runPipeline", () => {
 
       expect(result.success).toBe(true);
       expect(result.state).toBe("DONE");
+      expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
       expect(mockRunReviews).toHaveBeenCalledTimes(2); // Initial + 1 retry
+      // Both runReviews calls should pass the review config and worktree path
+      expect(mockRunReviews).toHaveBeenNthCalledWith(1, expect.objectContaining({
+        reviewConfig: expect.any(Object),
+        cwd: expect.any(String),
+        promptsDir: expect.any(String),
+      }));
+      expect(mockRunReviews).toHaveBeenNthCalledWith(2, expect.objectContaining({
+        reviewConfig: expect.any(Object),
+        cwd: expect.any(String),
+        promptsDir: expect.any(String),
+      }));
+      // Claude fix prompt must reference the specific finding from the failed review
       expect(mockRunClaude).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: expect.stringContaining("Missing validation")
@@ -396,7 +415,18 @@ describe("runPipeline", () => {
 
       expect(result.success).toBe(true);
       expect(result.state).toBe("DONE");
+      expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
       expect(mockRunReviews).toHaveBeenCalledTimes(3); // Initial + 2 retries
+      // All three runReviews calls should target the same worktree
+      const [firstCall, secondCall, thirdCall] = mockRunReviews.mock.calls;
+      expect(firstCall[0]).toMatchObject({ reviewConfig: expect.any(Object), cwd: expect.any(String) });
+      expect(secondCall[0]).toMatchObject({ reviewConfig: expect.any(Object), cwd: expect.any(String) });
+      expect(thirdCall[0]).toMatchObject({ reviewConfig: expect.any(Object), cwd: expect.any(String) });
+      // All calls should use the same worktree path (consistent cwd)
+      expect(firstCall[0].cwd).toBe(secondCall[0].cwd);
+      expect(secondCall[0].cwd).toBe(thirdCall[0].cwd);
+      // Claude should have been invoked for each failed review attempt
+      expect(mockRunClaude).toHaveBeenCalledTimes(2);
     });
 
     it("should fail after max retries exhausted", async () => {
@@ -452,7 +482,14 @@ describe("runPipeline", () => {
       expect(result.success).toBe(false);
       expect(result.state).toBe("FAILED");
       expect(result.error).toContain("Review failed after 2 retries");
+      // Error message should include the specific finding that kept failing
+      expect(result.error).toContain("Persistent error");
       expect(mockRunReviews).toHaveBeenCalledTimes(3); // Initial + 2 retries
+      // No PR should be created when review ultimately fails
+      expect(result.prUrl).toBeUndefined();
+      expect(mockCreateDraftPR).not.toHaveBeenCalled();
+      // closeIssue should NOT be called since we never reached PR creation
+      expect(mockCloseIssue).not.toHaveBeenCalled();
     });
 
     it("should include critical analyst issues in fix loop", async () => {
@@ -497,5 +534,40 @@ describe("runPipeline", () => {
         })
       );
     });
+  });
+
+  it("should fail if PR creation succeeds but prUrl is missing", async () => {
+    setupSuccessMocks();
+    // Mock successful execution but missing prUrl
+    mockCreateDraftPR.mockResolvedValue({ url: undefined, number: 1 });
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.state).toBe("FAILED");
+    expect(result.error).toContain("Pipeline completed but failed to create PR URL");
+    expect(result.prUrl).toBeUndefined();
+  });
+
+  it("should fail if executePostProcessingPhases returns undefined prUrl", async () => {
+    setupSuccessMocks();
+    // Setup all mocks but don't call setupSuccessMocks for createDraftPR
+    mockCreateDraftPR.mockResolvedValue({ url: "", number: 1 }); // Empty string should also fail
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.state).toBe("FAILED");
+    expect(result.error).toContain("Pipeline completed but failed to create PR URL");
   });
 });

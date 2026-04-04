@@ -15,6 +15,8 @@ vi.mock("../../src/github/issue-fetcher.js", () => ({
 vi.mock("../../src/github/pr-creator.js", () => ({
   createDraftPR: vi.fn(),
   enableAutoMerge: vi.fn(),
+  addIssueComment: vi.fn(),
+  closeIssue: vi.fn(),
 }));
 vi.mock("../../src/git/branch-manager.js", () => ({
   syncBaseBranch: vi.fn(),
@@ -57,7 +59,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
-import { createDraftPR, enableAutoMerge } from "../../src/github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, addIssueComment } from "../../src/github/pr-creator.js";
 import {
   syncBaseBranch,
   createWorkBranch,
@@ -84,6 +86,7 @@ const mockPushBranch = vi.mocked(pushBranch);
 const mockCheckConflicts = vi.mocked(checkConflicts);
 const mockAttemptRebase = vi.mocked(attemptRebase);
 const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
+const mockAddIssueComment = vi.mocked(addIssueComment);
 const mockCreateWorktree = vi.mocked(createWorktree);
 const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockCoreLoop = vi.mocked(runCoreLoop);
@@ -159,6 +162,8 @@ function setupSuccessMocks(phaseCount = 2) {
   mockCheckConflicts.mockResolvedValue({ hasConflicts: false, conflictFiles: [] });
   mockAttemptRebase.mockResolvedValue({ success: true });
   mockEnableAutoMerge.mockResolvedValue(true);
+  mockAddIssueComment.mockResolvedValue(true);
+  mockAddIssueComment.mockResolvedValue(true);
   mockCreateDraftPR.mockResolvedValue({ url: "https://github.com/test/repo/pull/1", number: 1 });
   mockRemoveWorktree.mockResolvedValue(undefined);
   mockGetDiffContent.mockResolvedValue("diff --git a/src/index.ts b/src/index.ts\n+fixed line");
@@ -424,5 +429,85 @@ describe("E2E: pipeline integration", () => {
     });
 
     expect(mockEnableAutoMerge).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. Conflict resolution with issue comment: rebase fails → comment added
+  // -------------------------------------------------------------------------
+  it("conflict resolution: issue comment is added when rebase fails", async () => {
+    setupSuccessMocks(1);
+    mockCheckConflicts.mockResolvedValue({
+      hasConflicts: true,
+      conflictFiles: ["src/main.ts", "src/utils.ts"],
+    });
+    mockAttemptRebase.mockResolvedValue({ success: false });
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.state).toBe("DONE");
+    expect(mockAddIssueComment).toHaveBeenCalledOnce();
+
+    const [issueNumber, repo, comment] = mockAddIssueComment.mock.calls[0];
+    expect(issueNumber).toBe(42);
+    expect(repo).toBe("test/repo");
+    expect(comment).toContain("자동 Rebase 실패");
+    expect(comment).toContain("src/main.ts");
+    expect(comment).toContain("src/utils.ts");
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. Auto-merge with branch deletion: deleteBranch option is passed correctly
+  // -------------------------------------------------------------------------
+  it("auto-merge: deleteBranch option is passed to enableAutoMerge when configured", async () => {
+    setupSuccessMocks(1);
+
+    const config = makeConfig();
+    config.pr.autoMerge = true;
+    config.pr.mergeMethod = "merge";
+    config.pr.deleteBranch = true;
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config,
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockEnableAutoMerge).toHaveBeenCalledOnce();
+
+    const [prNumber, repo, mergeMethod, options] = mockEnableAutoMerge.mock.calls[0];
+    expect(prNumber).toBe(1);
+    expect(repo).toBe("test/repo");
+    expect(mergeMethod).toBe("merge");
+    expect(options?.deleteBranch).toBe(true);
+  });
+
+  it("auto-merge: deleteBranch option defaults to false when not configured", async () => {
+    setupSuccessMocks(1);
+
+    const config = makeConfig();
+    config.pr.autoMerge = true;
+    config.pr.mergeMethod = "squash";
+    // deleteBranch not set, should default to false
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config,
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockEnableAutoMerge).toHaveBeenCalledOnce();
+
+    const [,, , options] = mockEnableAutoMerge.mock.calls[0];
+    expect(options?.deleteBranch).toBe(false);
   });
 });

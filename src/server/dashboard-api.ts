@@ -2,10 +2,12 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig } from "../config/loader.js";
+import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
-import type { ProjectConfig } from "../types/config.js";
+import type { ProjectConfig, AQConfig } from "../types/config.js";
+import type { ConfigWatcher } from "../config/config-watcher.js";
+import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -53,13 +55,32 @@ function isValidSessionToken(token: string): boolean {
 }
 
 /**
+ * Applies runtime configuration changes to system components.
+ */
+export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
+  const logger = getLogger();
+
+  // Update JobQueue concurrency
+  if (newConfig.general.concurrency !== oldConfig.general.concurrency) {
+    queue.setConcurrency(newConfig.general.concurrency);
+    logger.info(`Concurrency updated: ${oldConfig.general.concurrency} → ${newConfig.general.concurrency}`);
+  }
+
+  // Update logger level
+  if (newConfig.general.logLevel !== oldConfig.general.logLevel) {
+    setGlobalLogLevel(newConfig.general.logLevel);
+    logger.info(`Log level updated: ${oldConfig.general.logLevel} → ${newConfig.general.logLevel}`);
+  }
+}
+
+/**
  * Creates dashboard API routes.
  * If apiKey is provided, all /api/* routes require `Authorization: Bearer <key>`.
  * SSE endpoints (/api/events, /api/jobs/:id/logs/stream) cannot set headers in the
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string): Hono {
   const api = new Hono();
 
   // Subscribe to JobStore events for real-time broadcasts
@@ -145,7 +166,36 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         return c.json({ error: "Invalid request body" }, 400);
       }
 
+      // Update configuration file
       updateConfigSection(process.cwd(), body);
+
+      // Apply runtime changes if configWatcher is available
+      if (configWatcher) {
+        try {
+          // Load updated config for runtime application
+          const newConfig = loadConfig(projectRoot);
+
+          // Apply runtime changes immediately (force update)
+          if (body.general?.concurrency !== undefined) {
+            queue.setConcurrency(newConfig.general.concurrency);
+          }
+          if (body.general?.logLevel !== undefined) {
+            setGlobalLogLevel(newConfig.general.logLevel);
+          }
+
+          // Broadcast config change to SSE clients
+          broadcastToAllClients('configChanged', {
+            changes: body,
+            timestamp: new Date().toISOString()
+          });
+        } catch (runtimeError) {
+          // Log runtime application error but don't fail the request
+          const logger = getLogger();
+          const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
+          logger.warn(`Failed to apply runtime config changes: ${errMsg}`);
+        }
+      }
+
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -240,6 +290,79 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
       });
     } catch (error: unknown) {
       return c.json({ error: `Failed to remove project: ${getErrorMessage(error)}` }, 500);
+    }
+  });
+
+  // Update project in configuration
+  api.put("/api/projects/:repo", async (c) => {
+    try {
+      const repo = decodeURIComponent(c.req.param("repo"));
+
+      if (!repo || repo.trim() === "") {
+        return c.json({ error: "repo parameter is required" }, 400);
+      }
+
+      const body = await c.req.json();
+
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "Invalid request body" }, 400);
+      }
+
+      // Validate that project exists
+      try {
+        const currentConfig = loadConfig(projectRoot);
+        if (!currentConfig.projects?.find(p => p.repo === repo)) {
+          return c.json({ error: `Project "${repo}" not found` }, 404);
+        }
+      } catch (error: unknown) {
+        return c.json({ error: `Failed to load configuration: ${getErrorMessage(error)}` }, 500);
+      }
+
+      // Extract valid update fields
+      const { path, baseBranch, mode } = body;
+      const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
+
+      if (path !== undefined) {
+        if (typeof path !== "string" || path.trim() === "") {
+          return c.json({ error: "path must be a non-empty string" }, 400);
+        }
+        updates.path = path.trim();
+      }
+
+      if (baseBranch !== undefined) {
+        if (typeof baseBranch !== "string") {
+          return c.json({ error: "baseBranch must be a string" }, 400);
+        }
+        updates.baseBranch = baseBranch.trim() || undefined;
+      }
+
+      if (mode !== undefined) {
+        if (mode !== "code" && mode !== "content" && mode !== null) {
+          return c.json({ error: "mode must be 'code', 'content', or null" }, 400);
+        }
+        updates.mode = mode || undefined;
+      }
+
+      // Check if any fields to update
+      if (Object.keys(updates).length === 0) {
+        return c.json({ error: "No valid fields to update" }, 400);
+      }
+
+      updateProjectInConfig(configPath, repo, updates);
+
+      try {
+        validateConfig(loadConfig(projectRoot));
+      } catch (error: unknown) {
+        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
+      }
+
+      return c.json({
+        message: "Project updated successfully",
+        repo,
+        updates
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to update project: ${getErrorMessage(error)}` }, 500);
     }
   });
 

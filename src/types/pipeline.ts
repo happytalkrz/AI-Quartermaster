@@ -45,6 +45,21 @@ export type ErrorCategory =
   | "SAFETY_VIOLATION"
   | "UNKNOWN";
 
+export type MergeStateStatus =
+  | "CLEAN"
+  | "DIRTY"
+  | "UNKNOWN"
+  | "BEHIND"
+  | "CONFLICTED";
+
+export interface PrConflictInfo {
+  prNumber: number;
+  repo: string;
+  conflictFiles: string[];
+  detectedAt: string;
+  mergeStatus: MergeStateStatus;
+}
+
 export interface ErrorHistoryEntry {
   attempt: number;
   errorCategory: ErrorCategory;
@@ -61,6 +76,7 @@ export interface PhaseResult {
   errorCategory?: ErrorCategory;
   lastOutput?: string;
   durationMs: number;
+  costUsd?: number;
 }
 
 export interface PipelineResult {
@@ -72,6 +88,7 @@ export interface PipelineResult {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  totalCostUsd?: number;
 }
 
 export interface ValidationPhaseContext {
@@ -89,9 +106,7 @@ export interface ValidationPhaseContext {
 export interface PublishPhaseContext {
   issueNumber: number;
   repo: string;
-  issue: {
-    title: string;
-  };
+  issue: import("../github/issue-fetcher.js").GitHubIssue;
   plan: Plan;
   phaseResults: PhaseResult[];
   branchName: string;
@@ -166,4 +181,49 @@ export interface PipelineSetupResult {
   state: PipelineState;
   error?: string;
   existingPrUrl?: string;
+}
+
+// Plan 재시도 관련 타입 정의
+
+export interface ContextualizationInfo {
+  /** 관련 파일의 함수 시그니처 정보 */
+  functionSignatures: {
+    [filePath: string]: string[];
+  };
+  /** Import 관계 정보 */
+  importRelations: {
+    [filePath: string]: {
+      imports: string[];
+      exports: string[];
+    };
+  };
+  /** 타입 정의 정보 */
+  typeDefinitions: {
+    [filePath: string]: string[];
+  };
+}
+
+export interface PlanGenerationResult {
+  success: boolean;
+  plan?: Plan;
+  error?: string;
+  errorCategory?: ErrorCategory;
+  attempt: number;
+  durationMs: number;
+  timestamp: string;
+}
+
+export interface PlanRetryContext {
+  /** 현재 재시도 횟수 (0부터 시작) */
+  currentAttempt: number;
+  /** 최대 재시도 횟수 */
+  maxRetries: number;
+  /** Plan 생성 시도 히스토리 */
+  generationHistory: PlanGenerationResult[];
+  /** 구체화된 컨텍스트 정보 */
+  contextualization?: ContextualizationInfo;
+  /** 마지막 실패 시점 */
+  lastFailureAt?: string;
+  /** 재시도 가능 여부 */
+  canRetry: boolean;
 }

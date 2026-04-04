@@ -3,6 +3,9 @@ import { runCli } from "../utils/cli-runner.js";
 import { JobStore } from "../queue/job-store.js";
 import { JobQueue } from "../queue/job-queue.js";
 import { AQConfig } from "../types/config.js";
+import { checkPrConflict, commentOnIssue, listOpenPrs } from "../github/pr-creator.js";
+import type { PrConflictInfo } from "../types/pipeline.js";
+import { SelfUpdater, UpdateInfo } from "../update/self-updater.js";
 
 const logger = getLogger();
 
@@ -12,17 +15,28 @@ interface RawIssue {
   labels: Array<{ name: string } | string>;
 }
 
+type UpdateAvailableCallback = (updateInfo: UpdateInfo) => void | Promise<void>;
+
 export class IssuePoller {
   private config: AQConfig;
   private store: JobStore;
   private queue: JobQueue;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private running = false;
+  private notifiedPrs = new Set<string>(); // 알림한 PR 추적 (repo:prNumber 형식)
+  private selfUpdater: SelfUpdater | undefined;
+  private onUpdateAvailable?: UpdateAvailableCallback;
 
-  constructor(config: AQConfig, store: JobStore, queue: JobQueue) {
+  constructor(
+    config: AQConfig,
+    store: JobStore,
+    queue: JobQueue,
+    onUpdateAvailable?: UpdateAvailableCallback
+  ) {
     this.config = config;
     this.store = store;
     this.queue = queue;
+    this.onUpdateAvailable = onUpdateAvailable;
   }
 
   start(): void {
@@ -42,6 +56,10 @@ export class IssuePoller {
     logger.info("폴링 모드 중지");
   }
 
+  isRunning(): boolean {
+    return this.running;
+  }
+
   private scheduleNext(): void {
     if (!this.running) return;
     this.timer = setTimeout(async () => {
@@ -58,10 +76,40 @@ export class IssuePoller {
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
-    const tasks = projects.flatMap(p =>
+    // Check for updates if auto-update is enabled
+    if (this.config.general.autoUpdate && this.onUpdateAvailable) {
+      await this.checkForUpdates();
+    }
+
+    // 1. GitHub 이슈 폴링
+    const issueTasks = projects.flatMap(p =>
       triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, ghTimeout))
     );
-    await Promise.allSettled(tasks);
+    await Promise.allSettled(issueTasks);
+
+    // PR 충돌 체크
+    const prTasks = projects.map(p => this.checkProjectPrConflicts(p.repo, ghPath));
+    await Promise.allSettled(prTasks);
+
+    // 2. Failed job 감지 및 재큐잉
+    await this.pollFailedJobs();
+  }
+
+  private async checkForUpdates(): Promise<void> {
+    try {
+      logger.debug("업데이트 확인 시작");
+      if (!this.selfUpdater) {
+        this.selfUpdater = new SelfUpdater(this.config.git, { cwd: process.cwd() });
+      }
+      const updateInfo = await this.selfUpdater.checkForUpdates();
+
+      if (updateInfo.hasUpdates && this.onUpdateAvailable) {
+        logger.info(`새 업데이트 감지 — ${updateInfo.currentHash.substring(0, 8)} -> ${updateInfo.remoteHash.substring(0, 8)}`);
+        await this.onUpdateAvailable(updateInfo);
+      }
+    } catch (err) {
+      logger.warn(`업데이트 확인 중 오류: ${err}`);
+    }
   }
 
   private async pollProjectLabel(
@@ -108,6 +156,108 @@ export class IssuePoller {
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
       this.queue.enqueue(issue.number, repo);
+    }
+  }
+
+  private async checkProjectPrConflicts(repo: string, ghPath: string): Promise<void> {
+    try {
+      // 오픈 PR 목록 조회
+      const prs = await listOpenPrs(repo, { ghPath });
+      if (!prs || prs.length === 0) {
+        logger.debug(`${repo} — 체크할 오픈 PR 없음`);
+        return;
+      }
+
+      logger.debug(`${repo} — 오픈 PR ${prs.length}개 충돌 체크 시작`);
+
+      // 각 PR에 대해 충돌 체크
+      for (const pr of prs) {
+        const prKey = `${repo}:${pr.number}`;
+
+        // 이미 알림한 PR은 스킵
+        if (this.notifiedPrs.has(prKey)) {
+          logger.debug(`PR #${pr.number} (${repo}) — 이미 알림함, 건너뜀`);
+          continue;
+        }
+
+        // 충돌 체크
+        const conflictInfo = await checkPrConflict(pr.number, repo, { ghPath });
+        if (conflictInfo) {
+          // 충돌 감지 시 이슈에 코멘트 작성
+          const conflictMessage = this.buildConflictMessage(conflictInfo);
+
+          // PR과 연결된 이슈 번호 추출 시도 (제목에서 #123 패턴 찾기)
+          const issueNumberMatch = pr.title.match(/#(\d+)/);
+          const issueNumber = issueNumberMatch ? parseInt(issueNumberMatch[1], 10) : null;
+
+          if (issueNumber) {
+            const commentSuccess = await commentOnIssue(
+              issueNumber,
+              repo,
+              conflictMessage,
+              { ghPath }
+            );
+
+            if (commentSuccess) {
+              logger.info(`PR #${pr.number} 충돌 알림 완료 — 이슈 #${issueNumber}에 코멘트 작성`);
+              this.notifiedPrs.add(prKey);
+            } else {
+              logger.warn(`PR #${pr.number} 충돌 알림 실패 — 이슈 #${issueNumber} 코멘트 작성 실패`);
+            }
+          } else {
+            logger.warn(`PR #${pr.number} 충돌 감지되었지만 연결된 이슈 번호를 찾을 수 없음: "${pr.title}"`);
+          }
+        } else {
+          logger.debug(`PR #${pr.number} (${repo}) — 충돌 없음`);
+        }
+      }
+    } catch (error) {
+      logger.warn(`${repo} PR 충돌 체크 중 오류: ${error}`);
+    }
+  }
+
+  private buildConflictMessage(conflictInfo: PrConflictInfo): string {
+    const { prNumber, conflictFiles, detectedAt, mergeStatus } = conflictInfo;
+
+    const filesList = conflictFiles.length > 0
+      ? `**충돌 파일(들)**:\n${conflictFiles.map(f => `- \`${f}\``).join("\n")}\n\n`
+      : "";
+
+    return `🚨 **PR #${prNumber} 머지 충돌 감지**
+
+**상태**: ${mergeStatus}
+**감지 시간**: ${detectedAt}
+
+${filesList}베이스 브랜치의 변경으로 인해 이 PR에서 머지 충돌이 발생했습니다. 충돌을 해결한 후 PR을 업데이트해 주세요.
+
+_자동 생성된 알림 — AQM PR 모니터링_`;
+  }
+
+  private async pollFailedJobs(): Promise<void> {
+    try {
+      const failedJobs = this.store.findFailedJobsForRetry();
+
+      if (failedJobs.length === 0) {
+        logger.debug("재시도할 실패 job 없음");
+        return;
+      }
+
+      logger.info(`실패 job ${failedJobs.length}개 발견, 재큐잉 시작`);
+
+      for (const job of failedJobs) {
+        logger.info(`실패 job 재큐잉 — #${job.issueNumber} "${job.repo}" (job: ${job.id})`);
+
+        // enqueue 호출 시 기존 failed job은 자동으로 아카이브되고 정리됨
+        const newJob = this.queue.enqueue(job.issueNumber, job.repo, undefined, true);
+
+        if (newJob) {
+          logger.info(`재큐잉 성공 — 새 job: ${newJob.id}`);
+        } else {
+          logger.warn(`재큐잉 실패 — #${job.issueNumber} (${job.repo})`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`Failed job 폴링 중 오류: ${err}`);
     }
   }
 }

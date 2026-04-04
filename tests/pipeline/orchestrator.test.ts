@@ -16,6 +16,7 @@ vi.mock("../../src/github/pr-creator.js", () => ({
   createDraftPR: vi.fn(),
   enableAutoMerge: vi.fn(),
   closeIssue: vi.fn(),
+  commentOnIssue: vi.fn(),
 }));
 vi.mock("../../src/git/branch-manager.js", () => ({
   syncBaseBranch: vi.fn(),
@@ -66,7 +67,7 @@ vi.mock("../../src/pipeline/pipeline-setup.js", () => ({
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
-import { createDraftPR, enableAutoMerge, closeIssue } from "../../src/github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, closeIssue, commentOnIssue } from "../../src/github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
 import { runCoreLoop } from "../../src/pipeline/core-loop.js";
@@ -89,6 +90,7 @@ const mockCheckConflicts = vi.mocked(checkConflicts);
 const mockAttemptRebase = vi.mocked(attemptRebase);
 const mockEnableAutoMerge = vi.mocked(enableAutoMerge);
 const mockCloseIssue = vi.mocked(closeIssue);
+const mockCommentOnIssue = vi.mocked(commentOnIssue);
 const mockCreateWorktree = vi.mocked(createWorktree);
 const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockCoreLoop = vi.mocked(runCoreLoop);
@@ -144,6 +146,7 @@ function setupSuccessMocks() {
   mockRunSimplify.mockResolvedValue({ applied: false, linesRemoved: 0, linesAdded: 0, filesModified: [], testsPassed: true, rolledBack: false, summary: "No changes" });
   mockFinalValidation.mockResolvedValue({ success: true, checks: [{ name: "test", passed: true }] });
   mockValidateBeforePush.mockResolvedValue(undefined);
+  mockCommentOnIssue.mockResolvedValue(undefined);
   mockResolveResolvedProject.mockReturnValue({
     projectRoot: "/tmp/project",
     promptsDir: "/tmp/project/prompts",
@@ -569,5 +572,237 @@ describe("runPipeline", () => {
     expect(result.success).toBe(false);
     expect(result.state).toBe("FAILED");
     expect(result.error).toContain("Pipeline completed but failed to create PR URL");
+  });
+
+  describe("feasibility check integration", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("should skip issue when feasibility check fails due to too many requirements", async () => {
+      // Setup config with strict feasibility limits
+      const config = makeConfig();
+      config.safety = {
+        ...config.safety,
+        feasibilityCheck: {
+          enabled: true,
+          maxRequirements: 3,
+          maxFiles: 4,
+          blockedKeywords: ["architecture", "refactor"],
+          skipReasons: ["Too many requirements", "Too many files", "Blocked keyword found"]
+        }
+      };
+
+      // Mock issue with too many requirements
+      const issueWithManyRequirements = {
+        number: 42,
+        title: "Complex Feature",
+        body: `
+## Requirements
+- [ ] Requirement 1
+- [ ] Requirement 2
+- [ ] Requirement 3
+- [ ] Requirement 4
+- [ ] Requirement 5
+        `,
+        labels: []
+      };
+
+      // Setup basic mocks that are needed before feasibility check
+      mockResolveResolvedProject.mockReturnValue({
+        projectRoot: "/tmp/project",
+        promptsDir: "/tmp/project/prompts",
+        gitConfig: {
+          gitPath: "git",
+          allowedRepos: ["test/repo"],
+          autoCreateBranch: true,
+          defaultBaseBranch: "main",
+          branchTemplate: "ax/{issue-number}-{slug}",
+        },
+      });
+      mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
+      mockFetchAndValidateIssue.mockResolvedValue({
+        issue: issueWithManyRequirements,
+        mode: "code",
+        checkpoint: vi.fn(),
+      });
+
+      // Setup mock for commentOnIssue
+      mockCommentOnIssue.mockResolvedValue(undefined);
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      // Should return success with SKIPPED state
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("SKIPPED");
+      expect(result.error).toContain("Too many requirements");
+
+      // Should not create PR or proceed with pipeline execution
+      expect(mockCreateDraftPR).not.toHaveBeenCalled();
+      expect(mockCoreLoop).not.toHaveBeenCalled();
+
+      // Should have a report
+      expect(result.report).toBeDefined();
+    });
+
+    it("should skip issue when blocked keyword is detected", async () => {
+      const config = makeConfig();
+      config.safety = {
+        ...config.safety,
+        feasibilityCheck: {
+          enabled: true,
+          maxRequirements: 10,
+          maxFiles: 10,
+          blockedKeywords: ["architecture", "refactor", "migration"],
+          skipReasons: ["Blocked keyword found"]
+        }
+      };
+
+      const issueWithBlockedKeyword = {
+        number: 42,
+        title: "Architecture Refactor",
+        body: "Need to refactor the entire architecture for better performance",
+        labels: []
+      };
+
+      mockResolveResolvedProject.mockReturnValue({
+        projectRoot: "/tmp/project",
+        promptsDir: "/tmp/project/prompts",
+        gitConfig: {
+          gitPath: "git",
+          allowedRepos: ["test/repo"],
+          autoCreateBranch: true,
+          defaultBaseBranch: "main",
+          branchTemplate: "ax/{issue-number}-{slug}",
+        },
+      });
+      mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
+      mockFetchAndValidateIssue.mockResolvedValue({
+        issue: issueWithBlockedKeyword,
+        mode: "code",
+        checkpoint: vi.fn(),
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("SKIPPED");
+      expect(result.error).toContain("Blocked keywords found");
+      expect(result.error).toContain("architecture");
+      expect(result.error).toContain("refactor");
+    });
+
+    it("should proceed normally when feasibility check is disabled", async () => {
+      const config = makeConfig();
+      config.safety = {
+        ...config.safety,
+        feasibilityCheck: {
+          enabled: false,
+          maxRequirements: 1, // Very strict limits that would fail if enabled
+          maxFiles: 1,
+          blockedKeywords: ["architecture"],
+          skipReasons: []
+        }
+      };
+
+      const issueWithManyRequirements = {
+        number: 42,
+        title: "Architecture Change",
+        body: `
+## Requirements
+- [ ] Requirement 1
+- [ ] Requirement 2
+- [ ] Requirement 3
+- [ ] Requirement 4
+- [ ] Requirement 5
+Need to change the architecture
+        `,
+        labels: []
+      };
+
+      // Setup all success mocks
+      setupSuccessMocks();
+      mockFetchAndValidateIssue.mockResolvedValue({
+        issue: issueWithManyRequirements,
+        mode: "code",
+        checkpoint: vi.fn(),
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      // Should succeed despite having conditions that would fail feasibility check
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("DONE");
+      expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
+
+      // Should have proceeded with normal pipeline execution
+      expect(mockCoreLoop).toHaveBeenCalled();
+      expect(mockCreateDraftPR).toHaveBeenCalled();
+    });
+
+    it("should proceed normally when feasibility check passes", async () => {
+      const config = makeConfig();
+      config.safety = {
+        ...config.safety,
+        feasibilityCheck: {
+          enabled: true,
+          maxRequirements: 10,
+          maxFiles: 10,
+          blockedKeywords: ["migration"],
+          skipReasons: []
+        }
+      };
+
+      const feasibleIssue = {
+        number: 42,
+        title: "Simple Bug Fix",
+        body: `
+## Requirements
+- [ ] Fix the button click handler
+- [ ] Add test for the fix
+
+Files to change: src/components/Button.tsx
+        `,
+        labels: []
+      };
+
+      setupSuccessMocks();
+      mockFetchAndValidateIssue.mockResolvedValue({
+        issue: feasibleIssue,
+        mode: "code",
+        checkpoint: vi.fn(),
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      // Should succeed with normal pipeline execution
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("DONE");
+      expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
+
+      // Should have proceeded with core loop and PR creation
+      expect(mockCoreLoop).toHaveBeenCalled();
+      expect(mockCreateDraftPR).toHaveBeenCalled();
+    });
   });
 });

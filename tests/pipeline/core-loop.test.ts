@@ -785,6 +785,18 @@ describe("runCoreLoop", () => {
     });
 
     it("should pass correct context to generatePlan on retry scenarios", async () => {
+      const phases = [
+        makePhase(0, "Frontend"),
+        makePhase(1, "Backend")
+      ];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue(plan);
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases: phases }],
+      });
+
       const frontendResult = makeSuccessResult(0, "Frontend");
       frontendResult.costUsd = 0.025;
       const backendResult = makeSuccessResult(1, "Backend");
@@ -798,6 +810,8 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.totalCostUsd).toBe(0.065);
+      expect(result.phaseResults).toHaveLength(2);
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should handle phases with no cost information", async () => {

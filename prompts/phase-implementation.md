@@ -76,6 +76,15 @@
 6. 불필요한 파일, 주석, console.log를 추가하지 마세요.
 7. 기존 코드 스타일과 패턴을 따르세요.
 
+## 코드 품질 규칙 (필수)
+
+- **any 금지**: src/ 내 `any` 타입 사용 금지. `unknown` + 타입 가드로 좁힐 것.
+- **에러 핸들링**: `catch (err: unknown)` + `getErrorMessage(err)` 패턴. `catch {}` 또는 `catch (e: any)` 금지.
+- **ESM import**: 반드시 `.js` 확장자 포함. `import { foo } from "./bar.js"`
+- **config 필드 추가 시**: `types/config.ts` + `config/defaults.ts` + `config/validator.ts` 3곳 동시 수정 필수.
+- **logger 사용**: `console.log` 대신 `getLogger()` 사용.
+- **safety guard**: SafetyViolationError를 catch해서 삼키지 말 것. 안전장치 비활성화 코드 금지.
+
 ## 출력
 
 구현 완료 후 아래 JSON을 출력하세요:

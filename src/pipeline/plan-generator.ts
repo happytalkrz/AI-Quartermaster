@@ -195,10 +195,9 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
 
       updateAndRerender(
         (data) => {
-          const baseTemplateData: PlanTemplateBaseData = 'context' in data ? data : baseData;
           return {
             ...data,
-            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+            repo: { ...baseData.repo, structure: truncatedRepoStructure },
           };
         },
         "repo structure truncation"

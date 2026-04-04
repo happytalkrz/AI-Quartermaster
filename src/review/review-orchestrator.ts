@@ -1,5 +1,5 @@
 import { runReviewRound } from "./review-runner.js";
-import { configForTask } from "../claude/model-router.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { loadTemplate, renderTemplate, type TemplateVariables } from "../prompt/template-renderer.js";
 import { exceedsTokenLimit, getEffectiveTokenLimit } from "./token-estimator.js";
@@ -7,7 +7,7 @@ import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "./
 import { mergeReviewResults } from "./result-merger.js";
 import { getLogger } from "../utils/logger.js";
 import { resolve } from "path";
-import type { ReviewConfig, ReviewRound, ClaudeCliConfig } from "../types/config.js";
+import type { ReviewConfig, ReviewRound, ClaudeCliConfig, ExecutionMode } from "../types/config.js";
 import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective, ReviewFinding } from "../types/review.js";
 
 // 통합 리뷰 API 응답 타입
@@ -27,6 +27,7 @@ export interface ReviewOrchestratorContext {
   cwd: string;
   variables: TemplateVariables;
   maxRounds?: number; // Limit number of rounds based on ExecutionModePreset
+  executionMode: ExecutionMode;
 }
 
 function applyRoundModes(variables: TemplateVariables, round: ReviewRound): TemplateVariables {
@@ -177,7 +178,7 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
   logger.info("Starting unified review (3 perspectives in 1 call)");
 
   // unified review용 Claude 설정
-  const claudeConfig = configForTask(ctx.claudeConfig, "review");
+  const claudeConfig = configForTaskWithMode(ctx.claudeConfig, "review", ctx.executionMode);
 
   // 통합 리뷰 프롬프트 템플릿 로드
   const templatePath = resolve(ctx.promptsDir, "review-unified.md");
@@ -296,7 +297,7 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
 
       const claudeConfig = round.model
         ? { ...ctx.claudeConfig, model: round.model }
-        : configForTask(ctx.claudeConfig, "review");
+        : configForTaskWithMode(ctx.claudeConfig, "review", ctx.executionMode);
 
       const roundVariables = applyRoundModes(ctx.variables, round);
 

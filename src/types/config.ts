@@ -133,6 +133,10 @@ export interface SafetyConfig {
   rollbackStrategy: "none" | "all" | "failed-only";
 }
 
+export interface NotificationConfig {
+  webhookUrl?: string;  // Discord/Slack 웹훅 URL (job 실패 시 알림)
+}
+
 export type PipelineMode = "code" | "content";
 export type ServerMode = "polling" | "webhook";
 
@@ -175,6 +179,7 @@ export interface ProjectConfig {
   review?: Partial<ReviewConfig>;      // override review settings
   pr?: Partial<PrConfig>;             // override PR settings
   safety?: Partial<SafetyConfig>;     // override safety settings
+  notification?: Partial<NotificationConfig>; // override notification settings
 }
 
 export interface AQConfig {
@@ -185,5 +190,6 @@ export interface AQConfig {
   review: ReviewConfig;
   pr: PrConfig;
   safety: SafetyConfig;
+  notification: NotificationConfig;
   projects?: ProjectConfig[];  // per-project overrides
 }

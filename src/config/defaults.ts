@@ -116,4 +116,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     allowedLabels: [],
     rollbackStrategy: "none",
   },
+  notification: {
+    webhookUrl: undefined,  // Discord/Slack 웹훅 URL 미설정
+  },
 };

@@ -260,6 +260,10 @@ const safetyConfigSchema = z.object({
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
 });
 
+const notificationConfigSchema = z.object({
+  webhookUrl: z.string().url().optional(),
+});
+
 const projectConfigSchema = z.object({
   repo: z.string().min(1),
   path: z.string().min(1),
@@ -283,6 +287,7 @@ const projectConfigSchema = z.object({
     maxPhases: z.number().int().positive(),
     maxFileChanges: z.number().int().positive(),
   }).partial().optional(),
+  notification: notificationConfigSchema.partial().optional(),
 }).strict();
 
 const aqConfigSchema = z.object({
@@ -293,6 +298,7 @@ const aqConfigSchema = z.object({
   review: reviewConfigSchema,
   pr: prConfigSchema,
   safety: safetyConfigSchema,
+  notification: notificationConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
 }).superRefine((data, ctx) => {
   const hasAllowedRepos = data.git.allowedRepos.length > 0;

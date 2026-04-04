@@ -7,7 +7,8 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
 }));
 
 vi.mock("../../src/claude/model-router.js", () => ({
-  configForTask: vi.fn()
+  configForTask: vi.fn(),
+  configForTaskWithMode: vi.fn()
 }));
 
 vi.mock("../../src/git/commit-helper.js", () => ({
@@ -25,17 +26,19 @@ vi.mock("../../src/utils/logger.js", () => ({
 
 // Import mocked functions
 import { runClaude } from "../../src/claude/claude-runner.js";
-import { configForTask } from "../../src/claude/model-router.js";
+import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockConfigForTask = vi.mocked(configForTask);
+const mockConfigForTaskWithMode = vi.mocked(configForTaskWithMode);
 const mockAutoCommitIfDirty = vi.mocked(autoCommitIfDirty);
 
 describe("retryWithClaudeFix", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfigForTask.mockReturnValue({ model: "fallback-model" });
+    mockConfigForTaskWithMode.mockReturnValue({ model: "fallback-model" });
   });
 
   it("should return success immediately if initial check passes", async () => {
@@ -89,7 +92,7 @@ describe("retryWithClaudeFix", () => {
     expect(result.attempts).toBe(1);
 
     expect(options.buildFixPromptFn).toHaveBeenCalledWith(failedResult);
-    expect(mockConfigForTask).toHaveBeenCalledWith({ model: "test-model" }, "fallback");
+    expect(mockConfigForTaskWithMode).toHaveBeenCalledWith({ model: "test-model" }, "fallback", "standard");
     expect(mockRunClaude).toHaveBeenCalledWith({
       prompt: fixPrompt,
       cwd: "/test/dir",

@@ -109,10 +109,8 @@ function renderJobDetail(job) {
     html += '<div class="flex items-center gap-2 mt-4 text-sm text-primary font-mono"><div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>' + esc(job.currentStep) + '</div>';
   }
 
-  // Log viewer - only include in desktop layout
-  if (window.innerWidth > 1080) {
-    html += renderLogSection(job);
-  }
+  // Log viewer
+  html += renderLogSection(job);
 
   return html;
 }
@@ -306,9 +304,9 @@ function renderMobileActivityLog(job) {
   if (!container) return;
 
   // Show/hide based on job and viewport width
-  var shouldShow = job && window.innerWidth <= 1080;
-  container.style.display = shouldShow ? 'block' : 'none';
-  if (!shouldShow) return;
+  /* DISABLED: 태블릿 모드 미완성 */
+  container.style.display = 'none';
+  return;
 
   if (!job.logs || job.logs.length === 0) {
     container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';

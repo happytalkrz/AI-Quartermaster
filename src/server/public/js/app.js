@@ -363,6 +363,10 @@ var es = null;
 var reconnectTimer = null;
 var countdownInterval = null;
 
+function clearCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+
 function setConnState(state, seconds) {
   var dot = document.getElementById('conn-dot');
   var label = document.getElementById('conn-label');
@@ -374,11 +378,7 @@ function setConnState(state, seconds) {
     label.textContent = currentLang === 'ko' ? '연결 중...' : 'Connecting...';
   } else if (state === 'reconnecting') {
     dot.className = 'w-2 h-2 rounded-full bg-amber-500 animate-pulse';
-    if (seconds !== undefined) {
-      label.textContent = t('reconnectCountdown') + ' ' + seconds + 's';
-    } else {
-      label.textContent = t('reconnecting');
-    }
+    label.textContent = seconds !== undefined ? t('reconnectCountdown') + ' ' + seconds + 's' : t('reconnecting');
   } else {
     dot.className = 'w-2 h-2 rounded-full bg-outline';
     label.textContent = 'Disconnected';
@@ -394,7 +394,7 @@ function connectSSE() {
   es.onopen = function() {
     setConnState('connected');
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    clearCountdown();
     // Refresh data after reconnection
     apiFetch('/api/jobs').then(function(r) { return r.json(); }).then(handleData).catch(function() {});
   };
@@ -404,18 +404,16 @@ function connectSSE() {
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
-    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    clearCountdown();
 
     var remainingSeconds = 4;
     setConnState('reconnecting', remainingSeconds);
 
     countdownInterval = setInterval(function() {
-      remainingSeconds--;
-      if (remainingSeconds > 0) {
+      if (--remainingSeconds > 0) {
         setConnState('reconnecting', remainingSeconds);
       } else {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
+        clearCountdown();
       }
     }, 1000);
 

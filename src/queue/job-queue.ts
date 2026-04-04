@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";

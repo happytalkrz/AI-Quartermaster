@@ -4,7 +4,7 @@ import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
 import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry } from "../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, PlanWithCost } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -59,8 +59,10 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   logger.info(`Generating plan for issue #${ctx.issue.number}...`);
 
   let plan: Plan;
+  let planCostUsd: number | undefined;
+  let planUsage: import("../types/pipeline.js").UsageInfo | undefined;
   try {
-    plan = await generatePlan({
+    const planResult = await generatePlan({
       issue: ctx.issue,
       repo: ctx.repo,
       branch: ctx.branch,
@@ -72,6 +74,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       maxPhases: ctx.config.safety.maxPhases,
       sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
     });
+    plan = planResult.plan;
+    planCostUsd = planResult.costUsd;
+    planUsage = planResult.usage;
 
     logger.info(`Plan generated: ${plan.phases.length} phases`);
     ctx.jobLogger?.log(`Plan 생성 완료: ${plan.phases.length}개 Phase`);

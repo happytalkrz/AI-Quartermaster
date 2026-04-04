@@ -182,7 +182,7 @@ describe("generatePlan", () => {
     });
 
     expect(result.plan.title).toBe("Template Test");
-    expect(result.issueNumber).toBe(111);
+    expect(result.plan.issueNumber).toBe(111);
   });
 
   it("should retry on first Claude failure then succeed", async () => {
@@ -239,8 +239,8 @@ describe("generatePlan", () => {
     });
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
-    expect(result.issueNumber).toBe(123);
-    expect(result.mode).toBe("code");
+    expect(result.plan.issueNumber).toBe(123);
+    expect(result.plan.mode).toBe("code");
   });
 
   it("should fail after max retries on repeated Claude failures", async () => {
@@ -332,7 +332,7 @@ describe("generatePlan", () => {
     });
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
-    expect(result.mode).toBe("content");
+    expect(result.plan.mode).toBe("content");
     expect(result.plan.title).toBe("Update docs");
   });
 
@@ -416,7 +416,7 @@ describe("generatePlan", () => {
     });
 
     // Verify schema compliance
-    expect(result.mode).toBe("content");
+    expect(result.plan.mode).toBe("content");
     expect(result.phases[0].verificationCriteria).toContain("Schema valid");
     expect(typeof result.issueNumber).toBe("number");
   });
@@ -558,13 +558,13 @@ tests/
       modeHint: "This is a complex enterprise-level enhancement",
     });
 
-    expect(result.requirements).toHaveLength(5);
+    expect(result.plan.requirements).toHaveLength(5);
     expect(result.affectedFiles.length).toBeGreaterThan(3);
-    expect(result.risks).toContain("Performance regression");
-    expect(result.phases).toHaveLength(2);
+    expect(result.plan.risks).toContain("Performance regression");
+    expect(result.plan.phases).toHaveLength(2);
     expect(result.phases[1].dependsOn).toEqual([0]);
     expect(result.verificationPoints.length).toBeGreaterThan(2);
-    expect(result.stopConditions).toContain("Performance regression detected");
+    expect(result.plan.stopConditions).toContain("Performance regression detected");
   });
 
   it("should handle different issue types and modes", async () => {
@@ -630,10 +630,10 @@ tests/
       sensitivePaths: "config/secrets.yml",
     });
 
-    expect(result.mode).toBe("content");
-    expect(result.phases).toHaveLength(2);
+    expect(result.plan.mode).toBe("content");
+    expect(result.plan.phases).toHaveLength(2);
     expect(result.phases[1].dependsOn).toEqual([0]);
-    expect(result.issueNumber).toBe(555);
+    expect(result.plan.issueNumber).toBe(555);
   });
 
   it("should normalize phase indices and fill missing arrays", async () => {
@@ -790,7 +790,7 @@ tests/
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
       expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1);
-      expect(result.issueNumber).toBe(123);
+      expect(result.plan.issueNumber).toBe(123);
 
       // Verify context collection notification was called with proper structure
       const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
@@ -1026,7 +1026,7 @@ tests/
       });
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
-      expect(result.issueNumber).toBe(789);
+      expect(result.plan.issueNumber).toBe(789);
 
       // Verify that the second call used the retry template
       const secondCall = mockRunClaude.mock.calls[1];

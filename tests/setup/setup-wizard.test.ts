@@ -127,48 +127,6 @@ CUSTOM_VAR=example
         expect(content).toBe("existing content");
       });
 
-      it.skip("should run wizard and create user config when overwrite confirmed", async () => {
-        const configPath = join(aqRoot, "config.yml");
-        writeFileSync(configPath, "existing content");
-
-        const mockConfirm = vi.spyOn(promptUtils, "askConfirm").mockResolvedValue(true);
-
-        // Mock runInteractiveWizard function directly
-        const mockWizard = vi.spyOn(setupWizard, "runInteractiveWizard").mockResolvedValue({
-          repo: "test-user/test-repo",
-          path: "/home/test/projects/test-repo",
-          serverMode: "polling"
-        });
-
-        await runSetup(aqRoot, {});
-
-        expect(mockConfirm).toHaveBeenCalled();
-        expect(mockWizard).toHaveBeenCalled();
-
-        const content = readFileSync(configPath, "utf-8");
-        expect(content).toContain("test-user/test-repo");
-        expect(content).toContain("/home/test/projects/test-repo");
-        expect(content).toContain("test-user/test-repo");
-      });
-
-      it.skip("should run wizard and create new config when no existing file", async () => {
-        // Mock runInteractiveWizard function directly
-        const mockWizard = vi.spyOn(setupWizard, "runInteractiveWizard").mockResolvedValue({
-          repo: "new-user/new-repo",
-          path: "/home/new/projects/new-repo",
-          serverMode: "webhook"
-        });
-
-        await runSetup(aqRoot, {});
-
-        expect(mockWizard).toHaveBeenCalled();
-
-        const configPath = join(aqRoot, "config.yml");
-        const content = readFileSync(configPath, "utf-8");
-        expect(content).toContain("new-user/new-repo");
-        expect(content).toContain("/home/new/projects/new-repo");
-        expect(content).toContain("new-user/new-repo");
-      });
     });
 
     describe("prerequisites check", () => {
@@ -231,7 +189,7 @@ CUSTOM_VAR=example
     });
 
     describe("smee channel creation", () => {
-      it.skip("should create new smee channel when not set", async () => {
+      it("should create new smee channel when not set", async () => {
         vi.clearAllMocks();
 
         // Override CLI runner mock specifically for this test
@@ -248,7 +206,7 @@ CUSTOM_VAR=example
           if (command === "gh" && args.includes("setup-git")) {
             return { exitCode: 0, stdout: "git credential helper configured", stderr: "" };
           }
-          if (command === "curl" && args.includes("smee.io/new")) {
+          if (command === "curl" && args.some(arg => arg.includes("smee.io/new"))) {
             return { exitCode: 0, stdout: "https://smee.io/new-channel", stderr: "" };
           }
           return { exitCode: 0, stdout: "", stderr: "" };

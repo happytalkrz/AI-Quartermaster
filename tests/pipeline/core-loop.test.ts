@@ -807,6 +807,8 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.totalCostUsd).toBe(0.065);
+      expect(result.phaseResults).toHaveLength(2);
+      expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
     it("should handle phases with no cost information", async () => {

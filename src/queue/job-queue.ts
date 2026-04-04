@@ -293,6 +293,21 @@ export class JobQueue {
   }
 
   /**
+   * Sets the concurrency limit and immediately processes pending jobs if capacity allows.
+   */
+  setConcurrency(n: number): void {
+    if (n <= 0 || !Number.isInteger(n)) {
+      throw new Error("Concurrency must be a positive integer");
+    }
+
+    this.concurrency = n;
+    logger.info(`Concurrency updated to ${n}`);
+
+    // Trigger immediate processing if we now have more capacity
+    this.processNext();
+  }
+
+  /**
    * Returns queue status.
    */
   getStatus(): { pending: number; running: number; concurrency: number } {

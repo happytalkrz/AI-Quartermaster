@@ -31,7 +31,7 @@ export async function createDraftPR(
   ghConfig: GhCliConfig,
   ctx: PrContext,
   options: { cwd: string; promptsDir: string; dryRun?: boolean }
-): Promise<PrCreateResult> {
+): Promise<PrCreateResult | null> {
   // Build PR title
   const title = renderTemplate(prConfig.titleTemplate, {
     issueNumber: String(ctx.issueNumber),
@@ -68,7 +68,11 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan.problemDefinition}\n\n## Phases\n\n${ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")}`;
+    const phasesText = ctx.phaseResults?.length
+      ? ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")
+      : 'No phases completed';
+    const problemDef = ctx.plan?.problemDefinition || 'Issue resolution in progress';
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDef}\n\n## Phases\n\n${phasesText}`;
   }
 
   // Add issue link
@@ -111,7 +115,8 @@ export async function createDraftPR(
   });
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    logger.error(`Failed to create PR: ${result.stderr}`);
+    return null;
   }
 
   // gh pr create outputs the PR URL

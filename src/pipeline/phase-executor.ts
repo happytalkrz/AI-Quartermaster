@@ -154,9 +154,10 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
 
     // 3. Auto-commit if Claude didn't commit
     const commitMsg = ctx.gitConfig.commitMessageTemplate
-      .replace('{{issueNumber}}', String(ctx.issue.number))
-      .replace('{{phase}}', `Phase ${ctx.phase.index + 1}`)
-      .replace('{{summary}}', ctx.phase.name);
+      .replace(/\{\{?issueNumber\}\}?/g, String(ctx.issue.number))
+      .replace(/\{\{?phase\}\}?/g, `Phase ${ctx.phase.index + 1}`)
+      .replace(/\{\{?summary\}\}?/g, ctx.phase.name)
+      .replace(/\{\{?title\}\}?/g, `Phase ${ctx.phase.index + 1}: ${ctx.phase.name}`);
     const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
     if (autoCommitted) {
       logger.info(`Auto-committing uncommitted changes for phase ${ctx.phase.index}`);

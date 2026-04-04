@@ -170,9 +170,10 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
 
     // Auto-commit if needed
     const commitMsg = ctx.gitConfig.commitMessageTemplate
-      .replace('{{issueNumber}}', String(ctx.issue.number))
-      .replace('{{phase}}', `Phase ${ctx.phase.index + 1} fix`)
-      .replace('{{summary}}', ctx.phase.name);
+      .replace(/\{\{?issueNumber\}\}?/g, String(ctx.issue.number))
+      .replace(/\{\{?phase\}\}?/g, `Phase ${ctx.phase.index + 1} fix`)
+      .replace(/\{\{?summary\}\}?/g, ctx.phase.name)
+      .replace(/\{\{?title\}\}?/g, `Phase ${ctx.phase.index + 1} fix: ${ctx.phase.name}`);
     const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
     if (autoCommitted) {
       logger.info(`Auto-committing retry changes for phase ${ctx.phase.index}`);

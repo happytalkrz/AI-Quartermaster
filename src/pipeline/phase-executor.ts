@@ -47,10 +47,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .join("\n");
 
     // Get next phase info if not the last phase
-    const nextPhaseIndex = ctx.phase.index + 1;
-    const nextPhase = nextPhaseIndex < ctx.plan.phases.length
-      ? ctx.plan.phases[nextPhaseIndex]
-      : null;
+    const nextPhase = ctx.plan.phases[ctx.phase.index + 1] ?? null;
 
 const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 

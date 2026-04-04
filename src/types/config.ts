@@ -55,6 +55,7 @@ export interface ClaudeCliConfig {
   model: string;            // 글로벌 기본 모델 (routing 미설정 시 사용)
   models: ModelRouting;     // 태스크별 모델 라우팅
   maxTurns: number;
+  maxTurnsPerMode?: Record<ExecutionMode, number>; // 실행 모드별 maxTurns 제한
   timeout: number;
   additionalArgs: string[];
 }

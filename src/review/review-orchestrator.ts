@@ -17,6 +17,7 @@ export interface ReviewOrchestratorContext {
   promptsDir: string;
   cwd: string;
   variables: TemplateVariables;
+  maxRounds?: number; // Limit number of rounds based on ExecutionModePreset
 }
 
 function applyRoundModes(variables: TemplateVariables, round: ReviewRound): TemplateVariables {
@@ -141,7 +142,16 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
   const results: ReviewResult[] = [];
   let allPassed = true;
 
-  for (const round of ctx.reviewConfig.rounds) {
+  // Limit rounds based on ExecutionModePreset
+  const roundsToExecute = ctx.maxRounds !== undefined
+    ? ctx.reviewConfig.rounds.slice(0, ctx.maxRounds)
+    : ctx.reviewConfig.rounds;
+
+  if (ctx.maxRounds !== undefined && ctx.maxRounds < ctx.reviewConfig.rounds.length) {
+    logger.info(`Limited review rounds: executing ${ctx.maxRounds}/${ctx.reviewConfig.rounds.length} rounds`);
+  }
+
+  for (const round of roundsToExecute) {
     logger.info(`\n--- Review Round: ${round.name} ---`);
 
     let result: ReviewResult | undefined;

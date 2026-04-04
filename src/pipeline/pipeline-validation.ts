@@ -2,12 +2,14 @@ import { runFinalValidation } from "./final-validator.js";
 import { retryWithClaudeFix } from "./retry-with-fix.js";
 import { formatResult, printResult } from "./result-reporter.js";
 import { PROGRESS_VALIDATION_START } from "./progress-tracker.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import type { CommandsConfig, AQConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import type { ValidationPhaseContext } from "../types/pipeline.js";
+import type { ExecutionMode } from "../types/config.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
 
 const logger = getLogger();
@@ -23,6 +25,7 @@ export async function runValidationPhase(
   timer: PipelineTimer,
   isPastState: (state: string) => boolean,
   skipFinalValidation: boolean,
+  executionMode: ExecutionMode,
   checkpoint: (overrides?: any) => void,
   issueNumber: number,
   repo: string,
@@ -48,7 +51,7 @@ export async function runValidationPhase(
   context.jl?.setStep("최종 검증 중...");
   context.jl?.setProgress(PROGRESS_VALIDATION_START);
 
-  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
+  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
 
   for (const check of validation.checks) {
     context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
@@ -64,6 +67,7 @@ export async function runValidationPhase(
       checkpoint,
       config,
       fullCommands,
+      executionMode,
       _aqRoot,
       _projectRoot
     );
@@ -100,6 +104,7 @@ async function retryValidationWithFixes(
   checkpoint: (overrides?: any) => void,
   config: any,
   fullCommands: CommandsConfig,
+  executionMode: ExecutionMode,
   _aqRoot?: string,
   _projectRoot?: string
 ): Promise<boolean> {
@@ -118,7 +123,7 @@ async function retryValidationWithFixes(
   };
 
   const revalidateFn = async () => {
-    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
+    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
 
     // Log validation results
     for (const check of result.checks) {
@@ -154,12 +159,14 @@ async function retryValidationWithFixes(
     context.jl?.log(`검증 통과 (retry ${attempt})`);
   };
 
+  const claudeConfig = configForTaskWithMode(context.commands.claudeCli, "fallback", executionMode);
+
   const retryResult = await retryWithClaudeFix({
     checkFn,
     buildFixPromptFn,
     revalidateFn,
     maxRetries: context.maxRetries,
-    claudeConfig: context.commands.claudeCli,
+    claudeConfig,
     cwd: context.cwd,
     gitPath: context.gitPath,
     commitMessageTemplate: "fix: validation 오류 수정 (retry {attempt})",

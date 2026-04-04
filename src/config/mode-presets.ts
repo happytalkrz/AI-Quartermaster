@@ -61,25 +61,25 @@ export function detectModeFromLabels(labels: string[], defaultMode: PipelineMode
 // ExecutionMode Presets
 
 const ECONOMY_PRESET: ExecutionModePreset = {
-  reviewRounds: 1,
+  reviewRounds: 0,
   enableAdvancedReview: false,
   enableSimplify: false,
   enableFinalValidation: false,
   maxPhases: 5,
   maxRetries: 1,
   strictSafety: false,
-  description: "빠른 구현에 집중. 최소한의 리뷰와 검증으로 토큰 소비 최소화"
+  description: "빠른 구현에 집중. 리뷰 스킵으로 토큰 소비 최소화"
 };
 
 const STANDARD_PRESET: ExecutionModePreset = {
-  reviewRounds: 2,
+  reviewRounds: 1,
   enableAdvancedReview: true,
   enableSimplify: true,
   enableFinalValidation: true,
   maxPhases: 10,
   maxRetries: 2,
   strictSafety: true,
-  description: "균형 잡힌 품질과 효율성. 대부분의 일반적인 작업에 적합"
+  description: "균형 잡힌 품질과 효율성. 1라운드 리뷰로 기본적인 품질 보장"
 };
 
 const THOROUGH_PRESET: ExecutionModePreset = {

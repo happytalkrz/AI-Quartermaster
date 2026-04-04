@@ -36,6 +36,7 @@ import {
   type ReviewContext,
   type SimplifyContext,
 } from "../../src/pipeline/pipeline-review.js";
+import type { ExecutionModePreset } from "../../src/types/config.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { configForTask } from "../../src/claude/model-router.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
@@ -54,6 +55,18 @@ const mockRunReviews = vi.mocked(runReviews);
 const mockRunAnalyst = vi.mocked(runAnalyst);
 const mockRunSimplify = vi.mocked(runSimplify);
 const mockExistsSync = vi.mocked(existsSync);
+
+function makeExecutionModePreset(overrides: Partial<ExecutionModePreset> = {}): ExecutionModePreset {
+  return {
+    reviewRounds: 1,
+    enableAdvancedReview: false,
+    enableSimplify: true,
+    enableFinalValidation: true,
+    maxPhases: 5,
+    maxRetries: 3,
+    ...overrides,
+  };
+}
 
 function makeReviewContext(overrides: Partial<ReviewContext> = {}): ReviewContext {
   return {
@@ -203,9 +216,9 @@ describe("pipeline-review", () => {
   });
 
   describe("runReviewPhase", () => {
-    it("should skip review when skipReview is true", async () => {
+    it("should skip review when reviewRounds is 0", async () => {
       const ctx = makeReviewContext();
-      const result = await runReviewPhase(ctx, { skipReview: true }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 0 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunReviews).not.toHaveBeenCalled();
@@ -215,7 +228,7 @@ describe("pipeline-review", () => {
       const ctx = makeReviewContext();
       mockIsPastState.mockReturnValue(true);
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "REVIEWING", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "REVIEWING", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunReviews).not.toHaveBeenCalled();
@@ -239,7 +252,7 @@ describe("pipeline-review", () => {
       };
       mockRunReviews.mockResolvedValue(mockReviewResult);
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(result.reviewResult).toEqual(mockReviewResult);
@@ -290,7 +303,7 @@ describe("pipeline-review", () => {
       };
       mockRunReviews.mockResolvedValue(mockReviewResult);
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(result.reviewResult?.analyst).toEqual(mockAnalystResult);
@@ -341,7 +354,7 @@ describe("pipeline-review", () => {
           allPassed: true,
         });
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(result.reviewResult?.rounds[0].verdict).toBe("PASS");
@@ -388,7 +401,7 @@ describe("pipeline-review", () => {
         allPassed: false,
       });
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Review failed after 2 retries");
@@ -433,7 +446,7 @@ describe("pipeline-review", () => {
         allPassed: false,
       });
 
-      const result = await runReviewPhase(ctx, { skipReview: false }, "PLAN_GENERATED", mockIsPastState);
+      const result = await runReviewPhase(ctx, makeExecutionModePreset({ reviewRounds: 1 }), "PLAN_GENERATED", mockIsPastState);
 
       expect(result.success).toBe(false);
       expect(mockRunClaude).toHaveBeenCalledWith(
@@ -447,7 +460,7 @@ describe("pipeline-review", () => {
   describe("runSimplifyPhase", () => {
     it("should skip simplify when skipSimplify is true", async () => {
       const ctx = makeSimplifyContext();
-      const result = await runSimplifyPhase(ctx, { skipSimplify: true }, "REVIEWING", mockIsPastState);
+      const result = await runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: false }), "REVIEWING", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunSimplify).not.toHaveBeenCalled();
@@ -464,7 +477,7 @@ describe("pipeline-review", () => {
         },
       });
 
-      const result = await runSimplifyPhase(ctx, { skipSimplify: false }, "REVIEWING", mockIsPastState);
+      const result = await runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "REVIEWING", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunSimplify).not.toHaveBeenCalled();
@@ -474,7 +487,7 @@ describe("pipeline-review", () => {
       const ctx = makeSimplifyContext();
       mockIsPastState.mockReturnValue(true);
 
-      const result = await runSimplifyPhase(ctx, { skipSimplify: false }, "SIMPLIFYING", mockIsPastState);
+      const result = await runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "SIMPLIFYING", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunSimplify).not.toHaveBeenCalled();
@@ -483,7 +496,7 @@ describe("pipeline-review", () => {
     it("should run successful simplify", async () => {
       const ctx = makeSimplifyContext();
 
-      const result = await runSimplifyPhase(ctx, { skipSimplify: false }, "REVIEWING", mockIsPastState);
+      const result = await runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "REVIEWING", mockIsPastState);
 
       expect(result.success).toBe(true);
       expect(mockRunSimplify).toHaveBeenCalledWith({
@@ -512,7 +525,7 @@ describe("pipeline-review", () => {
       });
 
       await expect(
-        runSimplifyPhase(ctx, { skipSimplify: false }, "REVIEWING", mockIsPastState)
+        runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "REVIEWING", mockIsPastState)
       ).rejects.toThrow("Simplify prompt template not configured");
     });
 
@@ -528,7 +541,7 @@ describe("pipeline-review", () => {
       });
 
       await expect(
-        runSimplifyPhase(ctx, { skipSimplify: false }, "REVIEWING", mockIsPastState)
+        runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "REVIEWING", mockIsPastState)
       ).rejects.toThrow("Claude CLI configuration not found");
     });
 
@@ -544,7 +557,7 @@ describe("pipeline-review", () => {
       });
 
       await expect(
-        runSimplifyPhase(ctx, { skipSimplify: false }, "REVIEWING", mockIsPastState)
+        runSimplifyPhase(ctx, makeExecutionModePreset({ enableSimplify: true }), "REVIEWING", mockIsPastState)
       ).rejects.toThrow("Test command not configured");
     });
   });

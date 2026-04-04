@@ -14,7 +14,7 @@ import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from 
 import { PipelineTimer } from "../safety/timeout-manager.js";
 import { formatResult } from "./result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "./pipeline-context.js";
-import { pollCiStatus, getCiFailureLogs, autoFixCiFailures, type CiPollingConfig } from "./ci-checker.js";
+import { pollCiStatus, autoFixCiFailures, type CiPollingConfig } from "./ci-checker.js";
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE

@@ -133,7 +133,19 @@ export interface SafetyConfig {
   rollbackStrategy: "none" | "all" | "failed-only";
 }
 
+export interface ExecutionModePreset {
+  reviewRounds: number;
+  enableAdvancedReview: boolean;
+  enableSimplify: boolean;
+  enableFinalValidation: boolean;
+  maxPhases: number;
+  maxRetries: number;
+  strictSafety: boolean;
+  description: string;
+}
+
 export type PipelineMode = "code" | "content";
+export type ExecutionMode = "economy" | "standard" | "thorough";
 export type ServerMode = "polling" | "webhook";
 
 /** Setup wizard options */
@@ -185,5 +197,6 @@ export interface AQConfig {
   review: ReviewConfig;
   pr: PrConfig;
   safety: SafetyConfig;
+  executionMode: ExecutionMode;
   projects?: ProjectConfig[];  // per-project overrides
 }

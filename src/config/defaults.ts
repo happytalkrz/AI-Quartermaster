@@ -116,4 +116,5 @@ export const DEFAULT_CONFIG: AQConfig = {
     allowedLabels: [],
     rollbackStrategy: "none",
   },
+  executionMode: "standard",
 };

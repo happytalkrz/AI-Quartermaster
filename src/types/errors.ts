@@ -23,45 +23,6 @@ export abstract class AQMError extends Error {
   }
 }
 
-/**
- * Pipeline-related errors (phase execution, orchestration, state management)
- */
-export class PipelineError extends AQMError {
-  constructor(
-    code: string,
-    message: string,
-    cause?: Error | unknown
-  ) {
-    super(code, message, cause);
-  }
-}
-
-/**
- * Configuration-related errors (YAML parsing, validation, schema)
- */
-export class ConfigError extends AQMError {
-  constructor(
-    code: string,
-    message: string,
-    cause?: Error | unknown
-  ) {
-    super(code, message, cause);
-  }
-}
-
-/**
- * Git-related errors (worktree, branch, commit operations)
- */
-export class GitError extends AQMError {
-  constructor(
-    code: string,
-    message: string,
-    cause?: Error | unknown
-  ) {
-    super(code, message, cause);
-  }
-}
-
 export class SafetyViolationError extends AQMError {
   constructor(
     public readonly guard: string,

@@ -9,6 +9,8 @@ function renderJobListItem(job, isSelected) {
   var dur = fmtDuration(job);
   var relative = relativeTime(job.createdAt);
 
+  var isTablet = window.innerWidth <= 1080;
+  var expandedClass = (isTablet && isSelected) ? ' job-row-expanded' : '';
   var activeBg = isSelected ? 'bg-surface-container-high border-l-4 border-primary' : 'bg-surface-container-low hover:bg-surface-container';
   var activeRing = isSelected ? 'ring-1 ring-outline-variant/20' : 'ring-1 ring-outline-variant/10';
 
@@ -22,7 +24,7 @@ function renderJobListItem(job, isSelected) {
   var issueTitle = job.issueTitle || '';
   var truncatedTitle = issueTitle.length > 40 ? issueTitle.substring(0, 40) + '...' : issueTitle;
 
-  return '<div class="' + activeBg + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+  return '<div class="' + activeBg + expandedClass + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
     '<div class="flex justify-between items-start mb-1">' +
       '<div>' +
         '<span class="text-sm font-bold ' + (isSelected ? 'text-on-surface' : 'text-on-surface/80') + '">#' + job.issueNumber + ' ' + esc(job.repo) + '</span>' +
@@ -245,6 +247,58 @@ function renderLogSection(job) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Accordion Detail Panel (Tablet Mode)
+   ══════════════════════════════════════════════════════════════ */
+function renderAccordionDetail(job) {
+  var html = '<div class="accordion-detail">';
+
+  // Metadata row
+  html += '<div class="grid grid-cols-2 gap-4 mb-4">';
+  html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Branch</span>';
+  html += '<p class="font-mono text-sm text-on-surface mt-1">' + esc(job.branchName || 'N/A') + '</p></div>';
+  html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">PR</span>';
+  if (job.prUrl) {
+    html += '<p class="mt-1"><a href="' + esc(job.prUrl) + '" target="_blank" class="text-sm text-primary hover:underline">' + esc(job.prUrl.split('/').pop() || 'Link') + '</a></p>';
+  } else {
+    html += '<p class="font-mono text-sm text-outline mt-1">—</p>';
+  }
+  html += '</div>';
+  html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Cost</span>';
+  html += '<p class="font-mono text-sm text-tertiary mt-1">$' + (job.totalCostUsd || job.costUsd || 0).toFixed(4) + '</p></div>';
+  html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Status</span>';
+  html += '<p class="mt-1">' + statusLabel(job.status, job) + '</p></div>';
+  html += '</div>';
+
+  // Phase progress
+  if (job.phaseResults && job.phaseResults.length > 0) {
+    html += '<div class="mb-4">';
+    html += '<span class="text-[10px] uppercase tracking-widest font-bold text-outline">Phase Progress</span>';
+    html += '<div class="flex items-center gap-2 mt-2 flex-wrap">';
+    job.phaseResults.forEach(function(p, i) {
+      var icon = p.success ? '<span class="text-[#3fb950]">✓</span>' : '<span class="text-error">✗</span>';
+      html += '<span class="text-xs font-mono text-on-surface-variant">' + icon + ' P' + (i + 1) + '</span>';
+      if (i < job.phaseResults.length - 1) html += '<span class="text-outline/30">→</span>';
+    });
+    html += '</div></div>';
+  }
+
+  // Activity log (last 8 lines)
+  if (job.logs && job.logs.length > 0) {
+    var lines = job.logs.slice(-8);
+    html += '<div>';
+    html += '<span class="text-[10px] uppercase tracking-widest font-bold text-outline">Telemetry</span>';
+    html += '<div class="bg-surface-container-lowest p-3 rounded-lg font-mono text-xs leading-relaxed mt-2 max-h-48 overflow-y-auto custom-scrollbar">';
+    lines.forEach(function(line) {
+      html += colorizeLogLine(line);
+    });
+    html += '</div></div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/* ══════════════════════════════════════════════════════════════
    Mobile Activity Log Renderer
    ══════════════════════════════════════════════════════════════ */
 function renderMobileActivityLog(job) {
@@ -376,15 +430,27 @@ function renderFromState() {
     selectedJobId = (firstActive || filtered[0]).id;
   }
 
-  // Render job list
-  listEl.innerHTML = filtered.map(function(j) { return renderJobListItem(j, j.id === selectedJobId); }).join('');
+  var isTablet = window.innerWidth <= 1080;
 
-  // Render detail
+  // Render job list (with inline accordion on tablet)
+  listEl.innerHTML = filtered.map(function(j) {
+    var isSelected = j.id === selectedJobId;
+    var html = renderJobListItem(j, isSelected);
+    // Accordion: insert detail panel below selected row on tablet
+    if (isTablet && isSelected) {
+      html += renderAccordionDetail(j);
+    }
+    return html;
+  }).join('');
+
+  // Render detail panel (desktop only)
   var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
-  document.getElementById('job-detail').innerHTML = renderJobDetail(selectedJob);
+  if (!isTablet) {
+    document.getElementById('job-detail').innerHTML = renderJobDetail(selectedJob);
+  }
 
-  // Render mobile activity log
-  renderMobileActivityLog(selectedJob);
+  // Render mobile activity log (disabled — accordion replaces it)
+  if (!isTablet) renderMobileActivityLog(selectedJob);
 
   // Auto-scroll log
   var lb = document.getElementById('detail-log-box');
@@ -402,7 +468,13 @@ function renderFromState() {
    Select Job
    ══════════════════════════════════════════════════════════════ */
 function selectJob(id) {
-  selectedJobId = id;
+  var isTablet = window.innerWidth <= 1080;
+  // Tablet accordion toggle: clicking same row closes it
+  if (isTablet && selectedJobId === id) {
+    selectedJobId = null;
+  } else {
+    selectedJobId = id;
+  }
   renderFromState();
 }
 

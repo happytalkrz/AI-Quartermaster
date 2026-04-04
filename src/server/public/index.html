@@ -140,12 +140,12 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     .nav-item-active {
         background: #1c2026;
         color: #58a6ff;
-        box-shadow: inset 4px 0 0 0 #58a6ff;
+        border-left: 3px solid #58a6ff;
     }
     html:not(.dark) .nav-item-active {
         background: #e8eaed;
         color: #0969da;
-        box-shadow: inset 4px 0 0 0 #0969da;
+        border-left: 3px solid #0969da;
     }
 
     /* hide views by default */
@@ -222,21 +222,6 @@ if (localStorage.getItem('aqm-theme') === 'light') {
             justify-content: flex-start;
         }
 
-        /* Active indicator: left bar → bottom bar in rail mode */
-        .nav-item-active {
-            box-shadow: inset 0 -3px 0 0 #58a6ff !important;
-        }
-        html:not(.dark) .nav-item-active {
-            box-shadow: inset 0 -3px 0 0 #0969da !important;
-        }
-        /* Restore left bar when sidebar expanded on hover */
-        aside:hover .nav-item-active {
-            box-shadow: inset 4px 0 0 0 #58a6ff !important;
-        }
-        html:not(.dark) aside:hover .nav-item-active {
-            box-shadow: inset 4px 0 0 0 #0969da !important;
-        }
-
         /* Stats grid responsive: 2 columns on 1080px and below */
         section.grid.grid-cols-1.md\\:grid-cols-4 {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -248,53 +233,40 @@ if (localStorage.getItem('aqm-theme') === 'light') {
             gap: 1.5rem !important;
         }
 
-        /* Job list and detail columns full width in vertical layout */
-        .col-span-4,
-        .col-span-8 {
+        /* Job list full width in vertical layout */
+        .col-span-4 {
             grid-column: 1 / -1 !important;
         }
 
-        /* Job list height adjustment for stacked layout */
+        /* Hide separate job-detail column — accordion replaces it */
+        .col-span-8 {
+            display: none !important;
+        }
+
+        /* Job list: no max-height, full scroll */
         #job-list {
-            max-height: 400px !important;
+            max-height: none !important;
         }
 
-        /* Job detail minimum height adjustment */
-        #job-detail {
-            min-height: 300px !important;
+        /* Accordion detail panel styling */
+        .accordion-detail {
+            background: #262a31;
+            border-left: 3px solid #58a6ff;
+            border-radius: 0 0 0.75rem 0.75rem;
+            margin-top: -0.25rem;
+            padding: 1.5rem;
+            animation: accordionOpen 0.2s ease-out;
+        }
+        @keyframes accordionOpen {
+            from { opacity: 0; max-height: 0; }
+            to { opacity: 1; max-height: 600px; }
         }
 
-        /* Job card responsive layout improvements */
-        #job-list .flex.justify-between.items-start {
-            flex-wrap: wrap !important;
-            gap: 0.5rem !important;
-        }
-
-        #job-list .flex.justify-between.items-center {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: 0.25rem !important;
-        }
-
-        /* Job detail header responsive layout */
-        #job-detail .flex.justify-between.items-start {
-            flex-direction: column !important;
-            gap: 1rem !important;
-        }
-
-        #job-detail .flex.items-center.gap-6 {
-            flex-wrap: wrap !important;
-            gap: 1rem !important;
-        }
-
-        #job-detail .flex.gap-3 {
-            flex-wrap: wrap !important;
-        }
-
-        /* Responsive text sizing */
-        #job-detail h1 {
-            font-size: 1.25rem !important;
-            line-height: 1.75rem !important;
+        /* Active job row in accordion mode */
+        .job-row-expanded {
+            background: #262a31 !important;
+            border-left: 3px solid #58a6ff;
+            border-radius: 0.75rem 0.75rem 0 0 !important;
         }
     }
 </style>

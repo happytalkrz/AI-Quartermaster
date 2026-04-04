@@ -1,0 +1,14 @@
+{
+  "name": "minimal-test-project",
+  "version": "1.0.0",
+  "description": "Minimal test project for AQM E2E testing",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Test passed\""
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

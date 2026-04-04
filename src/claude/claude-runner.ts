@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from "child_process";
 import type { ClaudeCliConfig } from "../types/config.js";
 import { withRetry } from "../utils/rate-limiter.js";
 import { classifyError } from "../pipeline/error-classifier.js";
+import { calculateCostFromUsage } from "./token-pricing.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
 
@@ -245,11 +246,26 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
 
   const durationMs = Date.now() - startTime;
 
+  // Calculate fallback cost if needed
+  const getFallbackCost = (costUsd?: number, usage?: UsageInfo): number | undefined => {
+    // Use existing cost if valid
+    if (costUsd && costUsd > 0) {
+      return costUsd;
+    }
+
+    // Calculate fallback cost from usage if available
+    if (usage && (usage.input_tokens > 0 || usage.output_tokens > 0)) {
+      return calculateCostFromUsage(usage, config.model);
+    }
+
+    return costUsd; // Return original value (0 or undefined)
+  };
+
   if (result.exitCode !== 0) {
     return {
       success: false,
       output: result.stderr || result.stdout,
-      costUsd: result.costUsd,
+      costUsd: getFallbackCost(result.costUsd, result.usage),
       usage: result.usage,
       durationMs,
     };
@@ -258,7 +274,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
   return {
     success: true,
     output: result.stdout,
-    costUsd: result.costUsd,
+    costUsd: getFallbackCost(result.costUsd, result.usage),
     usage: result.usage,
     durationMs,
   };

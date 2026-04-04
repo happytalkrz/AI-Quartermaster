@@ -48,6 +48,24 @@ export const CHARS_PER_TOKEN_BY_LOCALE = {
 export const CHARS_PER_TOKEN = CHARS_PER_TOKEN_BY_TYPE.natural;
 
 /**
+ * Gets locale-specific character-to-token ratios
+ * Defaults to English if locale not found
+ */
+function getLocaleRatios(locale: string): typeof CHARS_PER_TOKEN_BY_LOCALE.en {
+  return CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
+    || CHARS_PER_TOKEN_BY_LOCALE.en;
+}
+
+/**
+ * Gets the appropriate chars-per-token ratio for text in a given locale
+ * Detects code vs natural language and returns the corresponding ratio
+ */
+function getCharsPerToken(text: string, locale: string): number {
+  const localeRatios = getLocaleRatios(locale);
+  return isCodeContent(text) ? localeRatios.code : localeRatios.natural;
+}
+
+/**
  * Detects if the content is primarily code based on various patterns
  */
 export function isCodeContent(text: string): boolean {
@@ -138,18 +156,13 @@ export function estimateTokenCount(text: string, contentType: ContentType = 'aut
     return 0;
   }
 
-  // Get locale-specific ratios, fallback to 'en' if locale not found
-  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
-    || CHARS_PER_TOKEN_BY_LOCALE.en;
-
   let charsPerToken: number;
 
   if (contentType === 'auto') {
     // Auto-detect content type
-    charsPerToken = isCodeContent(text)
-      ? localeRatios.code
-      : localeRatios.natural;
+    charsPerToken = getCharsPerToken(text, locale);
   } else {
+    const localeRatios = getLocaleRatios(locale);
     charsPerToken = localeRatios[contentType];
   }
 
@@ -257,12 +270,8 @@ export function truncateToTokenBudget(text: string, maxTokens: number, locale: s
   const ellipsisTokens = estimateTokenCount('...', 'auto', locale);
   const availableTokens = Math.max(1, maxTokens - ellipsisTokens);
 
-  // Get locale-specific ratios for character estimation
-  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
-    || CHARS_PER_TOKEN_BY_LOCALE.en;
-  const charsPerToken = isCodeContent(text) ? localeRatios.code : localeRatios.natural;
-
   // Calculate approximate character limit
+  const charsPerToken = getCharsPerToken(text, locale);
   const targetChars = Math.floor(availableTokens * charsPerToken);
   if (targetChars <= 0) return '';
 
@@ -320,11 +329,7 @@ export function summarizeForBudget(text: string, targetTokens: number, locale: s
   const beginTokens = Math.floor(availableTokens * 0.6);
   const endTokens = availableTokens - beginTokens;
 
-  // Get locale-specific ratios for character estimation
-  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
-    || CHARS_PER_TOKEN_BY_LOCALE.en;
-  const charsPerToken = isCodeContent(text) ? localeRatios.code : localeRatios.natural;
-
+  const charsPerToken = getCharsPerToken(text, locale);
   const beginChars = Math.floor(beginTokens * charsPerToken);
   const endChars = Math.floor(endTokens * charsPerToken);
 

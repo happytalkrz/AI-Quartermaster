@@ -266,6 +266,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
+      maxTurns: 10,
       enableAgents: false,
       disallowedTools: ["Write", "Edit", "Bash"],
       onStderr: (text: string) => {

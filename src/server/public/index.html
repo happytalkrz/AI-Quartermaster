@@ -160,6 +160,128 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         from { opacity: 0; transform: scale(0.95) translateY(10px); }
         to { opacity: 1; transform: scale(1) translateY(0); }
     }
+
+    /* Responsive Sidebar for 1080px and below */
+    @media (max-width: 1080px) {
+        /* Sidebar rail mode */
+        aside {
+            width: 56px !important;
+            transition: width 0.3s ease;
+            overflow: hidden;
+        }
+
+        /* Expand sidebar on hover */
+        aside:hover {
+            width: 280px !important;
+            overflow: visible;
+        }
+
+        /* Hide text in rail mode, show on hover */
+        aside nav a span:not(.material-symbols-outlined) {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover nav a span:not(.material-symbols-outlined) {
+            opacity: 1;
+        }
+
+        /* Hide header text in rail mode */
+        aside .mb-6 {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover .mb-6 {
+            opacity: 1;
+        }
+
+        /* Hide footer in rail mode */
+        aside .mt-auto {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover .mt-auto {
+            opacity: 1;
+        }
+
+        /* Adjust main content margin */
+        main {
+            margin-left: 56px !important;
+            transition: margin-left 0.3s ease;
+        }
+
+        /* Center icons in rail mode */
+        aside nav a {
+            justify-content: center;
+            padding: 0 16px !important;
+        }
+
+        aside:hover nav a {
+            justify-content: flex-start;
+        }
+
+        /* Stats grid responsive: 2 columns on 1080px and below */
+        section.grid.grid-cols-1.md\\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        /* Dashboard layout responsive: vertical stack on narrow screens */
+        .grid.grid-cols-12 {
+            grid-template-columns: 1fr !important;
+            gap: 1.5rem !important;
+        }
+
+        /* Job list and detail columns full width in vertical layout */
+        .col-span-4,
+        .col-span-8 {
+            grid-column: 1 / -1 !important;
+        }
+
+        /* Job list height adjustment for stacked layout */
+        #job-list {
+            max-height: 400px !important;
+        }
+
+        /* Job detail minimum height adjustment */
+        #job-detail {
+            min-height: 300px !important;
+        }
+
+        /* Job card responsive layout improvements */
+        #job-list .flex.justify-between.items-start {
+            flex-wrap: wrap !important;
+            gap: 0.5rem !important;
+        }
+
+        #job-list .flex.justify-between.items-center {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.25rem !important;
+        }
+
+        /* Job detail header responsive layout */
+        #job-detail .flex.justify-between.items-start {
+            flex-direction: column !important;
+            gap: 1rem !important;
+        }
+
+        #job-detail .flex.items-center.gap-6 {
+            flex-wrap: wrap !important;
+            gap: 1rem !important;
+        }
+
+        #job-detail .flex.gap-3 {
+            flex-wrap: wrap !important;
+        }
+
+        /* Responsive text sizing */
+        #job-detail h1 {
+            font-size: 1.25rem !important;
+            line-height: 1.75rem !important;
+        }
+    }
 </style>
 </head>
 <body class="bg-background text-on-surface font-body selection:bg-primary/30">
@@ -346,6 +468,11 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ============ Mobile Activity Log ============ -->
+  <div id="mobile-activity-log" class="hidden xl:hidden bg-surface-container mx-6 mb-6 p-6 rounded-2xl ring-1 ring-outline-variant/20">
+    <!-- Content will be populated by JavaScript -->
   </div>
 
   <!-- ============ Logs View ============ -->

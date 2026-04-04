@@ -17,23 +17,29 @@ import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
 } from "./progress-tracker.js";
-import type { AQConfig, PipelineMode } from "../types/config.js";
+import type { AQConfig, PipelineMode, GitConfig } from "../types/config.js";
 import type { OrchestratorInput } from "./pipeline-context.js";
 import type { CoreLoopResult } from "./core-loop.js";
+import type { ResolvedProject } from "../config/project-resolver.js";
+import type { GitHubIssue } from "../github/issue-fetcher.js";
+import type { ModePreset } from "../config/mode-presets.js";
+import type { EnvironmentPrepResult } from "./pipeline-git-setup.js";
+import type { PipelineCheckpoint } from "./checkpoint.js";
+import type { PipelineReport } from "./result-reporter.js";
 
 const logger = getLogger();
 
 export interface InitialSetupResult {
   projectRoot: string;
   promptsDir: string;
-  gitConfig: any;
-  project: any;
+  gitConfig: GitConfig;
+  project: ResolvedProject;
   dataDir: string;
   timer: PipelineTimer;
   duplicatePRUrl?: string;
-  issue?: any;
+  issue?: GitHubIssue;
   mode?: PipelineMode;
-  checkpoint?: (overrides?: any) => void;
+  checkpoint?: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
 export interface EnvironmentSetupResult {
@@ -45,21 +51,21 @@ export interface EnvironmentSetupResult {
 
 export interface CoreLoopExecutionResult {
   coreResult: CoreLoopResult;
-  preset: any;
+  preset: ModePreset;
   mode: PipelineMode;
 }
 
 export interface PostProcessingContext {
-  issue: any;
+  issue: GitHubIssue;
   coreResult: CoreLoopResult;
-  gitConfig: any;
-  project: any;
+  gitConfig: GitConfig;
+  project: ResolvedProject;
   worktreePath: string;
   promptsDir: string;
   skillsContext: string;
-  preset: any;
+  preset: ModePreset;
   timer: PipelineTimer;
-  checkpoint: (overrides?: any) => void;
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
 /**
@@ -152,12 +158,12 @@ export async function executeInitialSetupPhases(
 export async function executeEnvironmentSetup(
   input: OrchestratorInput,
   runtime: PipelineRuntime,
-  issue: any,
-  project: any,
-  gitConfig: any,
+  issue: GitHubIssue,
+  project: ResolvedProject,
+  gitConfig: GitConfig,
   projectRoot: string,
   config: AQConfig,
-  checkpoint: (overrides?: any) => void
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void
 ): Promise<EnvironmentSetupResult> {
   const { issueNumber, repo } = input;
   const jl = input.jobLogger;
@@ -187,7 +193,7 @@ export async function executeEnvironmentSetup(
 
   // Prepare Work Environment
   const rollbackStrategy = project.safety.rollbackStrategy;
-  let envPrepResult: any;
+  let envPrepResult: EnvironmentPrepResult;
 
   if (runtime.worktreePath) {
     envPrepResult = await prepareWorkEnvironment({
@@ -221,8 +227,8 @@ export async function executeEnvironmentSetup(
 export async function executeCoreLoopPhase(
   input: OrchestratorInput,
   runtime: PipelineRuntime,
-  issue: any,
-  project: any,
+  issue: GitHubIssue,
+  project: ResolvedProject,
   config: AQConfig,
   promptsDir: string,
   dataDir: string,
@@ -303,7 +309,7 @@ export async function executeCoreLoopPhase(
       dataDir,
       patternStore,
       jl,
-      checkpoint: (overrides?: any) => {},
+      checkpoint: (_overrides?: Partial<PipelineCheckpoint>) => {},
     });
     // Create an error that includes the failure result for proper reporting
     const errorWithReport = new Error(failureResult.error) as Error & { failureResult: typeof failureResult };
@@ -329,7 +335,7 @@ export async function executePostProcessingPhases(
   input: OrchestratorInput,
   config: AQConfig,
   startTime: number
-): Promise<{ prUrl?: string; report: any; totalCostUsd?: number }> {
+): Promise<{ prUrl?: string; report: PipelineReport; totalCostUsd?: number }> {
   const { issue, coreResult, gitConfig, project, worktreePath, promptsDir, skillsContext, preset, timer, checkpoint } = context;
   const { issueNumber, repo, aqRoot } = input;
   const jl = input.jobLogger;

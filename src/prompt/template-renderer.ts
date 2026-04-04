@@ -1,4 +1,12 @@
 import { readFileSync } from "fs";
+import { createHash } from "crypto";
+import type {
+  BaseLayer,
+  ProjectLayer,
+  PhaseLayer,
+  PromptLayer,
+  AssembledPrompt
+} from "../types/pipeline.js";
 
 export interface TemplateVariables {
   [key: string]: string | number | boolean | string[] | TemplateVariables;
@@ -73,4 +81,205 @@ export function loadTemplate(templatePath: string): string {
       `Failed to read template file ${templatePath}: ${error.message}`
     );
   }
+}
+
+/**
+ * 기본 레이어를 구축합니다. 역할과 규칙 등 정적 내용을 포함합니다.
+ */
+export function buildBaseLayer(config: {
+  role: string;
+  locale?: string;
+}): BaseLayer {
+  const rules = [
+    "이 Phase의 대상 파일만 수정하세요. 범위를 벗어난 파일은 수정하지 마세요.",
+    "구현이 완료되면 반드시 git add + git commit을 수행하세요.",
+    "검증이 실패하면 수정 후 다시 검증하세요.",
+    "불필요한 파일, 주석, console.log를 추가하지 마세요.",
+    "기존 코드 스타일과 패턴을 따르세요.",
+    "any 금지: src/ 내 any 타입 사용 금지. unknown + 타입 가드로 좁힐 것.",
+    "에러 핸들링: catch (err: unknown) + getErrorMessage(err) 패턴.",
+    "ESM import: 반드시 .js 확장자 포함.",
+    "logger 사용: console.log 대신 getLogger() 사용.",
+    "safety guard: SafetyViolationError를 catch해서 삼키지 말 것."
+  ];
+
+  const outputFormat = `구현 완료 후 아래 JSON을 출력하세요:
+
+\`\`\`json
+{
+  "phaseIndex": <number>,
+  "phaseName": "<Phase 이름>",
+  "filesModified": ["<수정한 파일 경로>", ...],
+  "testsAdded": ["<추가한 테스트>", ...],
+  "commitMessage": "<커밋 메시지>",
+  "notes": "<특이사항>"
+}
+\`\`\``;
+
+  const progressReporting = `작업 중 2분마다 현재 진행 상황을 한 줄로 출력하세요. 형식:
+\`[HEARTBEAT] Phase <N>: <현재 하고 있는 작업> (<진행률>)\`
+
+예시:
+- \`[HEARTBEAT] Phase 1: src/components/Chat.tsx 수정 중 (30%)\`
+- \`[HEARTBEAT] Phase 2: 테스트 작성 중 (80%)\`
+
+**출력이 5분간 없으면 시스템이 작업을 중단합니다.** 반드시 주기적으로 진행 상황을 보고하세요.`;
+
+  const parallelWorkGuide = `**서브에이전트 활용이 활성화되어 있습니다.** 독립적인 파일들을 병렬로 처리하여 효율성을 높이세요.
+
+### 병렬 처리 권장 사항
+- **독립적인 파일 수정**: 서로 의존성이 없는 파일들은 동시에 작업하세요
+- **컴포넌트별 분리**: UI 컴포넌트, 유틸리티, 테스트 파일 등을 병렬로 처리하세요
+- **다중 도구 호출**: 여러 도구를 한 번에 호출하여 작업 속도를 높이세요
+
+### 예시
+\`\`\`
+여러 파일을 동시에 수정하는 경우:
+- src/utils/helper.ts (독립적 유틸리티)
+- src/components/Button.tsx (UI 컴포넌트)
+- tests/helper.test.ts (테스트 파일)
+\`\`\``;
+
+  return {
+    role: config.role,
+    rules,
+    outputFormat,
+    progressReporting,
+    parallelWorkGuide,
+  };
+}
+
+/**
+ * 프로젝트 레이어를 구축합니다. 프로젝트별 설정과 컨벤션을 포함합니다.
+ */
+export function buildProjectLayer(config: {
+  conventions: string;
+  structure?: string;
+  skillsContext?: string;
+  pastFailures?: string;
+  testCommand: string;
+  lintCommand: string;
+  safetyRules?: string[];
+}): ProjectLayer {
+  const defaultSafetyRules = [
+    "config 필드 추가 시: types/config.ts + config/defaults.ts + config/validator.ts 3곳 동시 수정 필수",
+    "안전장치 우회 금지. safety guard를 비활성화하는 코드 작성하지 않는다",
+    "git add -f 절대 금지",
+  ];
+
+  return {
+    conventions: config.conventions,
+    structure: config.structure || "",
+    skillsContext: config.skillsContext,
+    pastFailures: config.pastFailures,
+    testCommand: config.testCommand,
+    lintCommand: config.lintCommand,
+    safetyRules: config.safetyRules || defaultSafetyRules,
+  };
+}
+
+/**
+ * Phase 레이어를 구축합니다. 현재 실행 컨텍스트와 동적 정보를 포함합니다.
+ */
+export function buildPhaseLayer(config: {
+  issue: {
+    number: number;
+    title: string;
+    body: string;
+    labels: string[];
+  };
+  planSummary: string;
+  currentPhase: {
+    index: number;
+    totalCount: number;
+    name: string;
+    description: string;
+    targetFiles: string[];
+  };
+  previousResults: string;
+  repository: {
+    owner: string;
+    name: string;
+    baseBranch: string;
+    workBranch: string;
+  };
+  locale?: string;
+}): PhaseLayer {
+  return {
+    issue: config.issue,
+    planSummary: config.planSummary,
+    currentPhase: config.currentPhase,
+    previousResults: config.previousResults,
+    repository: config.repository,
+    locale: config.locale,
+  };
+}
+
+/**
+ * 전체 프롬프트 레이어를 조립합니다.
+ */
+export function assemblePrompt(
+  layers: PromptLayer,
+  templateContent: string
+): AssembledPrompt {
+  const startTime = Date.now();
+
+  // 정적 레이어 캐시 키 생성
+  const cacheKey = createHash("sha256")
+    .update(layers.base.role + JSON.stringify(layers.base.rules) + layers.project.conventions)
+    .digest("hex")
+    .substring(0, 16);
+
+  // 템플릿 변수 준비
+  const variables: TemplateVariables = {
+    // Base Layer
+    role: layers.base.role,
+    rules: layers.base.rules,
+    outputFormat: layers.base.outputFormat,
+    progressReporting: layers.base.progressReporting,
+    parallelWorkGuide: layers.base.parallelWorkGuide,
+
+    // Project Layer
+    projectConventions: layers.project.conventions,
+    projectStructure: layers.project.structure,
+    skillsContext: layers.project.skillsContext || "",
+    pastFailures: layers.project.pastFailures || "",
+    config: {
+      testCommand: layers.project.testCommand,
+      lintCommand: layers.project.lintCommand,
+    },
+    safetyRules: layers.project.safetyRules,
+
+    // Phase Layer
+    issue: {
+      number: String(layers.phase.issue.number),
+      title: layers.phase.issue.title,
+      body: layers.phase.issue.body,
+      labels: layers.phase.issue.labels,
+    },
+    plan: {
+      summary: layers.phase.planSummary,
+    },
+    phase: {
+      index: String(layers.phase.currentPhase.index),
+      totalCount: String(layers.phase.currentPhase.totalCount),
+      name: layers.phase.currentPhase.name,
+      description: layers.phase.currentPhase.description,
+      files: layers.phase.currentPhase.targetFiles,
+    },
+    previousPhases: {
+      summary: layers.phase.previousResults,
+    },
+    repository: layers.phase.repository,
+  };
+
+  const assembledContent = renderTemplate(templateContent, variables);
+  const assemblyTime = Date.now() - startTime;
+
+  return {
+    content: assembledContent,
+    cacheKey,
+    cacheHit: false, // 실제 캐시 구현에서는 이 값을 적절히 설정
+    assemblyTimeMs: assemblyTime,
+  };
 }

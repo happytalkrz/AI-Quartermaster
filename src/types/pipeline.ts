@@ -447,7 +447,7 @@ export interface FailureJob extends JobBase {
   startedAt: string;
   completedAt: string;
   error: string; // 실패했으므로 에러 메시지 필수
-  prUrl?: never; // 실패했으므로 PR 없음
+  prUrl?: string; // PR 생성 후 실패한 경우도 있을 수 있음
 }
 
 /**

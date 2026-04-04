@@ -228,6 +228,7 @@ export class JobStore extends EventEmitter {
           startedAt: dbJob.startedAt!,
           completedAt: dbJob.completedAt!,
           error: dbJob.error!,
+          prUrl: dbJob.prUrl,
           logs: logMessages,
           phaseResults
         } as FailureJob;
@@ -445,6 +446,7 @@ export class JobStore extends EventEmitter {
           startedAt: baseFields.startedAt!,
           completedAt: baseFields.completedAt || new Date().toISOString(),
           error: baseFields.error!,
+          prUrl: baseFields.prUrl,
           createdAt: baseFields.createdAt,
           lastUpdatedAt: baseFields.lastUpdatedAt,
           logs: baseFields.logs,

@@ -347,7 +347,20 @@ export class JobQueue {
     const hasPR = oldJob.prUrl || logs.some((l: string) => l.includes("PR: https://"));
     if (hasPR) {
       logger.warn(`Job ${jobId} already has a PR — fixing status to success instead of retrying`);
-      this.store.update(jobId, { status: "success", error: undefined });
+
+      // Extract PR URL from logs or use existing prUrl
+      let prUrl = oldJob.prUrl;
+      if (!prUrl) {
+        const prLogEntry = logs.find((l: string) => l.includes("PR: https://"));
+        if (prLogEntry) {
+          const match = prLogEntry.match(/PR: (https:\/\/[^\s]+)/);
+          if (match) {
+            prUrl = match[1];
+          }
+        }
+      }
+
+      this.store.update(jobId, { status: "success", error: undefined, prUrl });
       return undefined;
     }
 

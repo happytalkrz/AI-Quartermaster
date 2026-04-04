@@ -126,6 +126,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       commitHash,
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
+      usage: claudeResult.usage,
     };
   } catch (error) {
     const errMsg = errorMessage(error);
@@ -138,6 +139,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
       costUsd: claudeResult?.costUsd,
+      usage: claudeResult?.usage,
     };
   }
 }

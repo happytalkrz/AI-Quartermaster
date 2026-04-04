@@ -25,6 +25,9 @@ vi.mock("../../src/git/commit-helper.js", () => ({
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
+vi.mock("../../src/safety/rollback-manager.js", () => ({
+  ensureCleanState: vi.fn(),
+}));
 
 import { retryPhase, type PhaseRetryContext } from "../../src/pipeline/phase-retry.js";
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
@@ -33,6 +36,7 @@ import { configForTask } from "../../src/claude/model-router.js";
 import { runShell } from "../../src/utils/cli-runner.js";
 import { classifyError } from "../../src/pipeline/error-classifier.js";
 import { autoCommitIfDirty, getHeadHash } from "../../src/git/commit-helper.js";
+import { ensureCleanState } from "../../src/safety/rollback-manager.js";
 import type { Plan, Phase, ErrorHistoryEntry } from "../../src/types/pipeline.js";
 import type { GitHubIssue } from "../../src/github/issue-fetcher.js";
 
@@ -44,6 +48,7 @@ const mockRunShell = vi.mocked(runShell);
 const mockClassifyError = vi.mocked(classifyError);
 const mockAutoCommitIfDirty = vi.mocked(autoCommitIfDirty);
 const mockGetHeadHash = vi.mocked(getHeadHash);
+const mockEnsureCleanState = vi.mocked(ensureCleanState);
 
 function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
   return {
@@ -97,6 +102,33 @@ function makeContext(overrides: Partial<PhaseRetryContext> = {}): PhaseRetryCont
     testCommand: "npm test",
     lintCommand: "npm run lint",
     gitPath: "git",
+    checkpoint: "abc12345",
+    worktreeManager: {
+      createWorktree: vi.fn(),
+      removeWorktree: vi.fn(),
+    },
+    worktreeInfo: {
+      path: "/tmp/project",
+      branch: "test-branch",
+    },
+    gitConfig: {
+      defaultBaseBranch: "main",
+      branchTemplate: "test-{slug}",
+      commitMessageTemplate: "[#{issueNumber}] {title}",
+      remoteAlias: "origin",
+      allowedRepos: [],
+      gitPath: "git",
+      fetchDepth: 50,
+      signCommits: false,
+    },
+    worktreeConfig: {
+      rootPath: "/tmp/worktrees",
+      cleanupOnSuccess: true,
+      cleanupOnFailure: false,
+      maxAge: "7d",
+      dirTemplate: "{issueNumber}-{slug}",
+    },
+    slug: "test-slug",
     ...overrides,
   };
 }
@@ -120,6 +152,10 @@ describe("retryPhase", () => {
     mockAutoCommitIfDirty.mockResolvedValue(false);
     mockGetHeadHash.mockResolvedValue("abc12345");
     mockRunShell.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+    mockEnsureCleanState.mockResolvedValue({
+      path: "/tmp/project",
+      branch: "test-branch",
+    });
   });
 
   describe("error history rendering", () => {
@@ -423,6 +459,59 @@ describe("retryPhase", () => {
       expect(mockJobLogger.log).toHaveBeenCalledWith("[INFO] Something else");
       expect(mockJobLogger.log).not.toHaveBeenCalledWith("Regular stderr line");
       expect(mockJobLogger.setProgress).toHaveBeenCalled();
+    });
+  });
+
+  describe("clean state management", () => {
+    it("should call ensureCleanState before retry", async () => {
+      const ctx = makeContext({
+        checkpoint: "abc12345",
+        worktreeInfo: { path: "/tmp/worktree", branch: "test-branch" },
+        slug: "test-slug",
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockEnsureCleanState).toHaveBeenCalledWith(
+        "abc12345",
+        ctx.worktreeManager,
+        {
+          cwd: "/tmp/project",
+          gitPath: "git",
+          gitConfig: ctx.gitConfig,
+          worktreeConfig: ctx.worktreeConfig,
+          branchName: "test-branch",
+          issueNumber: 42,
+          slug: "test-slug",
+          worktreePath: "/tmp/worktree"
+        }
+      );
+    });
+
+    it("should update worktreeInfo when ensureCleanState returns new info", async () => {
+      const newWorktreeInfo = {
+        path: "/tmp/new-worktree",
+        branch: "new-branch",
+      };
+      mockEnsureCleanState.mockResolvedValue(newWorktreeInfo);
+
+      const ctx = makeContext();
+
+      await retryPhase(ctx);
+
+      expect(ctx.worktreeInfo).toEqual(newWorktreeInfo);
+    });
+
+    it("should handle ensureCleanState failure", async () => {
+      mockEnsureCleanState.mockRejectedValue(new Error("Clean state failed"));
+      mockClassifyError.mockReturnValue("UNKNOWN");
+
+      const ctx = makeContext();
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Clean state failed");
     });
   });
 });

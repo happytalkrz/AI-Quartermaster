@@ -25,6 +25,7 @@ vi.mock("../../src/review/diff-splitter.js", () => ({
 
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: vi.fn(() => ({
+    debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
@@ -86,6 +87,13 @@ describe("runAnalyst", () => {
     mockRunClaude.mockResolvedValue({
       success: true,
       output: "claude output",
+      costUsd: 0.05,
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_read_input_tokens: 200,
+      },
+      durationMs: 1500,
     });
 
     mockExtractJson.mockReturnValue({
@@ -111,6 +119,12 @@ describe("runAnalyst", () => {
         excess: [],
       },
       durationMs: expect.any(Number),
+      costUsd: 0.05,
+      usage: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_read_input_tokens: 200,
+      },
     });
 
     expect(mockLoadTemplate).toHaveBeenCalledWith(
@@ -196,6 +210,12 @@ describe("runAnalyst", () => {
     mockRunClaude.mockResolvedValue({
       success: false,
       output: "Claude error message",
+      costUsd: 0.01,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 0,
+      },
+      durationMs: 500,
     });
 
     const result = await runAnalyst(mockContext);
@@ -205,6 +225,11 @@ describe("runAnalyst", () => {
     expect(result.findings[0].severity).toBe("error");
     expect(result.findings[0].message).toContain("Claude invocation failed");
     expect(result.summary).toBe("Analysis failed due to Claude error");
+    expect(result.costUsd).toBe(0.01);
+    expect(result.usage).toEqual({
+      input_tokens: 100,
+      output_tokens: 0,
+    });
   });
 
   it("should handle JSON parsing failure gracefully", async () => {
@@ -283,8 +308,20 @@ describe("runAnalyst", () => {
 
       // 각 배치에 대해 Claude 응답 설정
       mockRunClaude
-        .mockResolvedValueOnce({ success: true, output: "batch1 output" })
-        .mockResolvedValueOnce({ success: true, output: "batch2 output" });
+        .mockResolvedValueOnce({
+          success: true,
+          output: "batch1 output",
+          costUsd: 0.02,
+          usage: { input_tokens: 500, output_tokens: 300 },
+          durationMs: 1000
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          output: "batch2 output",
+          costUsd: 0.03,
+          usage: { input_tokens: 600, output_tokens: 400, cache_read_input_tokens: 100 },
+          durationMs: 1200
+        });
 
       mockExtractJson
         .mockReturnValueOnce({
@@ -308,6 +345,13 @@ describe("runAnalyst", () => {
       expect(result.coverage.implemented).toEqual(["featureX", "featureY"]);
       expect(result.coverage.missing).toEqual(["featureA"]);
       expect(result.summary).toContain("Split analysis from 2 batches");
+      expect(result.costUsd).toBe(0.05); // 0.02 + 0.03
+      expect(result.usage).toEqual({
+        input_tokens: 1100, // 500 + 600
+        output_tokens: 700, // 300 + 400
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 100,
+      });
     });
 
     it("should fall back to single analysis if no files to split", async () => {

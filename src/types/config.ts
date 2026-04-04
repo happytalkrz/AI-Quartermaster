@@ -3,6 +3,13 @@ export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
 export type MergeMethod = "merge" | "squash" | "rebase";
 
+export interface RetryConfig {
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  jitterFactor: number;
+}
+
 export interface SkillContent {
   name: string;
   category: string;
@@ -55,13 +62,16 @@ export interface ClaudeCliConfig {
   model: string;            // 글로벌 기본 모델 (routing 미설정 시 사용)
   models: ModelRouting;     // 태스크별 모델 라우팅
   maxTurns: number;
+  maxTurnsPerMode?: Record<ExecutionMode, number>; // 실행 모드별 maxTurns 제한
   timeout: number;
   additionalArgs: string[];
+  retry?: RetryConfig;
 }
 
 export interface GhCliConfig {
   path: string;
   timeout: number;
+  retry?: RetryConfig;
 }
 
 export interface CommandsConfig {
@@ -95,6 +105,8 @@ export interface ReviewConfig {
   enabled: boolean;
   rounds: ReviewRound[];
   simplify: SimplifyConfig;
+  /** 통합 리뷰 모드 활성화 - true시 1회 호출로 3가지 관점 통합 평가 */
+  unifiedMode?: boolean;
 }
 
 export interface PrConfig {
@@ -108,6 +120,7 @@ export interface PrConfig {
   linkIssue: boolean;
   autoMerge: boolean;
   mergeMethod: MergeMethod;
+  deleteBranch?: boolean;
 }
 
 export interface TimeoutsConfig {
@@ -115,6 +128,14 @@ export interface TimeoutsConfig {
   phaseImplementation: number;
   reviewRound: number;
   prCreation: number;
+}
+
+export interface FeasibilityCheckConfig {
+  enabled: boolean;
+  maxRequirements: number;
+  maxFiles: number;
+  blockedKeywords: string[];
+  skipReasons: string[];
 }
 
 export interface SafetyConfig {
@@ -131,9 +152,22 @@ export interface SafetyConfig {
   stopConditions: string[];
   allowedLabels: string[];
   rollbackStrategy: "none" | "all" | "failed-only";
+  feasibilityCheck: FeasibilityCheckConfig;
+}
+
+export interface ExecutionModePreset {
+  reviewRounds: number;
+  enableAdvancedReview: boolean;
+  enableSimplify: boolean;
+  enableFinalValidation: boolean;
+  maxPhases: number;
+  maxRetries: number;
+  strictSafety: boolean;
+  description: string;
 }
 
 export type PipelineMode = "code" | "content";
+export type ExecutionMode = "economy" | "standard" | "thorough";
 export type ServerMode = "polling" | "webhook";
 
 /** Setup wizard options */
@@ -185,5 +219,6 @@ export interface AQConfig {
   review: ReviewConfig;
   pr: PrConfig;
   safety: SafetyConfig;
+  executionMode: ExecutionMode;
   projects?: ProjectConfig[];  // per-project overrides
 }

@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, renameSync } from "fs";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { PipelineState, Plan, PhaseResult } from "../types/pipeline.js";
 import type { PipelineMode } from "../types/config.js";
 
@@ -38,8 +39,8 @@ export function loadCheckpoint(dataDir: string, issueNumber: number): PipelineCh
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, "utf-8")) as PipelineCheckpoint;
-  } catch (err) {
-    logger.warn(`Failed to load checkpoint for issue #${issueNumber}: ${err}`);
+  } catch (err: unknown) {
+    logger.warn(`Failed to load checkpoint for issue #${issueNumber}: ${getErrorMessage(err)}`);
     return null;
   }
 }

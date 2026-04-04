@@ -51,7 +51,7 @@ export async function cleanOldWorktrees(
         await removeWorktree(gitConfig, wt.path, { cwd: options.cwd, force: true });
         removed.push(wt.path);
       }
-    } catch {
+    } catch (err: unknown) {
       // If stat fails, the worktree may already be gone
       logger.warn(`Could not stat worktree: ${wt.path}`);
     }

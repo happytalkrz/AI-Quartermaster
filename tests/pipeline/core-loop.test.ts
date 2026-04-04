@@ -120,14 +120,27 @@ function makePhase(index: number, name: string, dependsOn?: number[]): Phase {
   };
 }
 
-function makeSuccessResult(phaseIndex: number, phaseName: string): PhaseResult {
-  return {
+function makeSuccessResult(phaseIndex: number, phaseName: string, costUsd?: number): PhaseResult {
+  const result: PhaseResult = {
     phaseIndex,
     phaseName,
     success: true,
     commitHash: "abc12345",
     durationMs: 1000,
+    usage: {
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+    },
   };
+
+  // Only add costUsd if provided
+  if (costUsd !== undefined) {
+    result.costUsd = costUsd;
+  }
+
+  return result;
 }
 
 function makeFailureResult(phaseIndex: number, phaseName: string, error = "Test error", errorCategory: "TS_ERROR" | "TIMEOUT" | "SAFETY_VIOLATION" = "TS_ERROR"): PhaseResult {
@@ -162,7 +175,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -205,7 +218,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -236,7 +249,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: false,
         groups: [],
@@ -259,7 +272,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -292,7 +305,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "Flaky")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -331,7 +344,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TimeoutPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -369,7 +382,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -407,7 +420,7 @@ describe("runCoreLoop", () => {
         dataDir: "/tmp/data",
       });
 
-      mockGeneratePlan.mockResolvedValue(makePlan([makePhase(0, "Test")]));
+      mockGeneratePlan.mockResolvedValue({ plan: makePlan([makePhase(0, "Test")]) });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [
@@ -439,7 +452,7 @@ describe("runCoreLoop", () => {
       const phases = Array.from({ length: 15 }, (_, i) => makePhase(i, `Phase${i}`));
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
 
       await runCoreLoop(makeContext());
 
@@ -452,7 +465,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "FlakyPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -522,7 +535,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -564,7 +577,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TimeoutPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -589,7 +602,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "UnsafePhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -614,7 +627,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "MixedErrorPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -664,7 +677,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "UnknownErrorPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -706,7 +719,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }], // Both phases run in parallel
@@ -760,7 +773,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "TestPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
 
       mockSchedulePhases.mockReturnValue({
         success: true,
@@ -798,7 +811,11 @@ describe("runCoreLoop", () => {
       const backendResult = makeSuccessResult(1, "Backend");
       backendResult.costUsd = 0.035;
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({
+        plan,
+        costUsd: 0.015,
+        usage: { input_tokens: 200, output_tokens: 100, cache_read_input_tokens: 50, cache_creation_input_tokens: 25 }
+      });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -810,7 +827,13 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.totalCostUsd).toBe(0.065);
+      expect(result.totalCostUsd).toBe(0.080); // 0.015 (plan) + 0.030 + 0.035
+      expect(result.totalUsage).toEqual({
+        input_tokens: 400, // 200 (plan) + 100 + 100
+        output_tokens: 200, // 100 (plan) + 50 + 50
+        cache_read_input_tokens: 50, // 50 (plan) + 0 + 0
+        cache_creation_input_tokens: 25, // 25 (plan) + 0 + 0
+      });
       expect(result.phaseResults).toHaveLength(2);
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
@@ -819,7 +842,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "Test")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan, costUsd: 0 });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -845,7 +868,7 @@ describe("runCoreLoop", () => {
       ];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan, costUsd: 0 });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -873,7 +896,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -899,7 +922,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -936,7 +959,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],
@@ -954,7 +977,7 @@ describe("runCoreLoop", () => {
     it("should handle malformed plan generation responses", async () => {
       const validPlan = makePlan([makePhase(0, "ValidPhase")]);
 
-      mockGeneratePlan.mockResolvedValue(validPlan);
+      mockGeneratePlan.mockResolvedValue({ plan: validPlan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: validPlan.phases }],
@@ -972,7 +995,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "ErrorContextPhase")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue(plan);
+      mockGeneratePlan.mockResolvedValue({ plan });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],

@@ -19,15 +19,122 @@ export const MODEL_TOKEN_LIMITS = {
 /** Safety margin percentage (20%) */
 export const SAFETY_MARGIN = 0.2;
 
-/** Average characters per token (4 characters = 1 token) */
-export const CHARS_PER_TOKEN = 4;
+/** Content type for token estimation */
+export type ContentType = 'code' | 'natural' | 'auto';
+
+/** Characters per token by content type */
+export const CHARS_PER_TOKEN_BY_TYPE = {
+  /** Code content (variables, symbols, brackets) - denser token usage */
+  code: 3.2,
+  /** Natural language - standard ratio */
+  natural: 4,
+} as const;
+
+/** Default characters per token (backwards compatibility) */
+export const CHARS_PER_TOKEN = CHARS_PER_TOKEN_BY_TYPE.natural;
+
+/**
+ * Detects if the content is primarily code based on various patterns
+ */
+export function isCodeContent(text: string): boolean {
+  if (!text || text.length === 0) {
+    return false;
+  }
+
+  // Performance optimization: sample large texts
+  let sampleText = text;
+  if (text.length > 50_000) {
+    const start = text.substring(0, 5000);
+    const middle = text.substring(Math.floor(text.length / 2) - 2500, Math.floor(text.length / 2) + 2500);
+    const end = text.substring(text.length - 5000);
+    sampleText = start + '\n' + middle + '\n' + end;
+  }
+
+  // Check for diff headers (strong indicator of code review context)
+  if (sampleText.includes('diff --git') || sampleText.includes('@@') || /^[+-].*$/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for import/export statements
+  if (/^\s*(import|export|from)\s+|\brequire\s*\(/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for function declarations (including async)
+  if (/^\s*(async\s+)?function\s+\w+|^\s*(const|let|var)\s+\w+\s*=.*(\(.*\)|=>)/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for type/class declarations
+  if (/^\s*(class|interface|type|enum)\s+\w+/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for JSON structure
+  if (/[{[][\s\S]*"[^"]+"\s*:/.test(sampleText)) {
+    return true;
+  }
+
+  // Check for programming keywords
+  const keywordMatches = sampleText.match(/\b(if|else|for|while|switch|case|return|throw|try|catch|finally)\b/g) || [];
+  if (keywordMatches.length > sampleText.split(/\s+/).length * 0.05) {
+    return true;
+  }
+
+  // Analyze line patterns for code vs natural language
+  const lines = sampleText.split('\n');
+  let strongCodeLines = 0;
+  let naturalLanguageLines = 0;
+
+  for (const line of lines.slice(0, 200)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Check for natural language patterns (markdown, sentences)
+    if (/^#+\s+|^-\s+|^\*\s+|^>\s+|\.\s*$|[.!?]\s+[A-Z]/.test(trimmed)) {
+      naturalLanguageLines++;
+      continue;
+    }
+
+    // Check for code patterns
+    if (/^\s*[\w$]+\s*[:=].*[{;]$|^\s*[\w$]+\([^)]*\)\s*[{=>]|^\s*\/\/|^\s*\/\*/.test(line)) {
+      strongCodeLines++;
+    }
+  }
+
+  const totalLines = strongCodeLines + naturalLanguageLines;
+  if (totalLines === 0) return false;
+
+  // If >30% natural language, need >40% strong code indicators
+  if (naturalLanguageLines > totalLines * 0.3) {
+    return strongCodeLines > totalLines * 0.4;
+  }
+
+  return strongCodeLines > 0;
+}
 
 /**
  * Estimates the token count for a given text
- * Uses a simple heuristic: 4 characters = 1 token
+ * @param text The text to analyze
+ * @param contentType Content type hint ('code', 'natural', or 'auto' for detection)
  */
-export function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+export function estimateTokenCount(text: string, contentType: ContentType = 'auto'): number {
+  if (!text || text.length === 0) {
+    return 0;
+  }
+
+  let charsPerToken: number;
+
+  if (contentType === 'auto') {
+    // Auto-detect content type
+    charsPerToken = isCodeContent(text)
+      ? CHARS_PER_TOKEN_BY_TYPE.code
+      : CHARS_PER_TOKEN_BY_TYPE.natural;
+  } else {
+    charsPerToken = CHARS_PER_TOKEN_BY_TYPE[contentType];
+  }
+
+  return Math.ceil(text.length / charsPerToken);
 }
 
 /**
@@ -109,4 +216,191 @@ export function analyzeTokenUsage(text: string, modelName: string): TokenUsageIn
     exceedsLimit,
     usagePercentage,
   };
+}
+
+/**
+ * Truncates text to fit within a token budget
+ * Attempts to preserve sentence boundaries when possible
+ */
+export function truncateToTokenBudget(text: string, maxTokens: number): string {
+  if (!text || maxTokens <= 0) return '';
+
+  const estimatedTokens = estimateTokenCount(text);
+  if (estimatedTokens <= maxTokens) return text;
+
+  // Reserve tokens for ellipsis
+  const ellipsisTokens = estimateTokenCount('...');
+  const availableTokens = Math.max(1, maxTokens - ellipsisTokens);
+
+  // Calculate approximate character limit
+  const targetChars = Math.floor(availableTokens * CHARS_PER_TOKEN);
+  if (targetChars <= 0) return '';
+
+  // Try to truncate at sentence boundaries first
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  let result = '';
+
+  for (const sentence of sentences) {
+    const testResult = result + (result ? ' ' : '') + sentence;
+    if (estimateTokenCount(testResult) > availableTokens) {
+      break;
+    }
+    result = testResult;
+  }
+
+  // If no complete sentences fit, truncate at word boundaries
+  if (!result && targetChars > 0) {
+    const truncated = text.substring(0, targetChars);
+    const lastSpace = truncated.lastIndexOf(' ');
+    result = lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+  }
+
+  // Add ellipsis if we truncated
+  if (result.length < text.length) {
+    result += '...';
+  }
+
+  return result;
+}
+
+/**
+ * Summarizes text to fit within a target token budget
+ * Keeps beginning and end, with summary indicator in the middle
+ */
+export function summarizeForBudget(text: string, targetTokens: number): string {
+  if (!text || targetTokens <= 0) return '';
+
+  const estimatedTokens = estimateTokenCount(text);
+  if (estimatedTokens <= targetTokens) return text;
+
+  // Reserve tokens for summary indicator
+  const summaryIndicator = '\n\n[... content truncated ...]\n\n';
+  const reservedTokens = estimateTokenCount(summaryIndicator);
+  const availableTokens = Math.max(0, targetTokens - reservedTokens);
+
+  if (availableTokens < 10) {
+    // If too little space, just truncate
+    return truncateToTokenBudget(text, targetTokens);
+  }
+
+  // Split available tokens between beginning and end
+  const beginTokens = Math.floor(availableTokens * 0.6);
+  const endTokens = availableTokens - beginTokens;
+
+  const beginChars = Math.floor(beginTokens * CHARS_PER_TOKEN);
+  const endChars = Math.floor(endTokens * CHARS_PER_TOKEN);
+
+  if (beginChars <= 0 || endChars <= 0) {
+    return truncateToTokenBudget(text, targetTokens);
+  }
+
+  // Get beginning part
+  let beginning = text.substring(0, beginChars);
+  const lastSpaceBegin = beginning.lastIndexOf(' ');
+  if (lastSpaceBegin > 0) {
+    beginning = beginning.substring(0, lastSpaceBegin);
+  }
+
+  // Get ending part - start from the right position
+  const endStartPos = Math.max(0, text.length - endChars);
+  let ending = text.substring(endStartPos);
+  const firstSpaceEnd = ending.indexOf(' ');
+  if (firstSpaceEnd > 0 && firstSpaceEnd < ending.length - 1) {
+    ending = ending.substring(firstSpaceEnd + 1);
+  }
+
+  // Make sure we don't have overlapping or adjacent parts
+  if (beginning.length + ending.length >= text.length - 10) {
+    return truncateToTokenBudget(text, targetTokens);
+  }
+
+  return beginning + summaryIndicator + ending;
+}
+
+/**
+ * Truncates repository structure to fit within token budget
+ * Prioritizes important files and directories
+ */
+export function truncateRepoStructure(structure: string, maxTokens: number): string {
+  if (!structure || maxTokens <= 0) return '';
+
+  const estimatedTokens = estimateTokenCount(structure);
+  if (estimatedTokens <= maxTokens) return structure;
+
+  const lines = structure.split('\n').filter(line => line.trim());
+
+  // Priority patterns (higher priority = more important)
+  const priorities = [
+    { pattern: /(README|package\.json|tsconfig|\.gitignore)/i, priority: 10 },
+    { pattern: /^[^/\s]/, priority: 9 }, // Root level files
+    { pattern: /\/(src|lib|app)\//, priority: 8 }, // Source directories
+    { pattern: /\.(ts|tsx|js|jsx)$/i, priority: 7 }, // TypeScript/JavaScript files
+    { pattern: /\/(test|spec)\/.*\.(test|spec)\./i, priority: 6 }, // Test files
+    { pattern: /\/(docs?|documentation)\//, priority: 5 }, // Documentation
+    { pattern: /\/(config|settings)\//, priority: 4 }, // Configuration
+    { pattern: /\.(json|yaml|yml)$/i, priority: 3 }, // Config files
+    { pattern: /\.(md|txt)$/i, priority: 2 }, // Documentation files
+    { pattern: /node_modules/, priority: 0 }, // Lowest priority
+  ];
+
+  // Score each line
+  const scoredLines = lines.map((line, index) => {
+    let score = 1; // Base score
+    for (const { pattern, priority } of priorities) {
+      if (pattern.test(line)) {
+        score = Math.max(score, priority);
+      }
+    }
+    return { line, score, originalIndex: index };
+  });
+
+  // Sort by score (descending) and then by original order
+  scoredLines.sort((a, b) => {
+    if (a.score !== b.score) {
+      return b.score - a.score;
+    }
+    return a.originalIndex - b.originalIndex;
+  });
+
+  // Always include at least one high-priority line if possible
+  const result: { line: string; originalIndex: number }[] = [];
+  let currentTokens = 0;
+
+  // First, try to include the highest priority items
+  for (const item of scoredLines) {
+    const lineTokens = estimateTokenCount(item.line + '\n');
+    if (currentTokens + lineTokens <= maxTokens) {
+      result.push(item);
+      currentTokens += lineTokens;
+    } else if (result.length === 0 && item.score >= 9) {
+      // Force include at least one high priority item even if it's close to budget
+      result.push(item);
+      currentTokens += lineTokens;
+      break;
+    }
+  }
+
+  // If we truncated, add indicator (but only if we have room)
+  if (result.length < lines.length) {
+    const truncatedCount = lines.length - result.length;
+    const indicator = `... (${truncatedCount} more files/directories truncated)`;
+    const indicatorTokens = estimateTokenCount(indicator + '\n');
+
+    // Only add indicator if we have room and it's useful
+    if (currentTokens + indicatorTokens <= maxTokens && result.length > 0) {
+      result.push({ line: indicator, originalIndex: lines.length });
+    } else if (result.length === 0) {
+      // If nothing fits, return at least the indicator
+      return indicator;
+    }
+  }
+
+  // Sort final result by original line order (except for the indicator)
+  const normalLines = result.filter(item => !item.line.startsWith('...'));
+  const indicators = result.filter(item => item.line.startsWith('...'));
+
+  normalLines.sort((a, b) => a.originalIndex - b.originalIndex);
+
+  const finalLines = [...normalLines, ...indicators].map(item => item.line);
+  return finalLines.join('\n');
 }

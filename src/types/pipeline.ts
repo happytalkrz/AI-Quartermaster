@@ -12,7 +12,15 @@ export type PipelineState =
   | "FINAL_VALIDATING"
   | "DRAFT_PR_CREATED"
   | "DONE"
-  | "FAILED";
+  | "FAILED"
+  | "SKIPPED";
+
+export interface UsageInfo {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
 
 export interface Plan {
   mode?: "code" | "content";
@@ -25,6 +33,8 @@ export interface Plan {
   phases: Phase[];
   verificationPoints: string[];
   stopConditions: string[];
+  costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface Phase {
@@ -37,12 +47,20 @@ export interface Phase {
   dependsOn?: number[];
 }
 
+export interface PlanWithCost {
+  plan: Plan;
+  costUsd?: number;
+  usage?: UsageInfo;
+}
+
 export type ErrorCategory =
   | "TS_ERROR"
   | "TIMEOUT"
   | "CLI_CRASH"
   | "VERIFICATION_FAILED"
   | "SAFETY_VIOLATION"
+  | "RATE_LIMIT"
+  | "PROMPT_TOO_LONG"
   | "UNKNOWN";
 
 export type MergeStateStatus =
@@ -77,6 +95,7 @@ export interface PhaseResult {
   lastOutput?: string;
   durationMs: number;
   costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface PipelineResult {
@@ -89,18 +108,19 @@ export interface PipelineResult {
   completedAt?: string;
   error?: string;
   totalCostUsd?: number;
+  totalUsage?: UsageInfo;
 }
 
 export interface ValidationPhaseContext {
   commands: {
-    claudeCli: any;
+    claudeCli: import("./config.js").ClaudeCliConfig;
   };
   cwd: string;
   gitPath: string;
   maxRetries: number;
   plan: Plan;
   phaseResults: PhaseResult[];
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
 }
 
 export interface PublishPhaseContext {
@@ -112,23 +132,24 @@ export interface PublishPhaseContext {
   branchName: string;
   baseBranch: string;
   worktreePath: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectConfig: {
-    safety: any;
-    pr: any;
+    safety: import("./config.js").SafetyConfig;
+    pr: import("./config.js").PrConfig;
     commands: {
-      ghCli: any;
+      ghCli: import("./config.js").GhCliConfig;
     };
   };
   promptsDir: string;
   dryRun: boolean;
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
+  totalUsage?: UsageInfo;
 }
 
 export interface CleanupContext {
   worktreePath?: string;
   branchName?: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectRoot: string;
   cleanupOnSuccess: boolean;
   cleanupOnFailure: boolean;
@@ -138,7 +159,7 @@ export interface CleanupContext {
   phaseResults: PhaseResult[];
   startTime: number;
   prUrl?: string;
-  config: any;
+  config: import("./config.js").AQConfig;
   aqRoot?: string;
   dataDir: string;
 }
@@ -150,10 +171,10 @@ export interface FailureHandlerContext {
   branchName?: string;
   rollbackHash?: string;
   rollbackStrategy: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectRoot: string;
   cleanupOnFailure: boolean;
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
 }
 
 export interface PipelineSetupContext {

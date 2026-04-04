@@ -36,7 +36,7 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
     let payload: GitHubIssueEvent;
     try {
       payload = JSON.parse(body);
-    } catch {
+    } catch (error: unknown) {
       return c.json({ error: "Invalid JSON payload" }, 400);
     }
 
@@ -71,8 +71,8 @@ export function startServer(
   let server: ReturnType<typeof serve>;
   try {
     server = serve({ fetch: app.fetch, port });
-  } catch (err: any) {
-    if (err?.code === "EADDRINUSE") {
+  } catch (err: unknown) {
+    if (err instanceof Error && (err as NodeJS.ErrnoException).code === "EADDRINUSE") {
       logger.warn(`포트 ${port}가 이미 사용 중입니다 (EADDRINUSE)`);
       throw new Error(`포트 ${port}가 이미 사용 중입니다. 다른 프로세스가 해당 포트를 점유하고 있습니다.`);
     }
@@ -82,7 +82,7 @@ export function startServer(
   return {
     close: () => {
       // @hono/node-server returns a Node http.Server
-      (server as any).close?.();
+      (server as { close?: () => void }).close?.();
     },
   };
 }

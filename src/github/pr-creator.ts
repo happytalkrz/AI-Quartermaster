@@ -3,7 +3,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
-import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus } from "../types/pipeline.js";
+import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus, UsageInfo } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -21,6 +21,7 @@ export interface PrContext {
   branchName: string;
   baseBranch: string;
   totalCostUsd?: number;
+  totalUsage?: UsageInfo;
 }
 
 /**
@@ -64,9 +65,13 @@ export async function createDraftPR(
         totalCostUsd: ctx.totalCostUsd?.toFixed(4) || '0.0000',
         phaseCount: ctx.phaseResults.length,
         successCount: ctx.phaseResults.filter(r => r.success).length,
+        inputTokens: ctx.totalUsage?.input_tokens || 0,
+        outputTokens: ctx.totalUsage?.output_tokens || 0,
+        cacheCreationTokens: ctx.totalUsage?.cache_creation_input_tokens || 0,
+        cacheReadTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
       },
     });
-  } catch {
+  } catch (err: unknown) {
     // Fallback body if template fails
     const phasesText = ctx.phaseResults?.length
       ? ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")
@@ -294,7 +299,7 @@ export async function checkPrConflict(
 
           conflictFiles.push(...Array.from(fileSet));
         }
-      } catch (diffError) {
+      } catch (diffError: unknown) {
         logger.warn(`Failed to get diff for PR #${prNumber}: ${diffError}`);
       }
     }
@@ -311,7 +316,7 @@ export async function checkPrConflict(
     }
 
     return null; // No conflicts detected
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error checking PR #${prNumber} conflicts: ${error}`);
     return null;
   }
@@ -348,7 +353,7 @@ export async function commentOnIssue(
 
     logger.info(`Added comment to issue #${issueNumber}`);
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error commenting on issue #${issueNumber}: ${error}`);
     return false;
   }
@@ -383,7 +388,7 @@ export async function listOpenPrs(
     const prs = JSON.parse(result.stdout.trim()) as Array<{ number: number; title: string }>;
     logger.debug(`Found ${prs.length} open PRs in ${repo}`);
     return prs;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error listing PRs for ${repo}: ${error}`);
     return null;
   }

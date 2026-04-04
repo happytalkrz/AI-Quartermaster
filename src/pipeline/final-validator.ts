@@ -1,6 +1,6 @@
 import { runShell } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
-import type { CommandsConfig } from "../types/config.js";
+import type { CommandsConfig, ExecutionMode } from "../types/config.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 
 const logger = getLogger();
@@ -28,22 +28,26 @@ async function runCheck(name: string, command: string, options: { cwd: string },
 export async function runFinalValidation(
   commands: CommandsConfig,
   options: { cwd: string },
+  executionMode: ExecutionMode = "standard",
   gitPath?: string
 ): Promise<ValidationResult> {
   const git = gitPath ?? "git";
-  logger.info("Running final validation...");
+  logger.info(`Running final validation (${executionMode} mode)...`);
   const checks: ValidationCheck[] = [];
 
-  // Run test and typecheck in parallel
-  const [testCheck, typecheckCheck] = await Promise.all([
-    commands.test ? runCheck("test", commands.test, options, 300000) : null,
-    commands.typecheck ? runCheck("typecheck", commands.typecheck, options, 60000) : null,
-  ]);
-  if (testCheck) checks.push(testCheck);
-  if (typecheckCheck) checks.push(typecheckCheck);
+  const isComprehensive = executionMode === "standard" || executionMode === "thorough";
 
-  // Run lint sequentially (has autofix retry)
-  if (commands.lint) {
+  // Run test and typecheck in parallel if needed
+  const parallelChecks = await Promise.all([
+    isComprehensive && commands.test ? runCheck("test", commands.test, options, 300000) : null,
+    isComprehensive && commands.typecheck ? runCheck("typecheck", commands.typecheck, options, 60000) : null,
+  ]);
+
+  if (parallelChecks[0]) checks.push(parallelChecks[0]);
+  if (parallelChecks[1]) checks.push(parallelChecks[1]);
+
+  // Run lint sequentially (has autofix retry) only for thorough mode
+  if (executionMode === "thorough" && commands.lint) {
     let lintResult = await runShell(commands.lint, { cwd: options.cwd, timeout: 60000 });
     if (lintResult.exitCode !== 0) {
       // Try autofix
@@ -61,7 +65,7 @@ export async function runFinalValidation(
     });
   }
 
-  // Run build sequentially
+  // Run build sequentially - all modes include build
   if (commands.build) {
     const buildResult = await runShell(commands.build, { cwd: options.cwd, timeout: 120000 });
     checks.push({

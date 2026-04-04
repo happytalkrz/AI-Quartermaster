@@ -51,6 +51,10 @@ commands:                                # [선택] 명령어 설정 (모든 필
       review: "claude-haiku-4-5-20251001" # [선택] 리뷰/검증용 모델
       fallback: "claude-sonnet-4-20250514" # [선택] 실패 시 폴백 모델
     maxTurns: 50                         # [선택] 최대 턴 수 (기본값: 50)
+    maxTurnsPerMode:                     # [선택] 실행 모드별 최대 턴 수 (기본값: economy=30, standard=60, thorough=120)
+      economy: 30                        # [선택] Economy 모드 최대 턴 수
+      standard: 60                       # [선택] Standard 모드 최대 턴 수
+      thorough: 120                      # [선택] Thorough 모드 최대 턴 수
     timeout: 600000                      # [선택] 타임아웃 ms (기본값: 600000)
     additionalArgs: []                   # [선택] 추가 인수 (기본값: [])
   ghCli:                                 # [선택] GitHub CLI 설정
@@ -128,3 +132,43 @@ safety:                                  # [선택] 안전장치 설정 (모든 
   #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)
   #   "failed-only" — reset to last successful phase commit
   rollbackStrategy: "none"               # [선택] 롤백 전략: none | all | failed-only (기본값: "none")
+
+# 실행 모드 프리셋 (GitHub 라벨로 선택)
+# 작업 중요도에 맞는 검증 강도를 적용하여 토큰 소비를 최적화합니다.
+# 라벨 형식: aqm-economy, aqm-thorough 또는 기존 aq-exec:economy, aq-exec:standard, aq-exec:thorough
+
+executionModes:                         # [선택] 실행 모드별 설정 (기본값은 각 모드의 내장 프리셋)
+  economy:                              # [선택] Economy 모드: 빠른 구현에 집중, 리뷰 스킵으로 토큰 소비 최소화
+    reviewRounds: 0                     # [선택] 리뷰 라운드 수 (기본값: 0)
+    enableAdvancedReview: false         # [선택] 고급 리뷰 활성화 (기본값: false)
+    enableSimplify: false               # [선택] 코드 간소화 활성화 (기본값: false)
+    enableFinalValidation: false        # [선택] 최종 검증 활성화 (기본값: false)
+    maxPhases: 5                        # [선택] 최대 Phase 수 (기본값: 5)
+    maxRetries: 1                       # [선택] 최대 재시도 횟수 (기본값: 1)
+    strictSafety: false                 # [선택] 엄격한 안전장치 (기본값: false)
+    # 적용 대상: 단순 수정, 문서 작업, 프로토타입
+
+  standard:                             # [선택] Standard 모드: 균형 잡힌 품질과 효율성 (기본값)
+    reviewRounds: 1                     # [선택] 리뷰 라운드 수 (기본값: 1)
+    enableAdvancedReview: true          # [선택] 고급 리뷰 활성화 (기본값: true)
+    enableSimplify: true                # [선택] 코드 간소화 활성화 (기본값: true)
+    enableFinalValidation: true         # [선택] 최종 검증 활성화 (기본값: true)
+    maxPhases: 10                       # [선택] 최대 Phase 수 (기본값: 10)
+    maxRetries: 2                       # [선택] 최대 재시도 횟수 (기본값: 2)
+    strictSafety: true                  # [선택] 엄격한 안전장치 (기본값: true)
+    # 적용 대상: 일반적인 기능 개발, 버그 수정
+
+  thorough:                             # [선택] Thorough 모드: 최고 수준의 코드 품질 보장
+    reviewRounds: 3                     # [선택] 리뷰 라운드 수 (기본값: 3)
+    enableAdvancedReview: true          # [선택] 고급 리뷰 활성화 (기본값: true)
+    enableSimplify: true                # [선택] 코드 간소화 활성화 (기본값: true)
+    enableFinalValidation: true         # [선택] 최종 검증 활성화 (기본값: true)
+    maxPhases: 15                       # [선택] 최대 Phase 수 (기본값: 15)
+    maxRetries: 3                       # [선택] 최대 재시도 횟수 (기본값: 3)
+    strictSafety: true                  # [선택] 엄격한 안전장치 (기본값: true)
+    # 적용 대상: 보안 기능, 아키텍처 변경, 중요한 API
+
+# 사용법:
+# 1. GitHub 이슈에 라벨 추가: aqm-economy, aqm-thorough (standard는 기본값)
+# 2. 또는 기존 형식: aq-exec:economy, aq-exec:standard, aq-exec:thorough
+# 3. 라벨이 없으면 standard 모드로 실행됩니다.

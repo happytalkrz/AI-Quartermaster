@@ -1,5 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
+import { resolve, normalize } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -8,6 +10,9 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema } from "../types/api.js";
+import { SelfUpdater } from "../update/self-updater.js";
+import { isPathSafe } from "../utils/slug.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -17,25 +22,63 @@ const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 interface SSEClient {
   id: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
+  connectedAt: number;
+  lastHeartbeat: number;
 }
+
 
 const sseClients = new Map<string, SSEClient>();
 const encoder = new TextEncoder();
 
-function broadcastToAllClients(event: string, data: any): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+// Periodic cleanup intervals
+let tokenCleanupInterval: ReturnType<typeof setInterval> | undefined;
+let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+
+// Cleanup constants
+const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+const CLIENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+function removeStaleClients(): void {
+  const now = Date.now();
   const clientsToRemove: string[] = [];
 
   for (const [clientId, client] of sseClients) {
-    try {
-      client.controller.enqueue(encoder.encode(message));
-    } catch {
-      // Client disconnected, mark for removal
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
       clientsToRemove.push(clientId);
     }
   }
 
-  // Clean up disconnected clients
+  for (const clientId of clientsToRemove) {
+    try {
+      const client = sseClients.get(clientId);
+      client?.controller.close();
+    } catch {
+      // Ignore errors when closing already closed streams
+    }
+    sseClients.delete(clientId);
+  }
+}
+
+function broadcastToAllClients(event: string, data: unknown): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const now = Date.now();
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
+      clientsToRemove.push(clientId);
+      continue;
+    }
+
+    try {
+      client.controller.enqueue(encoder.encode(message));
+      client.lastHeartbeat = now;
+    } catch {
+      clientsToRemove.push(clientId);
+    }
+  }
+
   for (const clientId of clientsToRemove) {
     sseClients.delete(clientId);
   }
@@ -48,10 +91,75 @@ function pruneExpiredTokens(): void {
   }
 }
 
+function sendHeartbeat(): void {
+  const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    try {
+      client.controller.enqueue(encoder.encode(heartbeatMessage));
+    } catch {
+      clientsToRemove.push(clientId);
+    }
+  }
+
+  for (const clientId of clientsToRemove) {
+    sseClients.delete(clientId);
+  }
+}
+
+function startPeriodicCleanup(): void {
+  // Stop existing intervals if any
+  stopPeriodicCleanup();
+
+  // Start token cleanup interval
+  tokenCleanupInterval = setInterval(() => {
+    pruneExpiredTokens();
+  }, TOKEN_CLEANUP_INTERVAL_MS);
+
+  // Start heartbeat interval
+  heartbeatInterval = setInterval(() => {
+    sendHeartbeat();
+    removeStaleClients();
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopPeriodicCleanup(): void {
+  if (tokenCleanupInterval) {
+    clearInterval(tokenCleanupInterval);
+    tokenCleanupInterval = undefined;
+  }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = undefined;
+  }
+}
+
 function isValidSessionToken(token: string): boolean {
   pruneExpiredTokens();
   const expiry = sessionTokens.get(token);
   return expiry !== undefined && Date.now() <= expiry;
+}
+
+/**
+ * Validates and normalizes path parameters to prevent path traversal attacks.
+ */
+function validateAndNormalizePath(path: string, paramName: string): string {
+  if (!path || typeof path !== 'string') {
+    throw new Error(`${paramName} is required and must be a string`);
+  }
+
+  const trimmedPath = path.trim();
+
+  // Check for path safety BEFORE normalization to catch patterns that normalize() might clean up
+  if (!isPathSafe(trimmedPath)) {
+    throw new Error(`${paramName} contains unsafe characters or path traversal patterns`);
+  }
+
+  // Normalize path after safety check
+  const normalizedPath = normalize(trimmedPath);
+
+  return normalizedPath;
 }
 
 /**
@@ -124,6 +232,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/config", bearerAuth);
     api.use("/api/projects", bearerAuth);
     api.use("/api/projects/*", bearerAuth);
+    api.use("/api/version", bearerAuth);
+    api.use("/api/update", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -162,12 +272,27 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const body = await c.req.json();
 
-      if (!body || typeof body !== "object") {
-        return c.json({ error: "Invalid request body" }, 400);
+      // Zod 스키마 검증
+      const parseResult = UpdateConfigRequestSchema.safeParse(body);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid request body",
+          details: parseResult.error
+        }, 400);
       }
 
       // Update configuration file
-      updateConfigSection(process.cwd(), body);
+      // Filter out undefined values to match Partial<AQConfig> type expectation
+      const cleanedData = Object.fromEntries(
+        Object.entries(parseResult.data).map(([key, value]) => [
+          key,
+          typeof value === 'object' && value !== null
+            ? Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined))
+            : value
+        ]).filter(([, v]) => v !== undefined)
+      ) as Partial<AQConfig>;
+
+      updateConfigSection(process.cwd(), cleanedData);
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {
@@ -188,7 +313,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
             changes: body,
             timestamp: new Date().toISOString()
           });
-        } catch (runtimeError) {
+        } catch (runtimeError: unknown) {
           // Log runtime application error but don't fail the request
           const logger = getLogger();
           const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
@@ -211,25 +336,31 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const body = await c.req.json();
 
-      if (!body || typeof body !== "object") {
-        return c.json({ error: "Invalid request body" }, 400);
+      // Zod 스키마 검증
+      const parseResult = CreateProjectRequestSchema.safeParse(body);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid request body",
+          details: parseResult.error
+        }, 400);
       }
 
-      const { repo, path, baseBranch, mode } = body;
+      const { repo, path, baseBranch, mode } = parseResult.data;
 
-      if (!repo || typeof repo !== "string" || repo.trim() === "") {
-        return c.json({ error: "repo is required and must be a non-empty string" }, 400);
-      }
-
-      if (!path || typeof path !== "string" || path.trim() === "") {
-        return c.json({ error: "path is required and must be a non-empty string" }, 400);
+      // Validate and normalize path
+      let normalizedPath: string;
+      try {
+        normalizedPath = validateAndNormalizePath(path, "path");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Invalid path";
+        return c.json({ error: message }, 400);
       }
 
       const project: ProjectConfig = {
         repo: repo.trim(),
-        path: path.trim(),
+        path: normalizedPath,
         baseBranch: baseBranch?.trim() || undefined,
-        mode: mode as "code" | "content" | undefined,
+        mode,
       };
 
       try {
@@ -237,7 +368,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
-      } catch {
+      } catch (error: unknown) {
         // Config doesn't exist yet, proceed
       }
 
@@ -323,10 +454,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
 
       if (path !== undefined) {
-        if (typeof path !== "string" || path.trim() === "") {
-          return c.json({ error: "path must be a non-empty string" }, 400);
+        try {
+          updates.path = validateAndNormalizePath(path, "path");
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : "Invalid path";
+          return c.json({ error: message }, 400);
         }
-        updates.path = path.trim();
       }
 
       if (baseBranch !== undefined) {
@@ -506,14 +639,20 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // SSE endpoint for real-time updates
-  api.get("/api/events", (c) => {
+  api.get("/api/events", (_c) => {
     const clientId = randomUUID();
     let intervalId: ReturnType<typeof setInterval> | undefined;
 
     const stream = new ReadableStream({
       start(controller) {
-        // Register client
-        sseClients.set(clientId, { id: clientId, controller });
+        // Register client with timestamps
+        const now = Date.now();
+        sseClients.set(clientId, {
+          id: clientId,
+          controller,
+          connectedAt: now,
+          lastHeartbeat: now
+        });
 
         // Send initial state
         const sendInitialState = () => {
@@ -552,6 +691,88 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         "Connection": "keep-alive",
       },
     });
+  });
+
+  // Start periodic cleanup when dashboard routes are created
+  startPeriodicCleanup();
+
+  // Helper to read current version from package.json
+  const getCurrentVersion = (): string => {
+    const packageJsonPath = resolve(process.cwd(), "package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    return packageJson.version;
+  };
+
+  // Get version information (current version + update check)
+  api.get("/api/version", async (c) => {
+    try {
+      const currentVersion = getCurrentVersion();
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+
+      try {
+        const updateInfo = await selfUpdater.checkForUpdates();
+        return c.json({
+          currentVersion,
+          currentHash: updateInfo.currentHash.substring(0, 8),
+          remoteHash: updateInfo.remoteHash.substring(0, 8),
+          hasUpdates: updateInfo.hasUpdates,
+          packageLockChanged: updateInfo.packageLockChanged,
+        });
+      } catch (updateError) {
+        getLogger().warn(`업데이트 확인 실패: ${getErrorMessage(updateError)}`);
+        return c.json({
+          currentVersion,
+          currentHash: "unknown",
+          remoteHash: "unknown",
+          hasUpdates: false,
+          packageLockChanged: false,
+          error: "업데이트 확인에 실패했습니다",
+        });
+      }
+    } catch (error: unknown) {
+      return c.json({ error: `버전 정보 조회 실패: ${getErrorMessage(error)}` }, 500);
+    }
+  });
+
+  // Perform self-update
+  api.post("/api/update", async (c) => {
+    try {
+      const runningJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
+      if (runningJobs.length > 0) {
+        return c.json({
+          error: "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
+          runningJobs: runningJobs.map(job => ({ id: job.id, issueNumber: job.issueNumber, repo: job.repo, status: job.status })),
+        }, 409);
+      }
+
+      const config = loadConfig(process.cwd());
+      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+      getLogger().info("사용자 요청으로 업데이트 시작");
+
+      const result = await selfUpdater.performSelfUpdate();
+      if (result.updated) {
+        broadcastToAllClients('updateCompleted', {
+          updated: result.updated,
+          needsRestart: result.needsRestart,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return c.json({
+        message: result.updated ? "업데이트가 완료되었습니다" : "이미 최신 버전입니다",
+        updated: result.updated,
+        needsRestart: result.needsRestart,
+      });
+    } catch (error: unknown) {
+      const message = getErrorMessage(error);
+      getLogger().error(`업데이트 실패: ${message}`);
+      broadcastToAllClients('updateFailed', {
+        error: message,
+        timestamp: new Date().toISOString()
+      });
+      return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
   });
 
   return api;

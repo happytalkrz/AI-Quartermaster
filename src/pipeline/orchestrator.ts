@@ -30,9 +30,17 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     const { issue, mode, checkpoint } = setupResult;
-    if (!issue || !mode || !checkpoint) {
-      throw new Error("Initial setup failed: missing issue, mode, or checkpoint");
+
+    // Validate required values from setup
+    if (!issue) {
+      throw new Error("Issue not fetched during setup");
     }
+    if (!mode) {
+      throw new Error("Pipeline mode not determined during setup");
+    }
+
+    // Provide default checkpoint function if not available
+    const checkpointFn = checkpoint || (() => {});
 
     // Phase 2: Environment Setup (Git + Work environment)
     const envResult = await executeEnvironmentSetup(
@@ -43,10 +51,10 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       setupResult.gitConfig,
       setupResult.projectRoot,
       config,
-      checkpoint
+      checkpointFn
     );
 
-    checkpoint({ plan: undefined, phaseResults: [] });
+    checkpointFn({ plan: undefined, phaseResults: [] });
 
     // Phase 3: Core Loop Execution (Plan generation + Phase execution)
     const coreResult = await executeCoreLoopPhase(
@@ -62,7 +70,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       mode
     );
 
-    checkpoint({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
+    checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
 
     // Phase 4: Post-processing (Review, Simplify, Validation, Publish)
     const postProcessingContext: PostProcessingContext = {
@@ -75,7 +83,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       skillsContext: envResult.skillsContext,
       preset: coreResult.preset,
       timer: setupResult.timer,
-      checkpoint
+      checkpoint: checkpointFn
     };
 
     const finalResult = await executePostProcessingPhases(
@@ -108,8 +116,36 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
 
   } catch (error) {
+    // Check if this is a skipped issue due to feasibility check
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
+
+    if (isFeasibilitySkip) {
+      const { formatResult } = await import("./result-reporter.js");
+      const skipReason = errorMessage.slice("FEASIBILITY_SKIP:".length).trim();
+      const basicPlan = {
+        issueNumber,
+        title: `Issue #${issueNumber} skipped`,
+        problemDefinition: skipReason,
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [],
+        verificationPoints: [],
+        stopConditions: []
+      };
+      const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
+
+      return {
+        success: true,
+        state: "SKIPPED" as const,
+        report,
+        error: skipReason
+      };
+    }
+
     // Check if this is a core loop failure with detailed results
-    const errorWithReport = error as Error & { failureResult?: any };
+    const errorWithReport = error as Error & { failureResult?: OrchestratorResult };
     if (errorWithReport.failureResult) {
       // Core loop failure already handled by handleCoreLoopFailure
       transitionState(runtime, "FAILED");

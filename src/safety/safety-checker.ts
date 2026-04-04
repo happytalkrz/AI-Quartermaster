@@ -74,7 +74,7 @@ export async function validateBeforePush(ctx: SafetyContext): Promise<void> {
         maxDeletions: ctx.safetyConfig.maxDeletions,
       }
     );
-  } catch (err) {
+  } catch (err: unknown) {
     if (err instanceof SafetyViolationError) {
       logger.warn(`[ChangeLimitGuard] ${err.message} — 경고만 남기고 계속 진행합니다`);
     } else {

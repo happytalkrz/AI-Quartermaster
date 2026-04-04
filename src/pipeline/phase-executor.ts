@@ -1,9 +1,9 @@
 import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
-import { runClaude } from "../claude/claude-runner.js";
+import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
-import { errorMessage } from "../types/errors.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
@@ -12,6 +12,7 @@ import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 import { phaseProgress } from "./progress-tracker.js";
+import { analyzeTokenUsage, summarizeForBudget } from "../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -35,7 +36,7 @@ export interface PhaseExecutorContext {
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
-  let claudeResult: any;
+  let claudeResult: ClaudeRunResult | undefined;
 
   try {
     // 1. Load and render phase implementation template
@@ -46,15 +47,25 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
-    const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
+    // Get next phase info if not the last phase
+    const nextPhase = ctx.plan.phases[ctx.phase.index + 1] ?? null;
 
-    const rendered = renderTemplate(template, {
+const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
+
+    const config = configForTask(ctx.claudeConfig, "phase");
+    const modelName = config.model || ctx.claudeConfig.model;
+
+    // Helper to create template data
+    const createTemplateData = (summary: string) => ({
       issue: {
         number: String(ctx.issue.number),
         title: ctx.issue.title,
         body: sanitizedBody,
       },
-      plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
+      plan: {
+        summary: ctx.plan.problemDefinition,
+        nextPhase: nextPhase ? `Next: Phase ${nextPhase.index + 1} - ${nextPhase.name}` : "This is the final phase"
+      },
       phase: {
         index: String(ctx.phase.index + 1),
         name: ctx.phase.name,
@@ -62,7 +73,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         files: ctx.phase.targetFiles,
         totalCount: String(ctx.plan.phases.length),
       },
-      previousPhases: { summary: previousSummary },
+      previousPhases: { summary },
       config: {
         testCommand: ctx.testCommand,
         lintCommand: ctx.lintCommand,
@@ -72,12 +83,44 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       pastFailures: ctx.pastFailures ?? "",
     });
 
+    let optimizedPreviousSummary = previousSummary;
+    let rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
+
+    // Check token usage and optimize if budget exceeded
+    const tokenUsage = analyzeTokenUsage(rendered, modelName);
+    if (tokenUsage.exceedsLimit) {
+      logger.warn(
+        `Phase ${ctx.phase.index} prompt exceeds token budget: ${tokenUsage.estimatedTokens.toLocaleString()} tokens ` +
+        `(${tokenUsage.usagePercentage.toFixed(1)}% of ${tokenUsage.effectiveLimit.toLocaleString()} limit). ` +
+        `Consider reducing context or simplifying requirements.`
+      );
+
+      // If previousSummary is long, try to reduce it
+      if (previousSummary.length > 1000 && ctx.previousResults.length > 0) {
+        logger.warn(`Attempting to reduce previousResults context to fit budget...`);
+        const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1);
+        optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens);
+        rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
+
+        const optimizedUsage = analyzeTokenUsage(rendered, modelName);
+        if (!optimizedUsage.exceedsLimit) {
+          logger.warn(
+            `Successfully reduced prompt to ${optimizedUsage.estimatedTokens.toLocaleString()} tokens ` +
+            `(${optimizedUsage.usagePercentage.toFixed(1)}% of limit) after context optimization.`
+          );
+        } else {
+          logger.warn(
+            `After optimization: ${optimizedUsage.estimatedTokens.toLocaleString()} tokens ` +
+            `(${optimizedUsage.usagePercentage.toFixed(1)}% of limit) - still exceeds budget.`
+          );
+        }
+      }
+    }
+
     // 2. Run Claude to implement the phase
     jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
-
-    const config = configForTask(ctx.claudeConfig, "phase");
     claudeResult = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,
@@ -126,9 +169,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       commitHash,
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
+      usage: claudeResult.usage,
     };
-  } catch (error) {
-    const errMsg = errorMessage(error);
+  } catch (error: unknown) {
+    const errMsg = getErrorMessage(error);
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -138,6 +182,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
       costUsd: claudeResult?.costUsd,
+      usage: claudeResult?.usage,
     };
   }
 }

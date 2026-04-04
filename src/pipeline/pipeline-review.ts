@@ -5,6 +5,7 @@ import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
 import { retryWithClaudeFix } from "./retry-with-fix.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import { getLogger } from "../utils/logger.js";
 import type {
   ReviewVariables,
@@ -12,11 +13,13 @@ import type {
   AnalystResult,
   ReviewFixAttempt
 } from "../types/review.js";
+import type { TemplateVariables } from "../prompt/template-renderer.js";
 import type {
   GitConfig,
-  ProjectConfig
+  ProjectConfig,
+  ExecutionModePreset
 } from "../types/config.js";
-import type { PipelineState, Plan } from "../types/pipeline.js";
+import type { PipelineState, Plan, PhaseResult } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
@@ -90,7 +93,7 @@ export async function buildReviewVars(ctx: ReviewContext): Promise<ReviewVariabl
 
 export async function runReviewPhase(
   ctx: ReviewContext,
-  preset: { skipReview: boolean },
+  executionModePreset: ExecutionModePreset,
   state: PipelineState,
   isPastState: (current: PipelineState, target: PipelineState) => boolean
 ): Promise<{
@@ -103,7 +106,8 @@ export async function runReviewPhase(
 
   let reviewVariables: ReviewVariables | undefined;
 
-  if (!preset.skipReview) {
+  // Skip review if executionMode is economy (reviewRounds = 0)
+  if (executionModePreset.reviewRounds > 0) {
     if (isPastState(state, "REVIEWING")) {
       logger.info(`[SKIP] PLAN_GENERATED → REVIEWING (already done)`);
     } else {
@@ -126,7 +130,7 @@ export async function runReviewPhase(
           promptsDir: ctx.promptsDir,
           claudeConfig: ctx.project.commands.claudeCli,
           cwd: ctx.worktreePath,
-          variables: reviewVariables as any,
+          variables: reviewVariables as unknown as TemplateVariables,
         });
         ctx.jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
       } else {
@@ -146,7 +150,8 @@ export async function runReviewPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.worktreePath,
-        variables: reviewVariables as any,
+        variables: reviewVariables as unknown as TemplateVariables,
+        maxRounds: executionModePreset.reviewRounds,
       });
 
       if (analystResult) {
@@ -228,7 +233,8 @@ export async function runReviewPhase(
               claudeConfig: claudeCliConfig,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,
-              variables: reviewVariables as any,
+              variables: reviewVariables as unknown as TemplateVariables,
+              maxRounds: executionModePreset.reviewRounds,
             });
 
             let retryAnalystResult: AnalystResult | undefined;
@@ -237,7 +243,7 @@ export async function runReviewPhase(
                 promptsDir: ctx.promptsDir,
                 claudeConfig: claudeCliConfig,
                 cwd: ctx.worktreePath,
-                variables: reviewVariables as any,
+                variables: reviewVariables as unknown as TemplateVariables,
               });
             }
 
@@ -310,7 +316,7 @@ export async function runReviewPhase(
         }
       }
 
-      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults as any });
+      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults as PhaseResult[] });
 
       return {
         success: true,
@@ -325,13 +331,13 @@ export async function runReviewPhase(
 
 export async function runSimplifyPhase(
   ctx: SimplifyContext,
-  preset: { skipSimplify: boolean },
+  executionModePreset: ExecutionModePreset,
   state: PipelineState,
   isPastState: (current: PipelineState, target: PipelineState) => boolean
 ): Promise<{ success: boolean; error?: string }> {
   const PROGRESS_SIMPLIFY_START = 80;
 
-  if (!preset.skipSimplify && ctx.project.review?.simplify?.enabled) {
+  if (executionModePreset.enableSimplify && ctx.project.review?.simplify?.enabled) {
     if (isPastState(state, "SIMPLIFYING")) {
       logger.info(`[SKIP] REVIEWING → SIMPLIFYING (already done)`);
     } else {
@@ -356,7 +362,7 @@ export async function runSimplifyPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         cwd: ctx.worktreePath,
         testCommand: ctx.project.commands.test,
-        variables: ctx.reviewVariables as any,
+        variables: ctx.reviewVariables as unknown as TemplateVariables,
         gitPath: ctx.gitConfig.gitPath,
       });
 

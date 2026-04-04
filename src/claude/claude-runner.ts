@@ -1,5 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ClaudeCliConfig } from "../types/config.js";
+import { withRetry } from "../utils/rate-limiter.js";
+import { classifyError } from "../pipeline/error-classifier.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
 
@@ -21,11 +23,14 @@ export function getActiveProcessPids(): number[] {
   return Array.from(activeProcesses.keys());
 }
 
+import type { UsageInfo } from "../types/pipeline.js";
+
 export interface ClaudeRunResult {
   success: boolean;
   output: string;
   costUsd?: number;
   durationMs: number;
+  usage?: UsageInfo;
 }
 
 export interface ClaudeRunOptions {
@@ -39,7 +44,7 @@ export interface ClaudeRunOptions {
   enableAgents?: boolean;  // enable Agent tools for specialized task delegation
 }
 
-export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
+async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
   const { prompt, cwd, config, systemPrompt, maxTurns, enableAgents } = options;
 
   // When jsonSchema is set, use direct -p arg with --max-turns 1 (no file editing needed)
@@ -73,7 +78,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
   const startTime = Date.now();
 
-  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number }>((resolve) => {
+  const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number; usage?: UsageInfo }>((resolve, reject) => {
     const child = spawn(config.path, args, {
       cwd,
       env: process.env,
@@ -86,7 +91,8 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     let stderr = "";
     let streamBuffer = "";
-    let finalResult: { output: string; costUsd?: number; isError: boolean } | undefined;
+    let finalResult: { output: string; costUsd?: number; usage?: UsageInfo; isError: boolean } | undefined;
+    let detectedRetryableError: string | undefined;
 
     child.stdout?.on("data", (data: Buffer) => {
       streamBuffer += data.toString();
@@ -109,6 +115,12 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
             message?: { content?: Array<{ type: string; text?: string }> };
             result?: string;
             total_cost_usd?: number;
+            usage?: {
+              input_tokens: number;
+              output_tokens: number;
+              cache_creation_input_tokens?: number;
+              cache_read_input_tokens?: number;
+            };
             is_error?: boolean;
             structured_output?: unknown;
           };
@@ -126,23 +138,26 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
               finalResult = {
                 output: "Claude max turns exceeded — increase commands.claudeCli.maxTurns in config",
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: true,
               };
             } else if (event.structured_output) {
               finalResult = {
                 output: JSON.stringify(event.structured_output),
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: event.is_error === true,
               };
             } else {
               finalResult = {
                 output: event.result ?? "",
                 costUsd: event.total_cost_usd,
+                usage: event.usage,
                 isError: event.is_error === true,
               };
             }
           }
-        } catch {
+        } catch (_err: unknown) {
           // Not valid JSON line, skip
         }
       }
@@ -153,6 +168,13 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       if (child.pid !== undefined) {
         const entry = activeProcesses.get(child.pid);
         if (entry) entry.lastActivity = Date.now();
+      }
+
+      if (!detectedRetryableError) {
+        const errorCategory = classifyError(chunk);
+        if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
+          detectedRetryableError = chunk;
+        }
       }
     });
 
@@ -169,12 +191,21 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     child.on("close", (code) => {
       cleanup();
+
+      // 재시도 가능한 에러가 감지되었다면 reject
+      if (detectedRetryableError) {
+        const error = new Error(detectedRetryableError.trim());
+        (error as Error & { retryable: boolean }).retryable = true;
+        return reject(error);
+      }
+
       if (finalResult) {
         resolve({
           stdout: finalResult.output,
           stderr: finalResult.isError ? finalResult.output : "",
           exitCode: finalResult.isError ? 1 : 0,
           costUsd: finalResult.costUsd,
+          usage: finalResult.usage,
         });
       } else {
         resolve({ stdout: streamBuffer, stderr, exitCode: code ?? 1 });
@@ -183,6 +214,15 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
 
     child.on("error", (err) => {
       cleanup();
+
+      // 에러 타입 분류하여 재시도 가능 여부 판단
+      const errorCategory = classifyError(err.message);
+      if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
+        const error = new Error(err.message);
+        (error as Error & { retryable: boolean }).retryable = true;
+        return reject(error);
+      }
+
       resolve({ stdout: streamBuffer, stderr: err.message, exitCode: 1 });
     });
 
@@ -210,6 +250,7 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
       success: false,
       output: result.stderr || result.stdout,
       costUsd: result.costUsd,
+      usage: result.usage,
       durationMs,
     };
   }
@@ -218,15 +259,31 @@ export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunRes
     success: true,
     output: result.stdout,
     costUsd: result.costUsd,
+    usage: result.usage,
     durationMs,
   };
+}
+
+export async function runClaude(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
+  const retryConfig = options.config.retry;
+
+  if (!retryConfig) {
+    // retry 설정이 없으면 기존 로직 사용
+    return _runClaudeInternal(options);
+  }
+
+  return withRetry(
+    () => _runClaudeInternal(options),
+    retryConfig,
+    "Claude CLI"
+  );
 }
 
 export function extractJson<T = unknown>(text: string): T {
   // 1. Try the entire text as JSON
   try {
     return JSON.parse(text) as T;
-  } catch {
+  } catch (_err: unknown) {
     // continue
   }
 
@@ -235,7 +292,7 @@ export function extractJson<T = unknown>(text: string): T {
   if (codeBlockMatch) {
     try {
       return JSON.parse(codeBlockMatch[1].trim()) as T;
-    } catch {
+    } catch (_err: unknown) {
       // continue
     }
   }

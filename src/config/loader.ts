@@ -14,12 +14,20 @@ export interface TryLoadConfigResult {
 }
 
 /**
+ * YAML 에러 객체가 code 프로퍼티를 가지는지 확인하는 타입 가드
+ */
+function hasErrorCode(error: Error): error is Error & { code: string } {
+  return 'code' in error && typeof (error as Error & { code: unknown }).code === 'string';
+}
+
+/**
  * YAML 탭 문자 에러를 사용자 친화적인 메시지로 변환
  */
 function formatYamlTabError(error: unknown, filePath: string): Error {
   if (error instanceof Error &&
       error.constructor.name === 'YAMLParseError' &&
-      (error as any).code === 'TAB_AS_INDENT') {
+      hasErrorCode(error) &&
+      error.code === 'TAB_AS_INDENT') {
     const lineMatch = error.message.match(/line (\d+)/);
     const lineNumber = lineMatch?.[1] ?? '?';
 
@@ -48,25 +56,34 @@ function formatYamlTabError(error: unknown, filePath: string): Error {
 /**
  * YAML 파싱을 수행하되 탭 문자 에러를 친절하게 처리
  */
-function parseYamlSafely(content: string, filePath: string): any {
+function parseYamlSafely(content: string, filePath: string): unknown {
   try {
     return parseYaml(content);
-  } catch (error) {
+  } catch (error: unknown) {
     throw formatYamlTabError(error, filePath);
   }
 }
 
+/**
+ * 타입 가드: 값이 Record<string, unknown>인지 확인
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null &&
+         typeof value === "object" &&
+         !Array.isArray(value);
+}
+
 // Deep merge helper - recursively merges source into target
 // Arrays in source replace arrays in target (no concat)
-export function deepMerge(target: any, source: any): any {
+export function deepMerge<T = Record<string, unknown>>(target: unknown, source: unknown): T {
   if (source === null || source === undefined) {
-    return target;
+    return target as T;
   }
-  if (typeof source !== "object" || Array.isArray(source)) {
-    return source;
+  if (!isRecord(source)) {
+    return source as T;
   }
-  if (typeof target !== "object" || Array.isArray(target)) {
-    return source;
+  if (!isRecord(target)) {
+    return source as T;
   }
 
   const result = { ...target };
@@ -74,7 +91,7 @@ export function deepMerge(target: any, source: any): any {
     if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
     result[key] = deepMerge(target[key], source[key]);
   }
-  return result;
+  return result as T;
 }
 
 export function loadConfig(projectRoot: string): AQConfig {
@@ -218,7 +235,7 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
     }
 
     return { repo, baseBranch };
-  } catch (error) {
+  } catch (error: unknown) {
     return { error: `Git 정보 감지 실패: ${error instanceof Error ? error.message : String(error)}` };
   }
 }
@@ -487,7 +504,7 @@ export async function initProject(aqRoot: string, options: InitCommandOptions = 
       }
 
       addProjectToConfig(configPath, project);
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof Error && error.message.includes('config.yml not found')) {
         // loadConfig 실패 시 파일은 있지만 유효하지 않음
         throw new Error('config.yml 파일이 손상되었습니다. 수동으로 수정하거나 백업 후 다시 생성하세요.');

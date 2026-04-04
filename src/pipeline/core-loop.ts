@@ -4,14 +4,35 @@ import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
 import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry } from "../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
+import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
+import { createCheckpoint } from "../safety/rollback-manager.js";
+import { createSlug } from "../utils/slug.js";
 
 const logger = getLogger();
+
+function sumUsage(usages: (import("../types/pipeline.js").UsageInfo | undefined)[]): import("../types/pipeline.js").UsageInfo | undefined {
+  const validUsages = usages.filter((usage): usage is import("../types/pipeline.js").UsageInfo => !!usage);
+  if (validUsages.length === 0) return undefined;
+
+  return validUsages.reduce((acc, usage) => ({
+    input_tokens: acc.input_tokens + usage.input_tokens,
+    output_tokens: acc.output_tokens + usage.output_tokens,
+    cache_creation_input_tokens: (acc.cache_creation_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+    cache_read_input_tokens: (acc.cache_read_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+  }), {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  });
+}
 
 function addErrorToHistory(
   historyMap: Map<number, ErrorHistoryEntry[]>,
@@ -23,7 +44,7 @@ function addErrorToHistory(
   const history = historyMap.get(phaseIndex) || [];
   history.push({
     attempt,
-    errorCategory: (errorCategory ?? "UNKNOWN") as any,
+    errorCategory: (errorCategory ?? "UNKNOWN") as ErrorCategory,
     errorMessage: error ?? "Unknown error",
     timestamp: new Date().toISOString(),
   });
@@ -45,6 +66,9 @@ export interface CoreLoopContext {
   dataDir?: string;
   jobLogger?: JobLogger;
   previousPhaseResults?: PhaseResult[];  // from checkpoint resume
+  checkpoint?: string;  // checkpoint hash for rollback
+  worktreeInfo?: { path: string; branch: string };  // worktree information
+  slug?: string;  // issue slug for worktree naming
 }
 
 export interface CoreLoopResult {
@@ -52,6 +76,7 @@ export interface CoreLoopResult {
   phaseResults: PhaseResult[];
   success: boolean;
   totalCostUsd?: number;
+  totalUsage?: import("../types/pipeline.js").UsageInfo;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
@@ -59,8 +84,10 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   logger.info(`Generating plan for issue #${ctx.issue.number}...`);
 
   let plan: Plan;
+  let planCostUsd: number | undefined;
+  let planUsage: import("../types/pipeline.js").UsageInfo | undefined;
   try {
-    plan = await generatePlan({
+    const planResult = await generatePlan({
       issue: ctx.issue,
       repo: ctx.repo,
       branch: ctx.branch,
@@ -72,11 +99,14 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       maxPhases: ctx.config.safety.maxPhases,
       sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
     });
+    plan = planResult.plan;
+    planCostUsd = planResult.costUsd;
+    planUsage = planResult.usage;
 
     logger.info(`Plan generated: ${plan.phases.length} phases`);
     ctx.jobLogger?.log(`Plan 생성 완료: ${plan.phases.length}개 Phase`);
-  } catch (planError) {
-    const errorMessage = planError instanceof Error ? planError.message : String(planError);
+  } catch (planError: unknown) {
+    const errorMessage = getErrorMessage(planError);
     logger.error(`Plan generation failed for issue #${ctx.issue.number}: ${errorMessage}`);
     ctx.jobLogger?.log(`Plan 생성 실패: ${errorMessage}`);
 
@@ -96,6 +126,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       },
       phaseResults: [],
       success: false,
+      totalCostUsd: 0,
+      totalUsage: undefined,
     };
   }
 
@@ -115,8 +147,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       const patternStore = new PatternStore(ctx.dataDir);
       const recentFailures = patternStore.getRecentFailures(repoFull, 5);
       pastFailures = patternStore.formatForPrompt(recentFailures);
-    } catch {
+    } catch (patternError: unknown) {
       // non-fatal: ignore pattern load errors
+      logger.debug(`Failed to load pattern store: ${getErrorMessage(patternError)}`);
     }
   }
 
@@ -125,7 +158,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   if (!scheduleResult.success) {
     logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
     jl?.log(`Phase 스케줄링 실패: ${scheduleResult.error}`);
-    return { plan, phaseResults, success: false };
+    return {
+      plan,
+      phaseResults,
+      success: false,
+      totalCostUsd: planCostUsd ?? 0,
+      totalUsage: planUsage,
+    };
   }
 
   logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);
@@ -189,6 +228,16 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
           jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
 
+          let checkpoint = ctx.checkpoint;
+          if (!checkpoint) {
+            try {
+              checkpoint = await createCheckpoint({ cwd: ctx.cwd, gitPath: ctx.config.git.gitPath });
+            } catch (checkpointError) {
+              logger.warn(`Failed to create checkpoint for retry: ${checkpointError}`);
+              checkpoint = "fallback";
+            }
+          }
+
           result = await retryPhase({
             issue: ctx.issue,
             plan,
@@ -205,6 +254,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             lintCommand: ctx.config.commands.lint,
             gitPath: ctx.config.git.gitPath,
             jobLogger: jl,
+            checkpoint,
+            worktreeManager: { createWorktree, removeWorktree },
+            worktreeInfo: ctx.worktreeInfo ?? { path: ctx.cwd, branch: ctx.branch.work },
+            gitConfig: ctx.config.git,
+            worktreeConfig: ctx.config.worktree,
+            slug: ctx.slug ?? createSlug(ctx.issue.title),
           });
 
           if (result.success) {
@@ -240,7 +295,10 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       if (!result.success) {
         logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
         jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
-        return { plan, phaseResults, success: false };
+        const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
+        const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
+        const totalUsage = sumUsage(allUsages);
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -251,11 +309,19 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);
   }
 
-  // Calculate total cost from phase results
-  const totalCostUsd = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  // Calculate total cost from phase results and plan generation
+  const phasesTotalCost = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  const totalCostUsd = phasesTotalCost + (planCostUsd ?? 0);
+
+  // Calculate total usage from plan and phase results
+  const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
+  const totalUsage = sumUsage(allUsages);
 
   logger.info(`\nAll ${plan.phases.length} phases completed successfully`);
-  logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)}`);
+  logger.info(`Total pipeline cost: $${totalCostUsd.toFixed(4)} (plan: $${(planCostUsd ?? 0).toFixed(4)}, phases: $${phasesTotalCost.toFixed(4)})`);
+  if (totalUsage) {
+    logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
+  }
 
-  return { plan, phaseResults, success: true, totalCostUsd };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage };
 }

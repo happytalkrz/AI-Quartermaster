@@ -1,14 +1,55 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
+
+export interface PlanTemplateBaseData {
+  issue: {
+    number: string;
+    title: string;
+    body: string;
+    labels: string[];
+  };
+  repo: {
+    owner: string;
+    name: string;
+    structure: string;
+  };
+  branch: {
+    base: string;
+    work: string;
+  };
+  config: {
+    maxPhases: string;
+    sensitivePaths: string;
+  };
+}
+
+export interface PlanTemplateRetryData extends PlanTemplateBaseData {
+  retry: {
+    attempt: number;
+    maxRetries: number;
+    failureReason: string;
+    errorMessage: string;
+    previousAttempts: Array<{
+      attempt: number;
+      failureReason: string;
+      problemSummary: string;
+    }>;
+  };
+  context: ContextualizationInfo;
+}
+
+export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
+import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -25,7 +66,7 @@ export interface PlanGeneratorContext {
   sensitivePaths?: string;
 }
 
-export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
+export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
   const maxRetries = 2;
   const retryContext: PlanRetryContext = {
     currentAttempt: 0,
@@ -73,9 +114,6 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     retryContext.currentAttempt = attempt - 1;
     const startTime = Date.now();
 
-    let templatePath: string;
-    let templateData: any;
-
     // 기본 데이터 구조
     const baseData = {
       issue: {
@@ -93,43 +131,103 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       config: { maxPhases, sensitivePaths },
     };
 
-    // 첫 시도는 일반 템플릿, 재시도는 retry 템플릿 사용
-    if (attempt === 1) {
-      templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-      templateData = baseData;
-    } else {
-      const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
-      const useRetryTemplate = existsSync(retryTemplatePath);
-      templatePath = useRetryTemplate ? retryTemplatePath : resolve(ctx.promptsDir, "plan-generation.md");
-
-      const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
-      templateData = useRetryTemplate
-        ? {
-            retry: {
-              attempt,
-              maxRetries,
-              failureReason: lastFailure.errorCategory || "UNKNOWN",
-              errorMessage: lastFailure.error || "Unknown error",
-              previousAttempts: retryContext.generationHistory.map((h, i) => ({
-                attempt: i + 1,
-                failureReason: h.errorCategory || "UNKNOWN",
-                problemSummary: h.error?.slice(0, 100) || "Unknown",
-              })),
-            },
-            context: retryContext.contextualization || {},
-            ...baseData,
-          }
-        : baseData;
-    }
+    // 항상 원본 템플릿을 기본으로 사용
+    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    let templateData = baseData;
 
     const template = loadTemplate(templatePath);
-    let finalPrompt = renderTemplate(template, templateData);
+    let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+
+    // retry 시에는 retry 섹션을 append
+    if (attempt > 1) {
+      const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
+      if (existsSync(retryTemplatePath)) {
+        const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
+        const retryData = {
+          retry: {
+            attempt,
+            maxRetries,
+            failureReason: lastFailure.errorCategory || "UNKNOWN",
+            errorMessage: lastFailure.error || "Unknown error",
+            previousAttempts: retryContext.generationHistory.map((h, i) =>
+              `| ${i + 1} | ${h.errorCategory || "UNKNOWN"} | ${(h.error?.slice(0, 100) || "Unknown").replace(/\|/g, "\\|")} |`
+            ),
+          },
+          context: retryContext.contextualization || {},
+        };
+
+        // retry 템플릿에서 retry 특화 섹션만 추출
+        const retryTemplate = loadTemplate(retryTemplatePath);
+        const retrySection = extractRetrySection(retryTemplate);
+        const renderedRetrySection = renderTemplate(retrySection, retryData);
+
+        finalPrompt += "\n\n" + renderedRetrySection;
+      }
+    }
 
     if (ctx.modeHint) {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
     }
 
-    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
+    // Token budget cap: 프롬프트 크기 체크 및 축소
+    const claudeConfig = configForTask(ctx.claudeConfig, "plan");
+    const modelName = claudeConfig.model;
+    let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+
+    logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+
+    // Helper to update and re-render
+    const updateAndRerender = (updateFn: (data: any) => any, stage: string) => {
+      templateData = updateFn(templateData);
+      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+      if (ctx.modeHint) {
+        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+      }
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      logger.info(`After ${stage}: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+    };
+
+    // Truncate repo structure if needed
+    if (tokenAnalysis.exceedsLimit && ctx.repoStructure) {
+      logger.warn(`Prompt exceeds token limit (${tokenAnalysis.estimatedTokens} > ${tokenAnalysis.effectiveLimit}), truncating repository structure`);
+      const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3);
+      const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget);
+
+      updateAndRerender(
+        (data) => {
+          const baseTemplateData = data.context ? data : baseData;
+          return {
+            ...data,
+            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+          };
+        },
+        "repo structure truncation"
+      );
+    }
+
+    // Truncate issue body if still over budget
+    if (tokenAnalysis.exceedsLimit && ctx.issue.body) {
+      logger.warn(`Prompt still exceeds token limit after repo truncation, truncating issue body`);
+      const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2);
+      const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget);
+
+      updateAndRerender(
+        (data) => ({
+          ...data,
+          issue: {
+            ...data.issue,
+            body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
+          },
+        }),
+        "issue body truncation"
+      );
+    }
+
+    if (tokenAnalysis.exceedsLimit) {
+      logger.warn(`Final prompt still exceeds token limit: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%). Proceeding anyway.`);
+    }
+
+    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars, ~${tokenAnalysis.estimatedTokens} tokens)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
 
     const result = await runClaude({
       prompt: finalPrompt,
@@ -180,10 +278,14 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       });
 
       logger.info(`Plan generation succeeded on attempt ${attempt}`);
-      return plan;
-    } catch (parseError) {
+      return {
+        plan,
+        costUsd: result.costUsd,
+        usage: result.usage,
+      };
+    } catch (parseError: unknown) {
       errorCategory = "UNKNOWN";
-      errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      errorMessage = getErrorMessage(parseError);
 
       // 히스토리 기록
       retryContext.generationHistory.push({
@@ -275,8 +377,8 @@ async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanR
     await notifyPlanRetryContext(repo, ctx.issue.number, retryContextSnapshot, contextInfo);
 
     logger.info("Retry context collection and notification completed");
-  } catch (contextError) {
-    logger.warn(`Failed to collect retry context: ${contextError instanceof Error ? contextError.message : String(contextError)}`);
+  } catch (contextError: unknown) {
+    logger.warn(`Failed to collect retry context: ${getErrorMessage(contextError)}`);
     // 컨텍스트 수집 실패는 치명적이지 않음, 재시도는 계속 진행
   }
 }
@@ -328,8 +430,8 @@ export function collectContextualizationInfo(affectedFiles: string[], cwd: strin
       typeDefinitions[filePath] = extractTypeDefinitions(filePath, content);
 
       logger.debug(`Collected context for ${filePath}: ${functionSignatures[filePath].length} functions, ${importRelations[filePath].imports.length} imports, ${typeDefinitions[filePath].length} types`);
-    } catch (error) {
-      logger.warn(`Failed to collect context for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    } catch (error: unknown) {
+      logger.warn(`Failed to collect context for ${filePath}: ${getErrorMessage(error)}`);
       // 실패한 파일은 빈 정보로 설정
       functionSignatures[filePath] = [];
       importRelations[filePath] = { imports: [], exports: [] };
@@ -604,4 +706,20 @@ function extractTypeDefinitionsRegex(content: string): string[] {
   }
 
   return typeDefinitions;
+}
+
+/**
+ * retry 템플릿에서 retry 특화 섹션만 추출합니다.
+ * "## 이전 실패 정보"부터 끝까지를 반환합니다.
+ */
+function extractRetrySection(retryTemplate: string): string {
+  const lines = retryTemplate.split('\n');
+  const retryStartIndex = lines.findIndex(line => line.trim().startsWith('## 이전 실패 정보'));
+
+  if (retryStartIndex === -1) {
+    // retry 섹션을 찾을 수 없으면 전체 템플릿 반환
+    return retryTemplate;
+  }
+
+  return lines.slice(retryStartIndex).join('\n');
 }

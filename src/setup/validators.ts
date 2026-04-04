@@ -152,7 +152,7 @@ export async function suggestClone(repo: string): Promise<ValidationResult> {
       suggestion: cloneSuggestion
     };
 
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       isValid: false,
       error: `GitHub CLI 확인 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,

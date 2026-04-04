@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync } from "fs";
 import type { PipelineState } from "../types/pipeline.js";
-import type { AQConfig } from "../types/config.js";
+import type { AQConfig, GitConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
@@ -33,7 +33,7 @@ export interface PipelineRuntime {
   worktreePath?: string;
   branchName?: string;
   projectRoot: string;
-  gitConfig: any;
+  gitConfig: GitConfig;
   promptsDir: string;
   rollbackHash?: string;
   rollbackStrategy: "none" | "all" | "failed-only";

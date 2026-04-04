@@ -1,6 +1,7 @@
 import { JobStore } from "./job-store.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 /**
  * Parses `depends: #11`, `depends: #11, #12`, `depends on #11` patterns
@@ -163,16 +164,16 @@ export async function checkDependencyPRsMerged(
               break;
             }
           }
-        } catch (err) {
-          logger.warn(`Failed to check PR #${prNumber} merge status: ${err}`);
+        } catch (err: unknown) {
+          logger.warn(`Failed to check PR #${prNumber} merge status: ${getErrorMessage(err)}`);
         }
       }
 
       if (!isAnyPRMerged) {
         unmerged.push(issueNumber);
       }
-    } catch (err) {
-      logger.warn(`Error checking dependency PR for issue #${issueNumber}: ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`Error checking dependency PR for issue #${issueNumber}: ${getErrorMessage(err)}`);
       notFound.push(issueNumber);
     }
   }

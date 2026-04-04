@@ -40,13 +40,30 @@ export const DEFAULT_CONFIG: AQConfig = {
         review: "claude-haiku-4-5-20251001",
         fallback: "claude-sonnet-4-20250514",
       },
-      maxTurns: 50,
+      maxTurns: 60,
+      maxTurnsPerMode: {
+        economy: 30,
+        standard: 60,
+        thorough: 120,
+      },
       timeout: 600000,
       additionalArgs: [],
+      retry: {
+        maxRetries: 3,
+        initialDelayMs: 5000,
+        maxDelayMs: 60000,
+        jitterFactor: 0.1,
+      },
     },
     ghCli: {
       path: "gh",
       timeout: 30000,
+      retry: {
+        maxRetries: 3,
+        initialDelayMs: 2000,
+        maxDelayMs: 30000,
+        jitterFactor: 0.1,
+      },
     },
     test: "npm test",
     lint: "npm run lint",
@@ -75,6 +92,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       promptTemplate:
         "Simplify the following implementation while preserving all functionality:\n\n{diff}",
     },
+    unifiedMode: false,  // 기본값은 false로 기존 동작 유지
   },
   pr: {
     targetBranch: "main",
@@ -114,6 +132,25 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
     allowedLabels: [],
-    rollbackStrategy: "none",
+    rollbackStrategy: "failed-only",
+    feasibilityCheck: {
+      enabled: true,
+      maxRequirements: 5,
+      maxFiles: 4,
+      blockedKeywords: [
+        "architecture",
+        "refactor",
+        "migration",
+        "breaking change",
+        "major rewrite"
+      ],
+      skipReasons: [
+        "Too many requirements (>5)",
+        "Too many files affected (>4)",
+        "Architecture change detected",
+        "Blocked keyword found"
+      ],
+    },
   },
+  executionMode: "standard",
 };

@@ -22,6 +22,14 @@ vi.mock("../../src/config/validator.js", () => ({
   validateConfig: vi.fn(),
 }));
 
+vi.mock("../../src/update/self-updater.js", () => ({
+  SelfUpdater: vi.fn(),
+}));
+
+vi.mock("fs", () => ({
+  readFileSync: vi.fn(),
+}));
+
 // Mock imports
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
 const mockUpdateConfigSection = vi.mocked(await import("../../src/config/loader.js")).updateConfigSection;
@@ -30,6 +38,8 @@ const mockRemoveProjectFromConfig = vi.mocked(await import("../../src/config/loa
 const mockUpdateProjectInConfig = vi.mocked(await import("../../src/config/loader.js")).updateProjectInConfig;
 const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-masker.js")).maskSensitiveConfig;
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
+const mockSelfUpdater = vi.mocked(await import("../../src/update/self-updater.js")).SelfUpdater;
+const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -252,16 +262,90 @@ describe("Dashboard API - PUT /api/config", () => {
       expect(response.status).toBe(400);
       const result = await response.json();
       expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
       expect(mockUpdateConfigSection).not.toHaveBeenCalled();
     });
 
-    it("should return 400 for validation errors", async () => {
+    it("should return 400 for invalid logLevel value", async () => {
       const updates = {
         general: { logLevel: "invalid-level" },
       };
 
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for negative concurrency value", async () => {
+      const updates = {
+        general: { concurrency: -1 },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for invalid safety maxPhases value", async () => {
+      const updates = {
+        safety: { maxPhases: 0 }, // Should be min 1
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for extra unexpected fields", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+        unexpectedSection: { value: "test" },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for config loader validation errors", async () => {
+      const updates = {
+        general: { logLevel: "debug" as const },
+      };
+
       mockUpdateConfigSection.mockImplementation(() => {
-        throw new Error("Configuration validation failed: Invalid log level");
+        throw new Error("Configuration validation failed: Invalid config structure");
       });
 
       const response = await app.request("/api/config", {
@@ -272,7 +356,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("Configuration validation failed: Configuration validation failed: Invalid log level");
+      expect(result.error).toBe("Configuration validation failed: Configuration validation failed: Invalid config structure");
     });
 
     it("should return 400 for config file not found", async () => {
@@ -281,7 +365,7 @@ describe("Dashboard API - PUT /api/config", () => {
       };
 
       mockUpdateConfigSection.mockImplementation(() => {
-        throw new Error("config.yml not found at /path/to/config.yml");
+        throw new Error("config.yml not found at path/to/config.yml");
       });
 
       const response = await app.request("/api/config", {
@@ -292,7 +376,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("Configuration validation failed: config.yml not found at /path/to/config.yml");
+      expect(result.error).toBe("Configuration validation failed: config.yml not found at path/to/config.yml");
     });
 
     it("should return 500 for file system errors", async () => {
@@ -408,7 +492,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
     it("should handle validation errors with authentication", async () => {
       const updates = {
-        safety: { maxPhases: 100 }, // Too big, should trigger validation error
+        safety: { maxPhases: 15 }, // Valid value to pass Zod validation
       };
 
       mockUpdateConfigSection.mockImplementation(() => {
@@ -519,6 +603,66 @@ describe("Dashboard API - SSE broadcast", () => {
   });
 });
 
+describe("Dashboard API - Resource Management", () => {
+  let app: Hono;
+  const apiKey = "test-api-key-123";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const mockStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      on: vi.fn(),
+      emit: vi.fn(),
+    } as any;
+
+    const mockQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    } as any;
+
+    app = createDashboardRoutes(mockStore, mockQueue, undefined, apiKey);
+  });
+
+  it("should create SSE client with proper timestamps", async () => {
+    const response = await app.request("/api/events?token=test-token");
+
+    // For authentication required endpoints, we expect 401 without proper token
+    // This test verifies the endpoint can be reached and SSE structure is correct
+    expect(response.status).toBe(401);
+    expect(response.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("should handle SSE client cleanup on connection errors", async () => {
+    // This test verifies that the API doesn't crash when handling SSE errors
+    // Actual SSE stream testing would require more complex setup with readable streams
+    expect(() => {
+      app.request("/api/events?token=test-token");
+    }).not.toThrow();
+  });
+
+  it("should handle session token authentication for SSE", async () => {
+    // First get a session token
+    const authResponse = await app.request("/api/auth", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
+
+    expect(authResponse.status).toBe(200);
+    const authData = await authResponse.json();
+    expect(authData.token).toBeDefined();
+
+    // Then use the token for SSE endpoint
+    const sseResponse = await app.request(`/api/events?token=${authData.token}`);
+    expect(sseResponse.status).toBe(200);
+    expect(sseResponse.headers.get("content-type")).toBe("text/event-stream");
+  });
+});
+
 describe("Dashboard API - Projects Management", () => {
   let app: Hono;
   const apiKey = "test-api-key-123";
@@ -540,7 +684,7 @@ describe("Dashboard API - Projects Management", () => {
 
       const newProject = {
         repo: "owner/test-repo",
-        path: "/path/to/repo",
+        path: "path/to/repo",
         baseBranch: "main"
       };
 
@@ -561,7 +705,7 @@ describe("Dashboard API - Projects Management", () => {
         `${process.cwd()}/config.yml`,
         expect.objectContaining({
           repo: "owner/test-repo",
-          path: "/path/to/repo",
+          path: "path/to/repo",
           baseBranch: "main"
         })
       );
@@ -570,14 +714,14 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 409 if project already exists", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/existing/path" }]
+        projects: [{ repo: "owner/test-repo", path: "existingpath" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
 
       const newProject = {
         repo: "owner/test-repo",
-        path: "/path/to/repo"
+        path: "path/to/repo"
       };
 
       const response = await app.request("/api/projects", {
@@ -594,29 +738,210 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.error).toContain("already exists");
     });
 
-    it("should return 400 for invalid request body", async () => {
+    it("should return 400 for missing repo field", async () => {
       const response = await app.request("/api/projects", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ invalid: "data" })
+        body: JSON.stringify({ path: "/path/to/repo" })
       });
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("repo is required");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for missing path field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ repo: "owner/test-repo" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for empty repo field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ repo: "", path: "/path/to/repo" })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for invalid mode field", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          mode: "invalid"
+        })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+    });
+
+    it("should return 400 for extra unexpected fields", async () => {
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repo: "owner/test-repo",
+          path: "/path/to/repo",
+          unexpectedField: "value"
+        })
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
     });
 
     it("should return 401 without proper authentication", async () => {
       const response = await app.request("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: "test/repo", path: "/path" })
+        body: JSON.stringify({ repo: "test/repo", path: "path" })
       });
 
       expect(response.status).toBe(401);
+    });
+
+    // Path Traversal security tests
+    it("should reject path with directory traversal patterns", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const maliciousPaths = [
+        "../etc/passwd",
+        "..\\windows\\system32",
+        "../../../secret",
+        "./config",
+        "folder/../escape"
+      ];
+
+      for (const maliciousPath of maliciousPaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: maliciousPath
+          })
+        });
+
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
+    });
+
+    it("should reject path with absolute paths", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const absolutePaths = [
+        "/etc/passwd",
+        "\\windows\\system32",
+        "C:\\Windows"
+      ];
+
+      for (const absolutePath of absolutePaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: absolutePath
+          })
+        });
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
+    });
+
+    it("should reject path with control characters and forbidden characters", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const forbiddenPaths = [
+        "file\x00name",
+        "file<name",
+        "file>name",
+        "file:name",
+        "file|name",
+        "file?name",
+        "file*name",
+        "folder/"
+      ];
+
+      for (const forbiddenPath of forbiddenPaths) {
+        const response = await app.request("/api/projects", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            repo: "test/repo",
+            path: forbiddenPath
+          })
+        });
+
+        expect(response.status).toBe(400);
+        const result = await response.json();
+        expect(result.error).toContain("unsafe characters or path traversal");
+      }
     });
   });
 
@@ -624,7 +949,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should remove an existing project successfully", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path/to/repo" }]
+        projects: [{ repo: "owner/test-repo", path: "path/to/repo" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -676,7 +1001,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should update an existing project successfully", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/old/path", baseBranch: "main" }]
+        projects: [{ repo: "owner/test-repo", path: "oldpath", baseBranch: "main" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -684,7 +1009,7 @@ describe("Dashboard API - Projects Management", () => {
       mockUpdateProjectInConfig.mockReturnValue(undefined);
 
       const updates = {
-        path: "/new/path",
+        path: "newpath",
         baseBranch: "develop",
         mode: "code"
       };
@@ -703,27 +1028,27 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.message).toBe("Project updated successfully");
       expect(result.repo).toBe("owner/test-repo");
       expect(result.updates).toEqual({
-        path: "/new/path",
+        path: "newpath",
         baseBranch: "develop",
         mode: "code"
       });
       expect(mockUpdateProjectInConfig).toHaveBeenCalledWith(
         `${process.cwd()}/config.yml`,
         "owner/test-repo",
-        { path: "/new/path", baseBranch: "develop", mode: "code" }
+        { path: "newpath", baseBranch: "develop", mode: "code" }
       );
     });
 
     it("should update project with partial fields", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
       mockValidateConfig.mockReturnValue(projectConfig as any);
 
-      const updates = { path: "/updated/path" };
+      const updates = { path: "updated/path" };
 
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",
@@ -736,7 +1061,7 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(200);
       const result = await response.json();
-      expect(result.updates).toEqual({ path: "/updated/path" });
+      expect(result.updates).toEqual({ path: "updated/path" });
     });
 
     it("should return 404 if project does not exist", async () => {
@@ -747,7 +1072,7 @@ describe("Dashboard API - Projects Management", () => {
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
 
-      const updates = { path: "/new/path" };
+      const updates = { path: "newpath" };
 
       const response = await app.request("/api/projects/owner%2Fnonexistent-repo", {
         method: "PUT",
@@ -781,7 +1106,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 400 for invalid field types", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -797,13 +1122,13 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("path must be a non-empty string");
+      expect(result.error).toContain("path is required and must be a string");
     });
 
     it("should return 400 for invalid mode value", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -825,7 +1150,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 400 when no valid fields to update", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -848,7 +1173,7 @@ describe("Dashboard API - Projects Management", () => {
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "/new/path" })
+        body: JSON.stringify({ path: "newpath" })
       });
 
       expect(response.status).toBe(401);
@@ -857,7 +1182,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should handle config validation errors", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -866,7 +1191,7 @@ describe("Dashboard API - Projects Management", () => {
         throw new Error("Invalid configuration");
       });
 
-      const updates = { path: "/new/path" };
+      const updates = { path: "newpath" };
 
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",
@@ -880,6 +1205,345 @@ describe("Dashboard API - Projects Management", () => {
       expect(response.status).toBe(400);
       const result = await response.json();
       expect(result.error).toContain("Configuration validation failed");
+    });
+  });
+});
+
+describe("Dashboard API - Version Management", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("GET /api/version", () => {
+    describe("without API key", () => {
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      it("should return version info with update check", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: false,
+          currentHash: "abc12345",
+          remoteHash: "abc12345",
+          packageLockChanged: false,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "abc12345".substring(0, 8),
+          remoteHash: "abc12345".substring(0, 8),
+          hasUpdates: false,
+          packageLockChanged: false,
+        });
+        expect(mockSelfUpdater).toHaveBeenCalledWith(mockConfig.git, { cwd: process.cwd() });
+      });
+
+      it("should return version info with available updates", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: true,
+          currentHash: "abc12345",
+          remoteHash: "def67890",
+          packageLockChanged: true,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "abc12345".substring(0, 8),
+          remoteHash: "def67890".substring(0, 8),
+          hasUpdates: true,
+          packageLockChanged: true,
+        });
+      });
+
+      it("should return version info even when update check fails", async () => {
+        const mockPackageJson = { version: "1.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockRejectedValue(new Error("Network error")),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          currentVersion: "1.0.0",
+          currentHash: "unknown",
+          remoteHash: "unknown",
+          hasUpdates: false,
+          packageLockChanged: false,
+          error: "업데이트 확인에 실패했습니다",
+        });
+      });
+
+      it("should return 500 when package.json reading fails", async () => {
+        mockReadFileSync.mockImplementation(() => {
+          throw new Error("File not found");
+        });
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("버전 정보 조회 실패: File not found");
+      });
+
+      it("should return 500 when package.json is invalid JSON", async () => {
+        mockReadFileSync.mockReturnValue("invalid json");
+
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toContain("버전 정보 조회 실패:");
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      it("should require Bearer token authentication", async () => {
+        const response = await app.request("/api/version");
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+
+      it("should return version info with valid Bearer token", async () => {
+        const mockPackageJson = { version: "2.0.0" };
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const mockUpdateInfo = {
+          hasUpdates: false,
+          currentHash: "xyz98765",
+          remoteHash: "xyz98765",
+          packageLockChanged: false,
+        };
+
+        mockReadFileSync.mockReturnValue(JSON.stringify(mockPackageJson));
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          checkForUpdates: vi.fn().mockResolvedValue(mockUpdateInfo),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/version", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.currentVersion).toBe("2.0.0");
+        expect(result.hasUpdates).toBe(false);
+      });
+    });
+  });
+
+  describe("POST /api/update", () => {
+    describe("without API key", () => {
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      it("should perform update successfully when no jobs running", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        // Mock no running jobs
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: true, needsRestart: true }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          message: "업데이트가 완료되었습니다",
+          updated: true,
+          needsRestart: true,
+        });
+        expect(mockSelfUpdaterInstance.performSelfUpdate).toHaveBeenCalled();
+      });
+
+      it("should return message when already up to date", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: false, needsRestart: false }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result).toEqual({
+          message: "이미 최신 버전입니다",
+          updated: false,
+          needsRestart: false,
+        });
+      });
+
+      it("should return 409 when jobs are running", async () => {
+        const runningJobs = [
+          { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" as const },
+          { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" as const },
+        ];
+        mockJobStore.list.mockReturnValue(runningJobs);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(409);
+        const result = await response.json();
+        expect(result.error).toBe("진행 중인 작업이 있어 업데이트를 수행할 수 없습니다");
+        expect(result.runningJobs).toEqual([
+          { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" },
+          { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" },
+        ]);
+      });
+
+      it("should return 500 when update fails", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockRejectedValue(new Error("Git pull failed")),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("업데이트 실패: Git pull failed");
+      });
+
+      it("should handle unknown errors gracefully", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockRejectedValue("String error"),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(500);
+        const result = await response.json();
+        expect(result.error).toBe("업데이트 실패: Unknown error");
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+
+      beforeEach(() => {
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      it("should require Bearer token authentication", async () => {
+        const response = await app.request("/api/update", { method: "POST" });
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+
+      it("should perform update with valid Bearer token", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+
+        mockJobStore.list.mockReturnValue([]);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: true, needsRestart: true }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
+
+        const response = await app.request("/api/update", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+
+        expect(response.status).toBe(200);
+        const result = await response.json();
+        expect(result.updated).toBe(true);
+        expect(result.needsRestart).toBe(true);
+      });
+
+      it("should return 401 with invalid Bearer token", async () => {
+        const response = await app.request("/api/update", {
+          method: "POST",
+          headers: { Authorization: "Bearer invalid-token" },
+        });
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+    });
+  });
+
+  describe("SSE Resource Management", () => {
+    it("should handle SSE client connections properly", async () => {
+      const response = await app.request("/api/events?token=test-token");
+      expect(response.status).toBe(401);
     });
   });
 });

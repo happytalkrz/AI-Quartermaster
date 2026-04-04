@@ -2,12 +2,14 @@ import { runFinalValidation } from "./final-validator.js";
 import { retryWithClaudeFix } from "./retry-with-fix.js";
 import { formatResult, printResult } from "./result-reporter.js";
 import { PROGRESS_VALIDATION_START } from "./progress-tracker.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import type { CommandsConfig, AQConfig } from "../types/config.js";
 import type { PipelineReport } from "./result-reporter.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import type { ValidationPhaseContext } from "../types/pipeline.js";
+import type { ExecutionMode } from "../types/config.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
 
 const logger = getLogger();
@@ -15,7 +17,7 @@ const logger = getLogger();
 export interface ValidationPhaseResult {
   success: boolean;
   error?: string;
-  report?: any;
+  report?: import("./result-reporter.js").PipelineReport;
 }
 
 export async function runValidationPhase(
@@ -23,11 +25,12 @@ export async function runValidationPhase(
   timer: PipelineTimer,
   isPastState: (state: string) => boolean,
   skipFinalValidation: boolean,
-  checkpoint: (overrides?: any) => void,
+  executionMode: ExecutionMode,
+  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
   issueNumber: number,
   repo: string,
   startTime: number,
-  config: any,
+  config: import("../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   _aqRoot?: string,
   _projectRoot?: string
@@ -48,7 +51,7 @@ export async function runValidationPhase(
   context.jl?.setStep("최종 검증 중...");
   context.jl?.setProgress(PROGRESS_VALIDATION_START);
 
-  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
+  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
 
   for (const check of validation.checks) {
     context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
@@ -64,6 +67,7 @@ export async function runValidationPhase(
       checkpoint,
       config,
       fullCommands,
+      executionMode,
       _aqRoot,
       _projectRoot
     );
@@ -93,21 +97,22 @@ export async function runValidationPhase(
 
 async function retryValidationWithFixes(
   context: ValidationPhaseContext,
-  validation: any,
+  validation: import("./final-validator.js").ValidationResult,
   issueNumber: number,
   repo: string,
   startTime: number,
-  checkpoint: (overrides?: any) => void,
-  config: any,
+  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
+  config: import("../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
+  executionMode: ExecutionMode,
   _aqRoot?: string,
   _projectRoot?: string
 ): Promise<boolean> {
 
-  const buildFixPromptFn = (validationResult: any) => {
-    const failedChecks = validationResult.checks.filter((c: any) => !c.passed);
+  const buildFixPromptFn = (validationResult: import("./final-validator.js").ValidationResult) => {
+    const failedChecks = validationResult.checks.filter((c) => !c.passed);
     const errorDetails = failedChecks
-      .map((c: any) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
+      .map((c) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
       .join("\n\n");
 
     return [
@@ -118,7 +123,7 @@ async function retryValidationWithFixes(
   };
 
   const revalidateFn = async () => {
-    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, context.gitPath);
+    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
 
     // Log validation results
     for (const check of result.checks) {
@@ -138,10 +143,10 @@ async function retryValidationWithFixes(
     };
   };
 
-  const onAttempt = (attempt: number, maxRetries: number, description: string) => {
+  const onAttempt = (attempt: number, maxRetries: number, _description: string) => {
     const failedNames = validation.checks
-      .filter((c: any) => !c.passed)
-      .map((c: any) => c.name)
+      .filter((c) => !c.passed)
+      .map((c) => c.name)
       .join(", ");
 
     logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${maxRetries} — fixing: ${failedNames}`);
@@ -149,17 +154,19 @@ async function retryValidationWithFixes(
     context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
   };
 
-  const onSuccess = (attempt: number, result: any) => {
+  const onSuccess = (attempt: number, _result: import("./final-validator.js").ValidationResult) => {
     logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
     context.jl?.log(`검증 통과 (retry ${attempt})`);
   };
+
+  const claudeConfig = configForTaskWithMode(context.commands.claudeCli, "fallback", executionMode);
 
   const retryResult = await retryWithClaudeFix({
     checkFn,
     buildFixPromptFn,
     revalidateFn,
     maxRetries: context.maxRetries,
-    claudeConfig: context.commands.claudeCli,
+    claudeConfig,
     cwd: context.cwd,
     gitPath: context.gitPath,
     commitMessageTemplate: "fix: validation 오류 수정 (retry {attempt})",

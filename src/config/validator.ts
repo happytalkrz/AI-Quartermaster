@@ -178,6 +178,13 @@ const modelRoutingSchema = z.object({
   fallback: z.string(),
 });
 
+const retryConfigSchema = z.object({
+  maxRetries: z.number().int().min(0).max(10),
+  initialDelayMs: z.number().int().min(100),
+  maxDelayMs: z.number().int().min(1000),
+  jitterFactor: z.number().min(0).max(1),
+});
+
 const claudeCliConfigSchema = z.object({
   path: z.string(),
   model: z.string(),
@@ -185,11 +192,13 @@ const claudeCliConfigSchema = z.object({
   maxTurns: z.number().int().positive(),
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),
+  retry: retryConfigSchema.optional(),
 });
 
 const ghCliConfigSchema = z.object({
   path: z.string(),
   timeout: z.number().positive(),
+  retry: retryConfigSchema.optional(),
 });
 
 const commandsConfigSchema = z.object({
@@ -222,6 +231,7 @@ const reviewConfigSchema = z.object({
   enabled: z.boolean(),
   rounds: z.array(reviewRoundSchema),
   simplify: simplifyConfigSchema,
+  unifiedMode: z.boolean().optional(),
 });
 
 const prConfigSchema = z.object({
@@ -277,6 +287,7 @@ const projectConfigSchema = z.object({
     enabled: z.boolean(),
     rounds: z.array(reviewRoundSchema),
     simplify: simplifyConfigSchema,
+    unifiedMode: z.boolean().optional(),
   }).partial().optional(),
   pr: prConfigSchema.partial().optional(),
   safety: z.object({

@@ -171,6 +171,22 @@ if (localStorage.getItem('aqm-theme') === 'light') {
   <button onclick="saveApiKey()" class="px-4 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/30 text-sm font-bold hover:bg-primary/20 transition-colors" data-i18n="save">저장</button>
 </div>
 
+<!-- Update Banner -->
+<div id="update-banner" style="display:none;" class="fixed left-0 right-0 z-[998] bg-gradient-to-r from-primary/10 to-primary-container/10 border-b border-primary/30 px-6 py-3 flex items-center gap-4 flex-wrap" style="top: var(--api-banner-height, 0);">
+  <div class="flex items-center gap-2 text-primary">
+    <span class="material-symbols-outlined text-lg animate-pulse" style="font-variation-settings: 'FILL' 1;">update</span>
+    <span class="text-sm font-bold">새 업데이트 사용 가능</span>
+  </div>
+  <span id="update-info" class="text-sm text-on-surface flex-1 min-w-[200px]">새 버전으로 업데이트할 수 있습니다.</span>
+  <button id="update-btn" onclick="performUpdate()" class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-on-primary font-bold text-sm hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+    <span id="update-btn-icon" class="material-symbols-outlined text-sm">download</span>
+    <span id="update-btn-text">업데이트</span>
+  </button>
+  <button onclick="dismissUpdate()" class="text-outline hover:text-on-surface p-1 rounded transition-colors" aria-label="닫기">
+    <span class="material-symbols-outlined text-lg">close</span>
+  </button>
+</div>
+
 <!-- TopNavBar -->
 <header class="sticky top-0 z-50 flex justify-between items-center px-6 h-16 w-full bg-[#0d1117] dark:bg-[#0d1117] border-b border-[#30363d]">
   <div class="flex items-center gap-8">
@@ -181,6 +197,12 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     </nav>
   </div>
   <div class="flex items-center gap-4">
+    <!-- Version info -->
+    <div class="flex items-center gap-2 text-xs text-outline">
+      <span class="material-symbols-outlined text-sm">info</span>
+      <span id="version-label">v0.0.0</span>
+      <span id="version-hash" class="font-mono text-[10px] opacity-60"></span>
+    </div>
     <!-- Connection status -->
     <div class="flex items-center gap-2 text-xs text-outline">
       <span id="conn-dot" class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>

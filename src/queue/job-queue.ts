@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
-import { errorMessage } from "../types/errors.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job } from "./job-store.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
@@ -392,7 +392,7 @@ export class JobQueue {
 
       // If another call was made while processing, handle it now
       if (this.needsReprocess) {
-        setTimeout(() => this.processNext(), 0);
+        setImmediate(() => this.processNext());
       }
     }
   }
@@ -440,12 +440,12 @@ export class JobQueue {
       this.store.update(job.id, {
         status: "failure",
         completedAt: new Date().toISOString(),
-        error: errorMessage(error),
+        error: getErrorMessage(error),
       });
     } finally {
       this.running.delete(job.id);
-      // Process next in queue (defer via setTimeout to avoid deep call stacks)
-      setTimeout(() => this.processNext(), 0);
+      // Process next in queue (defer via setImmediate to avoid deep call stacks)
+      setImmediate(() => this.processNext());
     }
   }
 }

@@ -5,6 +5,12 @@ export function classifyError(error: string): ErrorCategory {
   if (lower.includes("ts2") || lower.includes("ts1") || lower.includes("type error") || lower.includes("cannot find name") || (lower.includes("property") && lower.includes("does not exist"))) {
     return "TS_ERROR";
   }
+  if (lower.includes("rate limit") || lower.includes("too many requests") || lower.includes("x-ratelimit") || lower.includes("429")) {
+    return "RATE_LIMIT";
+  }
+  if (lower.includes("prompt is too long") || lower.includes("prompt too long") || lower.includes("context length") || lower.includes("token limit")) {
+    return "PROMPT_TOO_LONG";
+  }
   if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("sigterm")) {
     return "TIMEOUT";
   }

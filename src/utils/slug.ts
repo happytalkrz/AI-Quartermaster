@@ -34,7 +34,8 @@ export function isPathSafe(path: string): boolean {
     /^[/\\]/,         // Absolute path (starts with / or \)
     /[/\\]$/,         // Ends with slash
     /[/\\]{2,}/,      // Multiple consecutive slashes
-    /[\u0000-\u001f]/,// Control characters
+    // eslint-disable-next-line no-control-regex
+    /[\x00-\x1f]/,   // Control characters
     /[<>:"|?*]/       // Windows forbidden characters
   ];
 

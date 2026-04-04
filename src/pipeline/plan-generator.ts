@@ -137,80 +137,53 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
 
     logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
 
-    // repoStructure가 budget 초과 시 축소
+    // Helper to update and re-render
+    const updateAndRerender = (updateFn: (data: any) => any, stage: string) => {
+      templateData = updateFn(templateData);
+      finalPrompt = renderTemplate(template, templateData);
+      if (ctx.modeHint) {
+        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+      }
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      logger.info(`After ${stage}: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+    };
+
+    // Truncate repo structure if needed
     if (tokenAnalysis.exceedsLimit && ctx.repoStructure) {
       logger.warn(`Prompt exceeds token limit (${tokenAnalysis.estimatedTokens} > ${tokenAnalysis.effectiveLimit}), truncating repository structure`);
-
-      const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3); // 30% of budget for repo structure
+      const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3);
       const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget);
 
-      // templateData를 업데이트하여 축소된 repo structure 사용
-      if (attempt === 1) {
-        templateData = {
-          ...baseData,
-          repo: {
-            ...baseData.repo,
-            structure: truncatedRepoStructure,
-          },
-        };
-      } else {
-        const baseTemplateData = templateData.context ? templateData : baseData;
-        templateData = {
-          ...templateData,
-          repo: {
-            ...baseTemplateData.repo,
-            structure: truncatedRepoStructure,
-          },
-        };
-      }
-
-      // 프롬프트 재생성
-      finalPrompt = renderTemplate(template, templateData);
-      if (ctx.modeHint) {
-        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
-      }
-
-      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
-      logger.info(`After repo structure truncation: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+      updateAndRerender(
+        (data) => {
+          const baseTemplateData = data.context ? data : baseData;
+          return {
+            ...data,
+            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+          };
+        },
+        "repo structure truncation"
+      );
     }
 
-    // 최종 프롬프트가 여전히 초과하면 issue body 축소
+    // Truncate issue body if still over budget
     if (tokenAnalysis.exceedsLimit && ctx.issue.body) {
       logger.warn(`Prompt still exceeds token limit after repo truncation, truncating issue body`);
-
-      const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2); // 20% of budget for issue body
+      const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2);
       const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget);
 
-      // templateData를 업데이트하여 축소된 issue body 사용
-      if (attempt === 1) {
-        templateData = {
-          ...templateData,
+      updateAndRerender(
+        (data) => ({
+          ...data,
           issue: {
-            ...templateData.issue,
+            ...data.issue,
             body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
           },
-        };
-      } else {
-        templateData = {
-          ...templateData,
-          issue: {
-            ...templateData.issue,
-            body: truncatedIssueBody,
-          },
-        };
-      }
-
-      // 프롬프트 재생성
-      finalPrompt = renderTemplate(template, templateData);
-      if (ctx.modeHint) {
-        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
-      }
-
-      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
-      logger.info(`After issue body truncation: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+        }),
+        "issue body truncation"
+      );
     }
 
-    // 최종 토큰 사용량 로깅
     if (tokenAnalysis.exceedsLimit) {
       logger.warn(`Final prompt still exceeds token limit: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%). Proceeding anyway.`);
     }

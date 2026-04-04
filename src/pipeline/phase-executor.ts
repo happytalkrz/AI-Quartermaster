@@ -49,12 +49,11 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
 
     const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
 
-    // Check if previousSummary is too long and truncate if needed
-    let optimizedPreviousSummary = previousSummary;
     const config = configForTask(ctx.claudeConfig, "phase");
     const modelName = config.model || ctx.claudeConfig.model;
 
-    let rendered = renderTemplate(template, {
+    // Helper to create template data
+    const createTemplateData = (summary: string) => ({
       issue: {
         number: String(ctx.issue.number),
         title: ctx.issue.title,
@@ -68,7 +67,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         files: ctx.phase.targetFiles,
         totalCount: String(ctx.plan.phases.length),
       },
-      previousPhases: { summary: optimizedPreviousSummary },
+      previousPhases: { summary },
       config: {
         testCommand: ctx.testCommand,
         lintCommand: ctx.lintCommand,
@@ -78,7 +77,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       pastFailures: ctx.pastFailures ?? "",
     });
 
-    // Check token usage and warn if budget exceeded
+    let optimizedPreviousSummary = previousSummary;
+    let rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
+
+    // Check token usage and optimize if budget exceeded
     const tokenUsage = analyzeTokenUsage(rendered, modelName);
     if (tokenUsage.exceedsLimit) {
       logger.warn(
@@ -87,38 +89,13 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         `Consider reducing context or simplifying requirements.`
       );
 
-      // If previousSummary is long, try to reduce it and regenerate prompt
+      // If previousSummary is long, try to reduce it
       if (previousSummary.length > 1000 && ctx.previousResults.length > 0) {
         logger.warn(`Attempting to reduce previousResults context to fit budget...`);
-        const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1); // 10% of budget for previous results
+        const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1);
         optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens);
+        rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
 
-        // Re-render with optimized summary
-        rendered = renderTemplate(template, {
-          issue: {
-            number: String(ctx.issue.number),
-            title: ctx.issue.title,
-            body: sanitizedBody,
-          },
-          plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
-          phase: {
-            index: String(ctx.phase.index + 1),
-            name: ctx.phase.name,
-            description: ctx.phase.description,
-            files: ctx.phase.targetFiles,
-            totalCount: String(ctx.plan.phases.length),
-          },
-          previousPhases: { summary: optimizedPreviousSummary },
-          config: {
-            testCommand: ctx.testCommand,
-            lintCommand: ctx.lintCommand,
-          },
-          projectConventions: ctx.projectConventions ?? "",
-          skillsContext: ctx.skillsContext ?? "",
-          pastFailures: ctx.pastFailures ?? "",
-        });
-
-        // Check if optimization helped
         const optimizedUsage = analyzeTokenUsage(rendered, modelName);
         if (!optimizedUsage.exceedsLimit) {
           logger.warn(

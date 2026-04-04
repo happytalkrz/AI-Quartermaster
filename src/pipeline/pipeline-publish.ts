@@ -1,17 +1,13 @@
-import { resolve } from "path";
-import { writeFileSync, mkdirSync } from "fs";
 import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../github/pr-creator.js";
 import { parseDependencies, checkDependencyPRsMerged } from "../queue/dependency-resolver.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../git/branch-manager.js";
 import { removeWorktree } from "../git/worktree-manager.js";
 import { formatResult, printResult } from "./result-reporter.js";
-import type { PipelineReport } from "./result-reporter.js";
 import { validateBeforePush } from "../safety/safety-checker.js";
 import { rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { getLogger } from "../utils/logger.js";
-import type { AQConfig } from "../types/config.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../types/pipeline.js";
 import { removeCheckpoint } from "./checkpoint.js";
 import { PatternStore } from "../learning/pattern-store.js";

@@ -49,6 +49,7 @@ export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -173,7 +174,65 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
     }
 
-    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
+    // Token budget cap: 프롬프트 크기 체크 및 축소
+    const claudeConfig = configForTask(ctx.claudeConfig, "plan");
+    const modelName = claudeConfig.model;
+    let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+
+    logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+
+    // Helper to update and re-render
+    const updateAndRerender = (updateFn: (data: any) => any, stage: string) => {
+      templateData = updateFn(templateData);
+      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+      if (ctx.modeHint) {
+        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+      }
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      logger.info(`After ${stage}: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+    };
+
+    // Truncate repo structure if needed
+    if (tokenAnalysis.exceedsLimit && ctx.repoStructure) {
+      logger.warn(`Prompt exceeds token limit (${tokenAnalysis.estimatedTokens} > ${tokenAnalysis.effectiveLimit}), truncating repository structure`);
+      const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3);
+      const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget);
+
+      updateAndRerender(
+        (data) => {
+          const baseTemplateData = data.context ? data : baseData;
+          return {
+            ...data,
+            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+          };
+        },
+        "repo structure truncation"
+      );
+    }
+
+    // Truncate issue body if still over budget
+    if (tokenAnalysis.exceedsLimit && ctx.issue.body) {
+      logger.warn(`Prompt still exceeds token limit after repo truncation, truncating issue body`);
+      const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2);
+      const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget);
+
+      updateAndRerender(
+        (data) => ({
+          ...data,
+          issue: {
+            ...data.issue,
+            body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
+          },
+        }),
+        "issue body truncation"
+      );
+    }
+
+    if (tokenAnalysis.exceedsLimit) {
+      logger.warn(`Final prompt still exceeds token limit: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%). Proceeding anyway.`);
+    }
+
+    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars, ~${tokenAnalysis.estimatedTokens} tokens)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
 
     const result = await runClaude({
       prompt: finalPrompt,

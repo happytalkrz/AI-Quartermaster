@@ -14,6 +14,10 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
+vi.mock("../../src/review/token-estimator.js", () => ({
+  analyzeTokenUsage: vi.fn(),
+  summarizeForBudget: vi.fn(),
+}));
 
 import { executePhase } from "../../src/pipeline/phase-executor.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
@@ -21,12 +25,15 @@ import { runCli, runShell } from "../../src/utils/cli-runner.js";
 import type { PhaseExecutorContext } from "../../src/pipeline/phase-executor.js";
 
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
+import { analyzeTokenUsage, summarizeForBudget } from "../../src/review/token-estimator.js";
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockRunCli = vi.mocked(runCli);
 const mockRunShell = vi.mocked(runShell);
 const mockRenderTemplate = vi.mocked(renderTemplate);
 const mockLoadTemplate = vi.mocked(loadTemplate);
+const mockAnalyzeTokenUsage = vi.mocked(analyzeTokenUsage);
+const mockSummarizeForBudget = vi.mocked(summarizeForBudget);
 
 function makeCtx(overrides: Partial<PhaseExecutorContext> = {}): PhaseExecutorContext {
   return {
@@ -78,6 +85,14 @@ describe("executePhase", () => {
     mockLoadTemplate.mockReturnValue("template content");
     mockRenderTemplate.mockReturnValue("rendered prompt");
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    mockAnalyzeTokenUsage.mockReturnValue({
+      estimatedTokens: 1000,
+      modelLimit: 200000,
+      effectiveLimit: 160000,
+      exceedsLimit: false,
+      usagePercentage: 0.6,
+    });
+    mockSummarizeForBudget.mockReturnValue("summarized content");
   });
 
   it("returns success result when Claude succeeds and tests pass", async () => {
@@ -262,5 +277,95 @@ describe("executePhase", () => {
     expect(escaped).toBe(3);
     // Ensure no unescaped closing tags remain in the content
     expect(issueBody).toMatch(/<USER_INPUT>[\s\S]*<\/USER_INPUT>$/);
+  });
+
+  it("checks token usage and logs warning when budget exceeded", async () => {
+    // Mock token usage that exceeds budget
+    mockAnalyzeTokenUsage.mockReturnValue({
+      estimatedTokens: 180000,
+      modelLimit: 200000,
+      effectiveLimit: 160000,
+      exceedsLimit: true,
+      usagePercentage: 112.5,
+    });
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(mockAnalyzeTokenUsage).toHaveBeenCalled();
+  });
+
+  it("optimizes previousResults when budget exceeded and previousSummary is long", async () => {
+    // Mock token usage that exceeds budget
+    mockAnalyzeTokenUsage
+      .mockReturnValueOnce({
+        estimatedTokens: 180000,
+        modelLimit: 200000,
+        effectiveLimit: 160000,
+        exceedsLimit: true,
+        usagePercentage: 112.5,
+      })
+      .mockReturnValueOnce({
+        estimatedTokens: 150000,
+        modelLimit: 200000,
+        effectiveLimit: 160000,
+        exceedsLimit: false,
+        usagePercentage: 93.75,
+      });
+
+    // Create long previousResults to generate a summary over 1000 characters
+    const longPreviousResults = [];
+    for (let i = 0; i < 50; i++) {
+      longPreviousResults.push({
+        phaseIndex: i,
+        phaseName: `Very long phase name that will contribute to making the summary exceed 1000 characters when combined with many other phases - Phase ${i}`,
+        success: i % 2 === 0,
+      });
+    }
+
+    mockSummarizeForBudget.mockReturnValue("optimized summary");
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx({ previousResults: longPreviousResults }));
+
+    expect(result.success).toBe(true);
+    expect(mockAnalyzeTokenUsage).toHaveBeenCalledTimes(2);
+    expect(mockSummarizeForBudget).toHaveBeenCalled();
+    expect(mockRenderTemplate).toHaveBeenCalledTimes(2); // Initial render + optimized render
+  });
+
+  it("analyzes token usage with correct model name from config", async () => {
+    const ctx = makeCtx({
+      claudeConfig: {
+        path: "claude",
+        model: "claude-sonnet-4-20250514",
+        models: { plan: "claude-opus-4-6", phase: "claude-sonnet-4-6", review: "claude-haiku-4-5", fallback: "claude-sonnet-4-20250514" },
+        maxTurns: 1,
+        timeout: 5000,
+        additionalArgs: [],
+      },
+    });
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(ctx);
+
+    expect(result.success).toBe(true);
+    expect(mockAnalyzeTokenUsage).toHaveBeenCalledWith("rendered prompt", "claude-sonnet-4-6");
   });
 });

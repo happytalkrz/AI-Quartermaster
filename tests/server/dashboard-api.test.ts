@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import { EventEmitter } from "events";
-import { createDashboardRoutes } from "../../src/server/dashboard-api.js";
+import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources } from "../../src/server/dashboard-api.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { JobQueue } from "../../src/queue/job-queue.js";
 
@@ -1544,6 +1544,21 @@ describe("Dashboard API - Version Management", () => {
     it("should handle SSE client connections properly", async () => {
       const response = await app.request("/api/events?token=test-token");
       expect(response.status).toBe(401);
+    });
+
+    describe("cleanup functions", () => {
+      it("should call cleanup functions without errors", () => {
+        expect(() => stopPeriodicCleanup()).not.toThrow();
+        expect(() => cleanupAllSSEClients()).not.toThrow();
+        expect(() => cleanupDashboardResources()).not.toThrow();
+      });
+
+      it("cleanup functions should handle repeated calls gracefully", () => {
+        expect(() => {
+          cleanupDashboardResources();
+          cleanupDashboardResources();
+        }).not.toThrow();
+      });
     });
   });
 });

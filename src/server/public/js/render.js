@@ -19,9 +19,15 @@ function renderJobListItem(job, isSelected) {
     badgeHtml = '<span class="text-[10px] px-2 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
   }
 
+  var issueTitle = job.issueTitle || '';
+  var truncatedTitle = issueTitle ? (issueTitle.length > 40 ? issueTitle.substring(0, 40) + '...' : issueTitle) : '';
+
   return '<div class="' + activeBg + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
     '<div class="flex justify-between items-start mb-1">' +
-      '<span class="text-sm font-bold ' + (isSelected ? 'text-on-surface' : 'text-on-surface/80') + '">#' + job.issueNumber + ' ' + esc(job.repo) + '</span>' +
+      '<div>' +
+        '<span class="text-sm font-bold ' + (isSelected ? 'text-on-surface' : 'text-on-surface/80') + '">#' + job.issueNumber + ' ' + esc(job.repo) + '</span>' +
+        (truncatedTitle ? '<div class="text-xs text-outline mt-0.5">' + esc(truncatedTitle) + '</div>' : '') +
+      '</div>' +
       badgeHtml +
     '</div>' +
     '<div class="flex justify-between items-center">' +

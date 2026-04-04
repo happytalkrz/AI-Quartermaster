@@ -265,6 +265,9 @@ export class AQDatabase {
   // === Phase CRUD ===
 
   createPhase(phase: DatabasePhase): number {
+    // 같은 job_id + phase_index 기존 레코드 제거 (retry/재시작 시 중복 방지)
+    this.db.prepare("DELETE FROM phases WHERE job_id = ? AND phase_index = ?").run(phase.jobId, phase.phaseIndex);
+
     const stmt = this.db.prepare(`
       INSERT INTO phases (job_id, phase_index, phase_name, success, commit_hash, duration_ms, error, cost_usd)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)

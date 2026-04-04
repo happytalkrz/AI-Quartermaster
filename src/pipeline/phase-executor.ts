@@ -12,6 +12,7 @@ import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 import { phaseProgress } from "./progress-tracker.js";
+import { analyzeTokenUsage, summarizeForBudget } from "../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -48,7 +49,12 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
 
     const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`;
 
-    const rendered = renderTemplate(template, {
+    // Check if previousSummary is too long and truncate if needed
+    let optimizedPreviousSummary = previousSummary;
+    const config = configForTask(ctx.claudeConfig, "phase");
+    const modelName = config.model || ctx.claudeConfig.model;
+
+    let rendered = renderTemplate(template, {
       issue: {
         number: String(ctx.issue.number),
         title: ctx.issue.title,
@@ -62,7 +68,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         files: ctx.phase.targetFiles,
         totalCount: String(ctx.plan.phases.length),
       },
-      previousPhases: { summary: previousSummary },
+      previousPhases: { summary: optimizedPreviousSummary },
       config: {
         testCommand: ctx.testCommand,
         lintCommand: ctx.lintCommand,
@@ -72,12 +78,66 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       pastFailures: ctx.pastFailures ?? "",
     });
 
+    // Check token usage and warn if budget exceeded
+    const tokenUsage = analyzeTokenUsage(rendered, modelName);
+    if (tokenUsage.exceedsLimit) {
+      logger.warn(
+        `Phase ${ctx.phase.index} prompt exceeds token budget: ${tokenUsage.estimatedTokens.toLocaleString()} tokens ` +
+        `(${tokenUsage.usagePercentage.toFixed(1)}% of ${tokenUsage.effectiveLimit.toLocaleString()} limit). ` +
+        `Consider reducing context or simplifying requirements.`
+      );
+
+      // If previousSummary is long, try to reduce it and regenerate prompt
+      if (previousSummary.length > 1000 && ctx.previousResults.length > 0) {
+        logger.warn(`Attempting to reduce previousResults context to fit budget...`);
+        const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1); // 10% of budget for previous results
+        optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens);
+
+        // Re-render with optimized summary
+        rendered = renderTemplate(template, {
+          issue: {
+            number: String(ctx.issue.number),
+            title: ctx.issue.title,
+            body: sanitizedBody,
+          },
+          plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
+          phase: {
+            index: String(ctx.phase.index + 1),
+            name: ctx.phase.name,
+            description: ctx.phase.description,
+            files: ctx.phase.targetFiles,
+            totalCount: String(ctx.plan.phases.length),
+          },
+          previousPhases: { summary: optimizedPreviousSummary },
+          config: {
+            testCommand: ctx.testCommand,
+            lintCommand: ctx.lintCommand,
+          },
+          projectConventions: ctx.projectConventions ?? "",
+          skillsContext: ctx.skillsContext ?? "",
+          pastFailures: ctx.pastFailures ?? "",
+        });
+
+        // Check if optimization helped
+        const optimizedUsage = analyzeTokenUsage(rendered, modelName);
+        if (!optimizedUsage.exceedsLimit) {
+          logger.warn(
+            `Successfully reduced prompt to ${optimizedUsage.estimatedTokens.toLocaleString()} tokens ` +
+            `(${optimizedUsage.usagePercentage.toFixed(1)}% of limit) after context optimization.`
+          );
+        } else {
+          logger.warn(
+            `After optimization: ${optimizedUsage.estimatedTokens.toLocaleString()} tokens ` +
+            `(${optimizedUsage.usagePercentage.toFixed(1)}% of limit) - still exceeds budget.`
+          );
+        }
+      }
+    }
+
     // 2. Run Claude to implement the phase
     jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
-
-    const config = configForTask(ctx.claudeConfig, "phase");
     claudeResult = await runClaude({
       prompt: rendered,
       cwd: ctx.cwd,

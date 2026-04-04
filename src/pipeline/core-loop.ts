@@ -270,6 +270,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         jobLogger: jl,
         locale: ctx.config.general.locale,
         cachedLayers: ctx.cachedLayers,
+        gitConfig: ctx.config.git,
       });
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)

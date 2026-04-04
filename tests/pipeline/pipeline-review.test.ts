@@ -6,6 +6,7 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
 }));
 vi.mock("../../src/claude/model-router.js", () => ({
   configForTask: vi.fn(),
+  configForTaskWithMode: vi.fn(),
 }));
 vi.mock("../../src/git/commit-helper.js", () => ({
   autoCommitIfDirty: vi.fn(),
@@ -38,7 +39,7 @@ import {
 } from "../../src/pipeline/pipeline-review.js";
 import type { ExecutionModePreset } from "../../src/types/config.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
-import { configForTask } from "../../src/claude/model-router.js";
+import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { runReviews } from "../../src/review/review-orchestrator.js";
@@ -49,6 +50,7 @@ import type { ReviewPipelineResult, AnalystResult } from "../../src/types/review
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockConfigForTask = vi.mocked(configForTask);
+const mockConfigForTaskWithMode = vi.mocked(configForTaskWithMode);
 const mockAutoCommitIfDirty = vi.mocked(autoCommitIfDirty);
 const mockGetDiffContent = vi.mocked(getDiffContent);
 const mockRunReviews = vi.mocked(runReviews);
@@ -145,6 +147,7 @@ describe("pipeline-review", () => {
     mockGetDiffContent.mockResolvedValue("test diff content");
     mockExistsSync.mockReturnValue(true);
     mockConfigForTask.mockReturnValue({ path: "claude", model: "sonnet" });
+    mockConfigForTaskWithMode.mockReturnValue({ path: "claude", model: "sonnet" });
     mockIsPastState.mockReturnValue(false);
   });
 
@@ -270,6 +273,7 @@ describe("pipeline-review", () => {
         cwd: "/tmp/worktree",
         variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
         maxRounds: 1,
+        executionMode: "standard",
       });
       expect(mockRunAnalyst).not.toHaveBeenCalled();
       expect(ctx.checkpoint).toHaveBeenCalledWith({
@@ -321,6 +325,7 @@ describe("pipeline-review", () => {
         cwd: "/tmp/worktree",
         variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
         maxRounds: 1,
+        executionMode: "standard",
       });
     });
 

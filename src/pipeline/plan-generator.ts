@@ -386,14 +386,9 @@ async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanR
     retryContext.contextualization = contextInfo;
     retryContext.lastFailureAt = new Date().toISOString();
 
-    // 이슈 코멘트 알림
-    logger.info(`Posting retry context comment to issue #${ctx.issue.number}`);
-    const repo = `${ctx.repo.owner}/${ctx.repo.name}`;
-    // retryContext의 deep copy를 전달하여 이후 수정으로부터 보호
-    const retryContextSnapshot = JSON.parse(JSON.stringify(retryContext));
-    await notifyPlanRetryContext(repo, ctx.issue.number, retryContextSnapshot, contextInfo);
-
-    logger.info("Retry context collection and notification completed");
+    // retry context는 로그에만 남기고 이슈 코멘트는 남기지 않음 (이슈 오염 방지)
+    logger.info(`Plan retry context collected for issue #${ctx.issue.number}: ${extractedFiles.length} files analyzed`);
+    logger.debug(`Retry context: ${JSON.stringify(retryContext, null, 2).slice(0, 500)}`);
   } catch (contextError: unknown) {
     logger.warn(`Failed to collect retry context: ${getErrorMessage(contextError)}`);
     // 컨텍스트 수집 실패는 치명적이지 않음, 재시도는 계속 진행

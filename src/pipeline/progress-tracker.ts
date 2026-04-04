@@ -67,6 +67,8 @@ export function progressForState(state: string): number {
     case "SIMPLIFYING": return PROGRESS_SIMPLIFY_START;
     case "FINAL_VALIDATING": return PROGRESS_VALIDATION_START;
     case "DRAFT_PR_CREATED": return PROGRESS_PR_CREATED;
+    case "CI_CHECKING": return 97; // CI 확인 단계 (95-100 사이)
+    case "CI_FIXING": return 0; // CI 실패 시 수정 상태
     case "DONE": return PROGRESS_DONE;
     default: return 0;
   }

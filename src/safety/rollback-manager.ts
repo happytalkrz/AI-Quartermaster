@@ -13,7 +13,8 @@ export interface WorktreeManager {
     branchName: string,
     issueNumber: number,
     slug: string,
-    options: { cwd: string }
+    options: { cwd: string },
+    repoSlug?: string
   ) => Promise<WorktreeInfo>;
   removeWorktree: (
     gitConfig: GitConfig,
@@ -123,7 +124,8 @@ export async function ensureCleanState(
         options.branchName,
         options.issueNumber,
         options.slug,
-        { cwd: options.cwd }
+        { cwd: options.cwd },
+        undefined  // repoSlug not available in rollback context
       );
 
       logger.info(`Clean state restored via worktree recreation at ${newWorktreeInfo.path}`);

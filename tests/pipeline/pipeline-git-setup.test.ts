@@ -17,6 +17,7 @@ vi.mock("../../src/safety/rollback-manager.js", () => ({
 }));
 vi.mock("../../src/utils/slug.js", () => ({
   createSlugWithFallback: vi.fn(),
+  createSlug: vi.fn(),
 }));
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
@@ -45,7 +46,7 @@ import { syncBaseBranch, createWorkBranch } from "../../src/git/branch-manager.j
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
 import { installDependencies } from "../../src/pipeline/dependency-installer.js";
 import { createCheckpoint } from "../../src/safety/rollback-manager.js";
-import { createSlugWithFallback } from "../../src/utils/slug.js";
+import { createSlugWithFallback, createSlug } from "../../src/utils/slug.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 import { withRepoLock } from "../../src/git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../../src/config/skill-loader.js";
@@ -58,6 +59,7 @@ const mockRemoveWorktree = vi.mocked(removeWorktree);
 const mockInstallDependencies = vi.mocked(installDependencies);
 const mockCreateCheckpoint = vi.mocked(createCheckpoint);
 const mockCreateSlugWithFallback = vi.mocked(createSlugWithFallback);
+const mockCreateSlug = vi.mocked(createSlug);
 const mockRunCli = vi.mocked(runCli);
 const mockWithRepoLock = vi.mocked(withRepoLock);
 const mockLoadSkills = vi.mocked(loadSkills);

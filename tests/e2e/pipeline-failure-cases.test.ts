@@ -74,7 +74,7 @@ import type { PipelineState } from "../../src/types/pipeline.js";
 import type { PipelineRuntime } from "../../src/pipeline/pipeline-context.js";
 
 // Import helpers from e2e utils
-import { makeConfig, setupSuccessMocks, makePlan, makePhaseResult } from "./helpers/e2e-test-utils.js";
+import { makeConfig, setupSuccessMocks, makePlan, makePhaseResult, createDefaultMocks } from "./helpers/e2e-test-utils.js";
 
 const mockFetchIssue = vi.mocked(fetchIssue);
 const mockCloseIssue = vi.mocked(closeIssue);

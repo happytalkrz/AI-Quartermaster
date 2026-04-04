@@ -100,36 +100,35 @@ export function makePhaseResult(
 // Mock Setup Helpers
 // ---------------------------------------------------------------------------
 
+type MockSet = {
+  fetchIssue: any;
+  syncBaseBranch: any;
+  createWorkBranch: any;
+  createWorktree: any;
+  installDependencies: any;
+  runCli: any;
+  runCoreLoop: any;
+  pushBranch: any;
+  checkConflicts: any;
+  attemptRebase: any;
+  enableAutoMerge: any;
+  addIssueComment: any;
+  createDraftPR: any;
+  removeWorktree: any;
+  getDiffContent: any;
+  runReviews: any;
+  runSimplify: any;
+  runFinalValidation: any;
+  validateIssue: any;
+  validatePlan: any;
+  validateBeforePush: any;
+  closeIssue: ReturnType<typeof vi.mocked>;
+};
+
 /**
  * Setup standard success mocks for pipeline integration tests
  */
-export function setupSuccessMocks(
-  phaseCount = 2,
-  mocks: {
-    fetchIssue: any;
-    syncBaseBranch: any;
-    createWorkBranch: any;
-    createWorktree: any;
-    installDependencies: any;
-    runCli: any;
-    runCoreLoop: any;
-    pushBranch: any;
-    checkConflicts: any;
-    attemptRebase: any;
-    enableAutoMerge: any;
-    addIssueComment: any;
-    createDraftPR: any;
-    removeWorktree: any;
-    getDiffContent: any;
-    runReviews: any;
-    runSimplify: any;
-    runFinalValidation: any;
-    validateIssue: any;
-    validatePlan: any;
-    validateBeforePush: any;
-    closeIssue: ReturnType<typeof vi.mocked>;
-  }
-): void {
+export function setupSuccessMocks(phaseCount = 2, mocks: MockSet): void {
   const plan = makePlan(phaseCount);
 
   mocks.fetchIssue.mockResolvedValue({
@@ -205,18 +204,38 @@ export function setupSuccessMocks(
 // ---------------------------------------------------------------------------
 
 /**
- * Get the path to the minimal project fixture
+ * Create default mocks for all pipeline dependencies
  */
-export function getMinimalProjectFixturePath(): string {
-  // Use relative path resolution compatible with test environment
-  const currentDir = process.cwd();
-  return `${currentDir}/tests/fixtures/minimal-project`;
+export function createDefaultMocks(): MockSet {
+  return {
+    fetchIssue: vi.fn(),
+    syncBaseBranch: vi.fn(),
+    createWorkBranch: vi.fn(),
+    createWorktree: vi.fn(),
+    installDependencies: vi.fn(),
+    runCli: vi.fn(),
+    runCoreLoop: vi.fn(),
+    pushBranch: vi.fn(),
+    checkConflicts: vi.fn(),
+    attemptRebase: vi.fn(),
+    enableAutoMerge: vi.fn(),
+    addIssueComment: vi.fn(),
+    createDraftPR: vi.fn(),
+    removeWorktree: vi.fn(),
+    getDiffContent: vi.fn(),
+    runReviews: vi.fn(),
+    runSimplify: vi.fn(),
+    runFinalValidation: vi.fn(),
+    validateIssue: vi.fn(),
+    validatePlan: vi.fn(),
+    validateBeforePush: vi.fn(),
+    closeIssue: vi.fn() as ReturnType<typeof vi.mocked>,
+  };
 }
 
 /**
- * Get the path to the minimal project fixture for E2E testing
- * Returns the fixture directory path (not a temporary copy)
+ * Get the path to the minimal project fixture
  */
 export function getFixtureProjectPath(): string {
-  return getMinimalProjectFixturePath();
+  return `${process.cwd()}/tests/fixtures/minimal-project`;
 }

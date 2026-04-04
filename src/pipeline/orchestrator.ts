@@ -24,20 +24,12 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     // Phase 1: Initial Setup (Project, Duplicate PR check, Issue validation)
     const setupResult = await executeInitialSetupPhases(input, runtime, config, aqRoot);
 
-    // Validate setupResult before proceeding
-    if (!setupResult) {
-      throw new Error("Initial setup failed: setupResult is undefined");
-    }
-
     // Early return for duplicate PR
     if (setupResult.duplicatePRUrl) {
       return { success: true, state: "DONE", prUrl: setupResult.duplicatePRUrl };
     }
 
     const { issue, mode, checkpoint } = setupResult;
-    if (!issue || !mode || !checkpoint) {
-      throw new Error("Initial setup failed: missing issue, mode, or checkpoint");
-    }
 
     // Phase 2: Environment Setup (Git + Work environment)
     const envResult = await executeEnvironmentSetup(

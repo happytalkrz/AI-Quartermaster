@@ -1207,7 +1207,6 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.error).toContain("Configuration validation failed");
     });
   });
-<<<<<<< HEAD
 });
 
 describe("Dashboard API - Version Management", () => {
@@ -1538,11 +1537,13 @@ describe("Dashboard API - Version Management", () => {
         const result = await response.json();
         expect(result.error).toBe("Unauthorized");
       });
+    });
 
-  describe("SSE Resource Management", () => {
-    it("should handle SSE client connections properly", async () => {
-      const response = await app.request("/api/events?token=test-token");
-      expect(response.status).toBe(401);
+    describe("SSE Resource Management", () => {
+      it("should handle SSE client connections properly", async () => {
+        const response = await app.request("/api/events?token=test-token");
+        expect(response.status).toBe(401);
+      });
     });
   });
 });

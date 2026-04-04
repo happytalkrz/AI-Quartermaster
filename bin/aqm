@@ -89,6 +89,13 @@ case "${1:-}" in
       echo "이미 최신 버전입니다."
     else
       npm install --silent 2>/dev/null
+      echo "빌드 중..."
+      npm run build --silent 2>/dev/null
+      if [ $? -ne 0 ]; then
+        echo "빌드 실패! 로그를 확인하세요."
+        npm run build
+        exit 1
+      fi
       # Update wrapper script
       if [ -f "$AQM_HOME/bin/aqm" ]; then
         cp "$AQM_HOME/bin/aqm" "$HOME/.local/bin/aqm"

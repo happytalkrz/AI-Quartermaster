@@ -142,7 +142,28 @@ export class SelfUpdater {
   }
 
   /**
-   * Performs full self-update process: check -> pull -> npm ci (if needed)
+   * Runs npm run build to compile TypeScript
+   */
+  async runBuild(): Promise<void> {
+    logger.info("빌드 중 — npm run build 실행...");
+
+    const buildResult = await runCli(
+      "npm",
+      ["run", "build"],
+      {
+        cwd: this.options.cwd,
+        timeout: 120000, // 2분 타임아웃
+      }
+    );
+    if (buildResult.exitCode !== 0) {
+      throw new Error(`npm run build 실패: ${buildResult.stderr}`);
+    }
+
+    logger.info("npm run build 완료");
+  }
+
+  /**
+   * Performs full self-update process: check -> pull -> npm ci (if needed) -> build
    */
   async performSelfUpdate(): Promise<{ updated: boolean; needsRestart: boolean }> {
     const updateInfo = await this.checkForUpdates();
@@ -159,6 +180,8 @@ export class SelfUpdater {
     if (this.shouldRunNpmCi(updateInfo)) {
       await this.runNpmCi();
     }
+
+    await this.runBuild();
 
     logger.info("자가 업데이트 완료");
     return { updated: true, needsRestart: true };

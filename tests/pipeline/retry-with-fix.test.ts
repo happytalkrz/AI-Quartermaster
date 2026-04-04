@@ -234,4 +234,64 @@ describe("retryWithClaudeFix", () => {
     await retryWithClaudeFix(options2);
     expect(onAttempt).toHaveBeenCalledWith(1, 1, "Short prompt");
   });
+
+  it("should truncate fix prompt when it exceeds token budget", async () => {
+    const failedResult = { errors: ["error"] };
+
+    // Create a very long prompt that exceeds 8000 tokens (32000+ chars)
+    const longContent = "This is a very long prompt content. ".repeat(1000);
+    const longPrompt = `Fix the following errors:\n\n${longContent}\n\nPlease fix these issues.`;
+
+    const onAttempt = vi.fn();
+
+    const options: RetryWithFixOptions<typeof failedResult> = {
+      checkFn: vi.fn().mockResolvedValue({ success: false, result: failedResult }),
+      buildFixPromptFn: vi.fn().mockReturnValue(longPrompt),
+      revalidateFn: vi.fn().mockResolvedValue({ success: true, result: { errors: [] } }),
+      maxRetries: 1,
+      claudeConfig: { model: "test-model" },
+      cwd: "/test/dir",
+      gitPath: "/usr/bin/git",
+      commitMessageTemplate: "fix: test commit (retry {attempt})",
+      onAttempt
+    };
+
+    await retryWithClaudeFix(options);
+
+    // Check that runClaude was called with truncated prompt
+    expect(mockRunClaude).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("[... 중간 내용 생략 (토큰 예산 초과로 인한 자동 truncate) ...]"),
+      })
+    );
+
+    // Verify the prompt was actually truncated (should be much shorter than original)
+    const calledPrompt = mockRunClaude.mock.calls[0][0].prompt;
+    expect(calledPrompt.length).toBeLessThan(longPrompt.length / 2);
+  });
+
+  it("should not truncate fix prompt when within token budget", async () => {
+    const failedResult = { errors: ["error"] };
+    const shortPrompt = "Fix this small error.";
+
+    const options: RetryWithFixOptions<typeof failedResult> = {
+      checkFn: vi.fn().mockResolvedValue({ success: false, result: failedResult }),
+      buildFixPromptFn: vi.fn().mockReturnValue(shortPrompt),
+      revalidateFn: vi.fn().mockResolvedValue({ success: true, result: { errors: [] } }),
+      maxRetries: 1,
+      claudeConfig: { model: "test-model" },
+      cwd: "/test/dir",
+      gitPath: "/usr/bin/git",
+      commitMessageTemplate: "fix: test commit (retry {attempt})"
+    };
+
+    await retryWithClaudeFix(options);
+
+    // Check that runClaude was called with original prompt (no truncation)
+    expect(mockRunClaude).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: shortPrompt,
+      })
+    );
+  });
 });

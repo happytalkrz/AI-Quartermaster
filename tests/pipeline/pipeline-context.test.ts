@@ -144,10 +144,13 @@ describe("pipeline-context", () => {
         "BRANCH_CREATED",
         "WORKTREE_CREATED",
         "PLAN_GENERATED",
+        "PHASE_IN_PROGRESS",
         "REVIEWING",
         "SIMPLIFYING",
         "FINAL_VALIDATING",
         "DRAFT_PR_CREATED",
+        "CI_CHECKING",
+        "CI_FIXING",
         "DONE",
       ]);
     });

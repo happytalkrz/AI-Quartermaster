@@ -275,6 +275,7 @@ const safetyConfigSchema = z.object({
   stopConditions: z.array(z.string()),
   allowedLabels: z.array(z.string()),
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
+  strict: z.boolean().default(true),
 });
 
 const projectConfigSchema = z.object({

@@ -155,6 +155,7 @@ export interface SafetyConfig {
   allowedLabels: string[];
   rollbackStrategy: "none" | "all" | "failed-only";
   feasibilityCheck: FeasibilityCheckConfig;
+  strict: boolean;
 }
 
 export interface ExecutionModePreset {
@@ -164,7 +165,6 @@ export interface ExecutionModePreset {
   enableFinalValidation: boolean;
   maxPhases: number;
   maxRetries: number;
-  strictSafety: boolean;
   description: string;
 }
 

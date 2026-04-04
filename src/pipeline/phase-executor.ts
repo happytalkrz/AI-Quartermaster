@@ -47,6 +47,9 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
+    // Get next phase info if not the last phase
+    const nextPhase = ctx.plan.phases[ctx.phase.index + 1] ?? null;
+
 const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
     const config = configForTask(ctx.claudeConfig, "phase");
@@ -59,7 +62,10 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
         title: ctx.issue.title,
         body: sanitizedBody,
       },
-      plan: { summary: ctx.plan.problemDefinition, phases: JSON.stringify(ctx.plan.phases) },
+      plan: {
+        summary: ctx.plan.problemDefinition,
+        nextPhase: nextPhase ? `Next: Phase ${nextPhase.index + 1} - ${nextPhase.name}` : "This is the final phase"
+      },
       phase: {
         index: String(ctx.phase.index + 1),
         name: ctx.phase.name,

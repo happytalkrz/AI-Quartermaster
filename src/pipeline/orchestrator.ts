@@ -31,6 +31,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
     const { issue, mode, checkpoint } = setupResult;
 
+    // Validate required values from setup
+    if (!mode) {
+      throw new Error("Pipeline mode not determined during setup");
+    }
+
+    // Provide default checkpoint function if not available
+    const checkpointFn = checkpoint || (() => {});
+
     // Phase 2: Environment Setup (Git + Work environment)
     const envResult = await executeEnvironmentSetup(
       input,
@@ -40,10 +48,10 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       setupResult.gitConfig,
       setupResult.projectRoot,
       config,
-      checkpoint
+      checkpointFn
     );
 
-    checkpoint({ plan: undefined, phaseResults: [] });
+    checkpointFn({ plan: undefined, phaseResults: [] });
 
     // Phase 3: Core Loop Execution (Plan generation + Phase execution)
     const coreResult = await executeCoreLoopPhase(
@@ -59,7 +67,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       mode
     );
 
-    checkpoint({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
+    checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
 
     // Phase 4: Post-processing (Review, Simplify, Validation, Publish)
     const postProcessingContext: PostProcessingContext = {
@@ -72,7 +80,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       skillsContext: envResult.skillsContext,
       preset: coreResult.preset,
       timer: setupResult.timer,
-      checkpoint
+      checkpoint: checkpointFn
     };
 
     const finalResult = await executePostProcessingPhases(

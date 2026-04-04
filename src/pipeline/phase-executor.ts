@@ -152,7 +152,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
     // 3. Auto-commit if Claude didn't commit
-    const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index}: ${ctx.phase.name}`;
+    const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index + 1}: ${ctx.phase.name}`;
     const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
     if (autoCommitted) {
       logger.info(`Auto-committing uncommitted changes for phase ${ctx.phase.index}`);

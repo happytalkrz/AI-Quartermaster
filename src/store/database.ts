@@ -305,6 +305,13 @@ export class AQDatabase {
   // === Log CRUD ===
 
   createLog(log: DatabaseLog): number {
+    // Enforce max 500 logs per job to prevent DB bloat
+    const count = this.db.prepare("SELECT COUNT(*) as c FROM logs WHERE job_id = ?").get(log.jobId) as { c: number } | undefined;
+    if (count && count.c >= 500) {
+      // Delete oldest logs keeping 400
+      this.db.prepare("DELETE FROM logs WHERE job_id = ? AND id NOT IN (SELECT id FROM logs WHERE job_id = ? ORDER BY id DESC LIMIT 400)").run(log.jobId, log.jobId);
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO logs (job_id, message, timestamp)
       VALUES (?, ?, ?)

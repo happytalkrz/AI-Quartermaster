@@ -10,6 +10,9 @@ import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
+import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
+import { createCheckpoint } from "../safety/rollback-manager.js";
+import { createSlug } from "../utils/slug.js";
 
 const logger = getLogger();
 
@@ -45,6 +48,9 @@ export interface CoreLoopContext {
   dataDir?: string;
   jobLogger?: JobLogger;
   previousPhaseResults?: PhaseResult[];  // from checkpoint resume
+  checkpoint?: string;  // checkpoint hash for rollback
+  worktreeInfo?: { path: string; branch: string };  // worktree information
+  slug?: string;  // issue slug for worktree naming
 }
 
 export interface CoreLoopResult {
@@ -189,6 +195,17 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           logger.warn(`Phase ${phase.index + 1} failed (${result.errorCategory ?? "UNKNOWN"}), retry ${attempt}/${maxRetries}...`);
           jl?.log(`Phase ${phase.index + 1} 재시도 ${attempt}/${maxRetries}: ${result.errorCategory}`);
 
+          // Create checkpoint only when actually needed for retry
+          let checkpoint = ctx.checkpoint;
+          if (!checkpoint) {
+            try {
+              checkpoint = await createCheckpoint({ cwd: ctx.cwd, gitPath: ctx.config.git.gitPath });
+            } catch (checkpointError) {
+              logger.warn(`Failed to create checkpoint for retry: ${checkpointError}`);
+              checkpoint = "fallback";
+            }
+          }
+
           result = await retryPhase({
             issue: ctx.issue,
             plan,
@@ -205,6 +222,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             lintCommand: ctx.config.commands.lint,
             gitPath: ctx.config.git.gitPath,
             jobLogger: jl,
+            checkpoint,
+            worktreeManager: { createWorktree, removeWorktree },
+            worktreeInfo: ctx.worktreeInfo ?? { path: ctx.cwd, branch: ctx.branch.work },
+            gitConfig: ctx.config.git,
+            worktreeConfig: ctx.config.worktree,
+            slug: ctx.slug ?? createSlug(ctx.issue.title),
           });
 
           if (result.success) {

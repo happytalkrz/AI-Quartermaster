@@ -11,6 +11,7 @@ import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
+import { clearCache } from "../github/github-cache.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
@@ -185,5 +186,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
 
     return { success: false, state: "FAILED", error: finalErrorMessage, report };
+  } finally {
+    // 파이프라인 종료 시 캐시 정리 - 성공/실패 모두 메모리 누수 방지
+    clearCache();
   }
 }

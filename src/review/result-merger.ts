@@ -1,4 +1,4 @@
-import type { ReviewResult, ReviewFinding, ReviewVerdict, SplitReviewInfo, SplitReviewResult } from "../types/review.js";
+import type { ReviewResult, ReviewFinding, ReviewVerdict, SplitReviewResult } from "../types/review.js";
 
 /**
  * 분할 리뷰 결과들을 단일 ReviewResult로 병합합니다.

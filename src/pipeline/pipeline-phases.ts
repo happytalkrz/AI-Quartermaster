@@ -18,6 +18,7 @@ import {
   PROGRESS_DONE
 } from "./progress-tracker.js";
 import type { AQConfig, PipelineMode, GitConfig } from "../types/config.js";
+import type { PipelineState } from "../types/pipeline.js";
 import type { OrchestratorInput } from "./pipeline-context.js";
 import type { CoreLoopResult } from "./core-loop.js";
 import type { ResolvedProject } from "../config/project-resolver.js";
@@ -407,9 +408,9 @@ export async function executePostProcessingPhases(
   const validationResult = await runValidationPhase(
     validationContext,
     timer,
-    (checkState: string) => isPastState(runtime.state, checkState as any),
+    (checkState: string) => isPastState(runtime.state, checkState as PipelineState),
     preset.skipFinalValidation,
-    (overrides?: any) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
+    (overrides?: Partial<PipelineCheckpoint>) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
     issueNumber,
     repo,
     startTime,

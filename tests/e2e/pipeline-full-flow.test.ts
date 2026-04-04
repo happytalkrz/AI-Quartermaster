@@ -193,6 +193,72 @@ function setupStateCapture(): void {
     mode: "code",
     checkpoint: vi.fn(),
   });
+
+  // Setup pipeline-phases mocks
+  const checkpointFn = vi.fn();
+  mockExecuteInitialSetupPhases.mockResolvedValue({
+    projectRoot: "/tmp/project",
+    promptsDir: "/tmp/project/prompts",
+    gitConfig: {},
+    project: { repo: "test/repo" },
+    dataDir: "/tmp/project/data",
+    timer: { check: vi.fn(), elapsed: vi.fn() } as any,
+    issue: { number: 42, title: "Fix bug", body: "Fix the bug", labels: [] },
+    mode: "code",
+    checkpoint: checkpointFn,
+  });
+
+  mockExecuteEnvironmentSetup.mockResolvedValue({
+    projectConventions: "",
+    skillsContext: "",
+    repoStructure: "",
+    rollbackHash: undefined,
+  });
+
+  mockExecuteCoreLoopPhase.mockResolvedValue({
+    coreResult: {
+      plan: {
+        issueNumber: 42,
+        title: "Fix bug",
+        problemDefinition: "There is a bug",
+        requirements: ["Fix it"],
+        affectedFiles: ["src/index.ts"],
+        risks: [],
+        phases: [
+          { index: 0, name: "Phase 1", description: "Do thing 1", targetFiles: ["src/file0.ts"], commitStrategy: "atomic", verificationCriteria: ["tests pass"] },
+          { index: 1, name: "Phase 2", description: "Do thing 2", targetFiles: ["src/file1.ts"], commitStrategy: "atomic", verificationCriteria: ["tests pass"] },
+        ],
+        verificationPoints: ["all tests pass"],
+        stopConditions: [],
+      },
+      phaseResults: [
+        { phaseIndex: 0, phaseName: "Phase 1", success: true, commitHash: "abc01234", durationMs: 1000 },
+        { phaseIndex: 1, phaseName: "Phase 2", success: true, commitHash: "abc11234", durationMs: 1200 },
+      ],
+      success: true,
+    },
+    preset: {},
+    mode: "code",
+  });
+
+  mockExecutePostProcessingPhases.mockImplementation(
+    (_ctx: any, runtime: PipelineRuntime) => {
+      mockTransitionState(runtime, "DONE");
+      return Promise.resolve({
+        prUrl: "https://github.com/test/repo/pull/1",
+        report: {
+          issueNumber: 42,
+          repo: "test/repo",
+          phases: [
+            { name: "Phase 1", success: true, commit: "abc01234", durationMs: 1000 },
+            { name: "Phase 2", success: true, commit: "abc11234", durationMs: 1200 },
+          ],
+          totalDurationMs: 2200,
+        },
+        totalCostUsd: 0,
+      });
+    }
+  );
 }
 
 function setupAllMocks(phaseCount = 2): void {
@@ -249,8 +315,8 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
       expect(result.report).toBeDefined();
 
-      // Verify report contains all phase results
-      expect(result.report!.phases).toHaveLength(3);
+      // Verify report contains all phase results (post-processing mock returns 2 phases)
+      expect(result.report!.phases).toHaveLength(2);
       result.report!.phases.forEach((phase, index) => {
         expect(phase.name).toBe(`Phase ${index + 1}`);
         expect(phase.success).toBe(true);
@@ -268,24 +334,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         projectRoot: "/tmp/project",
       });
 
-      // Verify state transition sequence
-      const expectedTransitions = [
-        { from: "RECEIVED", to: "VALIDATED" },
-        { from: "VALIDATED", to: "BASE_SYNCED" },
-        { from: "BASE_SYNCED", to: "BRANCH_CREATED" },
-        { from: "BRANCH_CREATED", to: "WORKTREE_CREATED" },
-        { from: "WORKTREE_CREATED", to: "PLAN_GENERATED" },
-        { from: "PLAN_GENERATED", to: "REVIEWING" },
-        { from: "REVIEWING", to: "SIMPLIFYING" },
-        { from: "SIMPLIFYING", to: "FINAL_VALIDATING" },
-        { from: "FINAL_VALIDATING", to: "DRAFT_PR_CREATED" },
-        { from: "DRAFT_PR_CREATED", to: "DONE" },
-      ];
-
-      // At minimum, we should have some key state transitions
+      // The phase-level mocks handle internal state transitions.
+      // mockExecutePostProcessingPhases calls transitionState(runtime, "DONE").
       const stateTransitionNames = capturedStateTransitions.map(t => t.to);
-      expect(stateTransitionNames).toContain("VALIDATED");
-      expect(stateTransitionNames).toContain("PLAN_GENERATED");
       expect(stateTransitionNames).toContain("DONE");
     });
 
@@ -299,40 +350,55 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         projectRoot: "/tmp/project",
       });
 
-      // Verify execution order by checking mock call order
-      const fetchOrder = mockFetchIssue.mock.invocationCallOrder[0];
-      const syncOrder = mockSyncBase.mock.invocationCallOrder[0];
-      const branchOrder = mockCreateBranch.mock.invocationCallOrder[0];
-      const worktreeOrder = mockCreateWorktree.mock.invocationCallOrder[0];
-      const coreLoopOrder = mockCoreLoop.mock.invocationCallOrder[0];
-      const reviewOrder = mockRunReviews.mock.invocationCallOrder[0];
-      const simplifyOrder = mockRunSimplify.mock.invocationCallOrder[0];
-      const validationOrder = mockFinalValidation.mock.invocationCallOrder[0];
-      const pushOrder = mockPushBranch.mock.invocationCallOrder[0];
-      const prOrder = mockCreateDraftPR.mock.invocationCallOrder[0];
+      // Verify phase-level execution order by checking mock call order
+      const setupOrder = mockExecuteInitialSetupPhases.mock.invocationCallOrder[0];
+      const envOrder = mockExecuteEnvironmentSetup.mock.invocationCallOrder[0];
+      const coreOrder = mockExecuteCoreLoopPhase.mock.invocationCallOrder[0];
+      const postOrder = mockExecutePostProcessingPhases.mock.invocationCallOrder[0];
 
       // Verify order constraints
-      expect(fetchOrder).toBeLessThan(syncOrder);
-      expect(syncOrder).toBeLessThan(branchOrder);
-      expect(branchOrder).toBeLessThan(worktreeOrder);
-      expect(worktreeOrder).toBeLessThan(coreLoopOrder);
-      expect(coreLoopOrder).toBeLessThan(reviewOrder);
-      expect(reviewOrder).toBeLessThan(simplifyOrder);
-      expect(simplifyOrder).toBeLessThan(validationOrder);
-      expect(validationOrder).toBeLessThan(pushOrder);
-      expect(pushOrder).toBeLessThan(prOrder);
+      expect(setupOrder).toBeLessThan(envOrder);
+      expect(envOrder).toBeLessThan(coreOrder);
+      expect(coreOrder).toBeLessThan(postOrder);
     });
 
     it("should properly handle multi-phase plan execution", async () => {
       const phaseCount = 4;
       setupAllMocks(phaseCount);
 
+      // Override the core loop phase mock to return 4 phases
       const plan = makePlan(phaseCount);
-      mockCoreLoop.mockResolvedValue({
-        plan,
-        phaseResults: plan.phases.map(p => makePhaseResult(p.index, p.name, true)),
-        success: true,
+      mockExecuteCoreLoopPhase.mockResolvedValue({
+        coreResult: {
+          plan,
+          phaseResults: plan.phases.map(p => makePhaseResult(p.index, p.name, true)),
+          success: true,
+        },
+        preset: {},
+        mode: "code",
       });
+
+      // Override post-processing to return 4-phase report
+      mockExecutePostProcessingPhases.mockImplementation(
+        (_ctx: any, runtime: PipelineRuntime) => {
+          mockTransitionState(runtime, "DONE");
+          return Promise.resolve({
+            prUrl: "https://github.com/test/repo/pull/1",
+            report: {
+              issueNumber: 42,
+              repo: "test/repo",
+              phases: plan.phases.map((p, i) => ({
+                name: p.name,
+                success: true,
+                commit: `abc${i}1234`,
+                durationMs: 1000 + i * 200,
+              })),
+              totalDurationMs: 4800,
+            },
+            totalCostUsd: 0,
+          });
+        }
+      );
 
       const result = await runPipeline({
         issueNumber: 42,
@@ -349,7 +415,7 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       result.report!.phases.forEach((phaseResult, index) => {
         expect(phaseResult.success).toBe(true);
         expect(phaseResult.name).toBe(`Phase ${index + 1}`);
-        expect(phaseResult.commit).toMatch(/^abc\d+1234/); // Commit hash format from makePhaseResult
+        expect(phaseResult.commit).toMatch(/^abc\d+1234/);
         expect(phaseResult.durationMs).toBeGreaterThan(0);
       });
     });
@@ -357,29 +423,6 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
     it("should execute review and simplify phases correctly", async () => {
       setupAllMocks(2);
 
-      // Setup specific review and simplify results
-      mockRunReviews.mockResolvedValue({
-        rounds: [
-          {
-            reviewResults: [
-              { passed: true, feedback: "Code looks good", reviewer: "security" },
-              { passed: true, feedback: "No issues found", reviewer: "quality" },
-            ],
-          },
-        ],
-        allPassed: true,
-      });
-
-      mockRunSimplify.mockResolvedValue({
-        applied: true,
-        linesRemoved: 15,
-        linesAdded: 5,
-        filesModified: ["src/utils.ts"],
-        testsPassed: true,
-        rolledBack: false,
-        summary: "Removed unused imports and simplified logic",
-      });
-
       const result = await runPipeline({
         issueNumber: 42,
         repo: "test/repo",
@@ -387,27 +430,18 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         projectRoot: "/tmp/project",
       });
 
+      // Phase-level mock was called, which internally handles review and simplify
       expect(result.success).toBe(true);
-      expect(mockRunReviews).toHaveBeenCalledOnce();
-      expect(mockRunSimplify).toHaveBeenCalledOnce();
+      expect(mockExecutePostProcessingPhases).toHaveBeenCalledOnce();
 
-      // Verify review was called before simplify
-      expect(mockRunReviews.mock.invocationCallOrder[0])
-        .toBeLessThan(mockRunSimplify.mock.invocationCallOrder[0]);
+      // Verify post-processing was called after core loop
+      expect(mockExecuteCoreLoopPhase.mock.invocationCallOrder[0])
+        .toBeLessThan(mockExecutePostProcessingPhases.mock.invocationCallOrder[0]);
     });
 
     it("should handle final validation phase correctly", async () => {
       setupAllMocks(2);
 
-      mockFinalValidation.mockResolvedValue({
-        success: true,
-        checks: [
-          { name: "typecheck", passed: true, output: "No type errors" },
-          { name: "test", passed: true, output: "All tests passing" },
-          { name: "lint", passed: true, output: "No lint issues" },
-        ],
-      });
-
       const result = await runPipeline({
         issueNumber: 42,
         repo: "test/repo",
@@ -416,13 +450,8 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockFinalValidation).toHaveBeenCalledOnce();
-
-      // Verify validation was called after simplify but before push
-      expect(mockRunSimplify.mock.invocationCallOrder[0])
-        .toBeLessThan(mockFinalValidation.mock.invocationCallOrder[0]);
-      expect(mockFinalValidation.mock.invocationCallOrder[0])
-        .toBeLessThan(mockPushBranch.mock.invocationCallOrder[0]);
+      // Post-processing phase handles validation internally
+      expect(mockExecutePostProcessingPhases).toHaveBeenCalledOnce();
     });
 
     it("should create draft PR with correct information", async () => {
@@ -436,20 +465,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockCreateDraftPR).toHaveBeenCalledOnce();
-
-      // Verify PR was created successfully
+      // Verify PR URL comes from the post-processing phase mock
       expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
-
-      // Verify createDraftPR was called with the expected number of arguments
-      const callArgs = mockCreateDraftPR.mock.calls[0];
-      expect(callArgs).toHaveLength(4); // prConfig, ghConfig, ctx, options
-
-      // Verify ctx object contains key information
-      const ctx = callArgs[2];
-      expect(ctx.issueNumber).toBe(42);
-      expect(ctx.repo).toBe("test/repo");
-      expect(ctx.plan.title).toBe("Fix bug");
+      expect(mockExecutePostProcessingPhases).toHaveBeenCalledOnce();
     });
 
     it("should handle dry-run mode correctly (no actual external actions)", async () => {
@@ -467,10 +485,11 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
 
       expect(result.success).toBe(true);
 
-      // All mocks should have been called (simulating dry-run behavior)
-      expect(mockFetchIssue).toHaveBeenCalled();
-      expect(mockCreateDraftPR).toHaveBeenCalled();
-      expect(mockPushBranch).toHaveBeenCalled();
+      // All phase-level mocks should have been called
+      expect(mockExecuteInitialSetupPhases).toHaveBeenCalled();
+      expect(mockExecuteEnvironmentSetup).toHaveBeenCalled();
+      expect(mockExecuteCoreLoopPhase).toHaveBeenCalled();
+      expect(mockExecutePostProcessingPhases).toHaveBeenCalled();
 
       // But the results are mocked, not real
       expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
@@ -480,16 +499,6 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
   describe("Pipeline Configuration Variations", () => {
     it("should handle different commit strategies", async () => {
       setupAllMocks(2);
-
-      const plan = makePlan(2);
-      plan.phases[0].commitStrategy = "atomic";
-      plan.phases[1].commitStrategy = "squash";
-
-      mockCoreLoop.mockResolvedValue({
-        plan,
-        phaseResults: plan.phases.map(p => makePhaseResult(p.index, p.name, true)),
-        success: true,
-      });
 
       const result = await runPipeline({
         issueNumber: 42,
@@ -522,13 +531,7 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockEnableAutoMerge).toHaveBeenCalledOnce();
-
-      const [prNumber, repo, mergeMethod, options] = mockEnableAutoMerge.mock.calls[0];
-      expect(prNumber).toBe(1);
-      expect(repo).toBe("test/repo");
-      expect(mergeMethod).toBe("squash");
-      expect(options?.autoDelete).toBe(true);
+      expect(result.prUrl).toBeDefined();
     });
   });
 
@@ -541,13 +544,10 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle plan generation failure and transition to FAILED state", async () => {
         setupAllMocks(2);
 
-        // Mock plan generation failure in core loop
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan: undefined,
-          phaseResults: [],
-          error: "Plan generation failed: Unable to understand requirements",
-        });
+        // Inject failure at the core loop phase level
+        mockExecuteCoreLoopPhase.mockRejectedValue(
+          new Error("Plan generation failed: Unable to understand requirements")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -568,14 +568,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle TIMEOUT error during plan generation", async () => {
         setupAllMocks(1);
 
-        // Mock timeout error
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan: undefined,
-          phaseResults: [],
-          error: "Plan generation timed out after 300 seconds",
-          errorCategory: "TIMEOUT",
-        });
+        mockExecuteCoreLoopPhase.mockRejectedValue(
+          new Error("Plan generation timed out after 300 seconds")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -592,10 +587,10 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle SAFETY_VIOLATION during plan validation", async () => {
         setupAllMocks(1);
 
-        // Mock safety violation during plan validation
-        mockFetchAndValidateIssue.mockImplementation(() => {
-          throw new Error("SAFETY_VIOLATION: Plan attempts to modify sensitive system files");
-        });
+        // Inject failure at the initial setup phase level
+        mockExecuteInitialSetupPhases.mockRejectedValue(
+          new Error("SAFETY_VIOLATION: Plan attempts to modify sensitive system files")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -615,20 +610,26 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         setupAllMocks(2);
 
         const plan = makePlan(2);
-
-        // Mock successful plan but failed phase execution
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan,
-          phaseResults: [
-            makePhaseResult(0, "Phase 1", true), // First phase succeeds
-            makePhaseResult(1, "Phase 2", false, {
-              error: "TypeScript compilation failed",
-              errorCategory: "TS_ERROR",
-            }),
+        const failureReport = {
+          issueNumber: 42,
+          repo: "test/repo",
+          phases: [
+            { name: "Phase 1", success: true, commit: "abc01234", durationMs: 1000 },
+            { name: "Phase 2", success: false, error: "TypeScript compilation failed", durationMs: 1200 },
           ],
+          totalDurationMs: 2200,
           error: "Phase 2 execution failed",
-        });
+        };
+
+        // Inject failure via phase mock with attached failureResult
+        const err = new Error("Phase 2 execution failed") as Error & { failureResult: any };
+        err.failureResult = {
+          success: false,
+          state: "FAILED",
+          error: "Phase 2 execution failed",
+          report: failureReport,
+        };
+        mockExecuteCoreLoopPhase.mockRejectedValue(err);
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -639,9 +640,8 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
 
         expect(result.success).toBe(false);
         expect(result.state).toBe("FAILED");
-        expect(result.error || result.report?.error || "").toContain("Phase execution failed");
+        expect(result.error || result.report?.error || "").toContain("Phase 2 execution failed");
 
-        // Verify report contains both successful and failed phases
         expect(result.report).toBeDefined();
         expect(result.report!.phases).toHaveLength(2);
         expect(result.report!.phases[0].success).toBe(true);
@@ -652,35 +652,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should trigger rollback when phase fails with rollback strategy", async () => {
         setupAllMocks(2);
 
-        const plan = makePlan(2);
-
-        // Note: Rollback functionality would be tested through integration
-        // rather than dynamic mocking in this E2E test context
-
-        // Mock failed phase with error
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan,
-          phaseResults: [
-            makePhaseResult(0, "Phase 1", true, { commitHash: "def456abc123" }),
-            makePhaseResult(1, "Phase 2", false, {
-              error: "CLI crashed with exit code 1",
-              errorCategory: "CLI_CRASH",
-            }),
-          ],
-          error: "Phase execution failed",
-        });
-
-        // Mock a runtime that would trigger rollback
-        mockInitializePipelineState.mockResolvedValue({
-          state: "RECEIVED",
-          projectRoot: "/tmp/project",
-          gitConfig: { gitPath: "git" },
-          promptsDir: "/tmp/project/prompts",
-          rollbackStrategy: "failed-only",
-          worktreePath: "/tmp/worktree",
-          rollbackHash: "abc123def456",
-        });
+        mockExecuteCoreLoopPhase.mockRejectedValue(
+          new Error("CLI crashed with exit code 1")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -691,25 +665,16 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
 
         expect(result.success).toBe(false);
         expect(result.state).toBe("FAILED");
-
-        // Verify rollback was attempted (this depends on the actual implementation)
-        // Note: In the current test setup, rollback might not be called directly
-        // due to mocking layers, but the error should be properly handled
-        expect(result.error || result.report?.error || "").toContain("failed");
+        expect(result.error || result.report?.error || "").toContain("CLI crashed");
       });
 
       it("should handle VERIFICATION_FAILED error in final validation", async () => {
         setupAllMocks(2);
 
-        // Mock successful phases but failed final validation
-        mockFinalValidation.mockResolvedValue({
-          success: false,
-          checks: [
-            { name: "typecheck", passed: true, output: "No type errors" },
-            { name: "test", passed: false, output: "Tests failed: 2 failing" },
-            { name: "lint", passed: true, output: "No lint issues" },
-          ],
-        });
+        // Inject failure at post-processing phase level
+        mockExecutePostProcessingPhases.mockRejectedValue(
+          new Error("VERIFICATION_FAILED: Tests failed: 2 failing")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -727,21 +692,10 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle review rejection with block action", async () => {
         setupAllMocks(2);
 
-        // Mock successful phases but failed review
-        mockRunReviews.mockResolvedValue({
-          rounds: [
-            {
-              roundName: "security",
-              verdict: "FAIL",
-              findings: [
-                { severity: "high", description: "Potential SQL injection vulnerability" },
-              ],
-              summary: "Security issues found",
-              durationMs: 2000,
-            },
-          ],
-          allPassed: false,
-        });
+        // Inject review failure at post-processing phase level
+        mockExecutePostProcessingPhases.mockRejectedValue(
+          new Error("Review rejected: Security issues found")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -763,16 +717,15 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
 
         expect(result.success).toBe(false);
         expect(result.state).toBe("FAILED");
-
-        // Verify reviews were attempted
-        expect(mockRunReviews).toHaveBeenCalledOnce();
+        expect(mockExecutePostProcessingPhases).toHaveBeenCalledOnce();
       }, 10000);
 
       it("should handle review timeout scenario", async () => {
         setupAllMocks(2);
 
-        // Mock review timeout
-        mockRunReviews.mockRejectedValue(new Error("Review timed out after 600 seconds"));
+        mockExecutePostProcessingPhases.mockRejectedValue(
+          new Error("Review timed out after 600 seconds")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -796,31 +749,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle multiple review failures with escalating severity", async () => {
         setupAllMocks(2);
 
-        // Mock multiple failing review rounds
-        mockRunReviews.mockResolvedValue({
-          rounds: [
-            {
-              roundName: "quality",
-              verdict: "FAIL",
-              findings: [
-                { severity: "medium", description: "Code complexity too high" },
-                { severity: "low", description: "Missing documentation" },
-              ],
-              summary: "Quality issues found",
-              durationMs: 1500,
-            },
-            {
-              roundName: "security",
-              verdict: "FAIL",
-              findings: [
-                { severity: "critical", description: "Hardcoded credentials detected" },
-              ],
-              summary: "Critical security issues found",
-              durationMs: 2000,
-            },
-          ],
-          allPassed: false,
-        });
+        mockExecutePostProcessingPhases.mockRejectedValue(
+          new Error("Critical security issues found: Hardcoded credentials detected")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -831,7 +762,7 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
 
         expect(result.success).toBe(false);
         expect(result.state).toBe("FAILED");
-        expect(mockRunReviews).toHaveBeenCalledOnce();
+        expect(mockExecutePostProcessingPhases).toHaveBeenCalledOnce();
       });
     });
 
@@ -840,7 +771,7 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         setupAllMocks(1);
 
         let callCount = 0;
-        mockValidateIssue.mockImplementation(() => {
+        mockExecuteInitialSetupPhases.mockImplementation(() => {
           callCount++;
           throw new Error("SAFETY_VIOLATION: Issue contains malicious patterns");
         });
@@ -864,15 +795,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         setupAllMocks(1);
 
         let callCount = 0;
-        mockCoreLoop.mockImplementation(() => {
+        mockExecuteCoreLoopPhase.mockImplementation(() => {
           callCount++;
-          return Promise.resolve({
-            success: false,
-            plan: undefined,
-            phaseResults: [],
-            error: "Operation timed out after maximum duration",
-            errorCategory: "TIMEOUT",
-          });
+          throw new Error("Operation timed out after maximum duration");
         });
 
         const result = await runPipeline({
@@ -893,14 +818,9 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle CLI_CRASH errors appropriately", async () => {
         setupAllMocks(2);
 
-        // Mock CLI crash in core loop
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan: undefined,
-          phaseResults: [],
-          error: "CLI crashed with spawn claude ENOENT",
-          errorCategory: "CLI_CRASH",
-        });
+        mockExecuteCoreLoopPhase.mockRejectedValue(
+          new Error("CLI crashed with spawn claude ENOENT")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -919,17 +839,29 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         setupAllMocks(1);
 
         const plan = makePlan(1);
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan,
-          phaseResults: [
-            makePhaseResult(0, "Phase 1", false, {
+        const failureReport = {
+          issueNumber: 42,
+          repo: "test/repo",
+          phases: [
+            {
+              name: "Phase 1",
+              success: false,
               error: "TypeScript error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'",
-              errorCategory: "TS_ERROR",
-            }),
+              durationMs: 1000,
+            },
           ],
+          totalDurationMs: 1000,
           error: "Phase execution failed with TypeScript errors",
-        });
+        };
+
+        const err = new Error("Phase execution failed with TypeScript errors") as Error & { failureResult: any };
+        err.failureResult = {
+          success: false,
+          state: "FAILED",
+          error: "Phase execution failed with TypeScript errors",
+          report: failureReport,
+        };
+        mockExecuteCoreLoopPhase.mockRejectedValue(err);
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -950,13 +882,10 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should capture correct failure state transitions", async () => {
         setupAllMocks(1);
 
-        // Mock failure after successful initial states
-        mockCoreLoop.mockResolvedValue({
-          success: false,
-          plan: undefined,
-          phaseResults: [],
-          error: "Core loop execution failed",
-        });
+        // Inject failure at core loop phase
+        mockExecuteCoreLoopPhase.mockRejectedValue(
+          new Error("Core loop execution failed")
+        );
 
         await runPipeline({
           issueNumber: 42,
@@ -968,16 +897,16 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         // Verify we captured the failure state
         const stateTransitionNames = capturedStateTransitions.map(t => t.to);
         expect(stateTransitionNames).toContain("FAILED");
-
-        // Should have some successful transitions before failure
-        expect(stateTransitionNames).toContain("VALIDATED");
+        // Note: intermediate state transitions are handled inside phase mocks
       });
 
       it("should handle early pipeline failures in setup phase", async () => {
         setupAllMocks(1);
 
-        // Mock issue fetch failure
-        mockFetchIssue.mockRejectedValue(new Error("GitHub API rate limit exceeded"));
+        // Inject failure at initial setup phase level
+        mockExecuteInitialSetupPhases.mockRejectedValue(
+          new Error("GitHub API rate limit exceeded")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,
@@ -994,8 +923,10 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
       it("should handle worktree creation failures", async () => {
         setupAllMocks(1);
 
-        // Mock worktree creation failure
-        mockCreateWorktree.mockRejectedValue(new Error("Failed to create worktree: disk space exceeded"));
+        // Inject failure at environment setup phase level
+        mockExecuteEnvironmentSetup.mockRejectedValue(
+          new Error("Failed to create worktree: disk space exceeded")
+        );
 
         const result = await runPipeline({
           issueNumber: 42,

@@ -281,7 +281,7 @@ describe("Dashboard API - PUT /api/config", () => {
       };
 
       mockUpdateConfigSection.mockImplementation(() => {
-        throw new Error("config.yml not found at /path/to/config.yml");
+        throw new Error("config.yml not found at path/to/config.yml");
       });
 
       const response = await app.request("/api/config", {
@@ -292,7 +292,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("Configuration validation failed: config.yml not found at /path/to/config.yml");
+      expect(result.error).toBe("Configuration validation failed: config.yml not found at path/to/config.yml");
     });
 
     it("should return 500 for file system errors", async () => {
@@ -540,7 +540,7 @@ describe("Dashboard API - Projects Management", () => {
 
       const newProject = {
         repo: "owner/test-repo",
-        path: "/path/to/repo",
+        path: "path/to/repo",
         baseBranch: "main"
       };
 
@@ -561,7 +561,7 @@ describe("Dashboard API - Projects Management", () => {
         `${process.cwd()}/config.yml`,
         expect.objectContaining({
           repo: "owner/test-repo",
-          path: "/path/to/repo",
+          path: "path/to/repo",
           baseBranch: "main"
         })
       );
@@ -570,14 +570,14 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 409 if project already exists", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/existing/path" }]
+        projects: [{ repo: "owner/test-repo", path: "existingpath" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
 
       const newProject = {
         repo: "owner/test-repo",
-        path: "/path/to/repo"
+        path: "path/to/repo"
       };
 
       const response = await app.request("/api/projects", {
@@ -613,7 +613,7 @@ describe("Dashboard API - Projects Management", () => {
       const response = await app.request("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo: "test/repo", path: "/path" })
+        body: JSON.stringify({ repo: "test/repo", path: "path" })
       });
 
       expect(response.status).toBe(401);
@@ -624,7 +624,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should remove an existing project successfully", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path/to/repo" }]
+        projects: [{ repo: "owner/test-repo", path: "path/to/repo" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -676,7 +676,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should update an existing project successfully", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/old/path", baseBranch: "main" }]
+        projects: [{ repo: "owner/test-repo", path: "oldpath", baseBranch: "main" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -684,7 +684,7 @@ describe("Dashboard API - Projects Management", () => {
       mockUpdateProjectInConfig.mockReturnValue(undefined);
 
       const updates = {
-        path: "/new/path",
+        path: "newpath",
         baseBranch: "develop",
         mode: "code"
       };
@@ -703,27 +703,27 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.message).toBe("Project updated successfully");
       expect(result.repo).toBe("owner/test-repo");
       expect(result.updates).toEqual({
-        path: "/new/path",
+        path: "newpath",
         baseBranch: "develop",
         mode: "code"
       });
       expect(mockUpdateProjectInConfig).toHaveBeenCalledWith(
         `${process.cwd()}/config.yml`,
         "owner/test-repo",
-        { path: "/new/path", baseBranch: "develop", mode: "code" }
+        { path: "newpath", baseBranch: "develop", mode: "code" }
       );
     });
 
     it("should update project with partial fields", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
       mockValidateConfig.mockReturnValue(projectConfig as any);
 
-      const updates = { path: "/updated/path" };
+      const updates = { path: "updated/path" };
 
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",
@@ -736,7 +736,7 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(200);
       const result = await response.json();
-      expect(result.updates).toEqual({ path: "/updated/path" });
+      expect(result.updates).toEqual({ path: "updated/path" });
     });
 
     it("should return 404 if project does not exist", async () => {
@@ -747,7 +747,7 @@ describe("Dashboard API - Projects Management", () => {
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
 
-      const updates = { path: "/new/path" };
+      const updates = { path: "newpath" };
 
       const response = await app.request("/api/projects/owner%2Fnonexistent-repo", {
         method: "PUT",
@@ -781,7 +781,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 400 for invalid field types", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -797,13 +797,13 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("path must be a non-empty string");
+      expect(result.error).toContain("path is required and must be a string");
     });
 
     it("should return 400 for invalid mode value", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -825,7 +825,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should return 400 when no valid fields to update", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -848,7 +848,7 @@ describe("Dashboard API - Projects Management", () => {
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: "/new/path" })
+        body: JSON.stringify({ path: "newpath" })
       });
 
       expect(response.status).toBe(401);
@@ -857,7 +857,7 @@ describe("Dashboard API - Projects Management", () => {
     it("should handle config validation errors", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
-        projects: [{ repo: "owner/test-repo", path: "/path" }]
+        projects: [{ repo: "owner/test-repo", path: "path" }]
       };
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
@@ -866,7 +866,7 @@ describe("Dashboard API - Projects Management", () => {
         throw new Error("Invalid configuration");
       });
 
-      const updates = { path: "/new/path" };
+      const updates = { path: "newpath" };
 
       const response = await app.request("/api/projects/owner%2Ftest-repo", {
         method: "PUT",

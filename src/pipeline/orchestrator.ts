@@ -32,6 +32,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const { issue, mode, checkpoint } = setupResult;
 
     // Validate required values from setup
+    if (!issue) {
+      throw new Error("Issue not fetched during setup");
+    }
     if (!mode) {
       throw new Error("Pipeline mode not determined during setup");
     }

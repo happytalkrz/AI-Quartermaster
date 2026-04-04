@@ -15,6 +15,13 @@ export type PipelineState =
   | "FAILED"
   | "SKIPPED";
 
+export interface UsageInfo {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
 export interface Plan {
   mode?: "code" | "content";
   issueNumber: number;
@@ -26,6 +33,8 @@ export interface Plan {
   phases: Phase[];
   verificationPoints: string[];
   stopConditions: string[];
+  costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface Phase {
@@ -36,6 +45,12 @@ export interface Phase {
   commitStrategy: string;
   verificationCriteria: string[];
   dependsOn?: number[];
+}
+
+export interface PlanWithCost {
+  plan: Plan;
+  costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export type ErrorCategory =
@@ -80,6 +95,7 @@ export interface PhaseResult {
   lastOutput?: string;
   durationMs: number;
   costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface PipelineResult {
@@ -92,6 +108,7 @@ export interface PipelineResult {
   completedAt?: string;
   error?: string;
   totalCostUsd?: number;
+  totalUsage?: UsageInfo;
 }
 
 export interface ValidationPhaseContext {
@@ -126,6 +143,7 @@ export interface PublishPhaseContext {
   promptsDir: string;
   dryRun: boolean;
   jl?: any;
+  totalUsage?: UsageInfo;
 }
 
 export interface CleanupContext {

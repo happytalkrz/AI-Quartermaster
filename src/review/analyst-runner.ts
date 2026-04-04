@@ -4,6 +4,7 @@ import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { AnalystResult, AnalystFinding } from "../types/review.js";
+import type { UsageInfo } from "../types/pipeline.js";
 import { analyzeTokenUsage } from "./token-estimator.js";
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs, generateSplitStats } from "./diff-splitter.js";
 import { getLogger } from "../utils/logger.js";
@@ -25,9 +26,11 @@ function createAnalystResult(
   durationMs: number,
   findings: AnalystFinding[] = [],
   summary: string = "",
-  coverage = EMPTY_COVERAGE
+  coverage = EMPTY_COVERAGE,
+  costUsd?: number,
+  usage?: UsageInfo
 ): AnalystResult {
-  return { verdict, findings, summary, coverage, durationMs };
+  return { verdict, findings, summary, coverage, durationMs, costUsd, usage };
 }
 
 function extractVerdictFromText(text: string): "COMPLETE" | "INCOMPLETE" | "MISALIGNED" {
@@ -65,7 +68,10 @@ async function runSingleAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
         severity: "error",
         message: `Claude invocation failed: ${result.output}`
       }],
-      "Analysis failed due to Claude error"
+      "Analysis failed due to Claude error",
+      EMPTY_COVERAGE,
+      result.costUsd,
+      result.usage
     );
   }
 
@@ -86,7 +92,9 @@ async function runSingleAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
       durationMs(),
       parsed.findings || [],
       parsed.summary || "",
-      parsed.coverage || EMPTY_COVERAGE
+      parsed.coverage || EMPTY_COVERAGE,
+      result.costUsd,
+      result.usage
     );
   } catch (err: unknown) {
     logger.debug(`JSON parsing failed, falling back to text extraction: ${getErrorMessage(err)}`);
@@ -94,7 +102,10 @@ async function runSingleAnalyst(ctx: AnalystContext): Promise<AnalystResult> {
       extractVerdictFromText(result.output),
       durationMs(),
       [],
-      result.output.slice(0, 500)
+      result.output.slice(0, 500),
+      EMPTY_COVERAGE,
+      result.costUsd,
+      result.usage
     );
   }
 }
@@ -187,6 +198,24 @@ function mergeAnalystResults(results: AnalystResult[], totalDurationMs: number):
     return { ...results[0], durationMs: totalDurationMs };
   }
 
+  // 비용과 usage 누적
+  const totalCostUsd = results.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) || undefined;
+  const totalUsage = (() => {
+    const usages = results.map(r => r.usage).filter((u): u is UsageInfo => !!u);
+    if (usages.length === 0) return undefined;
+    return usages.reduce((acc, usage) => ({
+      input_tokens: acc.input_tokens + usage.input_tokens,
+      output_tokens: acc.output_tokens + usage.output_tokens,
+      cache_creation_input_tokens: (acc.cache_creation_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0),
+      cache_read_input_tokens: (acc.cache_read_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0),
+    }), {
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    });
+  })();
+
   // findings 병합 및 중복 제거
   const allFindings = results.flatMap(result => result.findings);
   const uniqueFindings = deduplicateAnalystFindings(allFindings);
@@ -213,7 +242,7 @@ function mergeAnalystResults(results: AnalystResult[], totalDurationMs: number):
     ? `Split analysis from ${results.length} batches:\n\n${summaries.map((s, i) => `**Batch ${i + 1}**: ${s}`).join('\n\n')}`
     : `Split analysis from ${results.length} batches with no detailed summaries.`;
 
-  return createAnalystResult(verdict, totalDurationMs, uniqueFindings, summary, coverage);
+  return createAnalystResult(verdict, totalDurationMs, uniqueFindings, summary, coverage, totalCostUsd, totalUsage);
 }
 
 function deduplicateAnalystFindings(findings: AnalystFinding[]): AnalystFinding[] {

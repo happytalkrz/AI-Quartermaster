@@ -445,6 +445,7 @@ export async function executePostProcessingPhases(
     promptsDir,
     dryRun: config.general.dryRun,
     jl,
+    totalUsage: coreResult.totalUsage,
   };
 
   const publishResult = await pushAndCreatePR(publishContext);

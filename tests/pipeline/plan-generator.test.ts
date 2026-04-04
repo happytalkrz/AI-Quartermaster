@@ -99,9 +99,9 @@ describe("generatePlan", () => {
       cwd: testDir,
     });
 
-    expect(result.issueNumber).toBe(42);
-    expect(result.phases).toHaveLength(1);
-    expect(result.problemDefinition).toBe("Need to add login");
+    expect(result.plan.issueNumber).toBe(42);
+    expect(result.plan.phases).toHaveLength(1);
+    expect(result.plan.problemDefinition).toBe("Need to add login");
   });
 
   it("should throw on Claude failure", async () => {
@@ -181,8 +181,8 @@ describe("generatePlan", () => {
       cwd: testDir,
     });
 
-    expect(result.title).toBe("Template Test");
-    expect(result.issueNumber).toBe(111);
+    expect(result.plan.title).toBe("Template Test");
+    expect(result.plan.issueNumber).toBe(111);
   });
 
   it("should retry on first Claude failure then succeed", async () => {
@@ -239,8 +239,8 @@ describe("generatePlan", () => {
     });
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
-    expect(result.issueNumber).toBe(123);
-    expect(result.mode).toBe("code");
+    expect(result.plan.issueNumber).toBe(123);
+    expect(result.plan.mode).toBe("code");
   });
 
   it("should fail after max retries on repeated Claude failures", async () => {
@@ -332,8 +332,8 @@ describe("generatePlan", () => {
     });
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
-    expect(result.mode).toBe("content");
-    expect(result.title).toBe("Update docs");
+    expect(result.plan.mode).toBe("content");
+    expect(result.plan.title).toBe("Update docs");
   });
 
   it("should fail after max retries on repeated JSON parsing failures", async () => {
@@ -416,9 +416,9 @@ describe("generatePlan", () => {
     });
 
     // Verify schema compliance
-    expect(result.mode).toBe("content");
-    expect(result.phases[0].verificationCriteria).toContain("Schema valid");
-    expect(typeof result.issueNumber).toBe("number");
+    expect(result.plan.mode).toBe("content");
+    expect(result.plan.phases[0].verificationCriteria).toContain("Schema valid");
+    expect(typeof result.plan.issueNumber).toBe("number");
   });
 
   it("should handle large and complex issue descriptions", async () => {
@@ -558,13 +558,13 @@ tests/
       modeHint: "This is a complex enterprise-level enhancement",
     });
 
-    expect(result.requirements).toHaveLength(5);
-    expect(result.affectedFiles.length).toBeGreaterThan(3);
-    expect(result.risks).toContain("Performance regression");
-    expect(result.phases).toHaveLength(2);
-    expect(result.phases[1].dependsOn).toEqual([0]);
-    expect(result.verificationPoints.length).toBeGreaterThan(2);
-    expect(result.stopConditions).toContain("Performance regression detected");
+    expect(result.plan.requirements).toHaveLength(5);
+    expect(result.plan.affectedFiles.length).toBeGreaterThan(3);
+    expect(result.plan.risks).toContain("Performance regression");
+    expect(result.plan.phases).toHaveLength(2);
+    expect(result.plan.phases[1].dependsOn).toEqual([0]);
+    expect(result.plan.verificationPoints.length).toBeGreaterThan(2);
+    expect(result.plan.stopConditions).toContain("Performance regression detected");
   });
 
   it("should handle different issue types and modes", async () => {
@@ -630,10 +630,10 @@ tests/
       sensitivePaths: "config/secrets.yml",
     });
 
-    expect(result.mode).toBe("content");
-    expect(result.phases).toHaveLength(2);
-    expect(result.phases[1].dependsOn).toEqual([0]);
-    expect(result.issueNumber).toBe(555);
+    expect(result.plan.mode).toBe("content");
+    expect(result.plan.phases).toHaveLength(2);
+    expect(result.plan.phases[1].dependsOn).toEqual([0]);
+    expect(result.plan.issueNumber).toBe(555);
   });
 
   it("should normalize phase indices and fill missing arrays", async () => {
@@ -688,16 +688,16 @@ tests/
     });
 
     // Verify indices are normalized
-    expect(result.phases[0].index).toBe(0);
-    expect(result.phases[1].index).toBe(1);
+    expect(result.plan.phases[0].index).toBe(0);
+    expect(result.plan.phases[1].index).toBe(1);
 
     // Verify missing arrays are filled
-    expect(result.phases[0].targetFiles).toEqual([]);
-    expect(result.phases[0].verificationCriteria).toEqual([]);
-    expect(result.phases[0].dependsOn).toEqual([]);
-    expect(result.phases[1].targetFiles).toEqual([]);
-    expect(result.phases[1].verificationCriteria).toEqual([]);
-    expect(result.phases[1].dependsOn).toEqual([]);
+    expect(result.plan.phases[0].targetFiles).toEqual([]);
+    expect(result.plan.phases[0].verificationCriteria).toEqual([]);
+    expect(result.plan.phases[0].dependsOn).toEqual([]);
+    expect(result.plan.phases[1].targetFiles).toEqual([]);
+    expect(result.plan.phases[1].verificationCriteria).toEqual([]);
+    expect(result.plan.phases[1].dependsOn).toEqual([]);
   });
 
   // Phase 6: 재시도 로직 테스트 케이스 추가
@@ -829,7 +829,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
       expect(mockNotifyPlanRetryContext).toHaveBeenCalledTimes(1);
-      expect(result.issueNumber).toBe(123);
+      expect(result.plan.issueNumber).toBe(123);
 
       // Verify context collection notification was called with proper structure
       const notifyCall = mockNotifyPlanRetryContext.mock.calls[0];
@@ -1065,7 +1065,7 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       });
 
       expect(mockRunClaude).toHaveBeenCalledTimes(2);
-      expect(result.issueNumber).toBe(789);
+      expect(result.plan.issueNumber).toBe(789);
 
       // Verify that the second call used the original template + retry section composition
       const secondCall = mockRunClaude.mock.calls[1];

@@ -163,6 +163,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       commitHash,
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
+      usage: claudeResult.usage,
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
@@ -175,6 +176,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
       costUsd: claudeResult?.costUsd,
+      usage: claudeResult?.usage,
     };
   }
 }

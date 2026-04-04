@@ -368,4 +368,49 @@ describe("executePhase", () => {
     expect(result.success).toBe(true);
     expect(mockAnalyzeTokenUsage).toHaveBeenCalledWith("rendered prompt", "claude-sonnet-4-6");
   });
+
+  it("includes usage when Claude returns usage information", async () => {
+    const mockUsage = {
+      input_tokens: 100,
+      output_tokens: 200,
+      cache_creation_input_tokens: 50,
+      cache_read_input_tokens: 25
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: "done", costUsd: 0.025, usage: mockUsage });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.usage).toEqual(mockUsage);
+  });
+
+  it("includes usage in failure result when available", async () => {
+    const mockUsage = {
+      input_tokens: 50,
+      output_tokens: 100
+    };
+    mockRunClaude.mockResolvedValue({ success: false, output: "Claude failed", costUsd: 0.015, usage: mockUsage });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(false);
+    expect(result.usage).toEqual(mockUsage);
+  });
+
+  it("usage is undefined when Claude does not provide usage", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done", costUsd: 0.01 }); // no usage field
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.usage).toBeUndefined();
+  });
 });

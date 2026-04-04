@@ -21,6 +21,7 @@ Resolves #{{issue.number}} — {{issue.title}}
 - **Total Cost**: ${{stats.totalCostUsd}}
 - **Phases**: {{stats.successCount}}/{{stats.phaseCount}} completed
 - **Branch**: `{{branch.work}}` → `{{branch.base}}`
+- **Tokens**: {{stats.inputTokens}} input, {{stats.outputTokens}} output{{#stats.cacheCreationTokens}}, {{stats.cacheCreationTokens}} cache creation{{/stats.cacheCreationTokens}}{{#stats.cacheReadTokens}}, {{stats.cacheReadTokens}} cache read{{/stats.cacheReadTokens}}
 
 ---
 

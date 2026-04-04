@@ -6,7 +6,7 @@ import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
 
 export interface PlanTemplateBaseData {
   issue: {
@@ -66,7 +66,7 @@ export interface PlanGeneratorContext {
   sensitivePaths?: string;
 }
 
-export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
+export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
   const maxRetries = 2;
   const retryContext: PlanRetryContext = {
     currentAttempt: 0,
@@ -278,7 +278,11 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       });
 
       logger.info(`Plan generation succeeded on attempt ${attempt}`);
-      return plan;
+      return {
+        plan,
+        costUsd: result.costUsd,
+        usage: result.usage,
+      };
     } catch (parseError: unknown) {
       errorCategory = "UNKNOWN";
       errorMessage = getErrorMessage(parseError);

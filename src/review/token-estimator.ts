@@ -51,7 +51,7 @@ export const CHARS_PER_TOKEN = CHARS_PER_TOKEN_BY_TYPE.natural;
  * Gets locale-specific character-to-token ratios
  * Defaults to English if locale not found
  */
-function getLocaleRatios(locale: string): typeof CHARS_PER_TOKEN_BY_LOCALE.en {
+function getLocaleRatios(locale: string): { readonly code: number; readonly natural: number } {
   return CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
     || CHARS_PER_TOKEN_BY_LOCALE.en;
 }

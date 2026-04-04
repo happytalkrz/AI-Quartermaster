@@ -19,15 +19,122 @@ export const MODEL_TOKEN_LIMITS = {
 /** Safety margin percentage (20%) */
 export const SAFETY_MARGIN = 0.2;
 
-/** Average characters per token (4 characters = 1 token) */
-export const CHARS_PER_TOKEN = 4;
+/** Content type for token estimation */
+export type ContentType = 'code' | 'natural' | 'auto';
+
+/** Characters per token by content type */
+export const CHARS_PER_TOKEN_BY_TYPE = {
+  /** Code content (variables, symbols, brackets) - denser token usage */
+  code: 3.2,
+  /** Natural language - standard ratio */
+  natural: 4,
+} as const;
+
+/** Default characters per token (backwards compatibility) */
+export const CHARS_PER_TOKEN = CHARS_PER_TOKEN_BY_TYPE.natural;
+
+/**
+ * Detects if the content is primarily code based on various patterns
+ */
+export function isCodeContent(text: string): boolean {
+  if (!text || text.length === 0) {
+    return false;
+  }
+
+  // Performance optimization: sample large texts
+  let sampleText = text;
+  if (text.length > 50_000) {
+    const start = text.substring(0, 5000);
+    const middle = text.substring(Math.floor(text.length / 2) - 2500, Math.floor(text.length / 2) + 2500);
+    const end = text.substring(text.length - 5000);
+    sampleText = start + '\n' + middle + '\n' + end;
+  }
+
+  // Check for diff headers (strong indicator of code review context)
+  if (sampleText.includes('diff --git') || sampleText.includes('@@') || /^[+-].*$/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for import/export statements
+  if (/^\s*(import|export|from)\s+|\brequire\s*\(/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for function declarations (including async)
+  if (/^\s*(async\s+)?function\s+\w+|^\s*(const|let|var)\s+\w+\s*=.*(\(.*\)|=>)/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for type/class declarations
+  if (/^\s*(class|interface|type|enum)\s+\w+/m.test(sampleText)) {
+    return true;
+  }
+
+  // Check for JSON structure
+  if (/[{[][\s\S]*"[^"]+"\s*:/.test(sampleText)) {
+    return true;
+  }
+
+  // Check for programming keywords
+  const keywordMatches = sampleText.match(/\b(if|else|for|while|switch|case|return|throw|try|catch|finally)\b/g) || [];
+  if (keywordMatches.length > sampleText.split(/\s+/).length * 0.05) {
+    return true;
+  }
+
+  // Analyze line patterns for code vs natural language
+  const lines = sampleText.split('\n');
+  let strongCodeLines = 0;
+  let naturalLanguageLines = 0;
+
+  for (const line of lines.slice(0, 200)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Check for natural language patterns (markdown, sentences)
+    if (/^#+\s+|^-\s+|^\*\s+|^>\s+|\.\s*$|[.!?]\s+[A-Z]/.test(trimmed)) {
+      naturalLanguageLines++;
+      continue;
+    }
+
+    // Check for code patterns
+    if (/^\s*[\w$]+\s*[:=].*[{;]$|^\s*[\w$]+\([^)]*\)\s*[{=>]|^\s*\/\/|^\s*\/\*/.test(line)) {
+      strongCodeLines++;
+    }
+  }
+
+  const totalLines = strongCodeLines + naturalLanguageLines;
+  if (totalLines === 0) return false;
+
+  // If >30% natural language, need >40% strong code indicators
+  if (naturalLanguageLines > totalLines * 0.3) {
+    return strongCodeLines > totalLines * 0.4;
+  }
+
+  return strongCodeLines > 0;
+}
 
 /**
  * Estimates the token count for a given text
- * Uses a simple heuristic: 4 characters = 1 token
+ * @param text The text to analyze
+ * @param contentType Content type hint ('code', 'natural', or 'auto' for detection)
  */
-export function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+export function estimateTokenCount(text: string, contentType: ContentType = 'auto'): number {
+  if (!text || text.length === 0) {
+    return 0;
+  }
+
+  let charsPerToken: number;
+
+  if (contentType === 'auto') {
+    // Auto-detect content type
+    charsPerToken = isCodeContent(text)
+      ? CHARS_PER_TOKEN_BY_TYPE.code
+      : CHARS_PER_TOKEN_BY_TYPE.natural;
+  } else {
+    charsPerToken = CHARS_PER_TOKEN_BY_TYPE[contentType];
+  }
+
+  return Math.ceil(text.length / charsPerToken);
 }
 
 /**

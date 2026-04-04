@@ -46,7 +46,7 @@ export function splitDiffByFiles(fullDiff: string): FileDiff[] {
 
     if (filePath) {
       const diffContent = section.trim();
-      const estimatedTokens = estimateTokenCount(diffContent);
+      const estimatedTokens = estimateTokenCount(diffContent, 'code');
 
       fileDiffs.push({
         filePath,
@@ -81,7 +81,7 @@ export function groupFilesByTokenBudget(
     return [];
   }
 
-  const additionalTokens = estimateTokenCount(additionalContent);
+  const additionalTokens = estimateTokenCount(additionalContent, 'auto');
   const effectiveBudget = tokenBudget - additionalTokens;
 
   // 예산이 추가 콘텐츠보다 작은 경우, 최소한의 여유를 두고 처리

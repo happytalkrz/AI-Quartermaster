@@ -4,7 +4,7 @@ import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
 import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry, PlanWithCost } from "../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -44,7 +44,7 @@ function addErrorToHistory(
   const history = historyMap.get(phaseIndex) || [];
   history.push({
     attempt,
-    errorCategory: (errorCategory ?? "UNKNOWN") as any,
+    errorCategory: (errorCategory ?? "UNKNOWN") as ErrorCategory,
     errorMessage: error ?? "Unknown error",
     timestamp: new Date().toISOString(),
   });

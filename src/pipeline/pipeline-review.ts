@@ -13,12 +13,13 @@ import type {
   AnalystResult,
   ReviewFixAttempt
 } from "../types/review.js";
+import type { TemplateVariables } from "../prompt/template-renderer.js";
 import type {
   GitConfig,
   ProjectConfig,
   ExecutionModePreset
 } from "../types/config.js";
-import type { PipelineState, Plan } from "../types/pipeline.js";
+import type { PipelineState, Plan, PhaseResult } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineTimer } from "../safety/timeout-manager.js";
@@ -129,7 +130,7 @@ export async function runReviewPhase(
           promptsDir: ctx.promptsDir,
           claudeConfig: ctx.project.commands.claudeCli,
           cwd: ctx.worktreePath,
-          variables: reviewVariables as any,
+          variables: reviewVariables as unknown as TemplateVariables,
         });
         ctx.jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
       } else {
@@ -149,7 +150,7 @@ export async function runReviewPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.worktreePath,
-        variables: reviewVariables as any,
+        variables: reviewVariables as unknown as TemplateVariables,
         maxRounds: executionModePreset.reviewRounds,
       });
 
@@ -232,7 +233,7 @@ export async function runReviewPhase(
               claudeConfig: claudeCliConfig,
               promptsDir: ctx.promptsDir,
               cwd: ctx.worktreePath,
-              variables: reviewVariables as any,
+              variables: reviewVariables as unknown as TemplateVariables,
               maxRounds: executionModePreset.reviewRounds,
             });
 
@@ -242,7 +243,7 @@ export async function runReviewPhase(
                 promptsDir: ctx.promptsDir,
                 claudeConfig: claudeCliConfig,
                 cwd: ctx.worktreePath,
-                variables: reviewVariables as any,
+                variables: reviewVariables as unknown as TemplateVariables,
               });
             }
 
@@ -315,7 +316,7 @@ export async function runReviewPhase(
         }
       }
 
-      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults as any });
+      ctx.checkpoint({ plan: ctx.coreResult.plan, phaseResults: ctx.coreResult.phaseResults as PhaseResult[] });
 
       return {
         success: true,
@@ -361,7 +362,7 @@ export async function runSimplifyPhase(
         claudeConfig: ctx.project.commands.claudeCli,
         cwd: ctx.worktreePath,
         testCommand: ctx.project.commands.test,
-        variables: ctx.reviewVariables as any,
+        variables: ctx.reviewVariables as unknown as TemplateVariables,
         gitPath: ctx.gitConfig.gitPath,
       });
 

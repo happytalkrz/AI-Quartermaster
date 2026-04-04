@@ -315,7 +315,7 @@ export async function executeCoreLoopPhase(
       dataDir,
       patternStore,
       jl,
-      checkpoint: (_overrides?: Partial<PipelineCheckpoint>) => {},
+      checkpoint: () => {},
     });
     // Create an error that includes the failure result for proper reporting
     const errorWithReport = new Error(failureResult.error) as Error & { failureResult: typeof failureResult };

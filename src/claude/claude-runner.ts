@@ -195,7 +195,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
       // 재시도 가능한 에러가 감지되었다면 reject
       if (detectedRetryableError) {
         const error = new Error(detectedRetryableError.trim());
-        (error as any).retryable = true;
+        (error as Error & { retryable: boolean }).retryable = true;
         return reject(error);
       }
 
@@ -219,7 +219,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
       const errorCategory = classifyError(err.message);
       if (errorCategory === "RATE_LIMIT" || errorCategory === "PROMPT_TOO_LONG") {
         const error = new Error(err.message);
-        (error as any).retryable = true;
+        (error as Error & { retryable: boolean }).retryable = true;
         return reject(error);
       }
 

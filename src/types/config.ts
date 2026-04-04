@@ -120,6 +120,7 @@ export interface PrConfig {
   linkIssue: boolean;
   autoMerge: boolean;
   mergeMethod: MergeMethod;
+  deleteBranch?: boolean;
 }
 
 export interface TimeoutsConfig {

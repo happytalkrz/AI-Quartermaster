@@ -26,14 +26,6 @@ interface SSEClient {
   lastHeartbeat: number;
 }
 
-// SSE event data types
-type SSEEventData =
-  | { event: 'jobDeleted'; data: { id: string; job: Job } }
-  | { event: 'jobUpdated'; data: { id: string; job: Job } }
-  | { event: 'jobCreated'; data: { id: string; job: Job } }
-  | { event: 'configChanged'; data: { changes: unknown; timestamp: string } }
-  | { event: 'updateCompleted'; data: unknown }
-  | { event: 'updateFailed'; data: unknown };
 
 const sseClients = new Map<string, SSEClient>();
 const encoder = new TextEncoder();
@@ -68,7 +60,7 @@ function removeStaleClients(): void {
   }
 }
 
-function broadcastToAllClients(event: string, data: any): void {
+function broadcastToAllClients(event: string, data: unknown): void {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const now = Date.now();
   const clientsToRemove: string[] = [];
@@ -295,9 +287,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         Object.entries(parseResult.data).map(([key, value]) => [
           key,
           typeof value === 'object' && value !== null
-            ? Object.fromEntries(Object.entries(value).filter(([_, v]) => v !== undefined))
+            ? Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined))
             : value
-        ]).filter(([_, v]) => v !== undefined)
+        ]).filter(([, v]) => v !== undefined)
       ) as Partial<AQConfig>;
 
       updateConfigSection(process.cwd(), cleanedData);
@@ -647,7 +639,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // SSE endpoint for real-time updates
-  api.get("/api/events", (c) => {
+  api.get("/api/events", (_c) => {
     const clientId = randomUUID();
     let intervalId: ReturnType<typeof setInterval> | undefined;
 

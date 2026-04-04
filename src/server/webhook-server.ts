@@ -82,7 +82,7 @@ export function startServer(
   return {
     close: () => {
       // @hono/node-server returns a Node http.Server
-      (server as any).close?.();
+      (server as { close?: () => void }).close?.();
     },
   };
 }

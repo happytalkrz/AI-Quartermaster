@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
-import { runClaude } from "../claude/claude-runner.js";
+import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -36,7 +36,7 @@ export interface PhaseExecutorContext {
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
-  let claudeResult: any;
+  let claudeResult: ClaudeRunResult | undefined;
 
   try {
     // 1. Load and render phase implementation template

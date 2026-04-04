@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
-import { runClaude } from "../claude/claude-runner.js";
+import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -90,7 +90,7 @@ export interface PhaseRetryContext {
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const jl = ctx.jobLogger;
-  let claudeResult: any;
+  let claudeResult: ClaudeRunResult | undefined;
 
   try {
     logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index}`);
@@ -136,7 +136,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
         errorMessage,
-        errorHistory: errorHistory as any, // Type assertion for template compatibility
+        errorHistory: errorHistory as unknown as import("../prompt/template-renderer.js").TemplateVariables,
         lastOutput: ctx.lastOutput || "",
       },
       config: {

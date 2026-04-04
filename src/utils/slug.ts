@@ -52,7 +52,7 @@ export function isPathSafe(path: string): boolean {
 export function isDirectoryNameSafe(dirName: string): boolean {
   if (!dirName || typeof dirName !== 'string') return false;
 
-  // Check for path traversal and directory separator patterns
+  // Reuse isPathSafe patterns plus stricter check for ANY slashes
   const dangerousPatterns = [
     /\.\./,           // Parent directory ".."
     /^\.\//,          // Current directory "./"

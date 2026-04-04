@@ -35,11 +35,6 @@ function validateWorktreePath(rootPath: string, dirName: string): string {
     throw new Error(`Worktree path "${absoluteWorktreePath}" is outside allowed root "${absoluteRootPath}"`);
   }
 
-  // Additional check: ensure no path separators in the relative path that could indicate traversal
-  if (relativePath.includes("..")) {
-    throw new Error(`Worktree path contains directory traversal: ${relativePath}`);
-  }
-
   return absoluteWorktreePath;
 }
 

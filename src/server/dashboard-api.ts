@@ -74,11 +74,6 @@ function validateAndNormalizePath(path: string, paramName: string): string {
   // Normalize path after safety check
   const normalizedPath = normalize(trimmedPath);
 
-  // Additional checks for path traversal on normalized path as defense in depth
-  if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || normalizedPath.startsWith('\\')) {
-    throw new Error(`${paramName} contains invalid path traversal characters`);
-  }
-
   return normalizedPath;
 }
 

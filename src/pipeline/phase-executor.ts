@@ -15,12 +15,6 @@ import { phaseProgress } from "./progress-tracker.js";
 
 const logger = getLogger();
 
-// Escape USER_INPUT tag closure to prevent prompt injection
-function escapeUserInputTag(text: string): string {
-  // Replace </USER_INPUT> with HTML entities to prevent tag escape
-  return text.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;");
-}
-
 export interface PhaseExecutorContext {
   issue: GitHubIssue;
   plan: Plan;
@@ -52,7 +46,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
-const sanitizedBody = `<USER_INPUT>\n${escapeUserInputTag(ctx.issue.body)}\n</USER_INPUT>`;
+const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
     const rendered = renderTemplate(template, {
       issue: {

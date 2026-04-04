@@ -1390,3 +1390,165 @@ git:
     expect(result.config?.general.projectName).toBe("test-project");
   });
 });
+
+describe("Full pipeline integration tests", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should properly apply all sources in priority order: defaults < config.yml < config.local.yml < env vars < CLI overrides", () => {
+    // config.yml (base config)
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+  logLevel: "info"
+  concurrency: 1
+  dryRun: false
+git:
+  allowedRepos:
+    - "test/repo"
+  defaultBaseBranch: "main"
+safety:
+  maxPhases: 10
+  allowedLabels: []
+commands:
+  test: "npm test"
+`);
+
+    // config.local.yml (local overrides)
+    writeFileSync(join(testDir, "config.local.yml"), `
+general:
+  logLevel: "warn"
+  concurrency: 2
+safety:
+  maxPhases: 15
+`);
+
+    // Environment variables
+    const envVars = {
+      AQM_GENERAL_CONCURRENCY: "3",
+      AQM_GENERAL_DRY_RUN: "true",
+      AQM_SAFETY_ALLOWED_LABELS: "bug,enhancement"
+    };
+
+    // CLI overrides (highest priority)
+    const configOverrides = {
+      general: {
+        logLevel: "debug"
+      },
+      git: {
+        defaultBaseBranch: "develop"
+      }
+    };
+
+    const config = loadConfig(testDir, { envVars, configOverrides });
+
+    // Verify priority order is correctly applied:
+    expect(config.general.projectName).toBe("test-project");     // From config.yml
+    expect(config.general.logLevel).toBe("debug");              // From CLI override (highest)
+    expect(config.general.concurrency).toBe(3);                 // From env var
+    expect(config.general.dryRun).toBe(true);                   // From env var
+    expect(config.git.defaultBaseBranch).toBe("develop");       // From CLI override
+    expect(config.safety.maxPhases).toBe(15);                   // From config.local.yml
+    expect(config.safety.allowedLabels).toEqual(["bug", "enhancement"]); // From env var
+    expect(config.commands.test).toBe("npm test");              // From config.yml
+  });
+
+  it("should handle complex nested overrides with all sources", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+commands:
+  claudeCli:
+    path: "claude"
+    model: "claude-sonnet-4"
+    maxTurns: 50
+    models:
+      plan: "claude-opus-4"
+      phase: "claude-sonnet-4"
+safety:
+  maxPhases: 10
+  maxRetries: 3
+`);
+
+    const envVars = {
+      AQM_COMMANDS_TEST: "yarn test",           // Simple string override
+      AQM_SAFETY_MAX_RETRIES: "5"              // Simple number override
+    };
+
+    const configOverrides = {
+      commands: {
+        claudeCli: {
+          maxTurns: 100,                        // CLI override
+          models: {
+            plan: "claude-opus-4-6"
+          }
+        }
+      },
+      safety: {
+        maxPhases: 15
+      }
+    };
+
+    const config = loadConfig(testDir, { envVars, configOverrides });
+
+    expect(config.commands.test).toBe("yarn test");                 // From env var
+    expect(config.safety.maxRetries).toBe(5);                      // From env var
+    expect(config.commands.claudeCli.maxTurns).toBe(100);           // From CLI override
+    expect(config.commands.claudeCli.models.plan).toBe("claude-opus-4-6"); // From CLI override
+    expect(config.commands.claudeCli.models.phase).toBe("claude-sonnet-4"); // From config.yml
+    expect(config.safety.maxPhases).toBe(15);                      // From CLI override
+  });
+
+  it("should validate final merged configuration from all sources", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+
+    const envVars = {
+      AQM_GENERAL_PROJECT_NAME: "",  // Invalid: empty string
+    };
+
+    expect(() => {
+      loadConfig(testDir, { envVars });
+    }).toThrow();
+  });
+
+  it("should handle environment variable edge cases in full pipeline", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+`);
+
+    const envVars = {
+      AQM_GENERAL_CONCURRENCY: "2",     // Valid concurrency value
+      AQM_GENERAL_DRY_RUN: "false",     // Boolean false
+      AQM_SAFETY_ALLOWED_LABELS: "bug,feature", // Valid labels array
+      AQM_COMMANDS_TEST: "yarn test"    // String override
+    };
+
+    const config = loadConfig(testDir, { envVars });
+
+    expect(config.general.concurrency).toBe(2);
+    expect(config.general.dryRun).toBe(false);
+    expect(config.safety.allowedLabels).toEqual(["bug", "feature"]);
+    expect(config.commands.test).toBe("yarn test");
+  });
+});

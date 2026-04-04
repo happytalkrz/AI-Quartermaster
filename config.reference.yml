@@ -2,6 +2,32 @@
 # 최소 설정은 config.yml을 참조하세요
 # 이 파일을 config.yml로 복사한 후 필요한 부분만 수정하세요: cp config.reference.yml config.yml
 
+# ===== 환경변수 설정 =====
+# 설정 파일 외에도 AQM_* 환경변수로 런타임 오버라이드가 가능합니다.
+# 우선순위: 기본값 < config.yml < config.local.yml < 환경변수 < CLI --config-override
+#
+# 네이밍 규칙: AQM_섹션_필드명 (언더스코어로 구분, 대문자)
+# 중첩 필드: AQM_섹션_하위섹션_필드명
+#
+# 타입 변환:
+# - 숫자: "123" → 123
+# - 불리언: "true"/"false" → true/false
+# - 배열: "item1,item2,item3" → ["item1", "item2", "item3"]
+# - 문자열: 그대로 사용
+#
+# 예시:
+# export AQM_GENERAL_LOG_LEVEL=debug
+# export AQM_GENERAL_CONCURRENCY=5
+# export AQM_GENERAL_DRY_RUN=true
+# export AQM_SAFETY_ALLOWED_LABELS=bug,enhancement,feature
+# export AQM_COMMANDS_CLAUDE_CLI_MODEL=claude-opus-4-6
+# export AQM_COMMANDS_CLAUDE_CLI_MAX_TURNS=100
+# export AQM_SAFETY_TIMEOUTS_PHASE_IMPLEMENTATION=900000
+#
+# CLI 오버라이드와 함께 사용:
+# aqm process --config-override '{"general":{"logLevel":"warn"}}' issue-123
+# (이 경우 CLI가 환경변수보다 우선함)
+
 general:                                 # [선택] 전체 설정 (모든 필드에 기본값 있음)
   projectName: "my-project"              # [선택] 프로젝트 이름 (기본값: "ai-quartermaster")
   logLevel: "info"                       # [선택] 로그 레벨: debug | info | warn | error (기본값: "info")

@@ -104,10 +104,20 @@ export function getExecutionModePreset(mode: ExecutionMode): ExecutionModePreset
 }
 
 /**
- * Detect execution mode from issue labels. Labels like "aq-exec:economy" override config.
+ * Detect execution mode from issue labels.
+ * Supports both new format (aqm-economy, aqm-thorough) and legacy format (aq-exec:*).
  */
 export function detectExecutionModeFromLabels(labels: string[], defaultMode: ExecutionMode = "standard"): ExecutionMode {
   for (const label of labels) {
+    // New format: aqm-economy, aqm-thorough
+    if (label === "aqm-economy") {
+      return "economy";
+    }
+    if (label === "aqm-thorough") {
+      return "thorough";
+    }
+
+    // Legacy format: aq-exec:economy, aq-exec:standard, aq-exec:thorough
     const match = label.match(/^aq-exec:(\w+)$/);
     if (match && (match[1] === "economy" || match[1] === "standard" || match[1] === "thorough")) {
       return match[1] as ExecutionMode;

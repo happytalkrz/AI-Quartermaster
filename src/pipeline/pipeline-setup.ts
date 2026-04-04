@@ -4,10 +4,10 @@ import { runCli } from "../utils/cli-runner.js";
 import { validateIssue } from "../safety/safety-checker.js";
 import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import { resolveProject, type ResolvedProject } from "../config/project-resolver.js";
-import { detectModeFromLabels } from "../config/mode-presets.js";
+import { detectModeFromLabels, detectExecutionModeFromLabels } from "../config/mode-presets.js";
 import { getLogger } from "../utils/logger.js";
 import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "./progress-tracker.js";
-import type { AQConfig, GitConfig, PipelineMode } from "../types/config.js";
+import type { AQConfig, GitConfig, PipelineMode, ExecutionMode } from "../types/config.js";
 import type { PipelineState } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -28,6 +28,7 @@ export type DuplicatePRCheckResult =
 export interface IssueSetupResult {
   issue: Awaited<ReturnType<typeof fetchIssue>>;
   mode: PipelineMode;
+  executionMode: ExecutionMode;
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
@@ -170,6 +171,11 @@ export async function fetchAndValidateIssue(
   logger.info(`Pipeline mode (초기): ${mode}`);
   jl?.log(`모드: ${mode}`);
 
+  // Determine execution mode: issue label > config default
+  const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
+  logger.info(`Execution mode: ${executionMode}`);
+  jl?.log(`실행 모드: ${executionMode}`);
+
   const checkpoint = (overrides?: Partial<PipelineCheckpoint>) => {
     if (setupContext) {
       saveCheckpoint(setupContext.dataDir, issueNumber, {
@@ -182,5 +188,5 @@ export async function fetchAndValidateIssue(
     }
   };
 
-  return { issue, mode, checkpoint };
+  return { issue, mode, executionMode, checkpoint };
 }

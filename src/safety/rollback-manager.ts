@@ -1,8 +1,26 @@
 import { runCli } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import { RollbackError } from "../types/errors.js";
+import type { GitConfig, WorktreeConfig } from "../types/config.js";
+import { createWorktree, removeWorktree, type WorktreeInfo } from "../git/worktree-manager.js";
 
 const logger = getLogger();
+
+export interface WorktreeManager {
+  createWorktree: (
+    gitConfig: GitConfig,
+    worktreeConfig: WorktreeConfig,
+    branchName: string,
+    issueNumber: number,
+    slug: string,
+    options: { cwd: string }
+  ) => Promise<WorktreeInfo>;
+  removeWorktree: (
+    gitConfig: GitConfig,
+    worktreePath: string,
+    options: { cwd: string; force?: boolean }
+  ) => Promise<void>;
+}
 
 /**
  * Creates a checkpoint by returning the current HEAD commit hash.
@@ -52,4 +70,67 @@ export async function rollbackToCheckpoint(
   );
 
   logger.info(`Rolled back to ${hash.slice(0, 8)}`);
+}
+
+export interface EnsureCleanStateOptions {
+  cwd: string;
+  gitPath?: string;
+  gitConfig: GitConfig;
+  worktreeConfig: WorktreeConfig;
+  branchName: string;
+  issueNumber: number;
+  slug: string;
+  worktreePath: string;
+}
+
+/**
+ * Ensures a clean state by rolling back to checkpoint.
+ * If rollback fails, removes and recreates the worktree as a fallback.
+ */
+export async function ensureCleanState(
+  hash: string,
+  worktreeManager: WorktreeManager,
+  options: EnsureCleanStateOptions
+): Promise<WorktreeInfo> {
+  try {
+    logger.info(`Attempting rollback to ${hash.slice(0, 8)} for clean state...`);
+    await rollbackToCheckpoint(hash, {
+      cwd: options.cwd,
+      gitPath: options.gitPath
+    });
+
+    logger.info(`Clean state restored via rollback to ${hash.slice(0, 8)}`);
+    return {
+      path: options.worktreePath,
+      branch: options.branchName
+    };
+  } catch (rollbackError) {
+    logger.warn(`Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+    logger.warn("Falling back to worktree recreation for clean state...");
+
+    try {
+      // Remove existing worktree
+      await worktreeManager.removeWorktree(
+        options.gitConfig,
+        options.worktreePath,
+        { cwd: options.cwd, force: true }
+      );
+
+      // Recreate worktree
+      const newWorktreeInfo = await worktreeManager.createWorktree(
+        options.gitConfig,
+        options.worktreeConfig,
+        options.branchName,
+        options.issueNumber,
+        options.slug,
+        { cwd: options.cwd }
+      );
+
+      logger.info(`Clean state restored via worktree recreation at ${newWorktreeInfo.path}`);
+      return newWorktreeInfo;
+    } catch (worktreeError) {
+      const errorMsg = `Failed to ensure clean state. Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Worktree recreation failed: ${worktreeError instanceof Error ? worktreeError.message : String(worktreeError)}`;
+      throw new RollbackError(hash, errorMsg);
+    }
+  }
 }

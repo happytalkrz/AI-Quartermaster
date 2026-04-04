@@ -4,7 +4,7 @@ import { runClaude } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import type { ClaudeCliConfig } from "../types/config.js";
+import type { ClaudeCliConfig, GitConfig, WorktreeConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
@@ -12,6 +12,8 @@ import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 import { phaseProgress } from "./progress-tracker.js";
+import { ensureCleanState, type WorktreeManager } from "../safety/rollback-manager.js";
+import type { WorktreeInfo } from "../git/worktree-manager.js";
 
 const logger = getLogger();
 
@@ -77,6 +79,12 @@ export interface PhaseRetryContext {
   lintCommand: string;
   gitPath: string;
   jobLogger?: JobLogger;
+  checkpoint: string;
+  worktreeManager: WorktreeManager;
+  worktreeInfo: WorktreeInfo;
+  gitConfig: GitConfig;
+  worktreeConfig: WorktreeConfig;
+  slug: string;
 }
 
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
@@ -85,6 +93,23 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   let claudeResult: any;
 
   try {
+    logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index}`);
+    const cleanStateResult = await ensureCleanState(
+      ctx.checkpoint,
+      ctx.worktreeManager,
+      {
+        cwd: ctx.cwd,
+        gitPath: ctx.gitPath,
+        gitConfig: ctx.gitConfig,
+        worktreeConfig: ctx.worktreeConfig,
+        branchName: ctx.worktreeInfo.branch,
+        issueNumber: ctx.issue.number,
+        slug: ctx.slug,
+        worktreePath: ctx.worktreeInfo.path
+      }
+    );
+
+    ctx.worktreeInfo = cleanStateResult;
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 

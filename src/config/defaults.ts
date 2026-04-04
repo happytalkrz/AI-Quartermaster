@@ -114,6 +114,6 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
     allowedLabels: [],
-    rollbackStrategy: "none",
+    rollbackStrategy: "failed-only",
   },
 };

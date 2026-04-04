@@ -498,4 +498,39 @@ describe("runPipeline", () => {
       );
     });
   });
+
+  it("should fail if PR creation succeeds but prUrl is missing", async () => {
+    setupSuccessMocks();
+    // Mock successful execution but missing prUrl
+    mockCreateDraftPR.mockResolvedValue({ url: undefined, number: 1 });
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.state).toBe("FAILED");
+    expect(result.error).toContain("Pipeline completed but failed to create PR URL");
+    expect(result.prUrl).toBeUndefined();
+  });
+
+  it("should fail if executePostProcessingPhases returns undefined prUrl", async () => {
+    setupSuccessMocks();
+    // Setup all mocks but don't call setupSuccessMocks for createDraftPR
+    mockCreateDraftPR.mockResolvedValue({ url: "", number: 1 }); // Empty string should also fail
+
+    const result = await runPipeline({
+      issueNumber: 42,
+      repo: "test/repo",
+      config: makeConfig(),
+      projectRoot: "/tmp/project",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.state).toBe("FAILED");
+    expect(result.error).toContain("Pipeline completed but failed to create PR URL");
+  });
 });

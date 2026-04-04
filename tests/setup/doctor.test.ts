@@ -47,6 +47,10 @@ describe("runDoctor", () => {
       if (command === "git" && args.includes("remote") && args.includes("get-url")) {
         return { exitCode: 0, stdout: "git@github.com:test/repo.git", stderr: "" };
       }
+      if (command === "df" && args.includes("--output=avail")) {
+        // Default: sufficient disk space (1000MB = 1024000KB)
+        return { exitCode: 0, stdout: "Avail\n1024000", stderr: "" };
+      }
       return { exitCode: 0, stdout: "", stderr: "" };
     });
   });
@@ -334,5 +338,107 @@ describe("runDoctor", () => {
     expect(output).toContain("gh CLI");
     expect(output).toContain("claude CLI");
     expect(output).toContain("PATH에 설치되어 있는지 확인하세요");
+  });
+
+  it("should show PASS when disk space is sufficient", async () => {
+    // Mock CLI with sufficient disk space (1000MB = 1024000KB)
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command: string, args: string[]) => {
+      if (command === "df" && args.includes("--output=avail")) {
+        return { exitCode: 0, stdout: "Avail\n1024000", stderr: "" };
+      }
+      if (command === "git" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "git version 2.34.1", stderr: "" };
+      }
+      if (command === "gh" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "gh version 2.0.0", stderr: "" };
+      }
+      if (command === "claude" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "Claude Code 1.2.3", stderr: "" };
+      }
+      if (command === "gh" && args.includes("auth") && args.includes("status")) {
+        return { exitCode: 0, stdout: "Logged in to github.com as testuser", stderr: "" };
+      }
+      if (command === "git" && args.includes("config") && args.includes("credential.helper")) {
+        return { exitCode: 0, stdout: "gh", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    await runDoctor(null, testDir);
+
+    const output = consoleLogs.join("\n");
+
+    expect(output).toContain("[디스크 용량]");
+    expect(output).toContain("PASS");
+    expect(output).toContain("1000MB 가용");
+    expect(output).toContain("최소 500MB 필요");
+  });
+
+  it("should show WARN when disk space is insufficient", async () => {
+    // Mock CLI with insufficient disk space (200MB = 204800KB)
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command: string, args: string[]) => {
+      if (command === "df" && args.includes("--output=avail")) {
+        return { exitCode: 0, stdout: "Avail\n204800", stderr: "" };
+      }
+      if (command === "git" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "git version 2.34.1", stderr: "" };
+      }
+      if (command === "gh" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "gh version 2.0.0", stderr: "" };
+      }
+      if (command === "claude" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "Claude Code 1.2.3", stderr: "" };
+      }
+      if (command === "gh" && args.includes("auth") && args.includes("status")) {
+        return { exitCode: 0, stdout: "Logged in to github.com as testuser", stderr: "" };
+      }
+      if (command === "git" && args.includes("config") && args.includes("credential.helper")) {
+        return { exitCode: 0, stdout: "gh", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    await runDoctor(null, testDir);
+
+    const output = consoleLogs.join("\n");
+
+    expect(output).toContain("[디스크 용량]");
+    expect(output).toContain("WARN");
+    expect(output).toContain("가용 공간 부족: 200MB");
+    expect(output).toContain("최소 500MB 필요");
+    expect(output).toContain("worktree 생성에 실패할 수 있습니다");
+  });
+
+  it("should show graceful WARN when df command fails", async () => {
+    // Mock CLI with df command failure
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command: string, args: string[]) => {
+      if (command === "df" && args.includes("--output=avail")) {
+        return { exitCode: 1, stdout: "", stderr: "df: /path: Permission denied" };
+      }
+      if (command === "git" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "git version 2.34.1", stderr: "" };
+      }
+      if (command === "gh" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "gh version 2.0.0", stderr: "" };
+      }
+      if (command === "claude" && args.includes("--version")) {
+        return { exitCode: 0, stdout: "Claude Code 1.2.3", stderr: "" };
+      }
+      if (command === "gh" && args.includes("auth") && args.includes("status")) {
+        return { exitCode: 0, stdout: "Logged in to github.com as testuser", stderr: "" };
+      }
+      if (command === "git" && args.includes("config") && args.includes("credential.helper")) {
+        return { exitCode: 0, stdout: "gh", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    await runDoctor(null, testDir);
+
+    const output = consoleLogs.join("\n");
+
+    expect(output).toContain("[디스크 용량]");
+    expect(output).toContain("WARN");
+    expect(output).toContain("df 명령어 실패: df: /path: Permission denied");
   });
 });

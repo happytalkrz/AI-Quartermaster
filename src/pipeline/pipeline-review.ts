@@ -17,7 +17,8 @@ import type { TemplateVariables } from "../prompt/template-renderer.js";
 import type {
   GitConfig,
   ProjectConfig,
-  ExecutionModePreset
+  ExecutionModePreset,
+  ExecutionMode
 } from "../types/config.js";
 import type { PipelineState, Plan, PhaseResult } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
@@ -26,6 +27,16 @@ import type { PipelineTimer } from "../safety/timeout-manager.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 
 const logger = getLogger();
+
+/**
+ * ExecutionModePreset에서 ExecutionMode를 역추적합니다.
+ * reviewRounds 값을 기반으로 모드를 결정합니다.
+ */
+function getExecutionModeFromPreset(preset: ExecutionModePreset): ExecutionMode {
+  if (preset.reviewRounds === 0) return "economy";
+  if (preset.reviewRounds === 3) return "thorough";
+  return "standard"; // reviewRounds === 1 or other values
+}
 
 function hasCriticalAnalystIssues(result: AnalystResult | undefined): boolean {
   return result?.findings.some(f =>
@@ -152,6 +163,7 @@ export async function runReviewPhase(
         cwd: ctx.worktreePath,
         variables: reviewVariables as unknown as TemplateVariables,
         maxRounds: executionModePreset.reviewRounds,
+        executionMode: getExecutionModeFromPreset(executionModePreset),
       });
 
       if (analystResult) {
@@ -235,6 +247,7 @@ export async function runReviewPhase(
               cwd: ctx.worktreePath,
               variables: reviewVariables as unknown as TemplateVariables,
               maxRounds: executionModePreset.reviewRounds,
+              executionMode: getExecutionModeFromPreset(executionModePreset),
             });
 
             let retryAnalystResult: AnalystResult | undefined;

@@ -269,6 +269,7 @@ describe("pipeline-review", () => {
         promptsDir: "/tmp/prompts",
         cwd: "/tmp/worktree",
         variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
+        maxRounds: 1,
       });
       expect(mockRunAnalyst).not.toHaveBeenCalled();
       expect(ctx.checkpoint).toHaveBeenCalledWith({
@@ -319,6 +320,7 @@ describe("pipeline-review", () => {
         promptsDir: "/tmp/prompts",
         cwd: "/tmp/worktree",
         variables: expect.objectContaining({ issue: expect.objectContaining({ number: "42" }) }),
+        maxRounds: 1,
       });
     });
 

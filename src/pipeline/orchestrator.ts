@@ -1,5 +1,6 @@
 import { handlePipelineFailure } from "./pipeline-publish.js";
 import { initializePipelineState, transitionState } from "./pipeline-context.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
@@ -115,9 +116,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       totalCostUsd: finalResult.totalCostUsd
     };
 
-  } catch (error) {
+  } catch (error: unknown) {
     // Check if this is a skipped issue due to feasibility check
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
 
     if (isFeasibilitySkip) {

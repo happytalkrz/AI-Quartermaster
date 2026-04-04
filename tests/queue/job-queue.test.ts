@@ -990,8 +990,8 @@ describe("JobQueue", () => {
       queue.enqueue(2, "test/repo2");
       queue.enqueue(3, "test/repo3");
 
-      // Wait for all to start
-      await new Promise(r => setTimeout(r, 50));
+      // Wait for all to start (allow time for reprocessing)
+      await new Promise(r => setTimeout(r, 100));
       expect(queue.getStatus().running).toBe(3);
 
       // Reduce concurrency - running jobs should continue

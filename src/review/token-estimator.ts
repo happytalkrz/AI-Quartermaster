@@ -30,6 +30,20 @@ export const CHARS_PER_TOKEN_BY_TYPE = {
   natural: 4,
 } as const;
 
+/** Characters per token by locale */
+export const CHARS_PER_TOKEN_BY_LOCALE = {
+  /** English - standard ratio */
+  en: {
+    code: 3.2,
+    natural: 4.0,
+  },
+  /** Korean - denser token usage due to more information per character */
+  ko: {
+    code: 2.0,
+    natural: 2.4,
+  },
+} as const;
+
 /** Default characters per token (backwards compatibility) */
 export const CHARS_PER_TOKEN = CHARS_PER_TOKEN_BY_TYPE.natural;
 
@@ -117,21 +131,26 @@ export function isCodeContent(text: string): boolean {
  * Estimates the token count for a given text
  * @param text The text to analyze
  * @param contentType Content type hint ('code', 'natural', or 'auto' for detection)
+ * @param locale Language locale for token estimation (defaults to 'en')
  */
-export function estimateTokenCount(text: string, contentType: ContentType = 'auto'): number {
+export function estimateTokenCount(text: string, contentType: ContentType = 'auto', locale: string = 'en'): number {
   if (!text || text.length === 0) {
     return 0;
   }
+
+  // Get locale-specific ratios, fallback to 'en' if locale not found
+  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
+    || CHARS_PER_TOKEN_BY_LOCALE.en;
 
   let charsPerToken: number;
 
   if (contentType === 'auto') {
     // Auto-detect content type
     charsPerToken = isCodeContent(text)
-      ? CHARS_PER_TOKEN_BY_TYPE.code
-      : CHARS_PER_TOKEN_BY_TYPE.natural;
+      ? localeRatios.code
+      : localeRatios.natural;
   } else {
-    charsPerToken = CHARS_PER_TOKEN_BY_TYPE[contentType];
+    charsPerToken = localeRatios[contentType];
   }
 
   return Math.ceil(text.length / charsPerToken);
@@ -201,9 +220,12 @@ export interface TokenUsageInfo {
 
 /**
  * Analyzes token usage for a text and model
+ * @param text The text to analyze
+ * @param modelName The Claude model name
+ * @param locale Language locale for token estimation (defaults to 'en')
  */
-export function analyzeTokenUsage(text: string, modelName: string): TokenUsageInfo {
-  const estimatedTokens = estimateTokenCount(text);
+export function analyzeTokenUsage(text: string, modelName: string, locale: string = 'en'): TokenUsageInfo {
+  const estimatedTokens = estimateTokenCount(text, 'auto', locale);
   const modelLimit = getTokenLimit(modelName);
   const effectiveLimit = getEffectiveTokenLimit(modelName);
   const exceedsLimit = estimatedTokens > effectiveLimit;
@@ -221,19 +243,27 @@ export function analyzeTokenUsage(text: string, modelName: string): TokenUsageIn
 /**
  * Truncates text to fit within a token budget
  * Attempts to preserve sentence boundaries when possible
+ * @param text The text to truncate
+ * @param maxTokens Maximum token budget
+ * @param locale Language locale for token estimation (defaults to 'en')
  */
-export function truncateToTokenBudget(text: string, maxTokens: number): string {
+export function truncateToTokenBudget(text: string, maxTokens: number, locale: string = 'en'): string {
   if (!text || maxTokens <= 0) return '';
 
-  const estimatedTokens = estimateTokenCount(text);
+  const estimatedTokens = estimateTokenCount(text, 'auto', locale);
   if (estimatedTokens <= maxTokens) return text;
 
   // Reserve tokens for ellipsis
-  const ellipsisTokens = estimateTokenCount('...');
+  const ellipsisTokens = estimateTokenCount('...', 'auto', locale);
   const availableTokens = Math.max(1, maxTokens - ellipsisTokens);
 
+  // Get locale-specific ratios for character estimation
+  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
+    || CHARS_PER_TOKEN_BY_LOCALE.en;
+  const charsPerToken = isCodeContent(text) ? localeRatios.code : localeRatios.natural;
+
   // Calculate approximate character limit
-  const targetChars = Math.floor(availableTokens * CHARS_PER_TOKEN);
+  const targetChars = Math.floor(availableTokens * charsPerToken);
   if (targetChars <= 0) return '';
 
   // Try to truncate at sentence boundaries first
@@ -242,7 +272,7 @@ export function truncateToTokenBudget(text: string, maxTokens: number): string {
 
   for (const sentence of sentences) {
     const testResult = result + (result ? ' ' : '') + sentence;
-    if (estimateTokenCount(testResult) > availableTokens) {
+    if (estimateTokenCount(testResult, 'auto', locale) > availableTokens) {
       break;
     }
     result = testResult;
@@ -266,32 +296,40 @@ export function truncateToTokenBudget(text: string, maxTokens: number): string {
 /**
  * Summarizes text to fit within a target token budget
  * Keeps beginning and end, with summary indicator in the middle
+ * @param text The text to summarize
+ * @param targetTokens Target token budget
+ * @param locale Language locale for token estimation (defaults to 'en')
  */
-export function summarizeForBudget(text: string, targetTokens: number): string {
+export function summarizeForBudget(text: string, targetTokens: number, locale: string = 'en'): string {
   if (!text || targetTokens <= 0) return '';
 
-  const estimatedTokens = estimateTokenCount(text);
+  const estimatedTokens = estimateTokenCount(text, 'auto', locale);
   if (estimatedTokens <= targetTokens) return text;
 
   // Reserve tokens for summary indicator
   const summaryIndicator = '\n\n[... content truncated ...]\n\n';
-  const reservedTokens = estimateTokenCount(summaryIndicator);
+  const reservedTokens = estimateTokenCount(summaryIndicator, 'auto', locale);
   const availableTokens = Math.max(0, targetTokens - reservedTokens);
 
   if (availableTokens < 10) {
     // If too little space, just truncate
-    return truncateToTokenBudget(text, targetTokens);
+    return truncateToTokenBudget(text, targetTokens, locale);
   }
 
   // Split available tokens between beginning and end
   const beginTokens = Math.floor(availableTokens * 0.6);
   const endTokens = availableTokens - beginTokens;
 
-  const beginChars = Math.floor(beginTokens * CHARS_PER_TOKEN);
-  const endChars = Math.floor(endTokens * CHARS_PER_TOKEN);
+  // Get locale-specific ratios for character estimation
+  const localeRatios = CHARS_PER_TOKEN_BY_LOCALE[locale as keyof typeof CHARS_PER_TOKEN_BY_LOCALE]
+    || CHARS_PER_TOKEN_BY_LOCALE.en;
+  const charsPerToken = isCodeContent(text) ? localeRatios.code : localeRatios.natural;
+
+  const beginChars = Math.floor(beginTokens * charsPerToken);
+  const endChars = Math.floor(endTokens * charsPerToken);
 
   if (beginChars <= 0 || endChars <= 0) {
-    return truncateToTokenBudget(text, targetTokens);
+    return truncateToTokenBudget(text, targetTokens, locale);
   }
 
   // Get beginning part
@@ -311,7 +349,7 @@ export function summarizeForBudget(text: string, targetTokens: number): string {
 
   // Make sure we don't have overlapping or adjacent parts
   if (beginning.length + ending.length >= text.length - 10) {
-    return truncateToTokenBudget(text, targetTokens);
+    return truncateToTokenBudget(text, targetTokens, locale);
   }
 
   return beginning + summaryIndicator + ending;
@@ -320,11 +358,14 @@ export function summarizeForBudget(text: string, targetTokens: number): string {
 /**
  * Truncates repository structure to fit within token budget
  * Prioritizes important files and directories
+ * @param structure The repository structure string
+ * @param maxTokens Maximum token budget
+ * @param locale Language locale for token estimation (defaults to 'en')
  */
-export function truncateRepoStructure(structure: string, maxTokens: number): string {
+export function truncateRepoStructure(structure: string, maxTokens: number, locale: string = 'en'): string {
   if (!structure || maxTokens <= 0) return '';
 
-  const estimatedTokens = estimateTokenCount(structure);
+  const estimatedTokens = estimateTokenCount(structure, 'auto', locale);
   if (estimatedTokens <= maxTokens) return structure;
 
   const lines = structure.split('\n').filter(line => line.trim());
@@ -368,7 +409,7 @@ export function truncateRepoStructure(structure: string, maxTokens: number): str
 
   // First, try to include the highest priority items
   for (const item of scoredLines) {
-    const lineTokens = estimateTokenCount(item.line + '\n');
+    const lineTokens = estimateTokenCount(item.line + '\n', 'auto', locale);
     if (currentTokens + lineTokens <= maxTokens) {
       result.push(item);
       currentTokens += lineTokens;
@@ -384,7 +425,7 @@ export function truncateRepoStructure(structure: string, maxTokens: number): str
   if (result.length < lines.length) {
     const truncatedCount = lines.length - result.length;
     const indicator = `... (${truncatedCount} more files/directories truncated)`;
-    const indicatorTokens = estimateTokenCount(indicator + '\n');
+    const indicatorTokens = estimateTokenCount(indicator + '\n', 'auto', locale);
 
     // Only add indicator if we have room and it's useful
     if (currentTokens + indicatorTokens <= maxTokens && result.length > 0) {

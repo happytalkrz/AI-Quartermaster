@@ -11,6 +11,8 @@ export type PipelineState =
   | "SIMPLIFYING"
   | "FINAL_VALIDATING"
   | "DRAFT_PR_CREATED"
+  | "CI_CHECKING"
+  | "CI_FIXING"
   | "DONE"
   | "FAILED"
   | "SKIPPED";

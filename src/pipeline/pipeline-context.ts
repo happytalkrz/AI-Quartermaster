@@ -50,6 +50,7 @@ export const STATE_ORDER: PipelineState[] = [
   "SIMPLIFYING",
   "FINAL_VALIDATING",
   "DRAFT_PR_CREATED",
+  "CI_CHECKING",
   "DONE",
 ];
 

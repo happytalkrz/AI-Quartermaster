@@ -4,6 +4,7 @@ import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { estimateTokenCount } from "../review/token-estimator.js";
+import type { ClaudeCliConfig } from "../types/config.js";
 
 const logger = getLogger();
 
@@ -66,7 +67,7 @@ export interface RetryWithFixOptions<T> {
   maxRetries: number;
 
   /** Claude CLI 설정 */
-  claudeConfig: unknown;
+  claudeConfig: ClaudeCliConfig;
 
   /** 작업 디렉토리 */
   cwd: string;

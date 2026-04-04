@@ -1007,7 +1007,7 @@ describe("JobQueue", () => {
 
   describe("Project-specific concurrency", () => {
     it("should respect project-specific concurrency limits", async () => {
-      let runningByRepo: Record<string, number> = {};
+      const runningByRepo: Record<string, number> = {};
 
       const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
         const repo = job.repo;

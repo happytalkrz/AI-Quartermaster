@@ -4,7 +4,7 @@ import type { TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { AnalystResult, AnalystFinding } from "../types/review.js";
-import { exceedsTokenLimit, analyzeTokenUsage } from "./token-estimator.js";
+import { analyzeTokenUsage } from "./token-estimator.js";
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs, generateSplitStats } from "./diff-splitter.js";
 import { getLogger } from "../utils/logger.js";
 

@@ -603,8 +603,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
     const stream = new ReadableStream({
       start(controller) {
-        // Register client
-        sseClients.set(clientId, { id: clientId, controller });
+        // Register client with timestamps
+        const now = Date.now();
+        sseClients.set(clientId, {
+          id: clientId,
+          controller,
+          connectedAt: now,
+          lastHeartbeat: now
+        });
 
         // Send initial state
         const sendInitialState = () => {
@@ -644,6 +650,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       },
     });
   });
+
+  // Start periodic cleanup when dashboard routes are created
+  startPeriodicCleanup();
 
   return api;
 }

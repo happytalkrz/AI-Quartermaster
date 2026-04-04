@@ -12,7 +12,8 @@ export type PipelineState =
   | "FINAL_VALIDATING"
   | "DRAFT_PR_CREATED"
   | "DONE"
-  | "FAILED";
+  | "FAILED"
+  | "SKIPPED";
 
 export interface Plan {
   mode?: "code" | "content";

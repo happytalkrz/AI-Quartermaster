@@ -115,5 +115,23 @@ export const DEFAULT_CONFIG: AQConfig = {
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
     allowedLabels: [],
     rollbackStrategy: "none",
+    feasibilityCheck: {
+      enabled: true,
+      maxRequirements: 5,
+      maxFiles: 4,
+      blockedKeywords: [
+        "architecture",
+        "refactor",
+        "migration",
+        "breaking change",
+        "major rewrite"
+      ],
+      skipReasons: [
+        "Too many requirements (>5)",
+        "Too many files affected (>4)",
+        "Architecture change detected",
+        "Blocked keyword found"
+      ],
+    },
   },
 };

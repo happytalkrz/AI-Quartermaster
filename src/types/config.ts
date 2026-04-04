@@ -117,6 +117,14 @@ export interface TimeoutsConfig {
   prCreation: number;
 }
 
+export interface FeasibilityCheckConfig {
+  enabled: boolean;
+  maxRequirements: number;
+  maxFiles: number;
+  blockedKeywords: string[];
+  skipReasons: string[];
+}
+
 export interface SafetyConfig {
   sensitivePaths: string[];
   maxPhases: number;
@@ -131,6 +139,7 @@ export interface SafetyConfig {
   stopConditions: string[];
   allowedLabels: string[];
   rollbackStrategy: "none" | "all" | "failed-only";
+  feasibilityCheck: FeasibilityCheckConfig;
 }
 
 export type PipelineMode = "code" | "content";

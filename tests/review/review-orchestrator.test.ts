@@ -26,6 +26,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
 
 vi.mock("../../src/claude/model-router.js", () => ({
   configForTask: vi.fn(),
+  configForTaskWithMode: vi.fn(),
 }));
 
 vi.mock("../../src/claude/claude-runner.js", () => ({
@@ -39,7 +40,7 @@ import { exceedsTokenLimit, getEffectiveTokenLimit } from "../../src/review/toke
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "../../src/review/diff-splitter.js";
 import { mergeReviewResults } from "../../src/review/result-merger.js";
 import { loadTemplate, renderTemplate } from "../../src/prompt/template-renderer.js";
-import { configForTask } from "../../src/claude/model-router.js";
+import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
 import type { ReviewResult } from "../../src/types/review.js";
 
@@ -53,6 +54,7 @@ const mockMergeReviewResults = vi.mocked(mergeReviewResults);
 const mockLoadTemplate = vi.mocked(loadTemplate);
 const mockRenderTemplate = vi.mocked(renderTemplate);
 const mockConfigForTask = vi.mocked(configForTask);
+const mockConfigForTaskWithMode = vi.mocked(configForTaskWithMode);
 const mockRunClaude = vi.mocked(runClaude);
 const mockExtractJson = vi.mocked(extractJson);
 
@@ -91,6 +93,7 @@ function unifiedReviewContext(overrides = {}) {
       diff: { full: "test diff" },
       ...overrides.variables,
     },
+    executionMode: overrides.executionMode || "standard",
   };
 }
 
@@ -110,6 +113,7 @@ describe("runReviews", () => {
 
     // Default mock setup for unified review functionality
     mockConfigForTask.mockReturnValue(claudeConfig);
+    mockConfigForTaskWithMode.mockReturnValue(claudeConfig);
     mockRunClaude.mockResolvedValue({
       success: true,
       output: JSON.stringify(defaultUnifiedReviewResponse)
@@ -486,7 +490,7 @@ describe("runReviews", () => {
       expect(result.rounds[2].roundName).toBe("Unified Review - simplification");
 
       // Verify unified review was called
-      expect(mockConfigForTask).toHaveBeenCalledWith(claudeConfig, "review");
+      expect(mockConfigForTaskWithMode).toHaveBeenCalledWith(claudeConfig, "review", "standard");
       expect(mockLoadTemplate).toHaveBeenCalledWith("/prompts/review-unified.md");
       expect(mockRunClaude).toHaveBeenCalledTimes(1);
       expect(mockExtractJson).toHaveBeenCalledTimes(1);

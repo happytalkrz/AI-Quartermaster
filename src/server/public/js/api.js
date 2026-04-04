@@ -35,8 +35,8 @@ function hideApiKeyPrompt() {
   document.getElementById('api-key-banner').style.display = 'none';
 }
 
-function buildJobsUrl(additionalParams) {
-  var url = '/api/jobs';
+function buildApiUrl(endpoint, additionalParams) {
+  var url = endpoint;
   var params = [];
 
   if (currentProject && currentProject !== 'all') {
@@ -58,27 +58,12 @@ function buildJobsUrl(additionalParams) {
   return url;
 }
 
+function buildJobsUrl(additionalParams) {
+  return buildApiUrl('/api/jobs', additionalParams);
+}
+
 function buildStatsUrl(additionalParams) {
-  var url = '/api/stats';
-  var params = [];
-
-  if (currentProject && currentProject !== 'all') {
-    params.push('project=' + encodeURIComponent(currentProject));
-  }
-
-  if (additionalParams) {
-    for (var key in additionalParams) {
-      if (additionalParams.hasOwnProperty(key) && additionalParams[key] !== null && additionalParams[key] !== undefined) {
-        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(additionalParams[key]));
-      }
-    }
-  }
-
-  if (params.length > 0) {
-    url += '?' + params.join('&');
-  }
-
-  return url;
+  return buildApiUrl('/api/stats', additionalParams);
 }
 
 function saveApiKey() {

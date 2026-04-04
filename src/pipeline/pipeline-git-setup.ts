@@ -236,7 +236,30 @@ export async function prepareWorkEnvironment(input: EnvironmentPrepInput): Promi
     { cwd: input.worktreePath }
   );
   // Limit output so prompt stays manageable
-  const repoStructure = structureResult.stdout.split("\n").slice(0, 200).join("\n");
+  const fileList = structureResult.stdout.split("\n").filter((f: string) => f.trim());
+  const repoStructureLines = fileList.slice(0, 200);
+
+  // === Collect export signatures from src/ .ts files for Plan context ===
+  const tsFiles = fileList.filter((f: string) => f.startsWith("src/") && f.endsWith(".ts")).slice(0, 80);
+  const exportLines: string[] = [];
+  for (const file of tsFiles) {
+    try {
+      const grepResult = await runCli(
+        "grep", ["-n", "^export ", resolve(input.worktreePath, file)],
+        { cwd: input.worktreePath, timeout: 3000 }
+      );
+      if (grepResult.stdout.trim()) {
+        const sigs = grepResult.stdout.split("\n").slice(0, 5).map((l: string) => l.trim()).join("; ");
+        exportLines.push(`${file}: ${sigs}`);
+      }
+    } catch {
+      // skip files that fail
+    }
+  }
+  const exportSummary = exportLines.length > 0
+    ? "\n\n## Export Signatures\n" + exportLines.join("\n")
+    : "";
+  const repoStructure = repoStructureLines.join("\n") + exportSummary;
 
   return {
     rollbackHash,

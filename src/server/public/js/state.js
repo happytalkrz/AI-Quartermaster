@@ -7,6 +7,8 @@ var currentJobs = [];
 var currentFilter = 'all';
 var selectedJobId = null;
 var hideArchived = localStorage.getItem('aqm-hide-archived') === 'true';
+var logsSearchText = '';
+var logsLevelFilter = localStorage.getItem('aqm-logs-level-filter') === 'true';
 
 /* ══════════════════════════════════════════════════════════════
    Filter
@@ -59,6 +61,55 @@ function initArchivedToggle() {
   if (!btn) return;
   btn.setAttribute('aria-checked', String(hideArchived));
   if (hideArchived) {
+    btn.classList.remove('bg-surface-container-high');
+    btn.classList.add('bg-primary');
+    btn.querySelector('span').classList.remove('translate-x-0.5');
+    btn.querySelector('span').classList.add('translate-x-5');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Logs Search and Filter
+   ══════════════════════════════════════════════════════════════ */
+function setLogsSearchText(text) {
+  logsSearchText = text;
+  // Trigger logs re-render if currently viewing logs
+  if (currentView === 'logs' && selectedJobId) {
+    var job = currentJobs.find(function(j) { return j.id === selectedJobId; });
+    if (job) renderLogsView(job);
+  }
+}
+
+function toggleLogsLevelFilter() {
+  logsLevelFilter = !logsLevelFilter;
+  localStorage.setItem('aqm-logs-level-filter', logsLevelFilter);
+  var btn = document.getElementById('logs-level-filter-toggle');
+  if (btn) {
+    btn.setAttribute('aria-checked', String(logsLevelFilter));
+    if (logsLevelFilter) {
+      btn.classList.remove('bg-surface-container-high');
+      btn.classList.add('bg-primary');
+      btn.querySelector('span').classList.remove('translate-x-0.5');
+      btn.querySelector('span').classList.add('translate-x-5');
+    } else {
+      btn.classList.add('bg-surface-container-high');
+      btn.classList.remove('bg-primary');
+      btn.querySelector('span').classList.add('translate-x-0.5');
+      btn.querySelector('span').classList.remove('translate-x-5');
+    }
+  }
+  // Trigger logs re-render if currently viewing logs
+  if (currentView === 'logs' && selectedJobId) {
+    var job = currentJobs.find(function(j) { return j.id === selectedJobId; });
+    if (job) renderLogsView(job);
+  }
+}
+
+function initLogsLevelFilterToggle() {
+  var btn = document.getElementById('logs-level-filter-toggle');
+  if (!btn) return;
+  btn.setAttribute('aria-checked', String(logsLevelFilter));
+  if (logsLevelFilter) {
     btn.classList.remove('bg-surface-container-high');
     btn.classList.add('bg-primary');
     btn.querySelector('span').classList.remove('translate-x-0.5');

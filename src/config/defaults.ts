@@ -43,10 +43,22 @@ export const DEFAULT_CONFIG: AQConfig = {
       maxTurns: 50,
       timeout: 600000,
       additionalArgs: [],
+      retry: {
+        maxRetries: 3,
+        initialDelayMs: 5000,
+        maxDelayMs: 60000,
+        jitterFactor: 0.1,
+      },
     },
     ghCli: {
       path: "gh",
       timeout: 30000,
+      retry: {
+        maxRetries: 3,
+        initialDelayMs: 2000,
+        maxDelayMs: 30000,
+        jitterFactor: 0.1,
+      },
     },
     test: "npm test",
     lint: "npm run lint",

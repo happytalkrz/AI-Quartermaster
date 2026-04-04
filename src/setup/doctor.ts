@@ -6,6 +6,7 @@ import { AQConfig } from "../types/config.js";
 import { TryLoadConfigResult } from "../config/loader.js";
 
 const MIN_CLAUDE_VERSION = "1.0.0";
+const MIN_DISK_SPACE_MB = 500;
 
 /** Compare semver strings. Returns negative if a < b, 0 if equal, positive if a > b. */
 function compareSemver(a: string, b: string): number {
@@ -241,6 +242,45 @@ function checkDiskWritable(aqRoot: string): void {
   }
 }
 
+async function checkDiskSpace(path: string): Promise<void> {
+  console.log("\n[디스크 용량]");
+
+  try {
+    // Use df command to get available space in KB
+    const result = await runCli("df", ["--output=avail", path], { timeout: 5000 });
+
+    if (result.exitCode !== 0) {
+      warn("디스크 용량", `df 명령어 실패: ${result.stderr.trim()}`);
+      return;
+    }
+
+    const output = result.stdout.trim();
+    const lines = output.split('\n');
+
+    // Skip header line and get the available space
+    if (lines.length < 2) {
+      warn("디스크 용량", "df 출력 파싱 실패: 예상보다 적은 라인 수");
+      return;
+    }
+
+    const availableKB = parseInt(lines[1].trim(), 10);
+    if (isNaN(availableKB)) {
+      warn("디스크 용량", `df 출력 파싱 실패: "${lines[1].trim()}"은 유효한 숫자가 아닙니다`);
+      return;
+    }
+
+    const availableMB = Math.floor(availableKB / 1024);
+
+    if (availableMB >= MIN_DISK_SPACE_MB) {
+      pass(`디스크 용량: ${availableMB}MB 가용 (최소 ${MIN_DISK_SPACE_MB}MB 필요)`);
+    } else {
+      warn("디스크 용량", `가용 공간 부족: ${availableMB}MB (최소 ${MIN_DISK_SPACE_MB}MB 필요) — worktree 생성에 실패할 수 있습니다`);
+    }
+  } catch (error) {
+    warn("디스크 용량", `df 명령어 실행 실패: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export async function runDoctor(
   config: AQConfig | null,
   aqRoot: string,
@@ -311,6 +351,10 @@ export async function runDoctor(
 
   const port = 3000; // default; config doesn't store port
   await checkPort(port);
+
+  // Check disk space for worktree root path or aqRoot
+  const diskCheckPath = config?.worktree?.rootPath || aqRoot;
+  await checkDiskSpace(diskCheckPath);
 
   checkDiskWritable(aqRoot);
 

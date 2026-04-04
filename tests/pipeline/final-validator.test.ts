@@ -28,7 +28,11 @@ const commands = {
 };
 
 describe("runFinalValidation", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRunShell.mockReset();
+    mockAutoCommitIfDirty.mockReset().mockResolvedValue(undefined);
+  });
 
   it("should pass when all checks pass", async () => {
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });

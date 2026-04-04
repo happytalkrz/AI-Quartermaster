@@ -60,6 +60,7 @@ function renderJobDetail(job) {
   html += '</div>';
   html += '<div class="flex items-center gap-6 text-sm text-outline font-medium">';
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
+  if (job.totalCostUsd !== undefined && job.totalCostUsd !== null) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + fmtCost(job.totalCostUsd) + '</span>';
   html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">calendar_today</span> ' + relativeTime(job.createdAt) + '</span>';
   html += '<span class="flex items-center gap-1.5 font-mono text-xs opacity-80">' + esc(job.id) + '</span>';
   html += '</div></div>';
@@ -149,6 +150,7 @@ function renderPhaseItem(phase, i, job) {
   var isCurrent = !isComplete && job.status === 'running';
   var dur = phase.durationMs ? fmtDurationMs(phase.durationMs) : '--:--';
   var phaseName = esc(phase.name || 'Phase ' + (i + 1));
+  var cost = fmtCost(phase.costUsd);
 
   // Determine state-specific styles and content
   var containerClass, iconHtml, nameClass, subtitleHtml, durHtml, chevronColor;
@@ -158,14 +160,14 @@ function renderPhaseItem(phase, i, job) {
     iconHtml = '<span class="material-symbols-outlined text-[#3fb950]" style="font-variation-settings: \'FILL\' 1;">check_circle</span>';
     nameClass = 'text-sm font-bold';
     subtitleHtml = phase.commit ? '<div class="text-[10px] text-outline font-mono">commit: ' + esc(phase.commit) + '</div>' : '';
-    durHtml = '<span class="text-xs font-mono text-outline">' + dur + '</span>';
+    durHtml = '<span class="text-xs font-mono text-outline">' + dur + (cost ? ' • ' + cost : '') + '</span>';
     chevronColor = 'text-outline';
   } else if (isFailed) {
     containerClass = 'bg-surface-container-low p-4 flex items-center justify-between border-l-2 border-[#f85149]';
     iconHtml = '<span class="material-symbols-outlined text-[#f85149]" style="font-variation-settings: \'FILL\' 1;">cancel</span>';
     nameClass = 'text-sm font-bold text-[#f85149]';
     subtitleHtml = phase.error ? '<div class="text-[10px] text-[#f85149]/60 font-mono">' + esc(phase.error).substring(0, 80) + '</div>' : '';
-    durHtml = '<span class="text-xs font-mono text-[#f85149]">' + dur + '</span>';
+    durHtml = '<span class="text-xs font-mono text-[#f85149]">' + dur + (cost ? ' • ' + cost : '') + '</span>';
     chevronColor = 'text-[#f85149]';
   } else if (isCurrent) {
     containerClass = 'bg-surface-container p-4 flex items-center justify-between ring-1 ring-primary/30 z-10';

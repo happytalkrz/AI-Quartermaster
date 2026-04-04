@@ -28,7 +28,9 @@ type SSEEventData =
   | { event: 'jobDeleted'; data: { id: string; job: Job } }
   | { event: 'jobUpdated'; data: { id: string; job: Job } }
   | { event: 'jobCreated'; data: { id: string; job: Job } }
-  | { event: 'configChanged'; data: { changes: unknown; timestamp: string } };
+  | { event: 'configChanged'; data: { changes: unknown; timestamp: string } }
+  | { event: 'updateCompleted'; data: unknown }
+  | { event: 'updateFailed'; data: unknown };
 
 const sseClients = new Map<string, SSEClient>();
 const encoder = new TextEncoder();

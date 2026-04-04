@@ -54,6 +54,11 @@ describe("createDraftPR", () => {
 
   beforeEach(() => vi.clearAllMocks());
 
+  const mockOptions = {
+    cwd: "/tmp/test",
+    promptsDir: "/tmp/prompts"
+  };
+
   it("should create PR with correct arguments", async () => {
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/1", stderr: "", exitCode: 0 });
     const result = await createDraftPR(prConfig, ghConfig, ctx, options);

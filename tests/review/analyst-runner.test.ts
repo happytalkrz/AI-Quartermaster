@@ -11,15 +11,42 @@ vi.mock("../../src/claude/claude-runner.js", () => ({
   extractJson: vi.fn(),
 }));
 
+vi.mock("../../src/review/token-estimator.js", () => ({
+  exceedsTokenLimit: vi.fn(),
+  analyzeTokenUsage: vi.fn(),
+}));
+
+vi.mock("../../src/review/diff-splitter.js", () => ({
+  splitDiffByFiles: vi.fn(),
+  groupFilesByTokenBudget: vi.fn(),
+  combineBatchDiffs: vi.fn(),
+  generateSplitStats: vi.fn(),
+}));
+
+vi.mock("../../src/utils/logger.js", () => ({
+  getLogger: vi.fn(() => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  })),
+}));
+
 import { runAnalyst } from "../../src/review/analyst-runner.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
+import { analyzeTokenUsage } from "../../src/review/token-estimator.js";
+import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs, generateSplitStats } from "../../src/review/diff-splitter.js";
 import type { AnalystContext } from "../../src/review/analyst-runner.js";
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockExtractJson = vi.mocked(extractJson);
 const mockRenderTemplate = vi.mocked(renderTemplate);
 const mockLoadTemplate = vi.mocked(loadTemplate);
+const mockAnalyzeTokenUsage = vi.mocked(analyzeTokenUsage);
+const mockSplitDiffByFiles = vi.mocked(splitDiffByFiles);
+const mockGroupFilesByTokenBudget = vi.mocked(groupFilesByTokenBudget);
+const mockCombineBatchDiffs = vi.mocked(combineBatchDiffs);
+const mockGenerateSplitStats = vi.mocked(generateSplitStats);
 
 describe("runAnalyst", () => {
   const mockContext: AnalystContext = {
@@ -44,6 +71,15 @@ describe("runAnalyst", () => {
     vi.clearAllMocks();
     mockLoadTemplate.mockReturnValue("template content");
     mockRenderTemplate.mockReturnValue("rendered content");
+
+    // 기본적으로 토큰 한도 내에 있다고 설정
+    mockAnalyzeTokenUsage.mockReturnValue({
+      estimatedTokens: 50000,
+      modelLimit: 200000,
+      effectiveLimit: 160000,
+      exceedsLimit: false,
+      usagePercentage: 31.25,
+    });
   });
 
   it("should return COMPLETE when all requirements are implemented", async () => {
@@ -201,5 +237,109 @@ describe("runAnalyst", () => {
     const result = await runAnalyst(mockContext);
 
     expect(result.verdict).toBe("MISALIGNED");
+  });
+
+  describe("split analysis", () => {
+    it("should run split analysis when token limit is exceeded", async () => {
+      // Token limit 초과 설정
+      mockAnalyzeTokenUsage.mockReturnValue({
+        estimatedTokens: 180000,
+        modelLimit: 200000,
+        effectiveLimit: 160000,
+        exceedsLimit: true,
+        usagePercentage: 112.5,
+      });
+
+      // diff 분할 mock 설정
+      mockSplitDiffByFiles.mockReturnValue([
+        { filePath: "file1.ts", diffContent: "diff1", estimatedTokens: 50000 },
+        { filePath: "file2.ts", diffContent: "diff2", estimatedTokens: 60000 },
+      ]);
+
+      mockGroupFilesByTokenBudget.mockReturnValue([
+        {
+          files: [{ filePath: "file1.ts", diffContent: "diff1", estimatedTokens: 50000 }],
+          totalEstimatedTokens: 80000,
+          batchIndex: 0,
+        },
+        {
+          files: [{ filePath: "file2.ts", diffContent: "diff2", estimatedTokens: 60000 }],
+          totalEstimatedTokens: 90000,
+          batchIndex: 1,
+        },
+      ]);
+
+      mockCombineBatchDiffs
+        .mockReturnValueOnce("diff1")
+        .mockReturnValueOnce("diff2");
+
+      mockGenerateSplitStats.mockReturnValue({
+        totalFiles: 2,
+        totalBatches: 2,
+        totalTokens: 110000,
+        filesPerBatch: [1, 1],
+        tokensPerBatch: [50000, 60000],
+      });
+
+      // 각 배치에 대해 Claude 응답 설정
+      mockRunClaude
+        .mockResolvedValueOnce({ success: true, output: "batch1 output" })
+        .mockResolvedValueOnce({ success: true, output: "batch2 output" });
+
+      mockExtractJson
+        .mockReturnValueOnce({
+          verdict: "INCOMPLETE",
+          findings: [{ type: "missing", requirement: "Feature A", severity: "error", message: "Missing A" }],
+          summary: "Batch 1 analysis",
+          coverage: { implemented: ["featureX"], missing: ["featureA"], excess: [] },
+        })
+        .mockReturnValueOnce({
+          verdict: "COMPLETE",
+          findings: [],
+          summary: "Batch 2 analysis",
+          coverage: { implemented: ["featureY"], missing: [], excess: [] },
+        });
+
+      const result = await runAnalyst(mockContext);
+
+      expect(result.verdict).toBe("INCOMPLETE");
+      expect(result.findings).toHaveLength(1);
+      expect(result.findings[0].requirement).toBe("Feature A");
+      expect(result.coverage.implemented).toEqual(["featureX", "featureY"]);
+      expect(result.coverage.missing).toEqual(["featureA"]);
+      expect(result.summary).toContain("Split analysis from 2 batches");
+    });
+
+    it("should fall back to single analysis if no files to split", async () => {
+      // Token limit 초과 설정
+      mockAnalyzeTokenUsage.mockReturnValue({
+        estimatedTokens: 180000,
+        modelLimit: 200000,
+        effectiveLimit: 160000,
+        exceedsLimit: true,
+        usagePercentage: 112.5,
+      });
+
+      // 빈 파일 배열 반환
+      mockSplitDiffByFiles.mockReturnValue([]);
+
+      mockRunClaude.mockResolvedValue({
+        success: true,
+        output: "single analysis output",
+      });
+
+      mockExtractJson.mockReturnValue({
+        verdict: "COMPLETE",
+        findings: [],
+        summary: "Single analysis",
+        coverage: { implemented: ["feature"], missing: [], excess: [] },
+      });
+
+      const result = await runAnalyst(mockContext);
+
+      expect(result.verdict).toBe("COMPLETE");
+      expect(result.summary).toBe("Single analysis");
+      expect(mockSplitDiffByFiles).toHaveBeenCalled();
+    });
   });
 });

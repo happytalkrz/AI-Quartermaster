@@ -4,11 +4,43 @@ vi.mock("../../src/review/review-runner.js", () => ({
   runReviewRound: vi.fn(),
 }));
 
+vi.mock("../../src/review/token-estimator.js", () => ({
+  exceedsTokenLimit: vi.fn(),
+  getEffectiveTokenLimit: vi.fn(),
+}));
+
+vi.mock("../../src/review/diff-splitter.js", () => ({
+  splitDiffByFiles: vi.fn(),
+  groupFilesByTokenBudget: vi.fn(),
+  combineBatchDiffs: vi.fn(),
+}));
+
+vi.mock("../../src/review/result-merger.js", () => ({
+  mergeReviewResults: vi.fn(),
+}));
+
+vi.mock("../../src/prompt/template-renderer.js", () => ({
+  loadTemplate: vi.fn(),
+  renderTemplate: vi.fn(),
+}));
+
 import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runReviewRound } from "../../src/review/review-runner.js";
+import { exceedsTokenLimit, getEffectiveTokenLimit } from "../../src/review/token-estimator.js";
+import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "../../src/review/diff-splitter.js";
+import { mergeReviewResults } from "../../src/review/result-merger.js";
+import { loadTemplate, renderTemplate } from "../../src/prompt/template-renderer.js";
 import type { ReviewResult } from "../../src/types/review.js";
 
 const mockRunReview = vi.mocked(runReviewRound);
+const mockExceedsTokenLimit = vi.mocked(exceedsTokenLimit);
+const mockGetEffectiveTokenLimit = vi.mocked(getEffectiveTokenLimit);
+const mockSplitDiffByFiles = vi.mocked(splitDiffByFiles);
+const mockGroupFilesByTokenBudget = vi.mocked(groupFilesByTokenBudget);
+const mockCombineBatchDiffs = vi.mocked(combineBatchDiffs);
+const mockMergeReviewResults = vi.mocked(mergeReviewResults);
+const mockLoadTemplate = vi.mocked(loadTemplate);
+const mockRenderTemplate = vi.mocked(renderTemplate);
 
 const claudeConfig = { path: "claude", model: "test", maxTurns: 1, timeout: 1000, additionalArgs: [] };
 
@@ -20,7 +52,19 @@ function failResult(name: string): ReviewResult {
 }
 
 describe("runReviews", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Default mock setup for split review functionality
+    mockExceedsTokenLimit.mockReturnValue(false);
+    mockGetEffectiveTokenLimit.mockReturnValue(160000);
+    mockLoadTemplate.mockReturnValue("template content");
+    mockRenderTemplate.mockReturnValue("rendered template");
+    mockSplitDiffByFiles.mockReturnValue([]);
+    mockGroupFilesByTokenBudget.mockReturnValue([]);
+    mockCombineBatchDiffs.mockReturnValue("");
+    mockMergeReviewResults.mockReturnValue(passResult("Merged"));
+  });
 
   it("should pass when all rounds pass", async () => {
     mockRunReview.mockResolvedValue(passResult("round"));
@@ -239,5 +283,144 @@ describe("runReviews", () => {
 
     expect(result.allPassed).toBe(true);
     expect(mockRunReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("should use standard review when token limit is not exceeded", async () => {
+    mockExceedsTokenLimit.mockReturnValue(false);
+    mockRunReview.mockResolvedValue(passResult("StandardReview"));
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "StandardReview", promptTemplate: "review.md", failAction: "block", maxRetries: 0, model: null },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { diff: "small diff content" },
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockExceedsTokenLimit).toHaveBeenCalledWith("rendered template", "test");
+    expect(mockRunReview).toHaveBeenCalledTimes(1);
+    expect(mockSplitDiffByFiles).not.toHaveBeenCalled();
+  });
+
+  it("should use split review when token limit is exceeded", async () => {
+    mockExceedsTokenLimit.mockReturnValue(true);
+
+    // Mock split review components
+    const fileDiffs = [
+      { filePath: "file1.ts", diffContent: "diff1", estimatedTokens: 1000 },
+      { filePath: "file2.ts", diffContent: "diff2", estimatedTokens: 2000 },
+    ];
+    const batches = [
+      { files: [fileDiffs[0]], totalEstimatedTokens: 1500, batchIndex: 0 },
+      { files: [fileDiffs[1]], totalEstimatedTokens: 2500, batchIndex: 1 },
+    ];
+
+    mockSplitDiffByFiles.mockReturnValue(fileDiffs);
+    mockGroupFilesByTokenBudget.mockReturnValue(batches);
+    mockCombineBatchDiffs.mockReturnValueOnce("diff1").mockReturnValueOnce("diff2");
+
+    // Each split review returns a result
+    mockRunReview
+      .mockResolvedValueOnce(passResult("SplitReview (Split 1/2)"))
+      .mockResolvedValueOnce(passResult("SplitReview (Split 2/2)"));
+
+    const mergedResult = passResult("SplitReview");
+    mockMergeReviewResults.mockReturnValue(mergedResult);
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "SplitReview", promptTemplate: "review.md", failAction: "block", maxRetries: 0, model: null },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { diff: "very large diff content" },
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(mockExceedsTokenLimit).toHaveBeenCalledWith("rendered template", "test");
+    expect(mockSplitDiffByFiles).toHaveBeenCalledWith("very large diff content");
+    expect(mockGroupFilesByTokenBudget).toHaveBeenCalledWith(fileDiffs, 160000, "rendered template");
+    expect(mockRunReview).toHaveBeenCalledTimes(2);
+    expect(mockMergeReviewResults).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ roundName: "SplitReview (Split 1/2)" }),
+        expect.objectContaining({ roundName: "SplitReview (Split 2/2)" }),
+      ],
+      "SplitReview"
+    );
+  });
+
+  it("should handle split review with no diff files", async () => {
+    mockExceedsTokenLimit.mockReturnValue(true);
+    mockSplitDiffByFiles.mockReturnValue([]);
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "EmptyDiff", promptTemplate: "review.md", failAction: "block", maxRetries: 0, model: null },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { diff: "" },
+    });
+
+    expect(result.allPassed).toBe(true);
+    expect(result.rounds).toHaveLength(1);
+    expect(result.rounds[0].verdict).toBe("PASS");
+    expect(result.rounds[0].summary).toBe("No changes to review");
+    expect(mockRunReview).not.toHaveBeenCalled();
+  });
+
+  it("should handle split review failure correctly", async () => {
+    mockExceedsTokenLimit.mockReturnValue(true);
+
+    const fileDiffs = [
+      { filePath: "file1.ts", diffContent: "diff1", estimatedTokens: 1000 },
+    ];
+    const batches = [
+      { files: [fileDiffs[0]], totalEstimatedTokens: 1500, batchIndex: 0 },
+    ];
+
+    mockSplitDiffByFiles.mockReturnValue(fileDiffs);
+    mockGroupFilesByTokenBudget.mockReturnValue(batches);
+    mockCombineBatchDiffs.mockReturnValue("diff1");
+    mockRunReview.mockResolvedValue(failResult("SplitReview (Split 1/1)"));
+
+    const mergedResult = failResult("SplitReview");
+    mockMergeReviewResults.mockReturnValue(mergedResult);
+
+    const result = await runReviews({
+      reviewConfig: {
+        enabled: true,
+        rounds: [
+          { name: "SplitReview", promptTemplate: "review.md", failAction: "block", maxRetries: 0, model: null },
+        ],
+        simplify: { enabled: false, promptTemplate: "" },
+      },
+      claudeConfig,
+      promptsDir: "/prompts",
+      cwd: "/tmp",
+      variables: { diff: "large diff content" },
+    });
+
+    expect(result.allPassed).toBe(false);
+    expect(result.rounds).toHaveLength(1);
+    expect(result.rounds[0].verdict).toBe("FAIL");
   });
 });

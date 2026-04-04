@@ -1,4 +1,4 @@
-import { runCli, runShell } from "../utils/cli-runner.js";
+import { runShell } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import type { CommandsConfig } from "../types/config.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";

@@ -24,6 +24,10 @@ interface JobRow {
   is_retry: number;
   cost_usd: number | null;
   total_cost_usd: number | null;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_cache_creation_input_tokens: number | null;
+  total_cache_read_input_tokens: number | null;
 }
 
 interface PhaseRow {
@@ -66,6 +70,12 @@ export interface DatabaseJob {
   isRetry?: boolean;
   costUsd?: number;
   totalCostUsd?: number;
+  totalUsage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export interface DatabasePhase {
@@ -127,7 +137,11 @@ export class AQDatabase {
         progress INTEGER CHECK (progress >= 0 AND progress <= 100),
         is_retry INTEGER CHECK (is_retry IN (0, 1)),
         cost_usd REAL CHECK (cost_usd >= 0),
-        total_cost_usd REAL CHECK (total_cost_usd >= 0)
+        total_cost_usd REAL CHECK (total_cost_usd >= 0),
+        total_input_tokens INTEGER CHECK (total_input_tokens >= 0),
+        total_output_tokens INTEGER CHECK (total_output_tokens >= 0),
+        total_cache_creation_input_tokens INTEGER CHECK (total_cache_creation_input_tokens >= 0),
+        total_cache_read_input_tokens INTEGER CHECK (total_cache_read_input_tokens >= 0)
       )
     `);
 
@@ -187,15 +201,16 @@ export class AQDatabase {
       INSERT INTO jobs (
         id, issue_number, repo, status, created_at, started_at, completed_at,
         pr_url, error, last_updated_at, current_step, dependencies, progress,
-        is_retry, cost_usd, total_cost_usd
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
+        total_cache_creation_input_tokens, total_cache_read_input_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
     stmt.run(
       params[0], params[1], params[2], params[3], params[4], params[5], params[6],
       params[7], params[8], params[9], params[10], params[11], params[12], params[13],
-      params[14], params[15]
+      params[14], params[15], params[16], params[17], params[18], params[19]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -218,7 +233,9 @@ export class AQDatabase {
         issue_number = ?, repo = ?, status = ?, created_at = ?,
         started_at = ?, completed_at = ?, pr_url = ?, error = ?,
         last_updated_at = ?, current_step = ?, dependencies = ?,
-        progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?
+        progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
+        total_input_tokens = ?, total_output_tokens = ?, total_cache_creation_input_tokens = ?,
+        total_cache_read_input_tokens = ?
       WHERE id = ?
     `);
 
@@ -226,7 +243,7 @@ export class AQDatabase {
     const changes = stmt.run(
       params[1], params[2], params[3], params[4], params[5], params[6], params[7],
       params[8], params[9], params[10], params[11], params[12], params[13], params[14],
-      params[15], id
+      params[15], params[16], params[17], params[18], params[19], id
     ).changes;
 
     if (changes > 0) {
@@ -379,7 +396,11 @@ export class AQDatabase {
       job.progress || null,
       job.isRetry ? 1 : 0,
       job.costUsd || null,
-      job.totalCostUsd || null
+      job.totalCostUsd || null,
+      job.totalUsage?.input_tokens || null,
+      job.totalUsage?.output_tokens || null,
+      job.totalUsage?.cache_creation_input_tokens || null,
+      job.totalUsage?.cache_read_input_tokens || null
     ];
   }
 
@@ -400,7 +421,13 @@ export class AQDatabase {
       progress: row.progress ?? undefined,
       isRetry: row.is_retry === 1,
       costUsd: row.cost_usd ?? undefined,
-      totalCostUsd: row.total_cost_usd ?? undefined
+      totalCostUsd: row.total_cost_usd ?? undefined,
+      totalUsage: (row.total_input_tokens !== null && row.total_output_tokens !== null) ? {
+        input_tokens: row.total_input_tokens,
+        output_tokens: row.total_output_tokens,
+        cache_creation_input_tokens: row.total_cache_creation_input_tokens ?? undefined,
+        cache_read_input_tokens: row.total_cache_read_input_tokens ?? undefined
+      } : undefined
     };
   }
 

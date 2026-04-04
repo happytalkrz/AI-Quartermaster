@@ -701,7 +701,7 @@ describe("JobStore", () => {
     });
   });
 
-  describe("Phase Results and Cost Tracking", () => {
+  describe("Total Usage and Cost Tracking", () => {
     it("should store and retrieve phase results with cost and usage data", () => {
       const job = store.create(42, "test/repo");
 
@@ -870,6 +870,140 @@ describe("JobStore", () => {
       expect(retrievedJob?.phaseResults?.[0].usage?.cache_creation_input_tokens).toBe(50);
 
       newStore.close();
+    });
+  });
+
+  describe("Total Usage and Cost Tracking", () => {
+    it("should store and retrieve totalUsage field", () => {
+      const job = store.create(50, "test/repo");
+
+      const totalUsage = {
+        input_tokens: 2500,
+        output_tokens: 1200,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 150
+      };
+
+      store.update(job.id, { totalUsage });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.totalUsage).toBeDefined();
+      expect(retrievedJob?.totalUsage?.input_tokens).toBe(2500);
+      expect(retrievedJob?.totalUsage?.output_tokens).toBe(1200);
+      expect(retrievedJob?.totalUsage?.cache_creation_input_tokens).toBe(300);
+      expect(retrievedJob?.totalUsage?.cache_read_input_tokens).toBe(150);
+    });
+
+    it("should store both totalCostUsd and totalUsage together", () => {
+      const job = store.create(51, "test/repo");
+
+      const totalUsage = {
+        input_tokens: 3000,
+        output_tokens: 1500,
+        cache_read_input_tokens: 200
+      };
+
+      store.update(job.id, {
+        totalCostUsd: 0.75,
+        totalUsage
+      });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.totalCostUsd).toBe(0.75);
+      expect(retrievedJob?.totalUsage?.input_tokens).toBe(3000);
+      expect(retrievedJob?.totalUsage?.output_tokens).toBe(1500);
+      expect(retrievedJob?.totalUsage?.cache_read_input_tokens).toBe(200);
+      expect(retrievedJob?.totalUsage?.cache_creation_input_tokens).toBeUndefined();
+    });
+
+    it("should handle totalUsage without cache tokens", () => {
+      const job = store.create(52, "test/repo");
+
+      const totalUsage = {
+        input_tokens: 1800,
+        output_tokens: 900
+        // No cache tokens
+      };
+
+      store.update(job.id, { totalUsage });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.totalUsage?.input_tokens).toBe(1800);
+      expect(retrievedJob?.totalUsage?.output_tokens).toBe(900);
+      expect(retrievedJob?.totalUsage?.cache_creation_input_tokens).toBeUndefined();
+      expect(retrievedJob?.totalUsage?.cache_read_input_tokens).toBeUndefined();
+    });
+
+    it("should handle job with no totalUsage field", () => {
+      const job = store.create(53, "test/repo");
+
+      // Update with other fields but no totalUsage
+      store.update(job.id, {
+        status: "running",
+        startedAt: new Date().toISOString()
+      });
+
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.status).toBe("running");
+      expect(retrievedJob?.totalUsage).toBeUndefined();
+    });
+
+    it("should persist totalUsage across store restart", () => {
+      const job = store.create(54, "test/repo");
+
+      const totalUsage = {
+        input_tokens: 4000,
+        output_tokens: 2000,
+        cache_creation_input_tokens: 500,
+        cache_read_input_tokens: 250
+      };
+
+      store.update(job.id, {
+        totalCostUsd: 1.25,
+        totalUsage
+      });
+
+      // Create new store instance (simulating restart)
+      const newStore = new JobStore(dataDir);
+
+      const retrievedJob = newStore.get(job.id);
+      expect(retrievedJob?.totalCostUsd).toBe(1.25);
+      expect(retrievedJob?.totalUsage?.input_tokens).toBe(4000);
+      expect(retrievedJob?.totalUsage?.output_tokens).toBe(2000);
+      expect(retrievedJob?.totalUsage?.cache_creation_input_tokens).toBe(500);
+      expect(retrievedJob?.totalUsage?.cache_read_input_tokens).toBe(250);
+
+      newStore.close();
+    });
+
+    it("should list all jobs with totalUsage data correctly", () => {
+      const job1 = store.create(55, "test/repo");
+      const job2 = store.create(56, "test/repo");
+
+      const usage1 = {
+        input_tokens: 1000,
+        output_tokens: 500
+      };
+
+      const usage2 = {
+        input_tokens: 2000,
+        output_tokens: 1000,
+        cache_read_input_tokens: 100
+      };
+
+      store.update(job1.id, { totalUsage: usage1 });
+      store.update(job2.id, { totalUsage: usage2 });
+
+      const allJobs = store.list();
+      const jobWithUsage1 = allJobs.find(j => j.id === job1.id);
+      const jobWithUsage2 = allJobs.find(j => j.id === job2.id);
+
+      expect(jobWithUsage1?.totalUsage?.input_tokens).toBe(1000);
+      expect(jobWithUsage1?.totalUsage?.output_tokens).toBe(500);
+
+      expect(jobWithUsage2?.totalUsage?.input_tokens).toBe(2000);
+      expect(jobWithUsage2?.totalUsage?.output_tokens).toBe(1000);
+      expect(jobWithUsage2?.totalUsage?.cache_read_input_tokens).toBe(100);
     });
   });
 

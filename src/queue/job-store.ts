@@ -184,7 +184,8 @@ export class JobStore extends EventEmitter {
       progress: dbJob.progress,
       isRetry: dbJob.isRetry,
       costUsd: dbJob.costUsd,
-      totalCostUsd: dbJob.totalCostUsd
+      totalCostUsd: dbJob.totalCostUsd,
+      totalUsage: dbJob.totalUsage
     };
 
     // Phase 결과를 phaseResults 배열로 변환
@@ -235,7 +236,8 @@ export class JobStore extends EventEmitter {
       progress: job.progress,
       isRetry: job.isRetry,
       costUsd: job.costUsd,
-      totalCostUsd: job.totalCostUsd
+      totalCostUsd: job.totalCostUsd,
+      totalUsage: job.totalUsage
     };
   }
 

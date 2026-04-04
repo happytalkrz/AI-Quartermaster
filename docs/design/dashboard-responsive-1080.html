@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Quartermaster | Kinetic Command</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-error-container": "#ffdad6",
+                        "tertiary-container": "#da9600",
+                        "surface-variant": "#31353c",
+                        "on-primary-fixed": "#001c38",
+                        "surface": "#10141a",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "surface-container-lowest": "#0a0e14",
+                        "on-primary": "#00315c",
+                        "surface-container-high": "#262a31",
+                        "primary-fixed": "#d3e4ff",
+                        "on-surface": "#dfe2eb",
+                        "tertiary": "#ffba42",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "inverse-on-surface": "#2d3137",
+                        "surface-bright": "#353940",
+                        "on-tertiary-container": "#4f3400",
+                        "on-secondary-container": "#b0b5be",
+                        "primary-container": "#58a6ff",
+                        "on-tertiary-fixed": "#281800",
+                        "on-secondary-fixed": "#161c23",
+                        "surface-container-low": "#181c22",
+                        "surface-container-highest": "#31353c",
+                        "outline": "#8b919d",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "outline-variant": "#414752",
+                        "primary": "#a2c9ff",
+                        "on-surface-variant": "#c0c7d4",
+                        "secondary": "#c1c7d0",
+                        "inverse-surface": "#dfe2eb",
+                        "on-secondary": "#2b3138",
+                        "on-background": "#dfe2eb",
+                        "on-error": "#690005",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "tertiary-fixed": "#ffddaf",
+                        "surface-tint": "#a2c9ff",
+                        "error-container": "#93000a",
+                        "secondary-container": "#41474f",
+                        "on-primary-fixed-variant": "#004882",
+                        "on-primary-container": "#003a6b",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "inverse-primary": "#0060aa",
+                        "surface-container": "#1c2026",
+                        "secondary-fixed": "#dde3ec",
+                        "background": "#10141a",
+                        "surface-dim": "#10141a",
+                        "on-tertiary": "#432c00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #10141a;
+            color: #dfe2eb;
+            scrollbar-width: thin;
+            scrollbar-color: #31353c transparent;
+        }
+        /* Custom scrollbar for data streams */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #31353c; border-radius: 10px; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="flex min-h-screen overflow-x-hidden">
+<!-- NAVIGATION DRAWER -->
+<aside class="fixed left-0 top-0 h-full w-[56px] hover:w-64 transition-all duration-300 z-40 overflow-hidden bg-[#181c22] border-r border-[#414752]/15 shadow-2xl flex flex-col pt-20 group">
+<!-- Dashboard (Active) -->
+<a class="flex items-center px-4 py-4 bg-gradient-to-r from-[#a2c9ff]/10 to-transparent text-[#a2c9ff] border-l-2 border-[#a2c9ff] transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined shrink-0" data-icon="dashboard">dashboard</span>
+<span class="ml-6 font-['Space_Grotesk'] text-xs font-medium uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Dashboard</span>
+</a>
+<!-- Automations -->
+<a class="flex items-center px-4 py-4 text-[#90949a] opacity-70 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined shrink-0" data-icon="bolt">bolt</span>
+<span class="ml-6 font-['Space_Grotesk'] text-xs font-medium uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Automations</span>
+</a>
+<!-- Repositories -->
+<a class="flex items-center px-4 py-4 text-[#90949a] opacity-70 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined shrink-0" data-icon="database">database</span>
+<span class="ml-6 font-['Space_Grotesk'] text-xs font-medium uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Repositories</span>
+</a>
+<!-- Settings -->
+<a class="mt-auto flex items-center px-4 py-4 text-[#90949a] opacity-70 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-300 ease-in-out mb-6" href="#">
+<span class="material-symbols-outlined shrink-0" data-icon="settings">settings</span>
+<span class="ml-6 font-['Space_Grotesk'] text-xs font-medium uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">Settings</span>
+</a>
+</aside>
+<!-- MAIN CANVAS -->
+<div class="flex-1 flex flex-col ml-[56px] min-w-0">
+<!-- TOP APP BAR -->
+<header class="fixed top-0 right-0 left-[56px] z-50 bg-[#10141a] px-6 h-16 flex items-center justify-between border-b border-[#414752]/10">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#a2c9ff]" data-icon="terminal">terminal</span>
+<h1 class="text-lg font-bold tracking-widest text-[#dfe2eb] uppercase font-['Space_Grotesk']">AI Quartermaster</h1>
+</div>
+<div class="flex items-center gap-6">
+<!-- Status Indicators -->
+<div class="hidden sm:flex items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+</div>
+<span class="text-[10px] font-mono uppercase tracking-tighter text-on-surface-variant">System: Nominal</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-xs text-primary" data-icon="sync">sync</span>
+<span class="text-[10px] font-mono uppercase tracking-tighter text-on-surface-variant">Sync: Active</span>
+</div>
+</div>
+<button class="material-symbols-outlined text-[#414752] hover:text-[#a2c9ff] transition-colors cursor-pointer active:scale-95" data-icon="sensors">sensors</button>
+</div>
+</header>
+<!-- CONTENT AREA -->
+<main class="mt-16 p-6 lg:p-8 flex flex-col gap-8 max-w-[1080px] mx-auto w-full">
+<!-- SECTION 1: STATS BENTO -->
+<section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- Stat Card: Total Jobs -->
+<div class="bg-surface-container-low p-5 rounded-lg border border-transparent hover:border-[#414752]/20 transition-all">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#90949a] font-['Space_Grotesk']">Total Jobs</span>
+<span class="material-symbols-outlined text-sm text-[#a2c9ff]" data-icon="reorder">reorder</span>
+</div>
+<div class="text-3xl font-bold font-['Space_Grotesk'] text-[#dfe2eb]">1,284</div>
+<div class="mt-2 text-[10px] text-primary flex items-center gap-1 font-mono">
+<span class="material-symbols-outlined text-xs" data-icon="trending_up">trending_up</span>
+                        +12.5% vs last period
+                    </div>
+</div>
+<!-- Stat Card: Success Rate -->
+<div class="bg-surface-container-low p-5 rounded-lg border border-transparent hover:border-[#414752]/20 transition-all">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#90949a] font-['Space_Grotesk']">Success Rate</span>
+<span class="material-symbols-outlined text-sm text-primary" data-icon="check_circle">check_circle</span>
+</div>
+<div class="text-3xl font-bold font-['Space_Grotesk'] text-[#dfe2eb]">99.2%</div>
+<div class="mt-2 text-[10px] text-primary flex items-center gap-1 font-mono">
+<span class="material-symbols-outlined text-xs" data-icon="verified">verified</span>
+                        Exceeding SLA
+                    </div>
+</div>
+<!-- Stat Card: Active -->
+<div class="bg-surface-container-low p-5 rounded-lg border border-transparent hover:border-[#414752]/20 transition-all">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#90949a] font-['Space_Grotesk']">Active</span>
+<span class="material-symbols-outlined text-sm text-primary" data-icon="bolt">bolt</span>
+</div>
+<div class="text-3xl font-bold font-['Space_Grotesk'] text-[#dfe2eb]">12</div>
+<div class="mt-2 text-[10px] text-primary flex items-center gap-1 font-mono">
+<span class="material-symbols-outlined text-xs" data-icon="memory">memory</span>
+                        84% Load
+                    </div>
+</div>
+<!-- Stat Card: Failed -->
+<div class="bg-surface-container-low p-5 rounded-lg border border-transparent hover:border-[#414752]/20 transition-all">
+<div class="flex items-center justify-between mb-3">
+<span class="text-[10px] font-bold uppercase tracking-widest text-[#90949a] font-['Space_Grotesk']">Failed</span>
+<span class="material-symbols-outlined text-sm text-error" data-icon="error">error</span>
+</div>
+<div class="text-3xl font-bold font-['Space_Grotesk'] text-[#dfe2eb]">0</div>
+<div class="mt-2 text-[10px] text-[#90949a] flex items-center gap-1 font-mono">
+<span class="material-symbols-outlined text-xs" data-icon="history">history</span>
+                        Last: 48h ago
+                    </div>
+</div>
+</section>
+<!-- SECTION 2: RECENT JOBS -->
+<section class="flex flex-col gap-4">
+<div class="flex items-center justify-between px-1">
+<h2 class="text-xs font-bold uppercase tracking-widest text-[#dfe2eb] font-['Space_Grotesk']">Recent Deployment Streams</h2>
+<button class="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline transition-all">View All</button>
+</div>
+<div class="flex flex-col gap-3">
+<!-- Job Item: Running -->
+<div class="bg-surface-container p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-primary shadow-sm hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4 flex-1">
+<span class="font-mono text-xs text-[#90949a] bg-surface-container-highest px-2 py-1 rounded">#QM-842</span>
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-[#dfe2eb]">Optimization Kernel Upgrade</span>
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Branch: main-stable</span>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-4 md:gap-8">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-primary/10 text-primary border border-primary/20">Running</span>
+<div class="w-24 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[65%]"></div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-end">
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Cost</span>
+<span class="text-xs font-mono text-[#dfe2eb]">$0.12</span>
+</div>
+<button class="material-symbols-outlined text-[#90949a] hover:text-primary transition-colors" data-icon="more_vert">more_vert</button>
+</div>
+</div>
+</div>
+<!-- Job Item: Success -->
+<div class="bg-surface-container p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-primary-container shadow-sm hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4 flex-1">
+<span class="font-mono text-xs text-[#90949a] bg-surface-container-highest px-2 py-1 rounded">#QM-841</span>
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-[#dfe2eb]">Predictive Analytics Sync</span>
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Branch: analytics-v4</span>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-4 md:gap-8">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-primary-container/10 text-primary-container border border-primary-container/20">Success</span>
+<div class="w-24 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary-container h-full w-full"></div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-end">
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Cost</span>
+<span class="text-xs font-mono text-[#dfe2eb]">$0.44</span>
+</div>
+<button class="material-symbols-outlined text-[#90949a] hover:text-primary transition-colors" data-icon="more_vert">more_vert</button>
+</div>
+</div>
+</div>
+<!-- Job Item: Success -->
+<div class="bg-surface-container p-4 rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 border-primary-container shadow-sm hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-4 flex-1">
+<span class="font-mono text-xs text-[#90949a] bg-surface-container-highest px-2 py-1 rounded">#QM-839</span>
+<div class="flex flex-col">
+<span class="text-sm font-semibold text-[#dfe2eb]">Visual Intelligence Retraining</span>
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Branch: vision-fix</span>
+</div>
+</div>
+<div class="flex flex-wrap items-center gap-4 md:gap-8">
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded bg-primary-container/10 text-primary-container border border-primary-container/20">Success</span>
+<div class="w-24 h-1 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary-container h-full w-full"></div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex flex-col items-end">
+<span class="text-[10px] text-on-surface-variant uppercase font-mono">Cost</span>
+<span class="text-xs font-mono text-[#dfe2eb]">$2.84</span>
+</div>
+<button class="material-symbols-outlined text-[#90949a] hover:text-primary transition-colors" data-icon="more_vert">more_vert</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 3: TELEMETRY STREAM -->
+<section class="flex flex-col gap-4 flex-1 min-h-[400px]">
+<div class="flex items-center justify-between px-1">
+<h2 class="text-xs font-bold uppercase tracking-widest text-[#dfe2eb] font-['Space_Grotesk']">Telemetry Stream</h2>
+<div class="flex items-center gap-3">
+<span class="text-[10px] font-mono text-[#a2c9ff] animate-pulse">● LIVE</span>
+<button class="material-symbols-outlined text-[#90949a] hover:text-primary transition-colors text-sm" data-icon="download">download</button>
+<button class="material-symbols-outlined text-[#90949a] hover:text-primary transition-colors text-sm" data-icon="settings">settings</button>
+</div>
+</div>
+<div class="flex-1 bg-surface-container-lowest rounded-lg border border-[#414752]/10 overflow-hidden flex flex-col">
+<div class="flex items-center gap-2 px-4 py-2 bg-surface-container-low border-b border-[#414752]/15">
+<div class="w-2 h-2 rounded-full bg-error/40"></div>
+<div class="w-2 h-2 rounded-full bg-tertiary/40"></div>
+<div class="w-2 h-2 rounded-full bg-primary/40"></div>
+<span class="ml-2 text-[10px] font-mono text-[#90949a]">ai-quartermaster-daemon.log</span>
+</div>
+<div class="flex-1 p-4 font-mono text-[11px] leading-relaxed overflow-y-auto relative">
+<div class="absolute inset-0 bg-gradient-to-b from-surface-container-lowest via-transparent to-transparent h-8 pointer-events-none z-10"></div>
+<div class="flex gap-4 opacity-70 mb-1">
+<span class="text-primary-container shrink-0">[14:02:11]</span>
+<span class="text-on-surface">INFO: INITIALIZING COMMAND MODULE v2.4.9...</span>
+</div>
+<div class="flex gap-4 opacity-70 mb-1">
+<span class="text-primary-container shrink-0">[14:02:12]</span>
+<span class="text-on-surface">DEBUG: ESTABLISHING QUANTUM HANDSHAKE WITH CLUSTER-B</span>
+</div>
+<div class="flex gap-4 opacity-70 mb-1">
+<span class="text-primary-container shrink-0">[14:02:12]</span>
+<span class="text-primary">SYNC: SUCCESS. LATENCY 0.4ms</span>
+</div>
+<div class="flex gap-4 opacity-70 mb-1">
+<span class="text-primary-container shrink-0">[14:05:44]</span>
+<span class="text-on-surface">WARN: THROTTLING AUTO-SCALER DUE TO LOW TASK DENSITY</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:08:22]</span>
+<span class="text-on-surface">JOB #QM-842: MAPPING VECTORS FOR COMPILATION...</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:08:23]</span>
+<span class="text-primary">JOB #QM-842: CORE COMPILATION STARTING</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:08:25]</span>
+<span class="text-on-surface">TRACE: NODE_04 REPORTING PEAK THROUGHPUT</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:08:28]</span>
+<span class="text-[#dfe2eb] font-bold">&gt;&gt;&gt; AGENT HANDOFF INITIATED...</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:09:01]</span>
+<span class="text-on-surface">SYSTEM: HEARTBEAT ACKNOWLEDGED</span>
+</div>
+<div class="flex gap-4 opacity-100 mb-1">
+<span class="text-primary-container shrink-0">[14:09:04]</span>
+<span class="text-primary">EVENT: AUTO-BACKUP COMPLETE</span>
+</div>
+</div>
+</div>
+</section>
+</main>
+</div>
+<!-- FLOATING ACTION: TRIGGER COMMAND -->
+<button class="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-tr from-primary to-primary-container rounded-lg shadow-xl flex items-center justify-center text-on-primary hover:scale-105 transition-transform active:scale-95 z-50">
+<span class="material-symbols-outlined text-2xl" data-icon="add" data-weight="fill">add</span>
+</button>
+</body></html>

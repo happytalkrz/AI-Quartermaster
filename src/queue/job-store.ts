@@ -256,6 +256,7 @@ export class JobStore extends EventEmitter {
   }
 
   private save(job: Job): void {
+    mkdirSync(this.dataDir, { recursive: true });
     writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
     this.cache.set(job.id, job);
   }

@@ -7,6 +7,7 @@ import { runSimplify } from "../review/simplify-runner.js";
 import { retryWithClaudeFix } from "./retry-with-fix.js";
 import { configForTaskWithMode } from "../claude/model-router.js";
 import { getLogger } from "../utils/logger.js";
+import { PROGRESS_REVIEW_START } from "./progress-tracker.js";
 import type {
   ReviewVariables,
   ReviewPipelineResult,
@@ -102,8 +103,6 @@ export async function runReviewPhase(
   reviewVariables?: ReviewVariables;
   error?: string;
 }> {
-  const PROGRESS_REVIEW_START = 30;
-
   let reviewVariables: ReviewVariables | undefined;
 
   // Skip review if executionMode is economy (reviewRounds = 0)

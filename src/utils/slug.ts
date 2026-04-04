@@ -13,7 +13,7 @@ export function createSlug(text: string): string {
     .toLowerCase()
     // Remove path traversal characters first for security, but keep structure for hyphen conversion
     .replace(/\.\./g, "") // Remove ".." (parent directory)
-    .replace(/^[\.]+/g, "") // Remove leading dots
+    .replace(/^[.]+/g, "") // Remove leading dots
     .replace(/[\u3131-\uD79D\u4E00-\u9FFF\u3400-\u4DBF]/g, "") // Remove Korean/CJK
     .replace(/[^a-z0-9]+/g, "-") // Non-alphanumeric to hyphens (includes slashes)
     .replace(/-+/g, "-") // Collapse multiple hyphens
@@ -31,10 +31,10 @@ export function isPathSafe(path: string): boolean {
   // Check for path traversal patterns
   const dangerousPatterns = [
     /\.\./,           // Parent directory ".."
-    /^[\/\\]/,        // Absolute path (starts with / or \)
-    /[\/\\]$/,        // Ends with slash
-    /[\/\\]{2,}/,     // Multiple consecutive slashes
-    /[\x00-\x1f]/,    // Control characters
+    /^[/\\]/,         // Absolute path (starts with / or \)
+    /[/\\]$/,         // Ends with slash
+    /[/\\]{2,}/,      // Multiple consecutive slashes
+    /[\u0000-\u001f]/,// Control characters
     /[<>:"|?*]/       // Windows forbidden characters
   ];
 

@@ -25,7 +25,7 @@ export function sanitizeErrorMessage(message: string): string {
   sanitized = sanitized.replace(/(\b(?:token|key|password|secret|auth)\s*[=:\s]+)([^\s\n]{8,})/gi, '$1[REDACTED]');
 
   // 파일 시스템 경로 (홈 디렉토리)
-  sanitized = sanitized.replace(/\/home\/[^\/\s]+/g, '[REDACTED]');
+  sanitized = sanitized.replace(/\/home\/[^/\s]+/g, '[REDACTED]');
 
   // 이메일 주소
   sanitized = sanitized.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED]');

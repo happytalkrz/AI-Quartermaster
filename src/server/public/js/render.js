@@ -251,14 +251,10 @@ function renderMobileActivityLog(job) {
   var container = document.getElementById('mobile-activity-log');
   if (!container) return;
 
-  // Hide container if no job selected or on desktop
-  if (!job || window.innerWidth > 1080) {
-    container.style.display = 'none';
-    return;
-  }
-
-  // Show container for mobile layout
-  container.style.display = 'block';
+  // Show/hide based on job and viewport width
+  var shouldShow = job && window.innerWidth <= 1080;
+  container.style.display = shouldShow ? 'block' : 'none';
+  if (!shouldShow) return;
 
   if (!job.logs || job.logs.length === 0) {
     container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';

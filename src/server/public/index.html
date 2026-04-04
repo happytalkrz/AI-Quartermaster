@@ -79,6 +79,16 @@
         },
     }
 </script>
+<!-- Theme restoration script - prevents FOUC by applying theme before render -->
+<script>
+(function() {
+  var saved = localStorage.getItem('aqm-theme');
+  if (saved === 'light') {
+    document.documentElement.classList.remove('dark');
+  }
+  // If no saved theme or saved theme is 'dark', html already has class="dark"
+})();
+</script>
 <style>
     .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;

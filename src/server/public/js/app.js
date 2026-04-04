@@ -403,12 +403,12 @@ function connectSSE() {
 // Apply translations on load
 applyTranslations();
 
-// Restore saved theme
+// Update theme button icon based on current theme
 (function() {
-  var saved = localStorage.getItem('aqm-theme');
-  if (saved === 'light') {
-    document.documentElement.classList.remove('dark');
-    document.getElementById('btn-theme').textContent = 'light_mode';
+  var isDark = document.documentElement.classList.contains('dark');
+  var themeBtn = document.getElementById('btn-theme');
+  if (themeBtn) {
+    themeBtn.textContent = isDark ? 'dark_mode' : 'light_mode';
   }
   // Restore archived toggle
   initArchivedToggle();

@@ -127,6 +127,13 @@ function makeSuccessResult(phaseIndex: number, phaseName: string): PhaseResult {
     success: true,
     commitHash: "abc12345",
     durationMs: 1000,
+    costUsd: 0.01,
+    usage: {
+      inputTokens: 100,
+      outputTokens: 50,
+      inputCacheReadTokens: 0,
+      inputCacheWriteTokens: 0,
+    },
   };
 }
 

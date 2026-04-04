@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Quartermaster | Kinetic Command</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .pulse-indicator {
+            position: relative;
+        }
+        .pulse-indicator::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            background: currentColor;
+            border-radius: 50%;
+            opacity: 0.4;
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(.33); }
+            80%, 100% { opacity: 0; }
+        }
+        body {
+            background-color: #10141a;
+            color: #dfe2eb;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface": "#10141a",
+                      "secondary-fixed-dim": "#c1c7d0",
+                      "tertiary-container": "#da9600",
+                      "error-container": "#93000a",
+                      "primary-fixed": "#d3e4ff",
+                      "on-primary-fixed-variant": "#004882",
+                      "surface-container-lowest": "#0a0e14",
+                      "surface-variant": "#31353c",
+                      "surface-dim": "#10141a",
+                      "on-error": "#690005",
+                      "secondary-fixed": "#dde3ec",
+                      "on-background": "#dfe2eb",
+                      "surface-container-high": "#262a31",
+                      "inverse-on-surface": "#2d3137",
+                      "tertiary": "#ffba42",
+                      "surface-tint": "#a2c9ff",
+                      "on-surface": "#dfe2eb",
+                      "primary-container": "#58a6ff",
+                      "on-secondary-container": "#b0b5be",
+                      "on-tertiary-fixed": "#281800",
+                      "on-primary": "#00315c",
+                      "primary": "#a2c9ff",
+                      "on-tertiary-container": "#4f3400",
+                      "on-tertiary": "#432c00",
+                      "on-error-container": "#ffdad6",
+                      "error": "#ffb4ab",
+                      "surface-container-highest": "#31353c",
+                      "surface-container-low": "#181c22",
+                      "outline-variant": "#414752",
+                      "on-secondary-fixed": "#161c23",
+                      "on-primary-container": "#003a6b",
+                      "on-primary-fixed": "#001c38",
+                      "surface-container": "#1c2026",
+                      "secondary": "#c1c7d0",
+                      "on-surface-variant": "#c0c7d4",
+                      "tertiary-fixed": "#ffddaf",
+                      "secondary-container": "#41474f",
+                      "on-secondary": "#2b3138",
+                      "inverse-surface": "#dfe2eb",
+                      "tertiary-fixed-dim": "#ffba42",
+                      "primary-fixed-dim": "#a2c9ff",
+                      "outline": "#8b919d",
+                      "on-tertiary-fixed-variant": "#614000",
+                      "surface-bright": "#353940",
+                      "inverse-primary": "#0060aa",
+                      "background": "#10141a",
+                      "on-secondary-fixed-variant": "#41474f",
+                      "success": "#3fb950"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "fontFamily": {
+                      "headline": ["Space Grotesk"],
+                      "body": ["Inter"],
+                      "label": ["Inter"],
+                      "mono": ["JetBrains Mono"]
+              }
+            },
+          }
+        }
+      </script>
+</head>
+<body class="font-body selection:bg-primary/30">
+<!-- Sidebar: SideNavBar from JSON implementation -->
+<aside class="fixed left-0 top-0 h-full flex flex-col items-center py-4 z-40 bg-[#181c22] dark:bg-[#181c22] w-[56px] tonal-shift">
+<div class="mb-8 flex flex-col items-center">
+<span class="text-lg font-black text-[#58a6ff] font-headline">QC</span>
+<span class="text-[8px] uppercase font-bold tracking-widest text-[#414752]">V2</span>
+</div>
+<nav class="flex flex-col gap-6 flex-1">
+<!-- Operations Active -->
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#a2c9ff] scale-110">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+<span class="font-['Inter'] text-[10px] uppercase font-bold tracking-widest mt-1 hidden lg:block">Ops</span>
+</button>
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#414752] opacity-60 hover:text-[#dfe2eb] hover:bg-[#1c2026]">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+</button>
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#414752] opacity-60 hover:text-[#dfe2eb] hover:bg-[#1c2026]">
+<span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
+</button>
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#414752] opacity-60 hover:text-[#dfe2eb] hover:bg-[#1c2026]">
+<span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span>
+</button>
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#414752] opacity-60 hover:text-[#dfe2eb] hover:bg-[#1c2026]">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+</button>
+</nav>
+<div class="mt-auto">
+<button class="flex flex-col items-center group transition-all duration-300 ease-in-out text-[#414752] opacity-60 hover:text-[#dfe2eb] hover:bg-[#1c2026]">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+</button>
+</div>
+</aside>
+<!-- Header: TopNavBar from JSON implementation -->
+<header class="ml-[56px] flex justify-between items-center px-6 w-[calc(100%-56px)] h-16 bg-[#181c22] sticky top-0 z-30 font-['Space_Grotesk'] tracking-tight">
+<div class="flex items-center gap-4">
+<h1 class="text-xl font-bold tracking-tighter text-[#dfe2eb]">AI QUARTERMASTER</h1>
+<div class="h-4 w-[1px] bg-outline-variant/30"></div>
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-highest rounded-full text-xs font-mono text-primary">
+<span class="w-1.5 h-1.5 rounded-full bg-success pulse-indicator"></span>
+                SYSTEM ACTIVE
+            </div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1">
+<button class="p-2 text-[#414752] hover:bg-[#31353c] transition-colors rounded-lg active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="account_tree">account_tree</span>
+</button>
+<button class="p-2 text-[#414752] hover:bg-[#31353c] transition-colors rounded-lg active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="sensors">sensors</span>
+</button>
+<button class="p-2 text-[#414752] hover:bg-[#31353c] transition-colors rounded-lg active:scale-95 duration-150">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+<img alt="Quartermaster profile avatar" class="w-8 h-8 rounded-lg bg-surface-container-highest object-cover" data-alt="close-up profile portrait of a futuristic tactical analyst with subtle glowing tech interfaces reflecting on their face" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBD2pR6_nv8z8enYrwNNlLBKzE-3rWMwUcfEGyOeRdN1pEsafm_NDOz7FjY2Ax7icCqlJVJXS9tApgLLM6BvVutz2iErgQ_2PjKm41fbnP7_SGhojDM8oTaZaGfaWaHIwbKFclfuLnXmaV5BC4YWFnl7ZRRMjEF5BX4SlfVAvVRLlZIwMvoG0uMtFuWpbwEfnbDbm6xjjdEjTbCQENTuNChYjAJdQ8FqJbFIEil820P0Apa7-szDGssQGcJd1JEynfDMV2UgYWFPxM"/>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-[56px] p-8 max-w-[1080px] mx-auto min-h-[calc(100vh-64px)]">
+<header class="mb-10">
+<h2 class="text-3xl font-headline font-bold text-on-background tracking-tight">Active Deployments</h2>
+<p class="text-on-surface-variant font-body mt-2">Managing real-time CI automation and kinetic resource allocation.</p>
+</header>
+<!-- Job List Container -->
+<div class="space-y-3">
+<!-- Job #284 (Collapsed) -->
+<div class="bg-surface-container rounded-xl overflow-hidden hover:bg-surface-container-high transition-all cursor-pointer group">
+<div class="flex items-center gap-4 p-4">
+<div class="w-2 h-2 rounded-full bg-success"></div>
+<span class="font-mono text-outline font-medium w-12">#284</span>
+<span class="font-headline font-medium text-on-surface flex-1">CI auto-fix</span>
+<span class="text-sm font-mono text-on-surface-variant/60">04:12 elapsed</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- Job #275 (EXPANDED) -->
+<div class="bg-surface-container-high border-l-[3px] border-primary-container rounded-xl overflow-hidden">
+<!-- Header -->
+<div class="flex items-center gap-4 p-4 border-b border-outline-variant/10">
+<div class="w-2 h-2 rounded-full bg-primary pulse-indicator"></div>
+<span class="font-mono text-primary font-bold w-12">#275</span>
+<span class="font-headline font-bold text-on-surface flex-1">job-store cost tracking</span>
+<span class="text-sm font-mono text-primary-container">08:45 elapsed</span>
+<span class="material-symbols-outlined text-primary-container rotate-90" data-icon="expand_more">expand_more</span>
+</div>
+<!-- Detail Panel (Inline) -->
+<div class="p-6 grid grid-cols-1 md:grid-cols-12 gap-8 bg-surface-container-high">
+<!-- Metadata & Phases -->
+<div class="md:col-span-4 space-y-6">
+<div class="space-y-4">
+<h4 class="text-[10px] uppercase tracking-[0.2em] font-bold text-outline">Parameters</h4>
+<div class="space-y-3">
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant">Branch</span>
+<span class="font-mono text-on-surface">feat/billing-core</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant">Pull Request</span>
+<span class="text-primary hover:underline">#1402</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant">Model</span>
+<span class="font-mono text-on-surface">GPT-4-Turbo</span>
+</div>
+<div class="flex justify-between items-center text-sm">
+<span class="text-on-surface-variant">Est. Cost</span>
+<span class="font-mono text-tertiary">$0.42</span>
+</div>
+</div>
+</div>
+<div class="space-y-4 pt-4 border-t border-outline-variant/10">
+<h4 class="text-[10px] uppercase tracking-[0.2em] font-bold text-outline">Phase Progress</h4>
+<div class="space-y-3">
+<div class="flex items-center gap-3 text-sm text-success">
+<span class="material-symbols-outlined text-lg" data-icon="check_circle">check_circle</span>
+<span>Initialization</span>
+</div>
+<div class="flex items-center gap-3 text-sm text-success">
+<span class="material-symbols-outlined text-lg" data-icon="check_circle">check_circle</span>
+<span>Schema Analysis</span>
+</div>
+<div class="flex items-center gap-3 text-sm text-primary">
+<span class="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin"></span>
+<span class="font-medium">Refactor Generation</span>
+</div>
+<div class="flex items-center gap-3 text-sm text-outline/50">
+<span class="material-symbols-outlined text-lg" data-icon="radio_button_unchecked">radio_button_unchecked</span>
+<span>Validation Suite</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Activity Log -->
+<div class="md:col-span-8">
+<div class="bg-surface-container-lowest rounded-lg border border-outline-variant/20 overflow-hidden flex flex-col h-full min-h-[300px]">
+<div class="px-4 py-2 bg-surface-variant/30 flex justify-between items-center">
+<span class="text-[10px] font-mono text-outline uppercase tracking-wider">Live Telemetry Stream</span>
+<div class="flex gap-1.5">
+<div class="w-2 h-2 rounded-full bg-error/20"></div>
+<div class="w-2 h-2 rounded-full bg-tertiary/20"></div>
+<div class="w-2 h-2 rounded-full bg-success/20"></div>
+</div>
+</div>
+<div class="p-4 font-mono text-xs text-on-surface-variant leading-relaxed overflow-y-auto max-h-[260px]">
+<p class="text-outline/40">[2023-10-24 14:22:01] <span class="text-primary">INFO</span> Initializing sandbox environment...</p>
+<p class="text-outline/40">[2023-10-24 14:22:05] <span class="text-primary">INFO</span> Fetching dependencies for feat/billing-core</p>
+<p class="text-outline/40">[2023-10-24 14:22:12] <span class="text-success">SUCCESS</span> Workspace prepared (0.8s)</p>
+<p class="text-outline/40">[2023-10-24 14:22:15] <span class="text-primary">INFO</span> Scanning for @cost_tracker annotations...</p>
+<p class="text-outline/40">[2023-10-24 14:22:18] <span class="text-tertiary">WARN</span> Legacy storage adapter detected in /lib/legacy.ts</p>
+<p class="text-outline/40">[2023-10-24 14:23:45] <span class="text-primary">INFO</span> AI: Commencing schema mapping</p>
+<p class="text-on-surface">[2023-10-24 14:24:12] <span class="text-primary">EXEC</span> Patching src/services/job-store.service.ts</p>
+<p class="text-on-surface">[2023-10-24 14:24:14] <span class="text-primary">EXEC</span> Patching src/interfaces/billing.ts</p>
+<p class="text-primary animate-pulse">[2023-10-24 14:24:20] <span class="font-bold">RUNNING</span> Verifying type safety of new cost headers...</p>
+<p class="text-outline/20">_</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Job #274 (Collapsed) -->
+<div class="bg-surface-container rounded-xl overflow-hidden hover:bg-surface-container-high transition-all cursor-pointer group">
+<div class="flex items-center gap-4 p-4">
+<div class="w-2 h-2 rounded-full bg-success"></div>
+<span class="font-mono text-outline font-medium w-12">#274</span>
+<span class="font-headline font-medium text-on-surface flex-1">commit message fix</span>
+<span class="text-sm font-mono text-on-surface-variant/60">12:30 elapsed</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- Job #253 (Collapsed) -->
+<div class="bg-surface-container rounded-xl overflow-hidden hover:bg-surface-container-high transition-all cursor-pointer group">
+<div class="flex items-center gap-4 p-4">
+<div class="w-2 h-2 rounded-full bg-error"></div>
+<span class="font-mono text-outline font-medium w-12">#253</span>
+<span class="font-headline font-medium text-on-surface flex-1">Discriminated Union</span>
+<span class="text-sm font-mono text-on-surface-variant/60">FAILED</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+<!-- Job #249 (Collapsed) -->
+<div class="bg-surface-container rounded-xl overflow-hidden hover:bg-surface-container-high transition-all cursor-pointer group">
+<div class="flex items-center gap-4 p-4">
+<div class="w-2 h-2 rounded-full bg-success"></div>
+<span class="font-mono text-outline font-medium w-12">#249</span>
+<span class="font-headline font-medium text-on-surface flex-1">executionMode routing</span>
+<span class="text-sm font-mono text-on-surface-variant/60">01:15:04 elapsed</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors" data-icon="chevron_right">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- System Stats Footer (Tactical Overlay Style) -->
+<div class="mt-12 grid grid-cols-3 gap-4">
+<div class="bg-surface-container-low p-4 rounded-lg border-t border-primary/20">
+<div class="text-[10px] text-outline uppercase font-bold tracking-widest mb-1">Compute Load</div>
+<div class="flex items-end gap-2">
+<span class="text-2xl font-headline font-bold text-on-surface">42%</span>
+<div class="flex gap-0.5 mb-1.5">
+<div class="w-1 h-3 bg-primary"></div>
+<div class="w-1 h-3 bg-primary"></div>
+<div class="w-1 h-3 bg-primary"></div>
+<div class="w-1 h-3 bg-outline-variant/30"></div>
+<div class="w-1 h-3 bg-outline-variant/30"></div>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg border-t border-success/20">
+<div class="text-[10px] text-outline uppercase font-bold tracking-widest mb-1">Queue Status</div>
+<div class="flex items-end gap-2">
+<span class="text-2xl font-headline font-bold text-on-surface">Optimal</span>
+<span class="text-xs text-success mb-1 font-mono">Synced</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-4 rounded-lg border-t border-tertiary/20">
+<div class="text-[10px] text-outline uppercase font-bold tracking-widest mb-1">API Throughput</div>
+<div class="flex items-end gap-2">
+<span class="text-2xl font-headline font-bold text-on-surface">1.2k</span>
+<span class="text-xs text-on-surface-variant mb-1 font-mono">req/sec</span>
+</div>
+</div>
+</div>
+</main>
+</body></html>

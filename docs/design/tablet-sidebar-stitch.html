@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QUARTERMASTER | Kinetic Command</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary": "#ffba42",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "error": "#ffb4ab",
+                        "surface-dim": "#10141a",
+                        "surface-container-high": "#262a31",
+                        "outline": "#8b919d",
+                        "on-tertiary-fixed": "#281800",
+                        "surface-container-lowest": "#0a0e14",
+                        "surface-container-highest": "#31353c",
+                        "on-primary-fixed-variant": "#004882",
+                        "tertiary-container": "#da9600",
+                        "background": "#10141a",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#58a6ff",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "on-surface": "#dfe2eb",
+                        "on-primary-fixed": "#001c38",
+                        "outline-variant": "#414752",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "inverse-on-surface": "#2d3137",
+                        "surface": "#10141a",
+                        "on-surface-variant": "#c0c7d4",
+                        "surface-bright": "#353940",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "tertiary-fixed": "#ffddaf",
+                        "secondary-container": "#41474f",
+                        "on-background": "#dfe2eb",
+                        "surface-variant": "#31353c",
+                        "on-secondary-fixed": "#161c23",
+                        "inverse-surface": "#dfe2eb",
+                        "secondary-fixed": "#dde3ec",
+                        "error-container": "#93000a",
+                        "surface-container-low": "#181c22",
+                        "on-tertiary-container": "#4f3400",
+                        "surface-tint": "#a2c9ff",
+                        "secondary": "#c1c7d0",
+                        "primary-fixed": "#d3e4ff",
+                        "on-primary-container": "#003a6b",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#b0b5be",
+                        "surface-container": "#1c2026",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "primary": "#a2c9ff",
+                        "on-secondary": "#2b3138",
+                        "on-tertiary": "#432c00",
+                        "on-primary": "#00315c",
+                        "inverse-primary": "#0060aa"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #10141a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #31353c;
+            border-radius: 2px;
+        }
+        .tonal-layering-no-border {
+            border: none !important;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #a2c9ff 0%, #58a6ff 100%);
+        }
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(162, 201, 255, 0.4);
+        }
+        .sidebar-hover-expand:hover {
+            width: 240px !important;
+        }
+        .sidebar-hover-expand:hover .nav-label {
+            opacity: 1;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body overflow-hidden">
+<div class="flex h-screen w-full max-w-[1080px] mx-auto overflow-hidden bg-surface">
+<!-- SIDEBAR (Left Rail) -->
+<aside class="sidebar-hover-expand fixed left-0 top-0 h-full w-[56px] bg-[#181c22] z-50 flex flex-col transition-all duration-300 ease-in-out group tonal-layering-no-border overflow-hidden">
+<!-- Header/Logo Area -->
+<div class="h-16 flex items-center px-4 mb-8">
+<div class="min-w-[24px] flex justify-center">
+<span class="material-symbols-outlined text-[#dfe2eb]" style="font-variation-settings: 'FILL' 1;">deployed_code</span>
+</div>
+<div class="nav-label opacity-0 ml-4 transition-opacity duration-300 whitespace-nowrap">
+<span class="font-headline font-bold tracking-widest text-[#dfe2eb] text-sm">QUARTERMASTER</span>
+</div>
+</div>
+<!-- Navigation Links -->
+<nav class="flex-1 flex flex-col">
+<!-- Dashboard (Active) -->
+<a class="flex items-center h-12 transition-all duration-200 group/nav relative text-[#a2c9ff] bg-[#1c2026] border-l-[3px] border-[#58a6ff]" href="#">
+<div class="min-w-[53px] flex justify-center">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+</div>
+<span class="nav-label opacity-0 font-headline font-medium tracking-tight whitespace-nowrap">Dashboard</span>
+</a>
+<!-- Automations -->
+<a class="flex items-center h-12 transition-all duration-200 group/nav hover:bg-[#31353c] hover:text-[#dfe2eb] text-[#8b919d]" href="#">
+<div class="min-w-[56px] flex justify-center">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+</div>
+<span class="nav-label opacity-0 font-headline font-medium tracking-tight whitespace-nowrap">Automations</span>
+</a>
+<!-- Repositories -->
+<a class="flex items-center h-12 transition-all duration-200 group/nav hover:bg-[#31353c] hover:text-[#dfe2eb] text-[#8b919d]" href="#">
+<div class="min-w-[56px] flex justify-center">
+<span class="material-symbols-outlined">database</span>
+</div>
+<span class="nav-label opacity-0 font-headline font-medium tracking-tight whitespace-nowrap">Repositories</span>
+</a>
+<!-- Settings (Spacer Push) -->
+<div class="mt-auto">
+<a class="flex items-center h-12 transition-all duration-200 group/nav hover:bg-[#31353c] hover:text-[#dfe2eb] text-[#8b919d] mb-4" href="#">
+<div class="min-w-[56px] flex justify-center">
+<span class="material-symbols-outlined">settings</span>
+</div>
+<span class="nav-label opacity-0 font-headline font-medium tracking-tight whitespace-nowrap">Settings</span>
+</a>
+</div>
+</nav>
+</aside>
+<!-- MAIN CONTENT AREA -->
+<main class="flex-1 flex flex-col ml-[56px] bg-[#10141a] overflow-hidden">
+<!-- TOP APP BAR -->
+<header class="flex justify-between items-center px-8 h-16 w-full sticky top-0 z-40 bg-[#10141a]/80 backdrop-blur-xl">
+<div class="flex flex-col">
+<h1 class="font-headline font-black text-xl text-[#dfe2eb] tracking-tighter">KINETIC COMMAND</h1>
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary pulse-ring animate-pulse"></span>
+<span class="font-mono text-[10px] text-primary/60 tracking-widest uppercase">System Online: Node_77</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex items-center bg-surface-container px-3 py-1.5 rounded-lg border-b-2 border-transparent focus-within:border-primary transition-all">
+<span class="material-symbols-outlined text-outline text-sm mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs font-mono text-on-surface placeholder:text-outline-variant w-48 uppercase" placeholder="QUERY SYSTEM..." type="text"/>
+</div>
+<div class="flex items-center gap-4 text-outline">
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">notifications_active</span>
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">sensors</span>
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">terminal</span>
+<div class="w-8 h-8 rounded bg-surface-container-highest overflow-hidden">
+<img alt="Operator Profile" class="w-full h-full object-cover grayscale contrast-125" data-alt="Cyberpunk style portrait of a male system operator with neon lighting accents on skin and tech headset" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA4QbEe3pJADlZawMW6H3n-UEcABfRz1xv8v6zuxTrRnXUxkcN57SudT6EtciQQav38TyxveS6Q2BNPFDqu9QPS9DQ2b9ZPqJLLty43sb7xOXOlVPVV9jCCmNdMBS47XCOwT59_bQ9_kO9SiVMhlABYqfdnmpn9k_H1gKS_lPm7GdfL4Ci4WQOOzHiUpXGRDpt_CoRj8K51ImD2ElT7q6lbkAQgOBEt4qCWLnnbnfrmXxHZovH5HOYhpohNRRZ5z3VUSp1lUUqX8eE"/>
+</div>
+</div>
+</div>
+<!-- Separation logic -->
+<div class="absolute bottom-0 left-0 w-full bg-gradient-to-r from-transparent via-[#58a6ff]/20 to-transparent h-[1px]"></div>
+</header>
+<!-- VERTICAL CONTENT STACK -->
+<div class="flex-1 overflow-y-auto px-8 pt-6 pb-12 space-y-8">
+<!-- SECTION 1: JOB LIST (Scrollable, Max Height 400px) -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h2 class="font-headline text-xs font-bold tracking-widest text-on-surface-variant uppercase">Active Mission Queue</h2>
+<span class="text-[10px] font-mono text-outline uppercase px-2 py-0.5 bg-surface-container rounded">8 Active Processes</span>
+</div>
+<div class="max-h-[400px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+<!-- Job Card 1 -->
+<div class="p-4 bg-[#262a31] rounded-lg group transition-all hover:bg-surface-container-highest flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">package_2</span>
+</div>
+<div>
+<h3 class="font-headline font-semibold text-on-surface text-sm tracking-tight">DATA_EXTRACTION_DELTA</h3>
+<p class="text-[11px] font-mono text-outline-variant uppercase">Process ID: #7829-QX</p>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex flex-col items-end">
+<span class="text-[10px] font-mono text-primary uppercase">In Progress</span>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full kinetic-gradient w-3/4"></div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface cursor-pointer">more_vert</span>
+</div>
+</div>
+<!-- Job Card 2 -->
+<div class="p-4 bg-[#262a31] rounded-lg group transition-all hover:bg-surface-container-highest flex items-center justify-between border-l-2 border-primary">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-primary-container/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">memory</span>
+</div>
+<div>
+<h3 class="font-headline font-semibold text-on-surface text-sm tracking-tight">NEURAL_NET_CALIBRATION</h3>
+<p class="text-[11px] font-mono text-outline-variant uppercase">Process ID: #9021-RT</p>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex flex-col items-end">
+<span class="text-[10px] font-mono text-tertiary uppercase">Validating</span>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full bg-tertiary w-1/3"></div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface cursor-pointer">more_vert</span>
+</div>
+</div>
+<!-- Job Card 3 -->
+<div class="p-4 bg-[#262a31] rounded-lg group transition-all hover:bg-surface-container-highest flex items-center justify-between opacity-80">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-outline">
+<span class="material-symbols-outlined">satellite_alt</span>
+</div>
+<div>
+<h3 class="font-headline font-semibold text-on-surface text-sm tracking-tight">SAT_COMMS_HANDSHAKE</h3>
+<p class="text-[11px] font-mono text-outline-variant uppercase">Process ID: #1104-LK</p>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex flex-col items-end">
+<span class="text-[10px] font-mono text-outline-variant uppercase">Waiting</span>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full bg-surface-variant w-0"></div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface cursor-pointer">more_vert</span>
+</div>
+</div>
+<!-- Job Card 4 -->
+<div class="p-4 bg-[#262a31] rounded-lg group transition-all hover:bg-surface-container-highest flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">encrypted</span>
+</div>
+<div>
+<h3 class="font-headline font-semibold text-on-surface text-sm tracking-tight">CIPHER_ROTATION_ZETA</h3>
+<p class="text-[11px] font-mono text-outline-variant uppercase">Process ID: #3342-PO</p>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex flex-col items-end">
+<span class="text-[10px] font-mono text-primary uppercase">99%</span>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-1 overflow-hidden">
+<div class="h-full kinetic-gradient w-full"></div>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface cursor-pointer">more_vert</span>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 2: JOB DETAIL CARD -->
+<section class="space-y-4">
+<h2 class="font-headline text-xs font-bold tracking-widest text-on-surface-variant uppercase">Mission Intelligence</h2>
+<div class="bg-surface-container p-6 rounded-lg relative overflow-hidden">
+<!-- Kinetic Background Element -->
+<div class="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 blur-[80px] rounded-full"></div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10">
+<div class="md:col-span-2 space-y-6">
+<div class="flex items-start justify-between">
+<div>
+<span class="text-[10px] font-mono text-primary tracking-widest uppercase">Target Focus</span>
+<h3 class="font-headline text-2xl font-bold text-on-surface">NEURAL_NET_CALIBRATION</h3>
+</div>
+<div class="px-3 py-1 bg-primary/10 rounded-full flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="text-[10px] font-bold text-primary uppercase tracking-tight">Active</span>
+</div>
+</div>
+<p class="text-on-surface-variant text-sm leading-relaxed max-w-2xl">
+                                    Initiating multi-vector resonance scan of core synaptic pathways. Calibration required for optimal throughput of Quartermaster logic gates. Environmental parameters within operational tolerances.
+                                </p>
+<div class="grid grid-cols-3 gap-4">
+<div class="p-3 bg-surface-container-low rounded">
+<p class="text-[9px] font-mono text-outline uppercase">CPU Load</p>
+<p class="text-lg font-headline font-semibold text-on-surface">42.8%</p>
+</div>
+<div class="p-3 bg-surface-container-low rounded">
+<p class="text-[9px] font-mono text-outline uppercase">Latency</p>
+<p class="text-lg font-headline font-semibold text-on-surface">14ms</p>
+</div>
+<div class="p-3 bg-surface-container-low rounded">
+<p class="text-[9px] font-mono text-outline uppercase">Stability</p>
+<p class="text-lg font-headline font-semibold text-on-surface">99.9%</p>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-high p-4 rounded flex flex-col gap-4">
+<div class="w-full aspect-square rounded bg-[#10141a] flex items-center justify-center relative group overflow-hidden">
+<img alt="Network Visualization" class="absolute inset-0 w-full h-full object-cover opacity-60" data-alt="Abstract 3D rendering of complex digital neural networks with glowing blue synapses and data nodes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDTai5QqklupxIGiT7eJ1IxKxnYkSgnA3ZeG5FyYGU654NrvZheHnvt7OGv9iOA3I5K0mWszQ1-Y54S2c7zo77jqvSycrmxc-rZzxjIIzIl-s4AZatT1PqZOZ2NA_tmgKT73nS9cnjb55VxXR71xCSJmM-Dfq2k-Dqy1MMuUASJKuXjDJDejEZeiVB6FD0jxvFr2keQ2cBGb1XjNZW9pBnhnoGEuV_MqNxl72lYhnMVlffy9CCpybJSh-NGHyPfoEzEVWlD3dpruls"/>
+<div class="relative z-10 flex flex-col items-center">
+<span class="material-symbols-outlined text-primary text-4xl mb-2">hub</span>
+<span class="text-[10px] font-mono text-primary/80 bg-surface/80 px-2 py-0.5 rounded">NODE_VIZ_7</span>
+</div>
+</div>
+<button class="w-full kinetic-gradient py-3 rounded-lg text-on-primary font-headline font-bold text-xs tracking-widest uppercase shadow-lg shadow-primary/20 hover:scale-[0.98] transition-transform">
+                                    Execute Override
+                                </button>
+</div>
+</div>
+</div>
+</section>
+<!-- SECTION 3: ACTIVITY LOG / TELEMETRY -->
+<section class="space-y-4">
+<div class="flex items-center justify-between">
+<h2 class="font-headline text-xs font-bold tracking-widest text-on-surface-variant uppercase">Telemetry Stream</h2>
+<div class="flex gap-4">
+<button class="text-[10px] font-mono text-primary uppercase border-b border-primary">Live Feed</button>
+<button class="text-[10px] font-mono text-outline uppercase">Historic</button>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-lg font-mono text-[11px] leading-relaxed relative min-h-[160px]">
+<!-- Vertical gradient mask to suggest continuous flow -->
+<div class="absolute top-0 left-0 w-full h-8 bg-gradient-to-b from-surface-container-lowest to-transparent z-10"></div>
+<div class="space-y-1.5 overflow-hidden">
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:01]</span>
+<span class="text-primary-container">SYS_INIT:</span>
+<span class="text-on-surface-variant">Allocating virtual threads for process #7829... SUCCESS</span>
+</div>
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:05]</span>
+<span class="text-tertiary">WARN:</span>
+<span class="text-on-surface-variant">Thermal throttle detected on Core 4. Adjusting cooling matrix.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:12]</span>
+<span class="text-primary-container">DATA_EXT:</span>
+<span class="text-on-surface-variant">Parsing encrypted packet header... [||||||||--] 82%</span>
+</div>
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:18]</span>
+<span class="text-[#58a6ff]">NET_LOG:</span>
+<span class="text-on-surface-variant">Handshake established with Remote Node 192.168.0.22</span>
+</div>
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:25]</span>
+<span class="text-primary-container">SYS_INF:</span>
+<span class="text-on-surface-variant">Neural Net Calibration phase 4 started. Synchronizing synapses.</span>
+</div>
+<div class="flex gap-3">
+<span class="text-outline-variant">[14:22:31]</span>
+<span class="text-primary">EXEC:</span>
+<span class="text-on-surface-variant italic">Executing command sequence: RENDER_DASHBOARD_V4</span>
+</div>
+<div class="flex gap-3 opacity-60">
+<span class="text-outline-variant">[14:22:35]</span>
+<span class="text-primary-container">SYS_MSG:</span>
+<span class="text-on-surface-variant">Quartermaster standing by for next instruction...</span>
+</div>
+</div>
+<!-- Pulse Indicator for live activity -->
+<div class="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-1 bg-surface-container-high rounded-full">
+<div class="w-1.5 h-1.5 bg-primary rounded-full pulse-ring animate-ping absolute"></div>
+<div class="w-1.5 h-1.5 bg-primary rounded-full relative"></div>
+<span class="text-[9px] uppercase tracking-tighter text-outline-variant">Stream Active</span>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+</body></html>

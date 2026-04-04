@@ -18,6 +18,7 @@ import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
 import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
+import { ConfigWatcher } from "./config/config-watcher.js";
 
 interface CliArgs {
   command?: string;
@@ -262,6 +263,42 @@ async function startCommand(args: CliArgs): Promise<void> {
   // Prune old completed/failed jobs to prevent unbounded accumulation
   store.prune(effectiveConfig.general.maxJobs);
 
+  // === Setup ConfigWatcher for hot reload ===
+  const configWatcher = new ConfigWatcher(aqRoot);
+  configWatcher.on('configChanged', async () => {
+    try {
+      logger.info('Config 변경 감지 - hot reload 시작...');
+
+      // Reload configuration
+      const newConfig = loadConfig(aqRoot);
+      const newEffectiveConfig = args.dryRun
+        ? { ...newConfig, general: { ...newConfig.general, dryRun: true } }
+        : newConfig;
+
+      // Update JobQueue concurrency
+      if (newEffectiveConfig.general.concurrency !== effectiveConfig.general.concurrency) {
+        queue.setConcurrency(newEffectiveConfig.general.concurrency);
+        logger.info(`Concurrency updated: ${effectiveConfig.general.concurrency} → ${newEffectiveConfig.general.concurrency}`);
+      }
+
+      // Update logger level
+      if (newEffectiveConfig.general.logLevel !== effectiveConfig.general.logLevel) {
+        setGlobalLogLevel(newEffectiveConfig.general.logLevel);
+        logger.info(`Log level updated: ${effectiveConfig.general.logLevel} → ${newEffectiveConfig.general.logLevel}`);
+      }
+
+      // Update effectiveConfig reference for future use
+      Object.assign(effectiveConfig, newEffectiveConfig);
+
+      logger.info('Config hot reload 완료');
+    } catch (err) {
+      logger.error(`Config hot reload 실패: ${err instanceof Error ? err.message : err}`);
+    }
+  });
+
+  configWatcher.startWatching();
+  logger.info('ConfigWatcher 시작됨 - config.yml 변경을 감지합니다');
+
   // === Graceful restart callback ===
   const performGracefulRestart = async (): Promise<void> => {
     logger.info("업데이트 감지됨 — graceful restart 시작...");
@@ -366,6 +403,7 @@ async function startCommand(args: CliArgs): Promise<void> {
   const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
     poller?.stop();
+    configWatcher.stopWatching();
     await queue.shutdown(30000);
     cleanup();
     process.exit(0);

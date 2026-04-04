@@ -260,13 +260,25 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
 
     logger.info(`Sending plan generation prompt (${finalPrompt.length} chars, ~${tokenAnalysis.estimatedTokens} tokens)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
 
+    let lastPlanLog = Date.now();
     const result = await runClaude({
       prompt: finalPrompt,
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
+      maxTurns: 10,
       enableAgents: false,
       disallowedTools: ["Write", "Edit", "Bash"],
+      onStderr: (text: string) => {
+        // 30초마다 Plan 생성 활동 로그
+        const now = Date.now();
+        if (now - lastPlanLog >= 30000) {
+          const elapsed = Math.round((now - startTime) / 1000);
+          const preview = text.replace(/\n/g, " ").slice(0, 120);
+          logger.info(`[Plan #${ctx.issue.number}] ${elapsed}s 경과 — ${preview}`);
+          lastPlanLog = now;
+        }
+      },
     });
 
     const duration = Date.now() - startTime;

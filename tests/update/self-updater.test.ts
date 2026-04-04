@@ -236,13 +236,15 @@ describe("SelfUpdater", () => {
         .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
         .mockResolvedValueOnce({ stdout: "package-lock.json\n", stderr: "", exitCode: 0 }) // diff package-lock
         .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
-        .mockResolvedValueOnce({ stdout: "added 150 packages\n", stderr: "", exitCode: 0 }); // npm ci
+        .mockResolvedValueOnce({ stdout: "added 150 packages\n", stderr: "", exitCode: 0 }) // npm ci
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // npm run build
 
       const result = await selfUpdater.performSelfUpdate();
 
       expect(result).toEqual({ updated: true, needsRestart: true });
       expect(mockRunCli).toHaveBeenCalledWith("git", ["pull", "origin", "main"], { cwd: "/test/project" });
       expect(mockRunCli).toHaveBeenCalledWith("npm", ["ci"], { cwd: "/test/project", timeout: 300000 });
+      expect(mockRunCli).toHaveBeenCalledWith("npm", ["run", "build"], { cwd: "/test/project", timeout: 120000 });
     });
 
     it("should skip npm ci when package-lock is unchanged", async () => {
@@ -254,12 +256,14 @@ describe("SelfUpdater", () => {
         .mockResolvedValueOnce({ stdout: `${currentHash}\n`, stderr: "", exitCode: 0 }) // current HEAD
         .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock (no changes)
-        .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }); // git pull
+        .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // npm run build
 
       const result = await selfUpdater.performSelfUpdate();
 
       expect(result).toEqual({ updated: true, needsRestart: true });
       expect(mockRunCli).not.toHaveBeenCalledWith("npm", ["ci"], expect.any(Object));
+      expect(mockRunCli).toHaveBeenCalledWith("npm", ["run", "build"], { cwd: "/test/project", timeout: 120000 });
     });
 
     it("should propagate error when git pull fails", async () => {

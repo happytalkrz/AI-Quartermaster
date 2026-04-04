@@ -470,7 +470,7 @@ export async function executePostProcessingPhases(
   transitionState(runtime, "DRAFT_PR_CREATED");
 
   // dryRun 모드 또는 테스트 환경에서는 CI 체크를 스킵하고 바로 완료 처리
-  const isTestEnv = process.env.NODE_ENV === "test" || prUrl.includes("test/repo");
+  const isTestEnv = process.env.NODE_ENV === "test" || (prUrl && prUrl.includes("test/repo"));
   if (config.general.dryRun || isTestEnv) {
     logger.info(`${config.general.dryRun ? "DryRun mode" : "Test environment"}: skipping CI check`);
     jl?.log(`${config.general.dryRun ? "DryRun 모드" : "테스트 환경"}: CI 체크 스킵하고 완료 처리`);
@@ -583,7 +583,7 @@ export async function executePostProcessingPhases(
           issueNumber,
           cwd: runtime.worktreePath!,
           promptsDir: resolve(runtime.projectRoot, "prompts"),
-          gitPath: runtime.gitConfig.path,
+          gitPath: runtime.gitConfig.gitPath,
           ghConfig: project.commands.ghCli,
           claudeConfig: project.commands.claudeCli,
           maxFixAttempts: 3,

@@ -27,6 +27,7 @@ import type { ModePreset } from "../config/mode-presets.js";
 import type { EnvironmentPrepResult } from "./pipeline-git-setup.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { PipelineReport } from "./result-reporter.js";
+import type { JobLogger } from "../queue/job-logger.js";
 
 const logger = getLogger();
 
@@ -68,6 +69,7 @@ export interface PostProcessingContext {
   preset: ModePreset;
   timer: PipelineTimer;
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
+  jobLogger?: JobLogger;
 }
 
 /**
@@ -489,6 +491,11 @@ export async function executePostProcessingPhases(
 
   transitionState(runtime, "DONE");
   jl?.setProgress(PROGRESS_DONE);
+
+  // Update job with total cost and usage from core-loop results
+  if (context.jobLogger && coreResult.totalCostUsd !== undefined) {
+    context.jobLogger.setCosts(coreResult.totalCostUsd, coreResult.totalUsage);
+  }
 
   return {
     prUrl,

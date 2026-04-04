@@ -41,6 +41,12 @@ export interface Job {
   isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
   costUsd?: number;
   totalCostUsd?: number;
+  totalUsage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 export class JobStore extends EventEmitter {

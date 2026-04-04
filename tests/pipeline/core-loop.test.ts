@@ -791,14 +791,11 @@ describe("runCoreLoop", () => {
       mockGeneratePlan.mockResolvedValue(plan);
       mockSchedulePhases.mockReturnValue({
         success: true,
-        groups: [{ level: 0, phases: phases }],
+        groups: [{ level: 0, phases }],
       });
 
-      const frontendResult = makeSuccessResult(0, "Frontend");
-      frontendResult.costUsd = 0.035;
-
-      const backendResult = makeSuccessResult(1, "Backend");
-      backendResult.costUsd = 0.030;
+      const frontendResult = { ...makeSuccessResult(0, "Frontend"), costUsd: 0.035 };
+      const backendResult = { ...makeSuccessResult(1, "Backend"), costUsd: 0.030 };
 
       mockExecutePhase
         .mockResolvedValueOnce(frontendResult)

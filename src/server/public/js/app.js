@@ -405,12 +405,10 @@ applyTranslations();
 
 // Update theme button icon based on current theme
 (function() {
-  var isDark = document.documentElement.classList.contains('dark');
   var themeBtn = document.getElementById('btn-theme');
   if (themeBtn) {
-    themeBtn.textContent = isDark ? 'dark_mode' : 'light_mode';
+    themeBtn.textContent = document.documentElement.classList.contains('dark') ? 'dark_mode' : 'light_mode';
   }
-  // Restore archived toggle
   initArchivedToggle();
 })();
 

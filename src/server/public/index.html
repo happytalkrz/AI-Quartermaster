@@ -81,13 +81,9 @@
 </script>
 <!-- Theme restoration script - prevents FOUC by applying theme before render -->
 <script>
-(function() {
-  var saved = localStorage.getItem('aqm-theme');
-  if (saved === 'light') {
-    document.documentElement.classList.remove('dark');
-  }
-  // If no saved theme or saved theme is 'dark', html already has class="dark"
-})();
+if (localStorage.getItem('aqm-theme') === 'light') {
+  document.documentElement.classList.remove('dark');
+}
 </script>
 <style>
     .material-symbols-outlined {

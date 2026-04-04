@@ -49,12 +49,20 @@ export async function createWorktree(
   branchName: string,
   issueNumber: number,
   slug: string,
-  options: { cwd: string }
+  options: { cwd: string },
+  repoSlug?: string
 ): Promise<WorktreeInfo> {
-  const dirName = renderTemplate(worktreeConfig.dirTemplate, {
+  const templateVars: Record<string, string> = {
     issueNumber: String(issueNumber),
     slug,
-  });
+  };
+
+  // Add repoSlug to template variables if provided
+  if (repoSlug) {
+    templateVars.repoSlug = repoSlug;
+  }
+
+  const dirName = renderTemplate(worktreeConfig.dirTemplate, templateVars);
 
   // Resolve rootPath relative to cwd if not absolute
   const rootPath = resolve(options.cwd, worktreeConfig.rootPath);

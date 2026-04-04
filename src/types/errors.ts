@@ -50,3 +50,33 @@ export class RollbackError extends AQMError {
     super("ROLLBACK_FAILED", `Rollback to ${targetHash} failed: ${message}`);
   }
 }
+
+export class PipelineError extends AQMError {
+  constructor(
+    public readonly phase: string,
+    message: string,
+    public readonly context?: Record<string, unknown>
+  ) {
+    super("PIPELINE_ERROR", `Pipeline error in ${phase}: ${message}`);
+  }
+}
+
+export class ConfigError extends AQMError {
+  constructor(
+    public readonly configKey: string,
+    message: string,
+    public readonly configFile?: string
+  ) {
+    super("CONFIG_ERROR", `Configuration error for '${configKey}': ${message}`);
+  }
+}
+
+export class GitError extends AQMError {
+  constructor(
+    public readonly operation: string,
+    message: string,
+    public readonly repository?: string
+  ) {
+    super("GIT_ERROR", `Git operation '${operation}' failed: ${message}`);
+  }
+}

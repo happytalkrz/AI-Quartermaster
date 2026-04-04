@@ -17,6 +17,8 @@ import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
 } from "./progress-tracker.js";
+import { checkFeasibility, generateSkipComment } from "./feasibility-checker.js";
+import { commentOnIssue } from "../github/pr-creator.js";
 import type { AQConfig, PipelineMode } from "../types/config.js";
 import type { OrchestratorInput } from "./pipeline-context.js";
 import type { CoreLoopResult } from "./core-loop.js";
@@ -230,8 +232,48 @@ export async function executeCoreLoopPhase(
   timer: PipelineTimer,
   mode: PipelineMode
 ): Promise<CoreLoopExecutionResult> {
-  const { repo } = input;
+  const { repo, issueNumber } = input;
   const jl = input.jobLogger;
+
+  // Feasibility check before plan generation
+  jl?.setStep("이슈 실행 가능성 검토 중...");
+  timer.assertNotExpired("plan-generation");
+
+  const feasibilityResult = checkFeasibility(issue, project.safety?.feasibilityCheck);
+
+  if (!feasibilityResult.feasible) {
+    jl?.log(`이슈 범위 초과로 skip: ${feasibilityResult.reason}`);
+
+    // Generate skip comment for the issue
+    const skipComment = generateSkipComment(
+      issue,
+      feasibilityResult,
+      project.safety?.feasibilityCheck?.skipReasons
+    );
+
+    // Post comment on GitHub issue (best-effort)
+    await commentOnIssue(
+      issueNumber,
+      repo,
+      skipComment,
+      {
+        ghPath: project.commands?.ghCli?.path || config.commands.ghCli.path,
+        dryRun: config.general.dryRun
+      }
+    );
+
+    // Transition to SKIPPED state
+    transitionState(runtime, "SKIPPED");
+
+    // Create an error that will cause the pipeline to return early
+    const skipError = new Error(`Issue #${issueNumber} skipped: ${feasibilityResult.reason}`) as Error & {
+      isSkipped: true;
+      metrics: typeof feasibilityResult.metrics;
+    };
+    skipError.isSkipped = true;
+    skipError.metrics = feasibilityResult.metrics;
+    throw skipError;
+  }
 
   jl?.setStep("Plan 생성 중...");
   timer.assertNotExpired("plan-generation");

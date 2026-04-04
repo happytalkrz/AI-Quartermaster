@@ -61,10 +61,7 @@ var i18n = {
       tabs: { general: "일반", safety: "안전", review: "리뷰" },
       saveState: { saving: "저장 중...", saved: "저장됨", saveFailed: "저장 실패" },
       form: { edit: "편집", reset: "초기화", resetConfirm: "설정을 초기화하시겠습니까?", saveChanges: "변경사항 저장", discardChanges: "변경사항 취소" }
-    },
-    totalCost: "총 비용",
-    phaseCost: "단계 비용",
-    cost: "비용",
+    }
   },
   en: {
     dashboard: "Dashboard",
@@ -123,10 +120,7 @@ var i18n = {
       tabs: { general: "General", safety: "Safety", review: "Review" },
       saveState: { saving: "Saving...", saved: "Saved", saveFailed: "Save Failed" },
       form: { edit: "Edit", reset: "Reset", resetConfirm: "Reset all settings to default?", saveChanges: "Save Changes", discardChanges: "Discard Changes" }
-    },
-    totalCost: "Total Cost",
-    phaseCost: "Phase Cost",
-    cost: "Cost",
+    }
   }
 };
 

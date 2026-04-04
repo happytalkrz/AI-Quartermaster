@@ -60,7 +60,8 @@ function renderJobDetail(job) {
   html += '</div>';
   html += '<div class="flex items-center gap-6 text-sm text-outline font-medium">';
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
-  if (job.totalCostUsd !== undefined && job.totalCostUsd !== null) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + fmtCost(job.totalCostUsd) + '</span>';
+  var costHtml = fmtCost(job.totalCostUsd);
+  if (costHtml) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + costHtml + '</span>';
   html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">calendar_today</span> ' + relativeTime(job.createdAt) + '</span>';
   html += '<span class="flex items-center gap-1.5 font-mono text-xs opacity-80">' + esc(job.id) + '</span>';
   html += '</div></div>';

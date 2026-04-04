@@ -1,5 +1,6 @@
 import { runReviewRound } from "./review-runner.js";
 import { configForTask } from "../claude/model-router.js";
+import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { loadTemplate, renderTemplate, type TemplateVariables } from "../prompt/template-renderer.js";
 import { exceedsTokenLimit, getEffectiveTokenLimit } from "./token-estimator.js";
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "./diff-splitter.js";
@@ -7,7 +8,7 @@ import { mergeReviewResults } from "./result-merger.js";
 import { getLogger } from "../utils/logger.js";
 import { resolve } from "path";
 import type { ReviewConfig, ReviewRound, ClaudeCliConfig } from "../types/config.js";
-import type { ReviewResult, ReviewPipelineResult, SplitReviewResult } from "../types/review.js";
+import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective } from "../types/review.js";
 
 const logger = getLogger();
 
@@ -132,12 +133,151 @@ async function runSplitReview(
   return mergedResult;
 }
 
+/**
+ * 통합 리뷰를 실행합니다.
+ * 1회 호출로 기능 정합성, 구조/설계, 단순화 관점을 모두 평가합니다.
+ */
+async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<UnifiedReviewResult> {
+  const startTime = Date.now();
+  logger.info("Starting unified review (3 perspectives in 1 call)");
+
+  // unified review용 Claude 설정
+  const claudeConfig = configForTask(ctx.claudeConfig, "review");
+
+  // 통합 리뷰 프롬프트 템플릿 로드
+  const templatePath = resolve(ctx.promptsDir, "review-unified.md");
+  const template = loadTemplate(templatePath);
+
+  // 기본 변수에 reviewerRole과 reviewInstructions 추가
+  const reviewVariables = {
+    ...ctx.variables,
+    reviewerRole: "시니어 코드 리뷰어",
+    reviewInstructions: "아래 구현이 이슈 요구사항을 정확히 충족하는지 검토하세요.",
+  };
+
+  const rendered = renderTemplate(template, reviewVariables);
+
+  // Claude 호출
+  const result = await runClaude({
+    prompt: rendered,
+    cwd: ctx.cwd,
+    config: claudeConfig,
+    enableAgents: false, // 통합 리뷰는 단일 호출로 처리
+  });
+
+  if (!result.success) {
+    logger.error(`Unified review failed: ${result.output}`);
+    return {
+      overallVerdict: "FAIL",
+      perspectives: [],
+      overallSummary: `Unified review failed due to Claude error: ${result.output}`,
+      durationMs: Date.now() - startTime,
+      model: claudeConfig.model,
+    };
+  }
+
+  try {
+    // JSON 응답 파싱
+    const parsed = extractJson<{
+      functionalCompliance: {
+        verdict: "PASS" | "FAIL";
+        findings: any[];
+        summary: string;
+      };
+      architectureDesign: {
+        verdict: "PASS" | "FAIL";
+        findings: any[];
+        summary: string;
+      };
+      simplification: {
+        verdict: "PASS" | "FAIL";
+        findings: any[];
+        summary: string;
+      };
+      overall: {
+        verdict: "PASS" | "FAIL";
+        criticalIssues: string[];
+        summary: string;
+      };
+    }>(result.output);
+
+    // 관점별 결과 변환
+    const perspectives: UnifiedReviewPerspective[] = [
+      {
+        perspective: "functionality",
+        verdict: parsed.functionalCompliance.verdict,
+        findings: parsed.functionalCompliance.findings || [],
+        summary: parsed.functionalCompliance.summary || "",
+      },
+      {
+        perspective: "architecture",
+        verdict: parsed.architectureDesign.verdict,
+        findings: parsed.architectureDesign.findings || [],
+        summary: parsed.architectureDesign.summary || "",
+      },
+      {
+        perspective: "simplification",
+        verdict: parsed.simplification.verdict,
+        findings: parsed.simplification.findings || [],
+        summary: parsed.simplification.summary || "",
+      },
+    ];
+
+    const durationMs = Date.now() - startTime;
+
+    logger.info(`Unified review completed in ${durationMs}ms: ${parsed.overall.verdict}`);
+    logger.info(`Perspectives: functionality=${parsed.functionalCompliance.verdict}, architecture=${parsed.architectureDesign.verdict}, simplification=${parsed.simplification.verdict}`);
+
+    return {
+      overallVerdict: parsed.overall.verdict,
+      perspectives,
+      overallSummary: parsed.overall.summary || "",
+      durationMs,
+      model: claudeConfig.model,
+    };
+  } catch (err: unknown) {
+    logger.error(`Failed to parse unified review JSON response: ${err}`);
+    // 파싱 실패 시 폴백
+    const output = result.output.toLowerCase();
+    const verdict = output.includes('"pass"') || output.includes("verdict: pass") ? "PASS" : "FAIL";
+
+    return {
+      overallVerdict: verdict as "PASS" | "FAIL",
+      perspectives: [],
+      overallSummary: `JSON parsing failed. Raw output: ${result.output.slice(0, 500)}`,
+      durationMs: Date.now() - startTime,
+      model: claudeConfig.model,
+    };
+  }
+}
+
 export async function runReviews(ctx: ReviewOrchestratorContext): Promise<ReviewPipelineResult> {
   if (!ctx.reviewConfig.enabled) {
     logger.info("Reviews disabled, skipping");
     return { rounds: [], allPassed: true };
   }
 
+  // 통합 리뷰 모드가 활성화된 경우 단일 호출로 처리
+  if (ctx.reviewConfig.unifiedMode) {
+    logger.info("Unified review mode enabled - running 3 perspectives in 1 call");
+    const unifiedResult = await runUnifiedReview(ctx);
+
+    // UnifiedReviewResult를 ReviewPipelineResult로 변환
+    const convertedRounds: ReviewResult[] = unifiedResult.perspectives.map(perspective => ({
+      roundName: `Unified Review - ${perspective.perspective}`,
+      verdict: perspective.verdict,
+      findings: perspective.findings,
+      summary: perspective.summary,
+      durationMs: Math.round(unifiedResult.durationMs / unifiedResult.perspectives.length), // 시간을 관점별로 균등 분배
+    }));
+
+    return {
+      rounds: convertedRounds,
+      allPassed: unifiedResult.overallVerdict === "PASS",
+    };
+  }
+
+  // 기존 라운드별 순차 리뷰 방식
   const results: ReviewResult[] = [];
   let allPassed = true;
 

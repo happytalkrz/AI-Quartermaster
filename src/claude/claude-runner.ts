@@ -43,6 +43,7 @@ export interface ClaudeRunOptions {
   onStderr?: (line: string) => void;  // callback for each stderr line (e.g. HEARTBEAT parsing)
   maxTurns?: number;  // Override maxTurns for this specific run
   enableAgents?: boolean;  // enable Agent tools for specialized task delegation
+  disallowedTools?: string[];  // Tools to block (e.g. ["Read", "Glob", "Grep", "Bash"])
 }
 
 async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
@@ -75,6 +76,9 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
   }
   if (options.jsonSchema) {
     args.push("--json-schema", options.jsonSchema);
+  }
+  if (options.disallowedTools && options.disallowedTools.length > 0) {
+    args.push("--disallowedTools", options.disallowedTools.join(","));
   }
 
   const startTime = Date.now();

@@ -511,6 +511,176 @@ function connectSSE() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Version & Update Management
+   ══════════════════════════════════════════════════════════════ */
+var versionInfo = null;
+var updateDismissed = false;
+
+function loadVersionInfo() {
+  apiFetch('/api/version')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      versionInfo = data;
+      updateVersionDisplay(data);
+      checkForUpdates(data);
+    })
+    .catch(function() {
+      // 버전 정보를 가져올 수 없는 경우 기본값 표시
+      updateVersionDisplay({ currentVersion: 'unknown', currentHash: '' });
+    });
+}
+
+function updateVersionDisplay(data) {
+  var versionLabel = document.getElementById('version-label');
+  var versionHash = document.getElementById('version-hash');
+
+  if (versionLabel) {
+    versionLabel.textContent = 'v' + (data.currentVersion || 'unknown');
+  }
+
+  if (versionHash && data.currentHash && data.currentHash !== 'unknown') {
+    versionHash.textContent = '(' + data.currentHash + ')';
+  }
+}
+
+function checkForUpdates(data) {
+  if (updateDismissed || !data.hasUpdates) {
+    return;
+  }
+
+  var updateBanner = document.getElementById('update-banner');
+  var updateInfo = document.getElementById('update-info');
+
+  if (updateBanner && updateInfo) {
+    // API 키 배너가 표시되어 있으면 그 아래에 배치
+    var apiBanner = document.getElementById('api-key-banner');
+    var topOffset = 0;
+    if (apiBanner && apiBanner.style.display !== 'none') {
+      topOffset = apiBanner.offsetHeight;
+      document.documentElement.style.setProperty('--api-banner-height', topOffset + 'px');
+    }
+
+    // 업데이트 정보 텍스트 구성
+    var message = '새 버전으로 업데이트할 수 있습니다.';
+    if (data.currentHash !== 'unknown' && data.remoteHash !== 'unknown') {
+      message = data.currentHash + ' → ' + data.remoteHash + ' 업데이트 사용 가능';
+    }
+
+    updateInfo.textContent = message;
+    updateBanner.style.display = 'flex';
+    updateBanner.style.top = topOffset + 'px';
+
+    // 페이지 콘텐츠가 배너에 가려지지 않도록 padding 조정
+    adjustPagePadding();
+  }
+}
+
+function adjustPagePadding() {
+  var header = document.querySelector('header');
+  var apiBanner = document.getElementById('api-key-banner');
+  var updateBanner = document.getElementById('update-banner');
+
+  if (!header) return;
+
+  var totalBannerHeight = 0;
+  if (apiBanner && apiBanner.style.display !== 'none') {
+    totalBannerHeight += apiBanner.offsetHeight;
+  }
+  if (updateBanner && updateBanner.style.display !== 'none') {
+    totalBannerHeight += updateBanner.offsetHeight;
+  }
+
+  // 헤더 아래 여백을 동적으로 조정
+  var main = document.querySelector('main');
+  if (main) {
+    main.style.paddingTop = (totalBannerHeight > 0 ? totalBannerHeight + 'px' : '');
+  }
+}
+
+function performUpdate() {
+  var updateBtn = document.getElementById('update-btn');
+  var updateBtnIcon = document.getElementById('update-btn-icon');
+  var updateBtnText = document.getElementById('update-btn-text');
+
+  if (!updateBtn || updateBtn.disabled) return;
+
+  // 업데이트 중 상태로 변경
+  updateBtn.disabled = true;
+  if (updateBtnIcon) {
+    updateBtnIcon.textContent = 'sync';
+    updateBtnIcon.classList.add('animate-spin');
+  }
+  if (updateBtnText) {
+    updateBtnText.textContent = '업데이트 중...';
+  }
+
+  apiFetch('/api/update', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.updated) {
+        // 업데이트 성공
+        if (updateBtnIcon) {
+          updateBtnIcon.textContent = 'check';
+          updateBtnIcon.classList.remove('animate-spin');
+        }
+        if (updateBtnText) {
+          updateBtnText.textContent = '완료';
+        }
+
+        // 2초 후 배너 숨기고 페이지 새로고침 권유
+        setTimeout(function() {
+          if (data.needsRestart) {
+            if (confirm('업데이트가 완료되었습니다. 변경사항을 적용하려면 페이지를 새로고침해야 합니다. 지금 새로고침하시겠습니까?')) {
+              window.location.reload();
+            }
+          } else {
+            dismissUpdate();
+            loadVersionInfo(); // 새 버전 정보 로드
+          }
+        }, 2000);
+      } else {
+        // 이미 최신 버전
+        if (updateBtnIcon) {
+          updateBtnIcon.textContent = 'check';
+          updateBtnIcon.classList.remove('animate-spin');
+        }
+        if (updateBtnText) {
+          updateBtnText.textContent = '최신 버전';
+        }
+        setTimeout(function() {
+          dismissUpdate();
+        }, 2000);
+      }
+    })
+    .catch(function(error) {
+      // 업데이트 실패
+      if (updateBtnIcon) {
+        updateBtnIcon.textContent = 'error';
+        updateBtnIcon.classList.remove('animate-spin');
+      }
+      if (updateBtnText) {
+        updateBtnText.textContent = '실패';
+      }
+
+      setTimeout(function() {
+        // 원래 상태로 복구
+        updateBtn.disabled = false;
+        if (updateBtnIcon) updateBtnIcon.textContent = 'download';
+        if (updateBtnText) updateBtnText.textContent = '업데이트';
+      }, 3000);
+    });
+}
+
+function dismissUpdate() {
+  updateDismissed = true;
+  var updateBanner = document.getElementById('update-banner');
+  if (updateBanner) {
+    updateBanner.style.display = 'none';
+  }
+  adjustPagePadding();
+}
+
+/* ══════════════════════════════════════════════════════════════
    Boot
    ══════════════════════════════════════════════════════════════ */
 // Apply translations on load
@@ -539,6 +709,9 @@ apiFetch('/api/jobs')
   .then(handleData)
   .catch(function() {});
 
+// Load version info and check for updates
+loadVersionInfo();
+
 connectSSE();
 
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
@@ -546,3 +719,5 @@ window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
 window.closeEditProjectModal = closeEditProjectModal;
+window.performUpdate = performUpdate;
+window.dismissUpdate = dismissUpdate;

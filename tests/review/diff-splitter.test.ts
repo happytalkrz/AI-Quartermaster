@@ -7,6 +7,7 @@ import {
   type FileDiff,
   type FileDiffBatch,
 } from "../../src/review/diff-splitter.js";
+import { estimateTokenCount } from "../../src/review/token-estimator.js";
 
 describe("diff-splitter", () => {
   describe("splitDiffByFiles", () => {
@@ -162,7 +163,7 @@ Another invalid section without proper header`;
     const createFileDiff = (path: string, content: string): FileDiff => ({
       filePath: path,
       diffContent: content,
-      estimatedTokens: Math.ceil(content.length / 4), // 4 chars per token
+      estimatedTokens: estimateTokenCount(content, 'code'), // Use actual estimator with code content type
     });
 
     it("should return empty array for empty input", () => {
@@ -204,18 +205,18 @@ Another invalid section without proper header`;
 
     it("should account for additional content tokens", () => {
       const files = [
-        createFileDiff("file1.ts", "a".repeat(200)), // ~50 tokens
-        createFileDiff("file2.ts", "b".repeat(200)), // ~50 tokens
+        createFileDiff("file1.ts", "a".repeat(200)), // ~63 tokens (200/3.2)
+        createFileDiff("file2.ts", "b".repeat(200)), // ~63 tokens (200/3.2)
       ];
 
-      const additionalContent = "z".repeat(200); // ~50 tokens
+      const additionalContent = "z".repeat(200); // ~50 tokens (auto-detected as natural)
       const batches = groupFilesByTokenBudget(files, 150, additionalContent);
 
       // Budget: 150, Additional: 50, Effective: 100
-      // Each file: 50 tokens, so both should fit in one batch (50 + 50 = 100)
-      expect(batches).toHaveLength(1);
-      expect(batches[0].files).toHaveLength(2);
-      expect(batches[0].totalEstimatedTokens).toBe(150); // 100 (files) + 50 (additional)
+      // Each file: ~63 tokens, so 126 total > 100 effective budget
+      expect(batches).toHaveLength(2); // Split into 2 batches
+      expect(batches[0].files).toHaveLength(1);
+      expect(batches[1].files).toHaveLength(1);
     });
 
     it("should handle case where additional content exceeds budget", () => {
@@ -234,14 +235,16 @@ Another invalid section without proper header`;
     it("should set correct batch indices", () => {
       const files = Array.from({ length: 5 }, (_, i) =>
         createFileDiff(`file${i}.ts`, "x".repeat(100))
-      ); // ~25 tokens each
+      ); // ~32 tokens each (100/3.2)
 
-      const batches = groupFilesByTokenBudget(files, 60); // ~2 files per batch
+      const batches = groupFilesByTokenBudget(files, 60); // 1 file per batch (32*2=64 > 60)
 
-      expect(batches).toHaveLength(3);
+      expect(batches).toHaveLength(5);
       expect(batches[0].batchIndex).toBe(0);
       expect(batches[1].batchIndex).toBe(1);
       expect(batches[2].batchIndex).toBe(2);
+      expect(batches[3].batchIndex).toBe(3);
+      expect(batches[4].batchIndex).toBe(4);
     });
 
     it("should handle zero token files", () => {

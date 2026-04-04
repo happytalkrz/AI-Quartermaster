@@ -1,3 +1,5 @@
+import type { ErrorCategory } from "./pipeline.js";
+
 /**
  * Base error class for AI-Quartermaster with standardized error handling
  */
@@ -41,4 +43,86 @@ export class RollbackError extends AQMError {
   ) {
     super("ROLLBACK_FAILED", `Rollback to ${targetHash} failed: ${message}`);
   }
+}
+
+/**
+ * Discriminated union for classified errors with category-specific metadata
+ */
+export type ClassifiedError =
+  | TSError
+  | TimeoutErrorClassified
+  | CliCrashError
+  | VerificationFailedErrorClassified
+  | SafetyViolationErrorClassified
+  | RateLimitError
+  | PromptTooLongError
+  | UnknownErrorClassified;
+
+export interface TSError {
+  category: "TS_ERROR";
+  message: string;
+  fileName?: string;
+  line?: number;
+  column?: number;
+  errorCode?: string;
+  diagnosticMessage?: string;
+}
+
+export interface TimeoutErrorClassified {
+  category: "TIMEOUT";
+  message: string;
+  stage: string;
+  timeoutMs: number;
+  elapsedMs?: number;
+}
+
+export interface CliCrashError {
+  category: "CLI_CRASH";
+  message: string;
+  command: string;
+  exitCode?: number;
+  stderr?: string;
+  stdout?: string;
+}
+
+export interface VerificationFailedErrorClassified {
+  category: "VERIFICATION_FAILED";
+  message: string;
+  verificationType: "TEST" | "LINT" | "TYPE_CHECK" | "BUILD" | "OTHER";
+  failureDetails?: string;
+  affectedFiles?: string[];
+}
+
+export interface SafetyViolationErrorClassified {
+  category: "SAFETY_VIOLATION";
+  message: string;
+  guard: string;
+  violationType: "PATH_RESTRICTION" | "LABEL_MISSING" | "TIMEOUT" | "RESOURCE_LIMIT" | "OTHER";
+  details?: Record<string, unknown>;
+}
+
+export interface RateLimitError {
+  category: "RATE_LIMIT";
+  message: string;
+  api: string;
+  retryAfterMs?: number;
+  currentUsage?: number;
+  limit?: number;
+  resetTime?: string;
+}
+
+export interface PromptTooLongError {
+  category: "PROMPT_TOO_LONG";
+  message: string;
+  currentTokens: number;
+  maxTokens: number;
+  excessTokens: number;
+  suggestedAction?: "TRUNCATE" | "SPLIT" | "COMPRESS";
+}
+
+export interface UnknownErrorClassified {
+  category: "UNKNOWN";
+  message: string;
+  originalError?: string;
+  context?: Record<string, unknown>;
 }

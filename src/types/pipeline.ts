@@ -362,3 +362,120 @@ export interface AssembledPrompt {
   /** 조립에 소요된 시간 (ms) */
   assemblyTimeMs: number;
 }
+
+// Job Discriminated Union Types
+
+export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
+
+export interface UsageStats {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+export interface PhaseResultInfo {
+  name: string;
+  success: boolean;
+  commit?: string;
+  durationMs: number;
+  error?: string;
+  costUsd?: number;
+  usage?: UsageStats;
+}
+
+/**
+ * Job의 공통 필드들
+ */
+export interface JobBase {
+  id: string;
+  issueNumber: number;
+  repo: string;
+  createdAt: string;
+  lastUpdatedAt?: string;
+  logs?: string[];
+  currentStep?: string;
+  dependencies?: number[];
+  phaseResults?: PhaseResultInfo[];
+  progress?: number;
+  isRetry?: boolean;
+  costUsd?: number;
+  totalCostUsd?: number;
+  totalUsage?: UsageStats;
+}
+
+/**
+ * 큐에 대기 중인 Job - 아직 시작되지 않음
+ */
+export interface QueuedJob extends JobBase {
+  status: "queued";
+  // 시작되지 않았으므로 이런 필드들은 없음
+  startedAt?: never;
+  completedAt?: never;
+  prUrl?: never;
+  error?: never;
+}
+
+/**
+ * 실행 중인 Job
+ */
+export interface RunningJob extends JobBase {
+  status: "running";
+  startedAt: string; // 실행 중이면 시작 시각 필수
+  // 아직 완료되지 않았으므로 완료 관련 필드들은 없음
+  completedAt?: never;
+  prUrl?: never;
+  error?: string; // 실행 중에도 에러 정보가 있을 수 있음 (중간 실패)
+}
+
+/**
+ * 성공한 Job
+ */
+export interface SuccessJob extends JobBase {
+  status: "success";
+  startedAt: string;
+  completedAt: string;
+  prUrl: string; // 성공하면 PR URL 필수
+  error?: never; // 성공했으므로 에러 없음
+}
+
+/**
+ * 실패한 Job
+ */
+export interface FailureJob extends JobBase {
+  status: "failure";
+  startedAt: string;
+  completedAt: string;
+  error: string; // 실패했으므로 에러 메시지 필수
+  prUrl?: never; // 실패했으므로 PR 없음
+}
+
+/**
+ * 취소된 Job
+ */
+export interface CancelledJob extends JobBase {
+  status: "cancelled";
+  completedAt: string;
+  // 시작 전 취소될 수도 있고, 실행 중 취소될 수도 있음
+  startedAt?: string;
+  // 취소 사유가 있을 수 있음
+  error?: string;
+  prUrl?: never; // 취소되었으므로 PR 없음
+}
+
+/**
+ * 아카이브된 Job
+ */
+export interface ArchivedJob extends JobBase {
+  status: "archived";
+  // 아카이브는 다른 상태에서 전환되므로 모든 필드 허용
+  startedAt?: string;
+  completedAt?: string;
+  prUrl?: string;
+  error?: string;
+}
+
+/**
+ * 모든 Job 상태의 Union 타입
+ */
+export type Job = QueuedJob | RunningJob | SuccessJob | FailureJob | CancelledJob | ArchivedJob;

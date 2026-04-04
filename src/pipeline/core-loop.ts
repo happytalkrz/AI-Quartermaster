@@ -205,6 +205,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
   // Schedule phases for parallel execution based on dependencies
   const enableParallelPhases = ctx.config.features?.parallelPhases ?? false;
+  logger.info(`Parallel phases feature: ${enableParallelPhases ? 'enabled' : 'disabled'}`);
+  jl?.log(`병렬 Phase 실행: ${enableParallelPhases ? '활성화' : '비활성화'}`);
+
   const scheduleResult = schedulePhases(plan.phases, enableParallelPhases);
   if (!scheduleResult.success) {
     logger.error(`Failed to schedule phases: ${scheduleResult.error}`);
@@ -218,8 +221,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     };
   }
 
-  logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels`);
-  jl?.log(`${scheduleResult.groups.length}개 레벨로 병렬 실행 스케줄링`);
+  logger.info(`Scheduled ${plan.phases.length} phases in ${scheduleResult.groups.length} parallel levels (parallel: ${enableParallelPhases})`);
+  jl?.log(`${scheduleResult.groups.length}개 레벨로 병렬 실행 스케줄링 (병렬: ${enableParallelPhases ? 'ON' : 'OFF'})`);
 
   // Track error history for each phase (phase index -> error history)
   const phaseErrorHistories = new Map<number, ErrorHistoryEntry[]>();

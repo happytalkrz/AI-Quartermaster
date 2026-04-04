@@ -1,3 +1,5 @@
+import { HooksConfig } from "./hooks.js";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
@@ -221,5 +223,6 @@ export interface AQConfig {
   pr: PrConfig;
   safety: SafetyConfig;
   executionMode: ExecutionMode;
+  hooks?: HooksConfig;        // pipeline hooks configuration
   projects?: ProjectConfig[];  // per-project overrides
 }

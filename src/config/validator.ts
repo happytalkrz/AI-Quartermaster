@@ -304,6 +304,23 @@ const projectConfigSchema = z.object({
   }).partial().optional(),
 }).strict();
 
+const hooksConfigSchema = z.record(
+  z.enum([
+    "pre-plan",
+    "post-plan",
+    "pre-phase",
+    "post-phase",
+    "pre-review",
+    "post-review",
+    "pre-pr",
+    "post-pr",
+  ]),
+  z.array(z.object({
+    command: z.string().min(1),
+    timeout: z.number().int().positive().optional(),
+  }))
+).optional();
+
 const aqConfigSchema = z.object({
   general: generalConfigSchema,
   git: gitConfigSchema,
@@ -312,6 +329,7 @@ const aqConfigSchema = z.object({
   review: reviewConfigSchema,
   pr: prConfigSchema,
   safety: safetyConfigSchema,
+  hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
 }).superRefine((data, ctx) => {
   const hasAllowedRepos = data.git.allowedRepos.length > 0;

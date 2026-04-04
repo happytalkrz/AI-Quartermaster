@@ -75,6 +75,9 @@ function makeCtx(overrides: Partial<PhaseExecutorContext> = {}): PhaseExecutorCo
     testCommand: "npm test",
     lintCommand: "",
     gitPath: "git",
+    gitConfig: {
+      commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+    },
     ...overrides,
   };
 }
@@ -547,5 +550,66 @@ describe("executePhase", () => {
         })
       })
     );
+  });
+
+  it("skips auto-commit when Claude has already committed (clean git status)", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    // Claude already committed, so git status is clean
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const ctx = makeCtx({
+      gitConfig: {
+        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+      }
+    });
+
+    const result = await executePhase(ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.commitHash).toBe("deadbeef");
+
+    // Verify that git add and git commit were NOT called (auto-commit was skipped)
+    const cliCalls = mockRunCli.mock.calls;
+    const gitAddCalls = cliCalls.filter(c => c[1][0] === "add");
+    const gitCommitCalls = cliCalls.filter(c => c[1][0] === "commit");
+    expect(gitAddCalls).toHaveLength(0);
+    expect(gitCommitCalls).toHaveLength(0);
+  });
+
+  it("performs auto-commit when Claude succeeded but left uncommitted changes", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    // Claude succeeded but left some files uncommitted
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: " M src/modified.ts\n", stderr: "", exitCode: 0 }) // git status (dirty)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git add
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git commit
+      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 }) // git log (from autoCommitIfDirty)
+      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 }); // git log (from executePhase end)
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const ctx = makeCtx({
+      gitConfig: {
+        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+      }
+    });
+
+    const result = await executePhase(ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.commitHash).toBe("abcdef12");
+
+    // Verify that auto-commit was performed
+    const cliCalls = mockRunCli.mock.calls;
+    const gitAddCalls = cliCalls.filter(c => c[1][0] === "add");
+    const gitCommitCalls = cliCalls.filter(c => c[1][0] === "commit");
+    expect(gitAddCalls).toHaveLength(1);
+    expect(gitCommitCalls).toHaveLength(1);
+
+    // Verify correct commit message template was used
+    const commitCall = gitCommitCalls[0];
+    expect(commitCall[1]).toContain("[#42] Phase 1: Phase One");
   });
 });

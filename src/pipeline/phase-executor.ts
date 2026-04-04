@@ -33,6 +33,7 @@ export interface PhaseExecutorContext {
   jobLogger?: JobLogger;
   locale?: string;
   cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
+  gitConfig: import("../types/config.js").GitConfig;  // commitMessageTemplate 접근용
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
@@ -152,7 +153,11 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
     // 3. Auto-commit if Claude didn't commit
-    const commitMsg = `[#${ctx.issue.number}] Phase ${ctx.phase.index + 1}: ${ctx.phase.name}`;
+    const commitMsg = ctx.gitConfig.commitMessageTemplate
+      .replace(/\{\{?issueNumber\}\}?/g, String(ctx.issue.number))
+      .replace(/\{\{?phase\}\}?/g, `Phase ${ctx.phase.index + 1}`)
+      .replace(/\{\{?summary\}\}?/g, ctx.phase.name)
+      .replace(/\{\{?title\}\}?/g, `Phase ${ctx.phase.index + 1}: ${ctx.phase.name}`);
     const autoCommitted = await autoCommitIfDirty(ctx.gitPath, ctx.cwd, commitMsg);
     if (autoCommitted) {
       logger.info(`Auto-committing uncommitted changes for phase ${ctx.phase.index}`);

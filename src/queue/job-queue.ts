@@ -579,10 +579,10 @@ export class JobQueue {
       const result = await this.handler(job);
 
       // Re-check after handler completes — stuck checker may have fired during execution
-      if (this.stuckAborted.has(job.id)) {
+      const wasStuckAborted = this.stuckAborted.has(job.id);
+      if (wasStuckAborted) {
         this.stuckAborted.delete(job.id);
-        logger.warn(`Job ${job.id} handler completed after stuck-abort — ignoring result`);
-        return;
+        logger.warn(`Job ${job.id} handler completed after stuck-abort — updating status but not tracking project metrics`);
       }
 
       if (this.cancelled.has(job.id)) {
@@ -594,21 +594,30 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: result.error,
         });
-        this.trackProjectFailure(job.repo);
+        // Don't track project failure if it was stuck aborted
+        if (!wasStuckAborted) {
+          this.trackProjectFailure(job.repo);
+        }
       } else if (result.prUrl) {
         this.store.update(job.id, {
           status: "success",
           completedAt: new Date().toISOString(),
           prUrl: result.prUrl,
         });
-        this.trackProjectSuccess(job.repo);
+        // Don't track project success if it was stuck aborted
+        if (!wasStuckAborted) {
+          this.trackProjectSuccess(job.repo);
+        }
       } else {
         this.store.update(job.id, {
           status: "failure",
           completedAt: new Date().toISOString(),
           error: "Pipeline completed but no PR was created",
         });
-        this.trackProjectFailure(job.repo);
+        // Don't track project failure if it was stuck aborted
+        if (!wasStuckAborted) {
+          this.trackProjectFailure(job.repo);
+        }
       }
     } catch (error: unknown) {
       this.store.update(job.id, {

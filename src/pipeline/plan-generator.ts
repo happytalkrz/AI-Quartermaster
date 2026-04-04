@@ -107,8 +107,8 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
         const lastFailure = retryContext.generationHistory[retryContext.generationHistory.length - 1];
         const retryData = {
           retry: {
-            attempt: String(attempt),
-            maxRetries: String(maxRetries),
+            attempt,
+            maxRetries,
             failureReason: lastFailure.errorCategory || "UNKNOWN",
             errorMessage: lastFailure.error || "Unknown error",
             previousAttempts: retryContext.generationHistory.map((h, i) =>

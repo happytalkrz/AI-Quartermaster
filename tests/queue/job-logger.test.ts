@@ -37,7 +37,7 @@ describe("JobLogger", () => {
       expect(mockJobStore.update).toHaveBeenCalledWith(jobId, {
         logs: [
           "Previous log",
-          expect.stringMatching(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] Test message/),
+          expect.stringMatching(/\[\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}시 \d{1,2}분 \d{1,2}초\] Test message/),
         ],
         lastUpdatedAt: expect.stringMatching(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/),
       });
@@ -58,7 +58,7 @@ describe("JobLogger", () => {
 
       expect(mockJobStore.update).toHaveBeenCalledWith(jobId, {
         logs: [
-          expect.stringMatching(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] First message/),
+          expect.stringMatching(/\[\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}시 \d{1,2}분 \d{1,2}초\] First message/),
         ],
         lastUpdatedAt: expect.stringMatching(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/),
       });
@@ -80,7 +80,7 @@ describe("JobLogger", () => {
 
       expect(mockJobStore.update).toHaveBeenCalledWith(jobId, {
         logs: [
-          expect.stringMatching(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] Test message/),
+          expect.stringMatching(/\[\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}시 \d{1,2}분 \d{1,2}초\] Test message/),
         ],
         lastUpdatedAt: expect.stringMatching(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/),
       });
@@ -114,7 +114,7 @@ describe("JobLogger", () => {
 
       expect(mockJobStore.update).toHaveBeenCalledWith(jobId, {
         logs: [
-          expect.stringContaining("[2026-04-04 12:30:15] Timezone test"), // KST = UTC+9
+          expect.stringContaining("2026. 4. 4. 12시 30분 15초] Timezone test"), // Korean format
         ],
         lastUpdatedAt: expect.any(String),
       });
@@ -148,7 +148,7 @@ describe("JobLogger", () => {
       // Second call: log the step
       expect(mockJobStore.update).toHaveBeenNthCalledWith(2, jobId, {
         logs: [
-          expect.stringMatching(/\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] Installing dependencies/),
+          expect.stringMatching(/\[\d{4}\. \d{1,2}\. \d{1,2}\. \d{1,2}시 \d{1,2}분 \d{1,2}초\] Installing dependencies/),
         ],
         lastUpdatedAt: expect.any(String),
       });

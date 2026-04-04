@@ -20,7 +20,7 @@ function renderJobListItem(job, isSelected) {
   }
 
   var issueTitle = job.issueTitle || '';
-  var truncatedTitle = issueTitle ? (issueTitle.length > 40 ? issueTitle.substring(0, 40) + '...' : issueTitle) : '';
+  var truncatedTitle = issueTitle.length > 40 ? issueTitle.substring(0, 40) + '...' : issueTitle;
 
   return '<div class="' + activeBg + ' p-4 rounded-xl ' + activeRing + ' cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
     '<div class="flex justify-between items-start mb-1">' +

@@ -140,23 +140,11 @@ export class AQDatabase {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    const params = this.jobToParams(job);
     stmt.run(
-      job.id,
-      job.issueNumber,
-      job.repo,
-      job.status,
-      job.createdAt,
-      job.startedAt || null,
-      job.completedAt || null,
-      job.prUrl || null,
-      job.error || null,
-      job.lastUpdatedAt || null,
-      job.currentStep || null,
-      job.dependencies ? JSON.stringify(job.dependencies) : null,
-      job.progress || null,
-      job.isRetry ? 1 : 0,
-      job.costUsd || null,
-      job.totalCostUsd || null
+      params[0], params[1], params[2], params[3], params[4], params[5], params[6],
+      params[7], params[8], params[9], params[10], params[11], params[12], params[13],
+      params[14], params[15]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -183,23 +171,11 @@ export class AQDatabase {
       WHERE id = ?
     `);
 
+    const params = this.jobToParams(merged);
     const changes = stmt.run(
-      merged.issueNumber,
-      merged.repo,
-      merged.status,
-      merged.createdAt,
-      merged.startedAt || null,
-      merged.completedAt || null,
-      merged.prUrl || null,
-      merged.error || null,
-      merged.lastUpdatedAt || null,
-      merged.currentStep || null,
-      merged.dependencies ? JSON.stringify(merged.dependencies) : null,
-      merged.progress || null,
-      merged.isRetry ? 1 : 0,
-      merged.costUsd || null,
-      merged.totalCostUsd || null,
-      id
+      params[1], params[2], params[3], params[4], params[5], params[6], params[7],
+      params[8], params[9], params[10], params[11], params[12], params[13], params[14],
+      params[15], id
     ).changes;
 
     if (changes > 0) {
@@ -319,6 +295,27 @@ export class AQDatabase {
   }
 
   // === Utility ===
+
+  private jobToParams(job: DatabaseJob): any[] {
+    return [
+      job.id,
+      job.issueNumber,
+      job.repo,
+      job.status,
+      job.createdAt,
+      job.startedAt || null,
+      job.completedAt || null,
+      job.prUrl || null,
+      job.error || null,
+      job.lastUpdatedAt || null,
+      job.currentStep || null,
+      job.dependencies ? JSON.stringify(job.dependencies) : null,
+      job.progress || null,
+      job.isRetry ? 1 : 0,
+      job.costUsd || null,
+      job.totalCostUsd || null
+    ];
+  }
 
   private mapRowToJob(row: any): DatabaseJob {
     return {

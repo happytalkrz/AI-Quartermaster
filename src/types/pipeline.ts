@@ -140,6 +140,7 @@ export interface PublishPhaseContext {
   promptsDir: string;
   dryRun: boolean;
   jl?: any;
+  totalUsage?: UsageInfo;
 }
 
 export interface CleanupContext {

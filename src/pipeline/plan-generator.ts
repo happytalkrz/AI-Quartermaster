@@ -94,8 +94,8 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     };
 
     // 항상 원본 템플릿을 기본으로 사용
-    templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-    templateData = baseData;
+    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    const templateData = baseData;
 
     const template = loadTemplate(templatePath);
     let finalPrompt = renderTemplate(template, templateData);

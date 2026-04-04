@@ -57,7 +57,7 @@ function isValidSessionToken(token: string): boolean {
 /**
  * Applies runtime configuration changes to system components.
  */
-function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
+export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
   const logger = getLogger();
 
   // Update JobQueue concurrency

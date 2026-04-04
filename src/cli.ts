@@ -264,6 +264,7 @@ async function startCommand(args: CliArgs): Promise<void> {
   store.prune(effectiveConfig.general.maxJobs);
 
   // === Setup ConfigWatcher for hot reload ===
+  const { applyConfigChanges } = await import("./server/dashboard-api.js");
   const configWatcher = new ConfigWatcher(aqRoot);
   configWatcher.on('configChanged', async () => {
     try {
@@ -275,20 +276,11 @@ async function startCommand(args: CliArgs): Promise<void> {
         ? { ...newConfig, general: { ...newConfig.general, dryRun: true } }
         : newConfig;
 
-      // Update JobQueue concurrency
-      if (newEffectiveConfig.general.concurrency !== effectiveConfig.general.concurrency) {
-        queue.setConcurrency(newEffectiveConfig.general.concurrency);
-        logger.info(`Concurrency updated: ${effectiveConfig.general.concurrency} → ${newEffectiveConfig.general.concurrency}`);
-      }
-
-      // Update logger level
-      if (newEffectiveConfig.general.logLevel !== effectiveConfig.general.logLevel) {
-        setGlobalLogLevel(newEffectiveConfig.general.logLevel);
-        logger.info(`Log level updated: ${effectiveConfig.general.logLevel} → ${newEffectiveConfig.general.logLevel}`);
-      }
+      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue);
 
       // Update effectiveConfig reference for future use
-      Object.assign(effectiveConfig, newEffectiveConfig);
+      effectiveConfig.general = newEffectiveConfig.general;
+      effectiveConfig.projects = newEffectiveConfig.projects;
 
       logger.info('Config hot reload 완료');
     } catch (err) {

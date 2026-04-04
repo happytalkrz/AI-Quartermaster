@@ -68,8 +68,11 @@ export async function createDraftPR(
     });
   } catch {
     // Fallback body if template fails
-    const phasesText = ctx.phaseResults?.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`)?.join("\n") || 'No phases completed';
-    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${ctx.plan?.problemDefinition || 'Issue resolution in progress'}\n\n## Phases\n\n${phasesText}`;
+    const phasesText = ctx.phaseResults?.length
+      ? ctx.phaseResults.map(r => `- ${r.phaseName}: ${r.success ? "PASS" : "FAIL"}`).join("\n")
+      : 'No phases completed';
+    const problemDef = ctx.plan?.problemDefinition || 'Issue resolution in progress';
+    body = `## Summary\n\nResolves #${ctx.issueNumber}\n\n${problemDef}\n\n## Phases\n\n${phasesText}`;
   }
 
   // Add issue link

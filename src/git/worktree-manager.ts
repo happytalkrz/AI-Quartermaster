@@ -55,12 +55,8 @@ export async function createWorktree(
   const templateVars: Record<string, string> = {
     issueNumber: String(issueNumber),
     slug,
+    ...(repoSlug && { repoSlug }),
   };
-
-  // Add repoSlug to template variables if provided
-  if (repoSlug) {
-    templateVars.repoSlug = repoSlug;
-  }
 
   const dirName = renderTemplate(worktreeConfig.dirTemplate, templateVars);
 

@@ -29,7 +29,7 @@ export class JobQueue {
   private isProcessing: boolean = false;
   private needsReprocess: boolean = false;
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
-  private runningByRepo: Map<string, Set<string>> = new Map(); // repo -> Set of running job IDs
+  private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
 
   constructor(
     store: JobStore,
@@ -43,11 +43,10 @@ export class JobQueue {
     this.handler = handler;
     this.stuckTimeoutMs = stuckTimeoutMs;
 
-    // Initialize project-specific concurrency settings
     if (projectConcurrency) {
-      for (const [repo, limit] of Object.entries(projectConcurrency)) {
+      Object.entries(projectConcurrency).forEach(([repo, limit]) => {
         this.projectConcurrency.set(repo, limit);
-      }
+      });
     }
 
     // Periodically check for stuck jobs
@@ -334,47 +333,33 @@ export class JobQueue {
   }
 
   /**
-   * Returns the number of running jobs for a specific repo.
-   */
-  private getRunningCountForRepo(repo: string): number {
-    const runningJobs = this.runningByRepo.get(repo);
-    return runningJobs ? runningJobs.size : 0;
-  }
-
-  /**
    * Checks if a new job can be started for the given repo based on project-specific concurrency limits.
    */
   private canStartJobForRepo(repo: string): boolean {
     const projectLimit = this.projectConcurrency.get(repo);
     if (!projectLimit) {
-      // No project-specific limit, only global limit applies
       return true;
     }
-
-    const currentRunning = this.getRunningCountForRepo(repo);
+    const currentRunning = this.runningByRepo.get(repo) ?? 0;
     return currentRunning < projectLimit;
   }
 
   /**
-   * Adds a job to the repo's running set.
+   * Increments the running count for a repo.
    */
   private addJobToRepo(jobId: string, repo: string): void {
-    if (!this.runningByRepo.has(repo)) {
-      this.runningByRepo.set(repo, new Set());
-    }
-    this.runningByRepo.get(repo)!.add(jobId);
+    this.runningByRepo.set(repo, (this.runningByRepo.get(repo) ?? 0) + 1);
   }
 
   /**
-   * Removes a job from the repo's running set.
+   * Decrements the running count for a repo.
    */
   private removeJobFromRepo(jobId: string, repo: string): void {
-    const runningJobs = this.runningByRepo.get(repo);
-    if (runningJobs) {
-      runningJobs.delete(jobId);
-      if (runningJobs.size === 0) {
-        this.runningByRepo.delete(repo);
-      }
+    const current = this.runningByRepo.get(repo) ?? 0;
+    if (current > 1) {
+      this.runningByRepo.set(repo, current - 1);
+    } else {
+      this.runningByRepo.delete(repo);
     }
   }
 

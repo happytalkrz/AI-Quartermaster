@@ -96,6 +96,7 @@ describe("setupGitEnvironment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockWithRepoLock.mockImplementation((_repo: string, fn: () => Promise<void>) => fn());
+    mockCreateSlug.mockReturnValue("test-repo");
   });
 
   it("should set up git environment successfully", async () => {
@@ -133,7 +134,8 @@ describe("setupGitEnvironment", () => {
       "ax/42-fix-bug",
       42,
       "fix-bug",
-      { cwd: "/project" }
+      { cwd: "/project" },
+      "test-repo"
     );
   });
 
@@ -169,7 +171,8 @@ describe("setupGitEnvironment", () => {
       "ax/42-fix-bug",
       42,
       "fix-bug",
-      { cwd: "/project" }
+      { cwd: "/project" },
+      "test-repo"
     );
     expect(result.branchName).toBe("ax/42-fix-bug");
     expect(result.worktreePath).toBe("/tmp/worktrees/42-fix-bug");
@@ -245,7 +248,8 @@ describe("setupGitEnvironment", () => {
       "ax/42-fix-bug",
       42,
       "fix-bug",
-      { cwd: "/project" }
+      { cwd: "/project" },
+      "test-repo"
     );
   });
 

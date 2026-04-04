@@ -1,12 +1,4 @@
 /**
- * @deprecated Use getErrorMessage from src/utils/error-utils.ts instead
- */
-export function errorMessage(err: unknown): string {
-  // Delegate to the new function to maintain compatibility
-  return err instanceof Error ? err.message : String(err);
-}
-
-/**
  * Base error class for AI-Quartermaster with standardized error handling
  */
 export abstract class AQMError extends Error {

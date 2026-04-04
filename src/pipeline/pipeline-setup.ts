@@ -6,6 +6,7 @@ import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
 import { resolveProject, type ResolvedProject } from "../config/project-resolver.js";
 import { detectModeFromLabels, detectExecutionModeFromLabels } from "../config/mode-presets.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { checkFeasibility, generateSkipComment } from "./feasibility-checker.js";
 import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "./progress-tracker.js";
 import type { AQConfig, GitConfig, PipelineMode, ExecutionMode } from "../types/config.js";
@@ -101,7 +102,7 @@ export async function checkDuplicatePR(
         return { hasDuplicatePR: true, prUrl };
       }
     }
-  } catch {
+  } catch (error: unknown) {
     // non-fatal: continue pipeline if PR check fails
   }
 
@@ -193,8 +194,8 @@ export async function fetchAndValidateIssue(
         { timeout: 10000 }
       );
       logger.info(`Posted skip comment on issue #${issueNumber}`);
-    } catch (error) {
-      logger.warn(`Failed to post skip comment on issue #${issueNumber}:`, error);
+    } catch (error: unknown) {
+      logger.warn(`Failed to post skip comment on issue #${issueNumber}: ${getErrorMessage(error)}`);
       // Non-fatal error, continue with skip
     }
 

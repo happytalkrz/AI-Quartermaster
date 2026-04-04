@@ -184,8 +184,8 @@ export class JobQueue {
     let checkpoint = null;
     try {
       checkpoint = loadCheckpoint(dataDir, issueNumber);
-    } catch (checkpointErr) {
-      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${checkpointErr}`);
+    } catch (checkpointErr: unknown) {
+      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${getErrorMessage(checkpointErr)}`);
     }
 
     if (checkpoint) {
@@ -195,8 +195,8 @@ export class JobQueue {
       if (checkpoint.worktreePath) {
         logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
         Promise.resolve(removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true }))
-          .catch(worktreeErr => {
-            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
+          .catch((worktreeErr: unknown) => {
+            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${getErrorMessage(worktreeErr)}`);
           });
       }
 
@@ -204,8 +204,8 @@ export class JobQueue {
       if (checkpoint.branchName) {
         logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
         Promise.resolve(deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot }))
-          .catch(branchErr => {
-            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${branchErr}`);
+          .catch((branchErr: unknown) => {
+            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${getErrorMessage(branchErr)}`);
           });
       }
     }
@@ -214,8 +214,8 @@ export class JobQueue {
     try {
       logger.info(`Removing checkpoint for issue #${issueNumber}`);
       removeCheckpoint(dataDir, issueNumber);
-    } catch (err) {
-      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${getErrorMessage(err)}`);
     }
   }
 
@@ -431,8 +431,8 @@ export class JobQueue {
         logger.info(`Job started: ${jobId}`);
 
         // Run async - don't await, let it run in background
-        this.executeJob(job).catch(err => {
-          logger.error(`Job ${jobId} unexpected error: ${err}`);
+        this.executeJob(job).catch((err: unknown) => {
+          logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
         });
       }
 
@@ -489,7 +489,7 @@ export class JobQueue {
           error: "Pipeline completed but no PR was created",
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.store.update(job.id, {
         status: "failure",
         completedAt: new Date().toISOString(),

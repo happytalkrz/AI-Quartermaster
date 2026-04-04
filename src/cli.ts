@@ -183,8 +183,8 @@ async function startCommand(args: CliArgs): Promise<void> {
     const smeeUrl = process.env.SMEE_URL;
     if (smeeUrl) {
       await Promise.allSettled(
-        projects.map(p => setupWebhook(aqRoot, p.repo).catch(err =>
-          logger.warn(`Webhook 등록 실패 (${p.repo}): ${err}`)
+        projects.map(p => setupWebhook(aqRoot, p.repo).catch((err: unknown) =>
+          logger.warn(`Webhook 등록 실패 (${p.repo}): ${getErrorMessage(err)}`)
         ))
       );
     }
@@ -641,7 +641,7 @@ async function versionCommand(): Promise<void> {
     const packageData = JSON.parse(packageContent);
 
     console.log(`AI Quartermaster v${packageData.version}`);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("버전 정보를 읽을 수 없습니다.");
     process.exit(1);
   }

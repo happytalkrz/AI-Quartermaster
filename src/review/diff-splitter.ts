@@ -46,7 +46,7 @@ export function splitDiffByFiles(fullDiff: string): FileDiff[] {
 
     if (filePath) {
       const diffContent = section.trim();
-      const estimatedTokens = estimateTokenCount(diffContent);
+      const estimatedTokens = estimateTokenCount(diffContent, 'code');
 
       fileDiffs.push({
         filePath,

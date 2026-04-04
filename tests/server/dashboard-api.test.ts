@@ -1207,7 +1207,6 @@ describe("Dashboard API - Projects Management", () => {
       expect(result.error).toContain("Configuration validation failed");
     });
   });
-<<<<<<< HEAD
 });
 
 describe("Dashboard API - Version Management", () => {
@@ -1544,5 +1543,7 @@ describe("Dashboard API - Version Management", () => {
       const response = await app.request("/api/events?token=test-token");
       expect(response.status).toBe(401);
     });
+  });
+  });
   });
 });

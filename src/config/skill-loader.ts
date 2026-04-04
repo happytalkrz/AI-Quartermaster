@@ -65,7 +65,7 @@ export function loadSkills(skillsPath: string): SkillContent[] {
       logger.warn(`Skills path is not a directory: ${resolvedPath}`);
       return [];
     }
-  } catch (error) {
+  } catch (error: unknown) {
     logger.debug(`Skills directory not found: ${resolvedPath}`);
     return [];
   }

@@ -294,7 +294,7 @@ export async function checkPrConflict(
 
           conflictFiles.push(...Array.from(fileSet));
         }
-      } catch (diffError) {
+      } catch (diffError: unknown) {
         logger.warn(`Failed to get diff for PR #${prNumber}: ${diffError}`);
       }
     }
@@ -311,7 +311,7 @@ export async function checkPrConflict(
     }
 
     return null; // No conflicts detected
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error checking PR #${prNumber} conflicts: ${error}`);
     return null;
   }
@@ -348,7 +348,7 @@ export async function commentOnIssue(
 
     logger.info(`Added comment to issue #${issueNumber}`);
     return true;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error commenting on issue #${issueNumber}: ${error}`);
     return false;
   }
@@ -383,7 +383,7 @@ export async function listOpenPrs(
     const prs = JSON.parse(result.stdout.trim()) as Array<{ number: number; title: string }>;
     logger.debug(`Found ${prs.length} open PRs in ${repo}`);
     return prs;
-  } catch (error) {
+  } catch (error: unknown) {
     logger.warn(`Error listing PRs for ${repo}: ${error}`);
     return null;
   }

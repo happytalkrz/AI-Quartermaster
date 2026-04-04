@@ -136,9 +136,9 @@ export async function retryWithClaudeFix<T>(
       } else {
         logger.info(`[RETRY_WITH_FIX] Still failing after attempt ${attempt}`);
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`[RETRY_WITH_FIX] Attempt ${attempt} failed: ${errorMessage}`);
+    } catch (error: unknown) {
+      const errMsg = getErrorMessage(error);
+      logger.error(`[RETRY_WITH_FIX] Attempt ${attempt} failed: ${errMsg}`);
 
       // 마지막 시도에서 에러가 발생한 경우
       if (attempt === maxRetries) {
@@ -147,7 +147,7 @@ export async function retryWithClaudeFix<T>(
           success: false,
           result: currentResult,
           attempts: attempt,
-          error: `Final attempt failed: ${errorMessage}`
+          error: `Final attempt failed: ${errMsg}`
         };
       }
     }

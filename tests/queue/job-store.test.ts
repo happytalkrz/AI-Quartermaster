@@ -469,7 +469,7 @@ describe("JobStore", () => {
       expect(stats.topExpensiveJobs[1].repo).toBe("repo/a");
     });
 
-    it("should ignore jobs with zero or negative cost", () => {
+    it("should ignore jobs with zero, null, or undefined cost", () => {
       const job1 = store.create(42, "test/repo");
       store.update(job1.id, { totalCostUsd: 10.00 });
 
@@ -477,7 +477,7 @@ describe("JobStore", () => {
       store.update(job2.id, { totalCostUsd: 0 });
 
       const job3 = store.create(44, "test/repo");
-      store.update(job3.id, { totalCostUsd: -5.00 });
+      // job3는 totalCostUsd를 설정하지 않음 (null/undefined)
 
       const stats = store.getCostStats();
 

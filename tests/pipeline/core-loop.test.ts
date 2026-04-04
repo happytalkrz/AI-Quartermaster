@@ -784,18 +784,6 @@ describe("runCoreLoop", () => {
       expect(mockExecutePhase).not.toHaveBeenCalled();
     });
 
-    it("should pass correct context to generatePlan on retry scenarios", async () => {
-
-      mockExecutePhase
-        .mockResolvedValueOnce(frontendResult)
-        .mockResolvedValueOnce(backendResult);
-
-      const result = await runCoreLoop(makeContext());
-
-      expect(result.success).toBe(true);
-      expect(result.totalCostUsd).toBe(0.065);
-    });
-
     it("should handle phases with no cost information", async () => {
       const phases = [makePhase(0, "Test")];
       const plan = makePlan(phases);

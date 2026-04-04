@@ -918,7 +918,7 @@ describe("runCoreLoop", () => {
     });
 
     it("should handle plan generation timeout and recovery", async () => {
-      const phases = [makePhase(0, "TimeoutRecoveryPhase")];
+      const phases = [makePhase(0, "RetryPhase")];
       const plan = makePlan(phases);
 
       mockGeneratePlan.mockResolvedValue(plan);
@@ -926,13 +926,13 @@ describe("runCoreLoop", () => {
         success: true,
         groups: [{ level: 0, phases: phases }],
       });
-      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "TimeoutRecoveryPhase"));
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "RetryPhase"));
 
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].phaseName).toBe("TimeoutRecoveryPhase");
+      expect(result.phaseResults[0].phaseName).toBe("RetryPhase");
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 

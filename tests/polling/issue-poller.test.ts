@@ -437,7 +437,10 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
         projects: [
           { repo: "test/repo1", path: "/tmp1", baseBranch: "main" },
           { repo: "test/repo2", path: "/tmp2", baseBranch: "main" }
-        ]
+        ],
+        safety: {
+          allowedLabels: ["aqm:ready", "enhancement", "bug"]
+        }
       });
 
       // Mock repo1 as paused, repo2 as active
@@ -476,7 +479,10 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
           { repo: "test/active1", path: "/tmp1", baseBranch: "main" },
           { repo: "test/paused", path: "/tmp2", baseBranch: "main" },
           { repo: "test/active2", path: "/tmp3", baseBranch: "main" }
-        ]
+        ],
+        safety: {
+          allowedLabels: ["aqm:ready", "enhancement", "bug"]
+        }
       });
 
       mockQueue.isProjectPaused.mockImplementation((repo: string) => repo === "test/paused");

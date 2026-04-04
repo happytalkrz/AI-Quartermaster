@@ -196,7 +196,7 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(3);
-      expect(mockSchedulePhases).toHaveBeenCalledWith(phases);
+      expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(3);
 
       // All phases should have been called (order may vary due to parallel execution)
@@ -238,7 +238,7 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(4);
-      expect(mockSchedulePhases).toHaveBeenCalledWith(phases);
+      expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(4);
     });
 

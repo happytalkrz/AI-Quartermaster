@@ -31,7 +31,7 @@ export async function createDraftPR(
   ghConfig: GhCliConfig,
   ctx: PrContext,
   options: { cwd: string; promptsDir: string; dryRun?: boolean }
-): Promise<PrCreateResult> {
+): Promise<PrCreateResult | null> {
   // Build PR title
   const title = renderTemplate(prConfig.titleTemplate, {
     issueNumber: String(ctx.issueNumber),

@@ -65,6 +65,7 @@ export interface PlanGeneratorContext {
   maxPhases?: number;
   sensitivePaths?: string;
   locale?: string;
+  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
@@ -132,12 +133,45 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       config: { maxPhases, sensitivePaths },
     };
 
-    // 항상 원본 템플릿을 기본으로 사용
-    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
-    let templateData = baseData;
+    // 캐시된 레이어 활용 또는 원본 템플릿 로드
+    let finalPrompt: string;
+    if (ctx.cachedLayers) {
+      // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
+      logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
 
-    const template = loadTemplate(templatePath);
-    let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+      const dynamicSection = `
+# 이슈 정보
+
+**번호**: #${baseData.issue.number}
+**제목**: ${baseData.issue.title}
+**라벨**: ${baseData.issue.labels.join(", ")}
+
+**본문**:
+${baseData.issue.body}
+
+# 저장소 정보
+
+**소유자**: ${baseData.repo.owner}
+**이름**: ${baseData.repo.name}
+**구조**:
+${baseData.repo.structure}
+
+**브랜치**: ${baseData.branch.base} → ${baseData.branch.work}
+
+# 설정
+
+**최대 Phase 수**: ${baseData.config.maxPhases}
+**민감한 경로**: ${baseData.config.sensitivePaths}
+`;
+
+      finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
+    } else {
+      // 기존 방식: 원본 템플릿 로드
+      const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+      let templateData = baseData;
+      const template = loadTemplate(templatePath);
+      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+    }
 
     // retry 시에는 retry 섹션을 append
     if (attempt > 1) {

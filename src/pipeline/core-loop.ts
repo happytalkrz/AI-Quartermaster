@@ -14,6 +14,9 @@ import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { createCheckpoint } from "../safety/rollback-manager.js";
 import { createSlug } from "../utils/slug.js";
+import { buildBaseLayer, buildProjectLayer, loadTemplate } from "../prompt/template-renderer.js";
+import { createHash } from "crypto";
+import { resolve } from "path";
 
 const logger = getLogger();
 
@@ -69,6 +72,7 @@ export interface CoreLoopContext {
   checkpoint?: string;  // checkpoint hash for rollback
   worktreeInfo?: { path: string; branch: string };  // worktree information
   slug?: string;  // issue slug for worktree naming
+  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 Base+Project 레이어
 }
 
 export interface CoreLoopResult {
@@ -80,6 +84,82 @@ export interface CoreLoopResult {
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
+  // Step 0: Build and cache static prompt layers (Base + Project) if not already cached
+  if (!ctx.cachedLayers) {
+    logger.info("Building and caching static prompt layers (Base + Project)...");
+
+    const baseLayer = buildBaseLayer({
+      role: "시니어 개발자",
+      locale: ctx.config.general.locale,
+    });
+
+    const projectLayer = buildProjectLayer({
+      conventions: ctx.projectConventions || "",
+      structure: ctx.repoStructure,
+      skillsContext: ctx.skillsContext,
+      testCommand: ctx.config.commands.test,
+      lintCommand: ctx.config.commands.lint,
+    });
+
+    // Generate cache key based on project and conventions
+    const cacheKey = createHash("sha256")
+      .update(ctx.cwd + (ctx.projectConventions || "") + ctx.repoStructure)
+      .digest("hex")
+      .substring(0, 16);
+
+    // Load static template parts for caching
+    const planTemplatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    const phaseTemplatePath = resolve(ctx.promptsDir, "phase-implementation.md");
+
+    try {
+      const planTemplate = loadTemplate(planTemplatePath);
+      const phaseTemplate = loadTemplate(phaseTemplatePath);
+
+      // Create static content by assembling base and project layers
+      const staticContent = `# ${baseLayer.role}
+
+${baseLayer.rules.map(rule => `- ${rule}`).join('\n')}
+
+${baseLayer.outputFormat}
+
+${baseLayer.progressReporting}
+
+${baseLayer.parallelWorkGuide}
+
+## 프로젝트 컨벤션
+
+${projectLayer.conventions}
+
+## 프로젝트 구조
+
+${projectLayer.structure}
+
+## 설정
+
+- 테스트 명령어: ${projectLayer.testCommand}
+- 린트 명령어: ${projectLayer.lintCommand}
+
+## 안전 규칙
+
+${projectLayer.safetyRules.map(rule => `- ${rule}`).join('\n')}
+
+${projectLayer.skillsContext ? `## 스킬 컨텍스트\n\n${projectLayer.skillsContext}` : ''}
+
+${projectLayer.pastFailures ? `## 과거 실패 사례\n\n${projectLayer.pastFailures}` : ''}`;
+
+      ctx.cachedLayers = {
+        staticContent,
+        cacheKey,
+        createdAt: new Date().toISOString(),
+        phaseTemplate: phaseTemplate,
+      };
+
+      logger.info(`Static layers cached with key: ${cacheKey}`);
+    } catch (error: unknown) {
+      logger.warn(`Failed to cache static layers: ${getErrorMessage(error)}, proceeding without cache`);
+    }
+  }
+
   // Step 1: Generate plan
   logger.info(`Generating plan for issue #${ctx.issue.number}...`);
 
@@ -99,6 +179,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       maxPhases: ctx.config.safety.maxPhases,
       locale: ctx.config.general.locale,
       sensitivePaths: ctx.config.safety.sensitivePaths.join(", "),
+      cachedLayers: ctx.cachedLayers,
     });
     plan = planResult.plan;
     planCostUsd = planResult.costUsd;
@@ -220,6 +301,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         pastFailures: pastFailures || undefined,
         jobLogger: jl,
         locale: ctx.config.general.locale,
+        cachedLayers: ctx.cachedLayers,
       });
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)

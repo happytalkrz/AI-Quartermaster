@@ -21,11 +21,14 @@ export function getActiveProcessPids(): number[] {
   return Array.from(activeProcesses.keys());
 }
 
+import type { UsageInfo } from "../types/pipeline.js";
+
 export interface ClaudeRunResult {
   success: boolean;
   output: string;
   costUsd?: number;
   durationMs: number;
+  usage?: UsageInfo;
 }
 
 export interface ClaudeRunOptions {

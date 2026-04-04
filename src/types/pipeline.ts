@@ -14,6 +14,13 @@ export type PipelineState =
   | "DONE"
   | "FAILED";
 
+export interface UsageInfo {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
 export interface Plan {
   mode?: "code" | "content";
   issueNumber: number;
@@ -25,6 +32,8 @@ export interface Plan {
   phases: Phase[];
   verificationPoints: string[];
   stopConditions: string[];
+  costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface Phase {
@@ -77,6 +86,7 @@ export interface PhaseResult {
   lastOutput?: string;
   durationMs: number;
   costUsd?: number;
+  usage?: UsageInfo;
 }
 
 export interface PipelineResult {
@@ -89,6 +99,7 @@ export interface PipelineResult {
   completedAt?: string;
   error?: string;
   totalCostUsd?: number;
+  totalUsage?: UsageInfo;
 }
 
 export interface ValidationPhaseContext {

@@ -261,7 +261,12 @@ const safetyConfigSchema = z.object({
 });
 
 const notificationConfigSchema = z.object({
-  webhookUrl: z.string().url().optional(),
+  webhookUrl: z.string().refine(
+    (val) => val === "" || z.string().url().safeParse(val).success,
+    {
+      message: "webhookUrl must be a valid URL or empty string",
+    }
+  ).optional(),
 });
 
 const projectConfigSchema = z.object({

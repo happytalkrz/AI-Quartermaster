@@ -155,7 +155,11 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
                 problemSummary: h.error?.slice(0, 100) || "Unknown",
               })),
             },
-            context: retryContext.contextualization || {},
+            context: retryContext.contextualization || {
+              functionSignatures: {},
+              importRelations: {},
+              typeDefinitions: {},
+            },
             ...baseData,
           }
         : baseData;

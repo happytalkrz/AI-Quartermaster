@@ -10,9 +10,12 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
+import { runCli } from "../utils/cli-runner.js";
+import { getErrorMessage } from "../utils/error-utils.js";
+import { existsSync, statSync } from "fs";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -187,6 +190,100 @@ function validateAndNormalizePath(path: string, paramName: string): string {
 }
 
 /**
+ * Health check helper functions
+ */
+async function checkGitRemoteAccess(projectPath: string, gitPath: string): Promise<{ status: "ok" | "error"; message?: string }> {
+  try {
+    const result = await runCli(gitPath, ["remote", "get-url", "origin"], { cwd: projectPath, timeout: 10000 });
+    if (result.exitCode !== 0) {
+      return {
+        status: "error",
+        message: `Git remote not accessible: ${result.stderr || "No origin remote found"}`
+      };
+    }
+    return { status: "ok" };
+  } catch (error: unknown) {
+    return {
+      status: "error",
+      message: `Git remote check failed: ${getErrorMessage(error)}`
+    };
+  }
+}
+
+async function checkLocalPath(projectPath: string): Promise<{ status: "ok" | "error"; message?: string }> {
+  try {
+    if (!existsSync(projectPath)) {
+      return { status: "error", message: "Project path does not exist" };
+    }
+
+    const stats = statSync(projectPath);
+    if (!stats.isDirectory()) {
+      return { status: "error", message: "Project path is not a directory" };
+    }
+
+    return { status: "ok" };
+  } catch (error: unknown) {
+    return {
+      status: "error",
+      message: `Local path check failed: ${getErrorMessage(error)}`
+    };
+  }
+}
+
+async function checkDiskSpace(projectPath: string): Promise<{ status: "ok" | "warning" | "error"; message?: string; freeBytes?: number }> {
+  try {
+    const result = await runCli("df", ["-B1", projectPath], { timeout: 5000 });
+    if (result.exitCode !== 0) {
+      return { status: "warning", message: "Could not check disk space" };
+    }
+
+    const lines = result.stdout.trim().split('\n');
+    if (lines.length < 2) {
+      return { status: "warning", message: "Could not parse disk space output" };
+    }
+
+    const parts = lines[1].split(/\s+/);
+    const available = parseInt(parts[3] || "0", 10);
+
+    if (available === 0) {
+      return { status: "error", message: "No free disk space", freeBytes: available };
+    } else if (available < 1024 * 1024 * 1024) { // Less than 1GB
+      return { status: "warning", message: "Low disk space (< 1GB)", freeBytes: available };
+    }
+
+    return { status: "ok", freeBytes: available };
+  } catch (error: unknown) {
+    return {
+      status: "warning",
+      message: `Disk space check failed: ${getErrorMessage(error)}`
+    };
+  }
+}
+
+async function checkDependencies(projectPath: string): Promise<{ status: "ok" | "warning" | "error"; message?: string }> {
+  try {
+    // Check if package.json exists
+    const packageJsonPath = resolve(projectPath, "package.json");
+    if (!existsSync(packageJsonPath)) {
+      return { status: "warning", message: "No package.json found" };
+    }
+
+    // Check if node_modules exists
+    const nodeModulesPath = resolve(projectPath, "node_modules");
+    if (!existsSync(nodeModulesPath)) {
+      return { status: "warning", message: "Dependencies not installed (no node_modules)" };
+    }
+
+    return { status: "ok" };
+  } catch (error: unknown) {
+    return {
+      status: "error",
+      message: `Dependencies check failed: ${getErrorMessage(error)}`
+    };
+  }
+}
+
+/**
  * Applies runtime configuration changes to system components.
  */
 export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
@@ -258,6 +355,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/projects/*", bearerAuth);
     api.use("/api/version", bearerAuth);
     api.use("/api/update", bearerAuth);
+    api.use("/api/health", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -525,10 +623,78 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
   // List all jobs (exclude archived by default, ?include=archived to show)
   api.get("/api/jobs", (c) => {
-    const includeArchived = c.req.query("include") === "archived";
-    const jobs = includeArchived ? store.list() : store.list().filter(j => j.status !== "archived");
-    const status = queue.getStatus();
-    return c.json({ jobs, queue: status });
+    try {
+      // Parse query parameters using Zod schema
+      const queryParams = {
+        include: c.req.query("include"),
+        project: c.req.query("project"),
+        status: c.req.query("status"),
+        limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
+        offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
+      };
+
+      // Validate query parameters (excluding the legacy 'include' parameter)
+      const parseResult = GetJobsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: parseResult.error
+        }, 400);
+      }
+
+      const { project, status, limit, offset } = parseResult.data;
+      const includeArchived = queryParams.include === "archived";
+
+      // Get base job list
+      let jobs = includeArchived ? store.list() : store.list().filter(j => j.status !== "archived");
+
+      // Apply project filter
+      if (project) {
+        jobs = jobs.filter(j => j.repo === project);
+      }
+
+      // Apply status filter
+      if (status) {
+        jobs = jobs.filter(j => {
+          // Map internal status to API status
+          switch (status) {
+            case "pending":
+              return j.status === "queued";
+            case "running":
+              return j.status === "running";
+            case "completed":
+              return j.status === "success";
+            case "failed":
+              return j.status === "failure" || j.status === "cancelled";
+            default:
+              return false;
+          }
+        });
+      }
+
+      // Apply pagination
+      const totalJobs = jobs.length;
+      if (offset !== undefined) {
+        jobs = jobs.slice(offset);
+      }
+      if (limit !== undefined) {
+        jobs = jobs.slice(0, limit);
+      }
+
+      const queueStatus = queue.getStatus();
+      return c.json({
+        jobs,
+        queue: queueStatus,
+        pagination: {
+          total: totalJobs,
+          offset: offset ?? 0,
+          limit: limit ?? totalJobs,
+          hasMore: (offset ?? 0) + (limit ?? totalJobs) < totalJobs
+        }
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch jobs: ${getErrorMessage(error)}` }, 500);
+    }
   });
 
   // Get single job
@@ -561,33 +727,87 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
   // Aggregate stats
   api.get("/api/stats", (c) => {
-    const jobs = store.list();
-    const total = jobs.length;
-    const successCount = jobs.filter(j => j.status === "success").length;
-    const failureCount = jobs.filter(j => j.status === "failure").length;
-    const runningCount = jobs.filter(j => j.status === "running").length;
-    const queuedCount  = jobs.filter(j => j.status === "queued").length;
-    const cancelledCount = jobs.filter(j => j.status === "cancelled").length;
+    try {
+      // Parse query parameters using Zod schema
+      const queryParams = {
+        project: c.req.query("project"),
+        timeRange: c.req.query("timeRange") || "7d",
+      };
 
-    const completed = jobs.filter(j => j.completedAt && j.startedAt);
-    const avgDurationMs = completed.length > 0
-      ? Math.round(completed.reduce((sum, j) => {
-          return sum + (new Date(j.completedAt!).getTime() - new Date(j.startedAt!).getTime());
-        }, 0) / completed.length)
-      : 0;
+      const parseResult = GetStatsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: parseResult.error
+        }, 400);
+      }
 
-    const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
+      const { project, timeRange } = parseResult.data;
 
-    return c.json({
-      total,
-      successCount,
-      failureCount,
-      runningCount,
-      queuedCount,
-      cancelledCount,
-      avgDurationMs,
-      successRate,
-    });
+      // Get base job list
+      let jobs = store.list();
+
+      // Apply project filter
+      if (project) {
+        jobs = jobs.filter(j => j.repo === project);
+      }
+
+      // Apply time range filter
+      if (timeRange !== "all") {
+        const now = new Date();
+        let cutoffTime: Date;
+
+        switch (timeRange) {
+          case "24h":
+            cutoffTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            break;
+          case "7d":
+            cutoffTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "30d":
+            cutoffTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            break;
+          default:
+            cutoffTime = new Date(0); // No filter
+        }
+
+        jobs = jobs.filter(j => {
+          const createdAt = new Date(j.createdAt);
+          return createdAt >= cutoffTime;
+        });
+      }
+
+      const total = jobs.length;
+      const successCount = jobs.filter(j => j.status === "success").length;
+      const failureCount = jobs.filter(j => j.status === "failure").length;
+      const runningCount = jobs.filter(j => j.status === "running").length;
+      const queuedCount = jobs.filter(j => j.status === "queued").length;
+      const cancelledCount = jobs.filter(j => j.status === "cancelled").length;
+
+      const completed = jobs.filter(j => j.completedAt && j.startedAt);
+      const avgDurationMs = completed.length > 0
+        ? Math.round(completed.reduce((sum, j) => {
+            return sum + (new Date(j.completedAt!).getTime() - new Date(j.startedAt!).getTime());
+          }, 0) / completed.length)
+        : 0;
+
+      const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
+
+      return c.json({
+        total,
+        successCount,
+        failureCount,
+        runningCount,
+        queuedCount,
+        cancelledCount,
+        avgDurationMs,
+        successRate,
+        project: project || null,
+        timeRange,
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch stats: ${getErrorMessage(error)}` }, 500);
+    }
   });
 
   // SSE stream for job logs
@@ -796,6 +1016,63 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         timestamp: new Date().toISOString()
       });
       return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
+  });
+
+  // Health check endpoint
+  api.get("/api/health", async (c) => {
+    try {
+      const projectParam = c.req.query("project");
+      if (!projectParam) {
+        return c.json({ error: "project parameter is required" }, 400);
+      }
+
+      const project = decodeURIComponent(projectParam);
+
+      // Load configuration to get project path and git settings
+      const config = loadConfig(process.cwd());
+      const projectConfig = config.projects?.find(p => p.repo === project);
+
+      if (!projectConfig) {
+        return c.json({ error: `Project "${project}" not found in configuration` }, 404);
+      }
+
+      const projectPath = resolve(process.cwd(), projectConfig.path);
+      const gitPath = config.git?.gitPath || "git";
+
+      // Run health checks in parallel
+      const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
+        checkGitRemoteAccess(projectPath, gitPath),
+        checkLocalPath(projectPath),
+        checkDiskSpace(projectPath),
+        checkDependencies(projectPath)
+      ]);
+
+      // Determine overall status
+      let overallStatus: "healthy" | "warning" | "error" = "healthy";
+
+      if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
+        overallStatus = "error";
+      } else if (diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
+                 dependenciesCheck.status === "warning" || dependenciesCheck.status === "error") {
+        overallStatus = "warning";
+      }
+
+      const healthResponse: HealthCheckResponse = {
+        project,
+        status: overallStatus,
+        checks: {
+          gitRemoteAccess: gitRemoteCheck,
+          localPath: localPathCheck,
+          diskSpace: diskSpaceCheck,
+          dependencies: dependenciesCheck,
+        },
+        lastChecked: new Date().toISOString(),
+      };
+
+      return c.json(healthResponse);
+    } catch (error: unknown) {
+      return c.json({ error: `Health check failed: ${getErrorMessage(error)}` }, 500);
     }
   });
 

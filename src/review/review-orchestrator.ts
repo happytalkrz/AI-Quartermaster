@@ -8,7 +8,7 @@ import { mergeReviewResults } from "./result-merger.js";
 import { getLogger } from "../utils/logger.js";
 import { resolve } from "path";
 import type { ReviewConfig, ReviewRound, ClaudeCliConfig } from "../types/config.js";
-import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective } from "../types/review.js";
+import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective, ReviewFinding } from "../types/review.js";
 
 // 통합 리뷰 API 응답 타입
 type UnifiedReviewResponse = {
@@ -17,8 +17,6 @@ type UnifiedReviewResponse = {
   simplification: { verdict: "PASS" | "FAIL"; findings: ReviewFinding[]; summary: string };
   overall: { verdict: "PASS" | "FAIL"; criticalIssues: string[]; summary: string };
 };
-
-type ReviewFinding = { severity: string; message: string; [key: string]: unknown };
 
 const logger = getLogger();
 

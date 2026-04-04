@@ -165,8 +165,8 @@ describe("token-estimator", () => {
     });
 
     it("should handle null and undefined model names gracefully", () => {
-      expect(getTokenLimit(null as any)).toBe(200_000);
-      expect(getTokenLimit(undefined as any)).toBe(200_000);
+      expect(getTokenLimit(null as unknown as string)).toBe(200_000);
+      expect(getTokenLimit(undefined as unknown as string)).toBe(200_000);
     });
 
     it("should handle special characters and whitespace", () => {

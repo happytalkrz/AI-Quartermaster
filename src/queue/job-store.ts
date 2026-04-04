@@ -245,6 +245,8 @@ export class JobStore extends EventEmitter {
   }
 
   private save(job: Job): void {
+    // 디렉토리가 존재하는지 확인하고 없으면 생성
+    mkdirSync(this.dataDir, { recursive: true });
     writeFileSync(this.jobPath(job.id), JSON.stringify(job, null, 2));
     this.cache.set(job.id, job);
   }

@@ -1,12 +1,51 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+
+export interface PlanTemplateBaseData {
+  issue: {
+    number: string;
+    title: string;
+    body: string;
+    labels: string[];
+  };
+  repo: {
+    owner: string;
+    name: string;
+    structure: string;
+  };
+  branch: {
+    base: string;
+    work: string;
+  };
+  config: {
+    maxPhases: string;
+    sensitivePaths: string;
+  };
+}
+
+export interface PlanTemplateRetryData extends PlanTemplateBaseData {
+  retry: {
+    attempt: number;
+    maxRetries: number;
+    failureReason: string;
+    errorMessage: string;
+    previousAttempts: Array<{
+      attempt: number;
+      failureReason: string;
+      problemSummary: string;
+    }>;
+  };
+  context: ContextualizationInfo;
+}
+
+export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
 
@@ -74,7 +113,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
     const startTime = Date.now();
 
     let templatePath: string;
-    let templateData: any;
+    let templateData: TemplateVariables;
 
     // 기본 데이터 구조
     const baseData = {

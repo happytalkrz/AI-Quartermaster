@@ -265,7 +265,8 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       cwd: ctx.cwd,
       config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
-      enableAgents: true,
+      enableAgents: false,
+      disallowedTools: ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
     });
 
     const duration = Date.now() - startTime;

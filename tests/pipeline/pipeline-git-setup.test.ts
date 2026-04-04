@@ -333,7 +333,8 @@ describe("prepareWorkEnvironment", () => {
     expect(result.rollbackHash).toBe("abc123def456");
     expect(result.projectConventions).toBe("# Project conventions\n");
     expect(result.skillsContext).toBe("## dev\n### Test Skill\nTest\nskill content");
-    expect(result.repoStructure).toBe("src/index.ts\nsrc/utils.ts");
+    expect(result.repoStructure).toContain("src/index.ts");
+    expect(result.repoStructure).toContain("src/utils.ts");
 
     expect(mockCreateCheckpoint).toHaveBeenCalledWith({
       cwd: "/tmp/worktree",
@@ -603,8 +604,7 @@ describe("prepareWorkEnvironment", () => {
       rollbackStrategy: "none",
     });
 
-    const lines = result.repoStructure.split("\n");
-    expect(lines.length).toBe(200);
+    // File tree is limited to 200 lines, export signatures may add more
     expect(result.repoStructure).toContain("src/file0.ts");
     expect(result.repoStructure).toContain("src/file199.ts");
     expect(result.repoStructure).not.toContain("src/file200.ts");

@@ -1,4 +1,5 @@
 import { runClaude } from "../claude/claude-runner.js";
+import type { ClaudeCliConfig } from "../types/config.js";
 import { configForTask } from "../claude/model-router.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getLogger } from "../utils/logger.js";
@@ -30,7 +31,7 @@ export interface RetryWithFixOptions<T> {
   maxRetries: number;
 
   /** Claude CLI 설정 */
-  claudeConfig: any;
+  claudeConfig: ClaudeCliConfig;
 
   /** 작업 디렉토리 */
   cwd: string;

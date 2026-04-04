@@ -96,14 +96,14 @@ export interface PipelineResult {
 
 export interface ValidationPhaseContext {
   commands: {
-    claudeCli: any;
+    claudeCli: import("./config.js").ClaudeCliConfig;
   };
   cwd: string;
   gitPath: string;
   maxRetries: number;
   plan: Plan;
   phaseResults: PhaseResult[];
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
 }
 
 export interface PublishPhaseContext {
@@ -115,23 +115,23 @@ export interface PublishPhaseContext {
   branchName: string;
   baseBranch: string;
   worktreePath: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectConfig: {
-    safety: any;
-    pr: any;
+    safety: import("./config.js").SafetyConfig;
+    pr: import("./config.js").PrConfig;
     commands: {
-      ghCli: any;
+      ghCli: import("./config.js").GhCliConfig;
     };
   };
   promptsDir: string;
   dryRun: boolean;
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
 }
 
 export interface CleanupContext {
   worktreePath?: string;
   branchName?: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectRoot: string;
   cleanupOnSuccess: boolean;
   cleanupOnFailure: boolean;
@@ -141,7 +141,7 @@ export interface CleanupContext {
   phaseResults: PhaseResult[];
   startTime: number;
   prUrl?: string;
-  config: any;
+  config: import("./config.js").AQConfig;
   aqRoot?: string;
   dataDir: string;
 }
@@ -153,10 +153,10 @@ export interface FailureHandlerContext {
   branchName?: string;
   rollbackHash?: string;
   rollbackStrategy: string;
-  gitConfig: any;
+  gitConfig: import("./config.js").GitConfig;
   projectRoot: string;
   cleanupOnFailure: boolean;
-  jl?: any;
+  jl?: import("../queue/job-logger.js").JobLogger;
 }
 
 export interface PipelineSetupContext {

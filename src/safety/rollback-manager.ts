@@ -2,7 +2,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
 import { RollbackError } from "../types/errors.js";
 import type { GitConfig, WorktreeConfig } from "../types/config.js";
-import { createWorktree, removeWorktree, type WorktreeInfo } from "../git/worktree-manager.js";
+import type { WorktreeInfo } from "../git/worktree-manager.js";
 
 const logger = getLogger();
 

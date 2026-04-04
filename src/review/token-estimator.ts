@@ -51,7 +51,7 @@ export function isCodeContent(text: string): boolean {
   }
 
   // Check for diff headers (strong indicator of code review context)
-  if (sampleText.includes('diff --git') || sampleText.includes('@@') || /^[\+\-].*$/m.test(sampleText)) {
+  if (sampleText.includes('diff --git') || sampleText.includes('@@') || /^[+-].*$/m.test(sampleText)) {
     return true;
   }
 
@@ -97,7 +97,7 @@ export function isCodeContent(text: string): boolean {
     }
 
     // Check for code patterns
-    if (/^\s*[\w\$]+\s*[:=].*[{;]$|^\s*[\w\$]+\([^)]*\)\s*[{=>]|^\s*\/\/|^\s*\/\*/.test(line)) {
+    if (/^\s*[\w$]+\s*[:=].*[{;]$|^\s*[\w$]+\([^)]*\)\s*[{=>]|^\s*\/\/|^\s*\/\*/.test(line)) {
       strongCodeLines++;
     }
   }

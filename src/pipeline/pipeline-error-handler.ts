@@ -4,10 +4,11 @@ import { saveResult } from "./pipeline-context.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
 import type { PipelineState } from "../types/pipeline.js";
+import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { CoreLoopResult } from "./core-loop.js";
-import type { AQConfig } from "../types/config.js";
+import type { AQConfig, GitConfig } from "../types/config.js";
 
 const logger = getLogger();
 
@@ -18,7 +19,7 @@ export interface CoreLoopFailureContext {
   worktreePath?: string;
   rollbackHash?: string;
   rollbackStrategy: "none" | "all" | "failed-only";
-  gitConfig: any;
+  gitConfig: GitConfig;
   startTime: number;
   config: AQConfig;
   aqRoot: string;
@@ -26,7 +27,7 @@ export interface CoreLoopFailureContext {
   dataDir: string;
   patternStore: PatternStore;
   jl?: JobLogger;
-  checkpoint: (overrides?: any) => void;
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
 }
 
 export interface CoreLoopFailureResult {

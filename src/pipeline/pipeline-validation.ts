@@ -15,7 +15,7 @@ const logger = getLogger();
 export interface ValidationPhaseResult {
   success: boolean;
   error?: string;
-  report?: any;
+  report?: import("./result-reporter.js").PipelineReport;
 }
 
 export async function runValidationPhase(
@@ -23,11 +23,11 @@ export async function runValidationPhase(
   timer: PipelineTimer,
   isPastState: (state: string) => boolean,
   skipFinalValidation: boolean,
-  checkpoint: (overrides?: any) => void,
+  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
   issueNumber: number,
   repo: string,
   startTime: number,
-  config: any,
+  config: import("../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   _aqRoot?: string,
   _projectRoot?: string
@@ -93,21 +93,21 @@ export async function runValidationPhase(
 
 async function retryValidationWithFixes(
   context: ValidationPhaseContext,
-  validation: any,
+  validation: import("./final-validator.js").ValidationResult,
   issueNumber: number,
   repo: string,
   startTime: number,
-  checkpoint: (overrides?: any) => void,
-  config: any,
+  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
+  config: import("../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   _aqRoot?: string,
   _projectRoot?: string
 ): Promise<boolean> {
 
-  const buildFixPromptFn = (validationResult: any) => {
-    const failedChecks = validationResult.checks.filter((c: any) => !c.passed);
+  const buildFixPromptFn = (validationResult: import("./final-validator.js").ValidationResult) => {
+    const failedChecks = validationResult.checks.filter((c) => !c.passed);
     const errorDetails = failedChecks
-      .map((c: any) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
+      .map((c) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
       .join("\n\n");
 
     return [
@@ -138,10 +138,10 @@ async function retryValidationWithFixes(
     };
   };
 
-  const onAttempt = (attempt: number, maxRetries: number, description: string) => {
+  const onAttempt = (attempt: number, maxRetries: number, _description: string) => {
     const failedNames = validation.checks
-      .filter((c: any) => !c.passed)
-      .map((c: any) => c.name)
+      .filter((c) => !c.passed)
+      .map((c) => c.name)
       .join(", ");
 
     logger.info(`[FINAL_VALIDATING] Retry ${attempt}/${maxRetries} — fixing: ${failedNames}`);
@@ -149,7 +149,7 @@ async function retryValidationWithFixes(
     context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
   };
 
-  const onSuccess = (attempt: number, result: any) => {
+  const onSuccess = (attempt: number, _result: import("./final-validator.js").ValidationResult) => {
     logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
     context.jl?.log(`검증 통과 (retry ${attempt})`);
   };

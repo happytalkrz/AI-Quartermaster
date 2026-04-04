@@ -1,7 +1,6 @@
 import { resolve } from "path";
 import { initProject, detectGitInfo } from "../config/loader.js";
 import { InitCommandOptions } from "../types/config.js";
-import { getLogger } from "../utils/logger.js";
 
 /**
  * aqm init 명령 구현

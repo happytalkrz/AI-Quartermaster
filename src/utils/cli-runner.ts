@@ -115,7 +115,7 @@ export async function runGhCommand(
       // 429 응답 처리
       if (result.exitCode === 429 || isRateLimitError(result)) {
         const error = new Error("GitHub API rate limit exceeded");
-        (error as any).status = 429;
+        (error as Error & { status: number }).status = 429;
         throw error;
       }
 

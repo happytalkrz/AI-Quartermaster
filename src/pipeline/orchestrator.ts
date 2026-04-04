@@ -137,7 +137,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     }
 
     // Check if this is a core loop failure with detailed results
-    const errorWithReport = error as Error & { failureResult?: any };
+    const errorWithReport = error as Error & { failureResult?: OrchestratorResult };
     if (errorWithReport.failureResult) {
       // Core loop failure already handled by handleCoreLoopFailure
       transitionState(runtime, "FAILED");

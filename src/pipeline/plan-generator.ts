@@ -6,7 +6,7 @@ import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, ErrorCategory } from "../types/pipeline.js";
 
 export interface PlanTemplateBaseData {
   issue: {

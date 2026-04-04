@@ -9,6 +9,7 @@ import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory } from "../types/pipeline.js";
 import { notifyPlanRetryContext } from "../notification/notifier.js";
 import { getLogger } from "../utils/logger.js";
+import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget, getEffectiveTokenLimit } from "../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -129,7 +130,92 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<Plan> {
       finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
     }
 
-    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
+    // Token budget cap: 프롬프트 크기 체크 및 축소
+    const claudeConfig = configForTask(ctx.claudeConfig, "plan");
+    const modelName = claudeConfig.model;
+    let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+
+    logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+
+    // repoStructure가 budget 초과 시 축소
+    if (tokenAnalysis.exceedsLimit && ctx.repoStructure) {
+      logger.warn(`Prompt exceeds token limit (${tokenAnalysis.estimatedTokens} > ${tokenAnalysis.effectiveLimit}), truncating repository structure`);
+
+      const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3); // 30% of budget for repo structure
+      const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget);
+
+      // templateData를 업데이트하여 축소된 repo structure 사용
+      if (attempt === 1) {
+        templateData = {
+          ...baseData,
+          repo: {
+            ...baseData.repo,
+            structure: truncatedRepoStructure,
+          },
+        };
+      } else {
+        const baseTemplateData = templateData.context ? templateData : baseData;
+        templateData = {
+          ...templateData,
+          repo: {
+            ...baseTemplateData.repo,
+            structure: truncatedRepoStructure,
+          },
+        };
+      }
+
+      // 프롬프트 재생성
+      finalPrompt = renderTemplate(template, templateData);
+      if (ctx.modeHint) {
+        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+      }
+
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      logger.info(`After repo structure truncation: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+    }
+
+    // 최종 프롬프트가 여전히 초과하면 issue body 축소
+    if (tokenAnalysis.exceedsLimit && ctx.issue.body) {
+      logger.warn(`Prompt still exceeds token limit after repo truncation, truncating issue body`);
+
+      const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2); // 20% of budget for issue body
+      const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget);
+
+      // templateData를 업데이트하여 축소된 issue body 사용
+      if (attempt === 1) {
+        templateData = {
+          ...templateData,
+          issue: {
+            ...templateData.issue,
+            body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
+          },
+        };
+      } else {
+        templateData = {
+          ...templateData,
+          issue: {
+            ...templateData.issue,
+            body: truncatedIssueBody,
+          },
+        };
+      }
+
+      // 프롬프트 재생성
+      finalPrompt = renderTemplate(template, templateData);
+      if (ctx.modeHint) {
+        finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
+      }
+
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      logger.info(`After issue body truncation: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
+    }
+
+    // 최종 토큰 사용량 로깅
+    if (tokenAnalysis.exceedsLimit) {
+      logger.warn(`Final prompt still exceeds token limit: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%). Proceeding anyway.`);
+    }
+
+    logger.info(`Sending plan generation prompt (${finalPrompt.length} chars, ~${tokenAnalysis.estimatedTokens} tokens)${attempt > 1 ? ` [retry ${attempt}/${maxRetries}]` : ""}`);
 
     const result = await runClaude({
       prompt: finalPrompt,

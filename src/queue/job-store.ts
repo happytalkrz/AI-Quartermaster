@@ -353,8 +353,8 @@ export class JobStore extends EventEmitter {
           }
         }
       }
-    } catch (err) {
-      logger.error(`Error handling file event for ${jobId}: ${err}`);
+    } catch (err: unknown) {
+      logger.error(`Error handling file event for ${jobId}: ${getErrorMessage(err)}`);
     }
   }
 }

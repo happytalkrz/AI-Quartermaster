@@ -31,7 +31,7 @@ export async function createDraftPR(
   ghConfig: GhCliConfig,
   ctx: PrContext,
   options: { cwd: string; promptsDir: string; dryRun?: boolean }
-): Promise<PrCreateResult> {
+): Promise<PrCreateResult | null> {
   // Build PR title
   const title = renderTemplate(prConfig.titleTemplate, {
     issueNumber: String(ctx.issueNumber),
@@ -111,7 +111,8 @@ export async function createDraftPR(
   });
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create PR: ${result.stderr}`);
+    logger.warn(`Failed to create PR: ${result.stderr}`);
+    return null;
   }
 
   // gh pr create outputs the PR URL

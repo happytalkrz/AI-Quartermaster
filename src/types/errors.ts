@@ -1,4 +1,8 @@
+/**
+ * @deprecated Use getErrorMessage from src/utils/error-utils.ts instead
+ */
 export function errorMessage(err: unknown): string {
+  // Delegate to the new function to maintain compatibility
   return err instanceof Error ? err.message : String(err);
 }
 

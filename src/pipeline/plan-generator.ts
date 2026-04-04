@@ -266,7 +266,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       config: configForTask(ctx.claudeConfig, "plan"),
       jsonSchema: planSchema,
       enableAgents: false,
-      disallowedTools: ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
+      disallowedTools: ["Write", "Edit", "Bash"],
     });
 
     const duration = Date.now() - startTime;
@@ -275,7 +275,8 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
 
     if (!result.success) {
       errorCategory = "CLI_CRASH";
-      errorMessage = result.output.slice(0, 200);
+      errorMessage = result.output.slice(0, 500);
+      logger.error(`Plan generation failed (attempt ${attempt}): ${errorMessage}`);
 
       // 히스토리 기록
       retryContext.generationHistory.push({
@@ -318,6 +319,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     } catch (parseError: unknown) {
       errorCategory = "UNKNOWN";
       errorMessage = getErrorMessage(parseError);
+      logger.error(`Plan JSON parsing failed (attempt ${attempt}): ${errorMessage}. Claude output: ${result.output.slice(0, 500)}`);
 
       // 히스토리 기록
       retryContext.generationHistory.push({

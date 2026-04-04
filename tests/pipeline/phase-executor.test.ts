@@ -263,4 +263,139 @@ describe("executePhase", () => {
     // Ensure no unescaped closing tags remain in the content
     expect(issueBody).toMatch(/<USER_INPUT>[\s\S]*<\/USER_INPUT>$/);
   });
+
+  it("does not include plan.phases in renderTemplate call", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    await executePhase(makeCtx());
+
+    // Verify that renderTemplate was called without plan.phases
+    expect(mockRenderTemplate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        plan: expect.not.objectContaining({
+          phases: expect.anything()
+        })
+      })
+    );
+  });
+
+  it("includes correct nextPhase information when not the last phase", async () => {
+    const multiPhaseCtx = makeCtx({
+      plan: {
+        issueNumber: 42,
+        title: "Multi-phase plan",
+        problemDefinition: "Complex problem",
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [
+          {
+            index: 0,
+            name: "Phase One",
+            description: "First phase",
+            targetFiles: ["src/foo.ts"],
+            commitStrategy: "atomic",
+            verificationCriteria: [],
+            dependsOn: [],
+          },
+          {
+            index: 1,
+            name: "Phase Two",
+            description: "Second phase",
+            targetFiles: ["src/bar.ts"],
+            commitStrategy: "atomic",
+            verificationCriteria: [],
+            dependsOn: [],
+          },
+        ],
+        verificationPoints: [],
+        stopConditions: [],
+      },
+      phase: {
+        index: 0,
+        name: "Phase One",
+        description: "First phase",
+        targetFiles: ["src/foo.ts"],
+        commitStrategy: "atomic",
+        verificationCriteria: [],
+        dependsOn: [],
+      },
+    });
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    await executePhase(multiPhaseCtx);
+
+    // Verify that renderTemplate includes only next phase info
+    expect(mockRenderTemplate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        plan: expect.objectContaining({
+          nextPhase: "Next: Phase 2 - Phase Two"
+        })
+      })
+    );
+  });
+
+  it("includes final phase message when executing the last phase", async () => {
+    const finalPhaseCtx = makeCtx({
+      plan: {
+        issueNumber: 42,
+        title: "Single phase plan",
+        problemDefinition: "Simple problem",
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [
+          {
+            index: 0,
+            name: "Only Phase",
+            description: "The only phase",
+            targetFiles: ["src/foo.ts"],
+            commitStrategy: "atomic",
+            verificationCriteria: [],
+            dependsOn: [],
+          },
+        ],
+        verificationPoints: [],
+        stopConditions: [],
+      },
+      phase: {
+        index: 0,
+        name: "Only Phase",
+        description: "The only phase",
+        targetFiles: ["src/foo.ts"],
+        commitStrategy: "atomic",
+        verificationCriteria: [],
+        dependsOn: [],
+      },
+    });
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    await executePhase(finalPhaseCtx);
+
+    // Verify that renderTemplate includes final phase message
+    expect(mockRenderTemplate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        plan: expect.objectContaining({
+          nextPhase: "This is the final phase"
+        })
+      })
+    );
+  });
 });

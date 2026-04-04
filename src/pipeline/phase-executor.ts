@@ -32,6 +32,7 @@ export interface PhaseExecutorContext {
   pastFailures?: string;
   jobLogger?: JobLogger;
   locale?: string;
+  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
@@ -40,9 +41,15 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
   let claudeResult: ClaudeRunResult | undefined;
 
   try {
-    // 1. Load and render phase implementation template
-    const templatePath = resolve(ctx.promptsDir, "phase-implementation.md");
-    const template = loadTemplate(templatePath);
+    // 1. Load and render phase implementation template using cached layers if available
+    let template: string;
+    if (ctx.cachedLayers) {
+      logger.info(`Using cached static layers for phase ${ctx.phase.index + 1} (cache key: ${ctx.cachedLayers.cacheKey})`);
+      template = ctx.cachedLayers.phaseTemplate;
+    } else {
+      const templatePath = resolve(ctx.promptsDir, "phase-implementation.md");
+      template = loadTemplate(templatePath);
+    }
 
     const previousSummary = ctx.previousResults
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)

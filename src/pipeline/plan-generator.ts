@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate, TemplateVariables } from "../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
@@ -10,7 +10,7 @@ import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResul
 
 export interface PlanTemplateBaseData {
   issue: {
-    number: string;
+    number: number;
     title: string;
     body: string;
     labels: string[];
@@ -25,7 +25,7 @@ export interface PlanTemplateBaseData {
     work: string;
   };
   config: {
-    maxPhases: string;
+    maxPhases: number;
     sensitivePaths: string;
   };
 }
@@ -65,6 +65,7 @@ export interface PlanGeneratorContext {
   maxPhases?: number;
   sensitivePaths?: string;
   locale?: string;
+  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
@@ -108,7 +109,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     required: ["mode", "issueNumber", "title", "problemDefinition", "phases"],
   });
 
-  const maxPhases = String(ctx.maxPhases ?? 10);
+  const maxPhases = ctx.maxPhases ?? 10;
   const sensitivePaths = ctx.sensitivePaths ?? "";
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -118,7 +119,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     // 기본 데이터 구조
     const baseData = {
       issue: {
-        number: String(ctx.issue.number),
+        number: ctx.issue.number,
         title: ctx.issue.title,
         body: attempt === 1 ? `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>` : ctx.issue.body,
         labels: ctx.issue.labels,
@@ -132,12 +133,28 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       config: { maxPhases, sensitivePaths },
     };
 
-    // 항상 원본 템플릿을 기본으로 사용
-    const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    // 캐시된 레이어 활용 또는 원본 템플릿 로드
+    let finalPrompt: string;
     let templateData = baseData;
+    let template: string;
 
-    const template = loadTemplate(templatePath);
-    let finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+    if (ctx.cachedLayers) {
+      // 캐시된 정적 레이어 사용하여 동적 부분만 렌더링
+      logger.info(`Using cached static layers (cache key: ${ctx.cachedLayers.cacheKey})`);
+      const dynamicSection = buildDynamicSection({
+        issue: baseData.issue,
+        repo: baseData.repo,
+        branch: baseData.branch,
+        config: baseData.config,
+      });
+      finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
+      template = "";
+    } else {
+      // 기존 방식: 원본 템플릿 로드
+      const templatePath = resolve(ctx.promptsDir, "plan-generation.md");
+      template = loadTemplate(templatePath);
+      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+    }
 
     // retry 시에는 retry 섹션을 append
     if (attempt > 1) {
@@ -180,7 +197,21 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     // Helper to update and re-render
     const updateAndRerender = (updateFn: (data: PlanTemplateData) => PlanTemplateData, stage: string) => {
       templateData = updateFn(templateData);
-      finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+
+      if (ctx.cachedLayers) {
+        // 캐시된 레이어 사용 시 동적 섹션 재구성
+        const dynamicSection = buildDynamicSection({
+          issue: templateData.issue,
+          repo: templateData.repo,
+          branch: templateData.branch,
+          config: templateData.config,
+        });
+        finalPrompt = ctx.cachedLayers.staticContent + "\n\n" + dynamicSection;
+      } else {
+        // 기존 방식
+        finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
+      }
+
       if (ctx.modeHint) {
         finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
       }

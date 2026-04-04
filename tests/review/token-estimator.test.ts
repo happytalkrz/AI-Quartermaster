@@ -13,6 +13,7 @@ import {
   SAFETY_MARGIN,
   CHARS_PER_TOKEN,
   CHARS_PER_TOKEN_BY_TYPE,
+  CHARS_PER_TOKEN_BY_LOCALE,
 } from "../../src/review/token-estimator.js";
 
 describe("token-estimator", () => {
@@ -69,6 +70,56 @@ describe("token-estimator", () => {
       expect(autoTokens).toBe(codeTokens);
       // Code should have more tokens than natural
       expect(codeTokens).toBeGreaterThan(naturalTokens);
+    });
+
+    it("should support locale parameter for Korean text", () => {
+      const koreanText = "안녕하세요 반갑습니다"; // 10 characters
+
+      const englishTokens = estimateTokenCount(koreanText, 'natural', 'en');
+      const koreanTokens = estimateTokenCount(koreanText, 'natural', 'ko');
+
+      // Korean should have more tokens due to denser ratio (2.4 vs 4.0 chars/token)
+      expect(koreanTokens).toBeGreaterThan(englishTokens);
+
+      // Verify specific calculations
+      expect(englishTokens).toBe(Math.ceil(10 / 4.0)); // 3 tokens
+      expect(koreanTokens).toBe(Math.ceil(10 / 2.4)); // 5 tokens
+    });
+
+    it("should support locale parameter for Korean code", () => {
+      const koreanCode = "함수이름() { return 값; }"; // 20 characters
+
+      const englishTokens = estimateTokenCount(koreanCode, 'code', 'en');
+      const koreanTokens = estimateTokenCount(koreanCode, 'code', 'ko');
+
+      // Korean should have more tokens due to denser ratio (2.0 vs 3.2 chars/token)
+      expect(koreanTokens).toBeGreaterThan(englishTokens);
+
+      // Verify specific calculations
+      expect(englishTokens).toBe(Math.ceil(20 / 3.2)); // 7 tokens
+      expect(koreanTokens).toBe(Math.ceil(20 / 2.0)); // 10 tokens
+    });
+
+    it("should default to English locale when not specified", () => {
+      const text = "Hello world"; // 11 characters
+
+      const defaultTokens = estimateTokenCount(text, 'natural');
+      const explicitEnglishTokens = estimateTokenCount(text, 'natural', 'en');
+
+      // Should be identical
+      expect(defaultTokens).toBe(explicitEnglishTokens);
+      expect(defaultTokens).toBe(Math.ceil(11 / 4.0)); // 3 tokens
+    });
+
+    it("should fallback to English for unsupported locales", () => {
+      const text = "Test text"; // 9 characters
+
+      const unknownLocaleTokens = estimateTokenCount(text, 'natural', 'fr');
+      const englishTokens = estimateTokenCount(text, 'natural', 'en');
+
+      // Should fallback to English ratios
+      expect(unknownLocaleTokens).toBe(englishTokens);
+      expect(unknownLocaleTokens).toBe(Math.ceil(9 / 4.0)); // 3 tokens
     });
   });
 
@@ -175,6 +226,24 @@ describe("token-estimator", () => {
       expect(analysis.exceedsLimit).toBe(false);
       expect(analysis.usagePercentage).toBeCloseTo(15.625); // 25K / 160K
     });
+
+    it("should support locale parameter for token analysis", () => {
+      const koreanText = "안녕하세요 반갑습니다"; // 10 characters
+
+      const englishAnalysis = analyzeTokenUsage(koreanText, "claude-opus-4-5", "en");
+      const koreanAnalysis = analyzeTokenUsage(koreanText, "claude-opus-4-5", "ko");
+
+      // Korean should estimate more tokens
+      expect(koreanAnalysis.estimatedTokens).toBeGreaterThan(englishAnalysis.estimatedTokens);
+
+      // Verify specific calculations
+      expect(englishAnalysis.estimatedTokens).toBe(3); // Math.ceil(10 / 4.0)
+      expect(koreanAnalysis.estimatedTokens).toBe(5); // Math.ceil(10 / 2.4)
+
+      // Both should have same model limits
+      expect(englishAnalysis.modelLimit).toBe(koreanAnalysis.modelLimit);
+      expect(englishAnalysis.effectiveLimit).toBe(koreanAnalysis.effectiveLimit);
+    });
   });
 
   describe("constants", () => {
@@ -255,6 +324,20 @@ describe("token-estimator", () => {
       const result = truncateToTokenBudget(text, 5);
       expect(result).toContain("...");
       expect(estimateTokenCount(result)).toBeLessThanOrEqual(5);
+    });
+
+    it("should support locale parameter for truncation", () => {
+      const koreanText = "첫 번째 문장입니다. 두 번째 문장입니다. 세 번째 문장입니다."; // ~35 characters
+
+      const englishTruncated = truncateToTokenBudget(koreanText, 5, "en");
+      const koreanTruncated = truncateToTokenBudget(koreanText, 5, "ko");
+
+      // With Korean locale (denser tokens), we should truncate more aggressively
+      expect(koreanTruncated.length).toBeLessThanOrEqual(englishTruncated.length);
+
+      // Both should be shorter than original
+      expect(englishTruncated.length).toBeLessThan(koreanText.length);
+      expect(koreanTruncated.length).toBeLessThan(koreanText.length);
     });
   });
 
@@ -901,6 +984,50 @@ export class APIClient {
       // Should detect as code and use code ratio
       expect(autoTokens).toBe(codeTokens);
       expect(codeTokens).toBe(Math.ceil(largeCode.length / CHARS_PER_TOKEN_BY_TYPE.code));
+    });
+  });
+
+  describe("locale support", () => {
+    it("should have locale-specific character ratios defined", () => {
+      expect(CHARS_PER_TOKEN_BY_LOCALE.en.natural).toBe(4.0);
+      expect(CHARS_PER_TOKEN_BY_LOCALE.en.code).toBe(3.2);
+      expect(CHARS_PER_TOKEN_BY_LOCALE.ko.natural).toBe(2.4);
+      expect(CHARS_PER_TOKEN_BY_LOCALE.ko.code).toBe(2.0);
+    });
+
+    it("should demonstrate significant difference between English and Korean token estimation", () => {
+      const mixedText = "Hello 안녕하세요 World 세계"; // 20 characters total
+
+      const englishEstimate = estimateTokenCount(mixedText, 'natural', 'en');
+      const koreanEstimate = estimateTokenCount(mixedText, 'natural', 'ko');
+
+      // Korean should estimate significantly more tokens
+      expect(koreanEstimate).toBeGreaterThan(englishEstimate);
+
+      // Verify math: 20 chars
+      expect(englishEstimate).toBe(Math.ceil(20 / 4.0)); // 5 tokens
+      expect(koreanEstimate).toBe(Math.ceil(20 / 2.4)); // 9 tokens
+    });
+
+    it("should handle locale consistently across all functions", () => {
+      const koreanText = "한국어 텍스트 예제입니다"; // 13 characters
+
+      // All functions should use same base estimation
+      const baseTokens = estimateTokenCount(koreanText, 'natural', 'ko');
+      const analysisTokens = analyzeTokenUsage(koreanText, 'claude-opus-4-5', 'ko').estimatedTokens;
+
+      expect(baseTokens).toBe(analysisTokens);
+      expect(baseTokens).toBe(Math.ceil(13 / 2.4)); // 6 tokens
+    });
+
+    it("should preserve backwards compatibility when locale not specified", () => {
+      const text = "Sample text for testing"; // 23 characters
+
+      const oldWay = estimateTokenCount(text);
+      const newWayDefault = estimateTokenCount(text, 'auto', 'en');
+
+      // Should produce identical results
+      expect(oldWay).toBe(newWayDefault);
     });
   });
 

@@ -191,16 +191,51 @@ index 123..456 100644
       expect(isCodeContent(diffContent)).toBe(true);
     });
 
+    it("should detect realistic GitHub diff as code", () => {
+      const gitHubDiff = `diff --git a/src/review/token-estimator.ts b/src/review/token-estimator.ts
+index abc123..def456 100644
+--- a/src/review/token-estimator.ts
++++ b/src/review/token-estimator.ts
+@@ -104,7 +104,12 @@ export function estimateTokenCount(text: string, contentType: ContentType = 'au
+   if (!text || text.length === 0) {
+     return 0;
+   }
+-  return Math.ceil(text.length / CHARS_PER_TOKEN);
++
++  const charsPerToken = contentType === 'auto'
++    ? (isCodeContent(text) ? CHARS_PER_TOKEN_BY_TYPE.code : CHARS_PER_TOKEN_BY_TYPE.natural)
++    : CHARS_PER_TOKEN_BY_TYPE[contentType];
++
++  return Math.ceil(text.length / charsPerToken);
+ }`;
+      expect(isCodeContent(gitHubDiff)).toBe(true);
+    });
+
+    it("should detect unified diff format as code", () => {
+      const unifiedDiff = `--- original.ts	2024-01-01 10:00:00.000000000 +0000
++++ modified.ts	2024-01-01 10:00:01.000000000 +0000
+@@ -10,6 +10,7 @@
+   constructor(private config: Config) {
+     this.client = new APIClient(config.apiUrl);
++    this.retries = config.retries || 3;
+   }
+
+   async process(data: any) {`;
+      expect(isCodeContent(unifiedDiff)).toBe(true);
+    });
+
     it("should detect import/export statements as code", () => {
       expect(isCodeContent("import { test } from 'vitest';")).toBe(true);
       expect(isCodeContent("export const value = 42;")).toBe(true);
       expect(isCodeContent("const fs = require('fs');")).toBe(true);
+      expect(isCodeContent("from typing import Dict, List")).toBe(true);
     });
 
     it("should detect function declarations as code", () => {
       expect(isCodeContent("function test() { return true; }")).toBe(true);
       expect(isCodeContent("const func = () => {};")).toBe(true);
       expect(isCodeContent("let handler = function() {};")).toBe(true);
+      expect(isCodeContent("async function fetchData() {}")).toBe(true);
     });
 
     it("should detect type declarations as code", () => {
@@ -214,6 +249,53 @@ index 123..456 100644
       expect(isCodeContent("if (condition) { return true; }")).toBe(true);
       expect(isCodeContent("for (let i = 0; i < 10; i++) {}")).toBe(true);
       expect(isCodeContent("try { test(); } catch (error) {}")).toBe(true);
+      expect(isCodeContent("while (running) { process(); }")).toBe(true);
+      expect(isCodeContent("switch (type) { case 'A': break; }")).toBe(true);
+    });
+
+    it("should detect real TypeScript code as code", () => {
+      const typeScriptCode = `export interface TokenUsageInfo {
+  /** Estimated token count */
+  estimatedTokens: number;
+  /** Model's base token limit */
+  modelLimit: number;
+  /** Whether the text exceeds the effective limit */
+  exceedsLimit: boolean;
+}
+
+export function analyzeTokenUsage(text: string, modelName: string): TokenUsageInfo {
+  const estimatedTokens = estimateTokenCount(text);
+  const modelLimit = getTokenLimit(modelName);
+  return {
+    estimatedTokens,
+    modelLimit,
+    exceedsLimit: estimatedTokens > modelLimit,
+  };
+}`;
+      expect(isCodeContent(typeScriptCode)).toBe(true);
+    });
+
+    it("should detect JSON configuration as code", () => {
+      const jsonConfig = `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "strict": true,
+    "esModuleInterop": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}`;
+      expect(isCodeContent(jsonConfig)).toBe(true);
+    });
+
+    it("should detect code with comments", () => {
+      const codeWithComments = `// Token estimation utilities
+function estimateTokens(text) {
+  /* Calculate based on character count */
+  return Math.ceil(text.length / 4);
+}`;
+      expect(isCodeContent(codeWithComments)).toBe(true);
     });
 
     it("should not detect natural language as code", () => {
@@ -222,14 +304,88 @@ index 123..456 100644
       expect(isCodeContent("A longer paragraph with multiple sentences. It should not be detected as code.")).toBe(false);
     });
 
+    it("should not detect GitHub issue content as code", () => {
+      const issueContent = `## Bug Report
+
+### Description
+The token estimator is currently underestimating token count for code content.
+
+### Steps to Reproduce
+1. Create a diff with TypeScript code
+2. Run the estimateTokenCount function
+3. Compare with actual Claude API token usage
+
+### Expected Behavior
+Token estimation should be more accurate for code vs natural language.
+
+### Additional Context
+- Code content typically has more symbols and shorter tokens
+- Natural language has longer, more predictable tokens
+- Current 4 chars/token ratio works better for natural language`;
+      expect(isCodeContent(issueContent)).toBe(false);
+    });
+
+    it("should not detect markdown documentation as code", () => {
+      const markdownDoc = `# Token Estimator
+
+This module provides utilities for estimating token usage in Claude models.
+
+## Features
+
+- **Accurate estimation**: Uses different ratios for code vs natural language
+- **Model support**: Works with all Claude 4.x models
+- **Safety margins**: Built-in 20% safety buffer
+
+## Usage
+
+Call the \`estimateTokenCount\` function with your text:
+
+\`\`\`typescript
+const tokens = estimateTokenCount(text, 'auto');
+\`\`\`
+
+The function will automatically detect content type and apply appropriate estimation.`;
+      expect(isCodeContent(markdownDoc)).toBe(false);
+    });
+
     it("should not detect special characters alone as code", () => {
       expect(isCodeContent("Hello\n\tWorld!@#$%^&*()")).toBe(false);
       expect(isCodeContent("Price: $19.99 (tax included)")).toBe(false);
+      expect(isCodeContent("Email: user@example.com")).toBe(false);
     });
 
-    it("should handle empty strings", () => {
+    it("should handle mixed content correctly", () => {
+      const mixedContent = `Here's a code example:
+
+\`\`\`javascript
+function test() {
+  return true;
+}
+\`\`\`
+
+This function demonstrates basic JavaScript syntax.`;
+      // This should be detected as natural language since it's mostly explanation
+      expect(isCodeContent(mixedContent)).toBe(false);
+    });
+
+    it("should handle edge cases", () => {
       expect(isCodeContent("")).toBe(false);
       expect(isCodeContent("   ")).toBe(false);
+      expect(isCodeContent("\n\t")).toBe(false);
+      expect(isCodeContent("{}")).toBe(false); // Too short to be meaningful code
+      expect(isCodeContent("()")).toBe(false);
+      expect(isCodeContent("[];")).toBe(false);
+    });
+
+    it("should detect code with high structural character density", () => {
+      const structuralCode = `{
+  config: {
+    api: { url: 'https://api.example.com', timeout: 5000 },
+    db: { host: 'localhost', port: 3306 }
+  },
+  handlers: [processA(), processB(), processC()]
+}`;
+      expect(isCodeContent(structuralCode)).toBe(true);
     });
   });
 

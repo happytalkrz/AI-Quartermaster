@@ -318,6 +318,88 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 
 ---
 
+## Version API
+
+### GET /api/version
+시스템 버전 정보와 업데이트 상태를 조회합니다.
+
+**응답:**
+```json
+{
+  "currentVersion": "1.0.0",
+  "currentHash": "a1b2c3d4",
+  "remoteHash": "e5f6g7h8",
+  "hasUpdates": true,
+  "packageLockChanged": false
+}
+```
+
+**에러 응답:**
+```json
+{
+  "currentVersion": "1.0.0",
+  "currentHash": "unknown",
+  "remoteHash": "unknown", 
+  "hasUpdates": false,
+  "packageLockChanged": false,
+  "error": "업데이트 확인에 실패했습니다"
+}
+```
+
+**필드 설명:**
+- `currentVersion` - 현재 설치된 버전
+- `currentHash` - 현재 Git 커밋 해시 (처음 8자리)
+- `remoteHash` - 원격 저장소 최신 커밋 해시 (처음 8자리)
+- `hasUpdates` - 업데이트 가능 여부
+- `packageLockChanged` - 의존성 변경 여부
+- `error` - 업데이트 확인 실패 시 에러 메시지
+
+### POST /api/update
+시스템 자체 업데이트를 수행합니다.
+
+**응답 (성공):**
+```json
+{
+  "message": "업데이트가 완료되었습니다",
+  "updated": true,
+  "needsRestart": true
+}
+```
+
+**응답 (최신 버전):**
+```json
+{
+  "message": "이미 최신 버전입니다",
+  "updated": false,
+  "needsRestart": false
+}
+```
+
+**에러:**
+```json
+{
+  "error": "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
+  "runningJobs": [
+    {
+      "id": "job-uuid",
+      "issueNumber": 123,
+      "repo": "owner/repo",
+      "status": "running"
+    }
+  ]
+}
+```
+
+- `409` - 진행 중인 작업이 있음 (업데이트 차단)
+- `500` - 업데이트 수행 중 오류
+
+**필드 설명:**
+- `updated` - 실제로 업데이트가 수행되었는지 여부
+- `needsRestart` - 시스템 재시작이 필요한지 여부
+- `runningJobs` - 진행 중인 작업 목록 (409 에러 시)
+
+---
+
 ## Server-Sent Events (SSE)
 
 ### GET /api/events

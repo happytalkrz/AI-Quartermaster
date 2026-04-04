@@ -4,14 +4,24 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
+vi.mock("../../src/github/github-cache.js", () => ({
+  getCached: vi.fn(),
+  setCached: vi.fn(),
+}));
+
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
 import { runCli } from "../../src/utils/cli-runner.js";
+import { getCached, setCached } from "../../src/github/github-cache.js";
 
 const mockRunCli = vi.mocked(runCli);
+const mockGetCached = vi.mocked(getCached);
+const mockSetCached = vi.mocked(setCached);
 
 describe("fetchIssue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 기본적으로 캐시 미스 상태로 설정
+    mockGetCached.mockReturnValue(undefined);
   });
 
   it("should fetch issue successfully with basic options", async () => {
@@ -318,5 +328,136 @@ describe("fetchIssue", () => {
       ["issue", "view", "999999", "--repo", "test/repo", "--json", "number,title,body,labels"],
       { timeout: undefined }
     );
+  });
+
+  describe("caching behavior", () => {
+    it("should return cached result without calling gh CLI on cache hit", async () => {
+      const cachedIssue = {
+        number: 123,
+        title: "Cached issue",
+        body: "This is from cache",
+        labels: ["cached", "test"]
+      };
+
+      // Mock cache hit
+      mockGetCached.mockReturnValue(cachedIssue);
+
+      const result = await fetchIssue("test/repo", 123);
+
+      expect(result).toEqual(cachedIssue);
+      expect(mockGetCached).toHaveBeenCalledWith("issue:test/repo:123");
+      expect(mockRunCli).not.toHaveBeenCalled();
+      expect(mockSetCached).not.toHaveBeenCalled();
+    });
+
+    it("should call gh CLI and cache result on cache miss", async () => {
+      const mockResponse = {
+        number: 456,
+        title: "Fresh issue",
+        body: "This is fresh from API",
+        labels: [
+          { name: "fresh" },
+          { name: "api" }
+        ]
+      };
+
+      const expectedIssue = {
+        number: 456,
+        title: "Fresh issue",
+        body: "This is fresh from API",
+        labels: ["fresh", "api"]
+      };
+
+      // Mock cache miss (already set in beforeEach)
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      const result = await fetchIssue("test/repo", 456);
+
+      expect(result).toEqual(expectedIssue);
+      expect(mockGetCached).toHaveBeenCalledWith("issue:test/repo:456");
+      expect(mockRunCli).toHaveBeenCalledWith(
+        "gh",
+        ["issue", "view", "456", "--repo", "test/repo", "--json", "number,title,body,labels"],
+        { timeout: undefined }
+      );
+      expect(mockSetCached).toHaveBeenCalledWith("issue:test/repo:456", expectedIssue);
+    });
+
+    it("should generate correct cache key format", async () => {
+      const mockResponse = {
+        number: 789,
+        title: "Cache key test",
+        body: "Testing cache key format",
+        labels: []
+      };
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await fetchIssue("owner/repository-name", 789);
+
+      expect(mockGetCached).toHaveBeenCalledWith("issue:owner/repository-name:789");
+      expect(mockSetCached).toHaveBeenCalledWith(
+        "issue:owner/repository-name:789",
+        expect.objectContaining({ number: 789 })
+      );
+    });
+
+    it("should cache different issues separately", async () => {
+      const mockResponse1 = {
+        number: 100,
+        title: "First issue",
+        body: "First issue body",
+        labels: ["first"]
+      };
+
+      const mockResponse2 = {
+        number: 200,
+        title: "Second issue",
+        body: "Second issue body",
+        labels: ["second"]
+      };
+
+      mockRunCli
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify(mockResponse1),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify(mockResponse2),
+          stderr: "",
+          exitCode: 0
+        });
+
+      await fetchIssue("test/repo", 100);
+      await fetchIssue("test/repo", 200);
+
+      expect(mockGetCached).toHaveBeenCalledWith("issue:test/repo:100");
+      expect(mockGetCached).toHaveBeenCalledWith("issue:test/repo:200");
+      expect(mockSetCached).toHaveBeenCalledWith("issue:test/repo:100", expect.objectContaining({ number: 100 }));
+      expect(mockSetCached).toHaveBeenCalledWith("issue:test/repo:200", expect.objectContaining({ number: 200 }));
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not cache when gh CLI fails", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "",
+        stderr: "Issue not found",
+        exitCode: 1
+      });
+
+      await expect(fetchIssue("test/repo", 404)).rejects.toThrow();
+
+      expect(mockGetCached).toHaveBeenCalledWith("issue:test/repo:404");
+      expect(mockSetCached).not.toHaveBeenCalled();
+    });
   });
 });

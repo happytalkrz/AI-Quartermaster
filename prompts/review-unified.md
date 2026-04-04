@@ -46,6 +46,10 @@
 - 불필요한 복잡성이 없는가?
 - 성능 문제가 있는가?
 - 기존 코드 패턴과 일관성 있는가?
+- **[필수 위반 체크]** src/ 내 `any` 타입 추가 → FAIL (severity: error)
+- **[필수 위반 체크]** `catch {}` 또는 `catch (e: any)` → FAIL (severity: error)
+- **[필수 위반 체크]** import에 `.js` 확장자 누락 → FAIL (severity: error)
+- **[필수 위반 체크]** config 필드 추가인데 3곳 미동기화 → FAIL (severity: error)
 
 ### 3. 단순화 가능성 (Simplification Opportunities)
 - 불필요한 복잡성이 있는가?

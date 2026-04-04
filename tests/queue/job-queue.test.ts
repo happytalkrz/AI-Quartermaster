@@ -1004,4 +1004,141 @@ describe("JobQueue", () => {
       expect(maxRunning).toBe(3); // max was still 3
     });
   });
+
+  describe("Project-specific concurrency", () => {
+    it("should respect project-specific concurrency limits", async () => {
+      const runningByRepo: Record<string, number> = {};
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        const repo = job.repo;
+        runningByRepo[repo] = (runningByRepo[repo] || 0) + 1;
+
+        // Hold for a while to test concurrency
+        await new Promise(r => setTimeout(r, 100));
+
+        runningByRepo[repo]--;
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // Set project-specific concurrency: repo1 = 1, repo2 = 2
+      const projectConcurrency = {
+        "test/repo1": 1,
+        "test/repo2": 2
+      };
+
+      const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+
+      // Enqueue multiple jobs for each repo
+      queue.enqueue(1, "test/repo1");
+      queue.enqueue(2, "test/repo1");
+      queue.enqueue(3, "test/repo2");
+      queue.enqueue(4, "test/repo2");
+      queue.enqueue(5, "test/repo2");
+
+      // Wait for jobs to start
+      await new Promise(r => setTimeout(r, 50));
+
+      // Check that project limits are respected
+      expect(runningByRepo["test/repo1"]).toBeLessThanOrEqual(1);
+      expect(runningByRepo["test/repo2"]).toBeLessThanOrEqual(2);
+
+      // Wait for completion
+      await new Promise(r => setTimeout(r, 200));
+
+      expect(handler).toHaveBeenCalledTimes(5);
+    });
+
+    it("should work without project-specific limits (backward compatibility)", async () => {
+      let maxRunning = 0;
+      let currentRunning = 0;
+
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        currentRunning++;
+        maxRunning = Math.max(maxRunning, currentRunning);
+        await new Promise(r => setTimeout(r, 50));
+        currentRunning--;
+        return { prUrl: "https://test-pr" };
+      });
+
+      // No project concurrency specified - should use global limit
+      const queue = new JobQueue(store, 2, handler);
+
+      queue.enqueue(1, "test/repo1");
+      queue.enqueue(2, "test/repo1");
+      queue.enqueue(3, "test/repo2");
+
+      await new Promise(r => setTimeout(r, 200));
+
+      expect(maxRunning).toBeLessThanOrEqual(2); // global limit
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+
+    it("should allow different repos to run independently", async () => {
+      const repoRunning = new Map<string, number>();
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        const current = repoRunning.get(job.repo) || 0;
+        repoRunning.set(job.repo, current + 1);
+
+        await new Promise(r => setTimeout(r, 100));
+
+        repoRunning.set(job.repo, (repoRunning.get(job.repo) || 0) - 1);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // Set limits: repo1 = 1, repo3 = 1, no limit for repo2
+      const projectConcurrency = {
+        "test/repo1": 1,
+        "test/repo3": 1
+      };
+
+      const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+
+      // Jobs should start simultaneously for different repos
+      queue.enqueue(1, "test/repo1");
+      queue.enqueue(2, "test/repo2");
+      queue.enqueue(3, "test/repo3");
+
+      await new Promise(r => setTimeout(r, 50));
+
+      // All three repos should have running jobs simultaneously
+      expect(queue.getStatus().running).toBe(3);
+
+      await new Promise(r => setTimeout(r, 200));
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+
+    it("should queue jobs when project limit is reached", async () => {
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        await new Promise(r => setTimeout(r, 100));
+        return { prUrl: "https://test-pr" };
+      });
+
+      const projectConcurrency = { "test/repo": 1 };
+      const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+
+      // Enqueue 3 jobs for same repo with limit 1
+      const job1 = queue.enqueue(1, "test/repo");
+      const job2 = queue.enqueue(2, "test/repo");
+      const job3 = queue.enqueue(3, "test/repo");
+
+      expect(job1).toBeDefined();
+      expect(job2).toBeDefined();
+      expect(job3).toBeDefined();
+
+      // Initially only 1 should run
+      await new Promise(r => setTimeout(r, 50));
+      expect(queue.getStatus().running).toBe(1);
+      expect(queue.getStatus().pending).toBe(2);
+
+      // After first completes, next should start
+      await new Promise(r => setTimeout(r, 100));
+      expect(queue.getStatus().running).toBe(1);
+      expect(queue.getStatus().pending).toBe(1);
+
+      // Wait for all to complete
+      await new Promise(r => setTimeout(r, 200));
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+  });
 });

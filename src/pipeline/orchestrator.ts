@@ -1,5 +1,6 @@
 import { handlePipelineFailure } from "./pipeline-publish.js";
 import { initializePipelineState, transitionState } from "./pipeline-context.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
@@ -11,6 +12,7 @@ import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
+import { clearCache } from "../github/github-cache.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
@@ -115,9 +117,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       totalCostUsd: finalResult.totalCostUsd
     };
 
-  } catch (error) {
+  } catch (error: unknown) {
     // Check if this is a skipped issue due to feasibility check
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
 
     if (isFeasibilitySkip) {
@@ -185,5 +187,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
 
     return { success: false, state: "FAILED", error: finalErrorMessage, report };
+  } finally {
+    // 파이프라인 종료 시 캐시 정리 - 성공/실패 모두 메모리 누수 방지
+    clearCache();
   }
 }

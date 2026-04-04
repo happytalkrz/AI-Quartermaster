@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>KINETIC_COMMAND | Pipeline Orchestrator</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error-container": "#93000a",
+                        "secondary-fixed": "#dde3ec",
+                        "on-secondary-container": "#b0b5be",
+                        "surface-container-lowest": "#0a0e14",
+                        "on-primary-container": "#003a6b",
+                        "inverse-primary": "#0060aa",
+                        "surface-bright": "#353940",
+                        "on-secondary": "#2b3138",
+                        "inverse-on-surface": "#2d3137",
+                        "outline-variant": "#414752",
+                        "on-background": "#dfe2eb",
+                        "surface-dim": "#10141a",
+                        "surface-container-low": "#181c22",
+                        "primary-container": "#58a6ff",
+                        "on-surface": "#dfe2eb",
+                        "on-error": "#690005",
+                        "surface-variant": "#31353c",
+                        "primary": "#a2c9ff",
+                        "tertiary-fixed": "#ffddaf",
+                        "on-primary-fixed": "#001c38",
+                        "tertiary-container": "#da9600",
+                        "surface-container-high": "#262a31",
+                        "secondary-container": "#41474f",
+                        "on-primary-fixed-variant": "#004882",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "on-error-container": "#ffdad6",
+                        "outline": "#8b919d",
+                        "primary-fixed": "#d3e4ff",
+                        "on-primary": "#00315c",
+                        "on-tertiary-fixed": "#281800",
+                        "on-tertiary-container": "#4f3400",
+                        "background": "#10141a",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "tertiary": "#ffba42",
+                        "on-secondary-fixed": "#161c23",
+                        "on-tertiary": "#432c00",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "on-surface-variant": "#c0c7d4",
+                        "secondary": "#c1c7d0",
+                        "error": "#ffb4ab",
+                        "surface": "#10141a",
+                        "inverse-surface": "#dfe2eb",
+                        "surface-container": "#1c2026",
+                        "surface-tint": "#a2c9ff",
+                        "surface-container-highest": "#31353c",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "primary-fixed-dim": "#a2c9ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { background-color: #10141a; color: #dfe2eb; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .pulse-dot { position: relative; width: 8px; height: 8px; background-color: #58a6ff; border-radius: 50%; }
+        .pulse-dot::after { content: ''; position: absolute; width: 100%; height: 100%; top: 0; left: 0; background: #58a6ff; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(3); opacity: 0; } }
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #10141a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #31353c; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #414752; }
+    </style>
+</head>
+<body class="font-body selection:bg-primary-container selection:text-on-primary-container overflow-hidden h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-[#10141a] dark:bg-[#10141a] text-[#a2c9ff] font-['Space_Grotesk'] tracking-tight flex justify-between items-center px-6 h-16 w-full shrink-0 z-50">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-[#dfe2eb] uppercase">KINETIC_COMMAND</span>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-[#dfe2eb]/60 hover:bg-[#31353c] hover:text-[#dfe2eb] transition-colors duration-200 ease-in-out px-2 py-1" href="#">Telemetry</a>
+<a class="text-[#a2c9ff] border-b-2 border-[#a2c9ff] pb-1 duration-200 ease-in-out px-2 py-1" href="#">Orchestrator</a>
+<a class="text-[#dfe2eb]/60 hover:bg-[#31353c] hover:text-[#dfe2eb] transition-colors duration-200 ease-in-out px-2 py-1" href="#">Vault</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined p-2 text-[#dfe2eb]/60 hover:bg-[#31353c] hover:text-[#dfe2eb] rounded-full transition-colors">settings</button>
+<button class="material-symbols-outlined p-2 text-[#dfe2eb]/60 hover:bg-[#31353c] hover:text-[#dfe2eb] rounded-full transition-colors">notifications_active</button>
+<div class="w-8 h-8 rounded-full bg-surface-container overflow-hidden border border-outline-variant/30">
+<img alt="Operator Avatar" class="w-full h-full object-cover" data-alt="Close-up portrait of a futuristic operator with a calm expression, soft cinematic cyan and indigo lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCowwRpEkN41uW3v5md8nCAhY_k7nF0AldKQ_WPAze52h8p0qCNQ3y99DmSbTqsDirAcjHmJH3hM9YH6frilRvqdOwzzl9zYyfjaWpdFVKO-RBZAf6FeNb-Yd00gNIasbWLfAd1zOkSXE8sQcgqPNWRbRFGwqIPYAKfZGObqOhBD3X3Tud2OGqJNSiVFS-Aivo41aVzLxGn8KPyEy5FaaKNOm64APWxAl1kCwNB485ItfAuQ_DGLHgvNkXYF-Y6L4gBKBDFGua2Icg"/>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="bg-[#181c22] dark:bg-[#181c22] font-['Inter'] text-sm font-medium flex flex-col h-full w-64 shrink-0 z-40 border-r-0">
+<div class="px-6 py-8 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary/10 flex items-center justify-center rounded">
+<span class="material-symbols-outlined text-primary" data-weight="fill" style="font-variation-settings: 'FILL' 1;">terminal</span>
+</div>
+<div>
+<h2 class="text-[#dfe2eb] font-bold tracking-tight">AUTO_NODE_01</h2>
+<p class="text-[10px] text-primary/80 font-mono tracking-widest">STATUS: OPTIMAL</p>
+</div>
+</div>
+<nav class="flex-1 px-3 space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#a2c9ff] bg-[#1c2026] border-l-4 border-[#a2c9ff] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">account_tree</span>
+<span>Pipeline</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">database</span>
+<span>Assets</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">smart_toy</span>
+<span>Agents</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">terminal</span>
+<span>Logs</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]">code</span>
+<span>Terminal</span>
+</a>
+</nav>
+<div class="px-3 pb-6">
+<button class="w-full bg-gradient-to-r from-[#a2c9ff] to-[#58a6ff] text-on-primary font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 mb-8 shadow-lg shadow-primary/10">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    NEW_PIPELINE
+                </button>
+<div class="space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">help</span>
+<span>Support</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all duration-150" href="#">
+<span class="material-symbols-outlined text-[18px]">description</span>
+<span>Docs</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Workspace -->
+<main class="flex-1 flex flex-col bg-background min-w-0">
+<!-- Header Section -->
+<div class="px-8 pt-8 pb-6 flex items-end justify-between">
+<div>
+<div class="flex items-center gap-2 mb-1">
+<div class="pulse-dot"></div>
+<span class="text-[10px] font-mono text-primary uppercase tracking-[0.2em]">LIVE_ORCHESTRATION_LAYER</span>
+</div>
+<h1 class="font-headline text-4xl font-extrabold tracking-tighter text-on-surface">PIPELINE ORCHESTRATOR</h1>
+</div>
+<div class="flex gap-4">
+<div class="flex -space-x-2">
+<img alt="Agent 1" class="w-8 h-8 rounded-full border-2 border-background" data-alt="Portrait of a diverse male developer in dark techwear, soft neon purple rim light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZbMYCXIIn8eR7tHcmtX8scrrCU2gvDLXaHrJdjUe_0Tmrs1jJwO9_RbLKfT_R_s4f3ZkRs5GSO65KEZ-4H6xYCntTlaMi_e6YJX7k8QXr1uNa6Sg8Pgmqc7WnmZejAlQYodr3-bT6KC-irWMaG7HhbsG0SJTKbd1VdJd5tKMZUhmllnXadc33wzqme292qPuHSwyxHk5KuvD7TxGQSjy9nRs8kaVURcznn0h-zH7CgYE2teJGtu3VHjF39F9Gv2lgI3mfMqP8A-w"/>
+<img alt="Agent 2" class="w-8 h-8 rounded-full border-2 border-background" data-alt="Portrait of a professional woman with tech-augmented eyewear, bright digital workspace lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBa-3MjxmRb3DAl047Wbw_VAxE-REDJuqp4KskNOML_DexJDoxVtjzhR18pYgScFwHt-uUfJi2lnvncxWWJxxRbObMbkifF38NkpgZfvJ6WxVkjtUt3uShBTrFvJJL75Hr98hw5Xit_ciNIa8lQQ5Q_QZ42hu_PM119r5mMCvtLV0cKYaAqfZZ0_TuKkAWFk4Xg743jGo0QYo-p0iFncTiXtzHyHZjkvgBlBZ6ApGZPegZLfWAIzYe5Hj-qjjMWU58Jsr4T2T3PY-E"/>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border-2 border-background flex items-center justify-center text-[10px] font-bold text-on-surface-variant">+4</div>
+</div>
+<button class="bg-surface-container-high text-on-surface border border-outline-variant/15 px-4 py-2 rounded flex items-center gap-2 text-sm font-medium hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-[18px]">filter_list</span>
+                        Filters
+                    </button>
+</div>
+</div>
+<!-- Kanban Board -->
+<div class="flex-1 px-8 pb-8 overflow-x-auto custom-scrollbar flex gap-6">
+<!-- Queued Column -->
+<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">
+<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="text-[11px] font-mono bg-surface-container-highest px-1.5 py-0.5 rounded text-outline">Q</span>
+<h3 class="font-headline font-bold text-sm tracking-wide uppercase text-on-surface">Queued</h3>
+</div>
+<span class="text-xs font-mono text-outline-variant">3</span>
+</div>
+<div class="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
+<!-- Card 1 -->
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#201</span>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Optimization Kernel Upgrade</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>ELAPSED</span>
+<span class="text-on-surface-variant">14m 20s</span>
+</div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-outline-variant rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#204</span>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Shard_02 Indexing Task</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>ELAPSED</span>
+<span class="text-on-surface-variant">02m 45s</span>
+</div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-outline-variant rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Planning Column -->
+<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">
+<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="text-[11px] font-mono bg-surface-container-highest px-1.5 py-0.5 rounded text-primary">P</span>
+<h3 class="font-headline font-bold text-sm tracking-wide uppercase text-on-surface">Planning</h3>
+</div>
+<span class="text-xs font-mono text-outline-variant">2</span>
+</div>
+<div class="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#198</span>
+<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Neural_Map Expansion Prototype</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>ELAPSED</span>
+<span class="text-on-surface-variant">1h 12m</span>
+</div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-primary/40 rounded-full" style="width: 25%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Implementing Column -->
+<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">
+<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="text-[11px] font-mono bg-primary-container/20 px-1.5 py-0.5 rounded text-primary">I</span>
+<h3 class="font-headline font-bold text-sm tracking-wide uppercase text-on-surface">Implementing</h3>
+</div>
+<span class="text-xs font-mono text-outline-variant">4</span>
+</div>
+<div class="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
+<!-- Card: Running -->
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/30 bg-gradient-to-br from-[#262a31] to-[#1c2026] relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-2">
+<div class="pulse-dot"></div>
+</div>
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-primary font-bold tracking-wider">#195</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Real-time Telemetry Injection</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[12px] animate-spin">refresh</span> SYNCING</span>
+<span class="text-primary">68%</span>
+</div>
+<div class="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary to-primary-container rounded-full" style="width: 68%"></div>
+</div>
+</div>
+</div>
+<!-- Card: Failed -->
+<div class="bg-[#262a31] p-4 rounded-md border border-error/20 hover:border-error/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-error/60 font-bold tracking-wider">#192</span>
+<span class="material-symbols-outlined text-[18px] text-error">report</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Batch_Agent Alpha Migration</h4>
+<div class="p-2 bg-error-container/20 rounded text-[10px] font-mono text-error mb-4">
+                                ERR: TIMEOUT_RETRY_EXCEEDED
+                            </div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-error rounded-full" style="width: 42%"></div>
+</div>
+</div>
+<!-- Card: Normal -->
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#190</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Vault_Lock Cryptographic Cycle</h4>
+<div class="space-y-3">
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>ELAPSED</span>
+<span class="text-on-surface-variant">08h 12m</span>
+</div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-primary/60 rounded-full" style="width: 89%"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Reviewing Column -->
+<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">
+<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="text-[11px] font-mono bg-surface-container-highest px-1.5 py-0.5 rounded text-tertiary">R</span>
+<h3 class="font-headline font-bold text-sm tracking-wide uppercase text-on-surface">Reviewing</h3>
+</div>
+<span class="text-xs font-mono text-outline-variant">1</span>
+</div>
+<div class="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar">
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#188</span>
+<div class="flex gap-1">
+<span class="material-symbols-outlined text-[16px] text-tertiary">warning</span>
+</div>
+</div>
+<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">Global_Node Consistency Check</h4>
+<div class="flex items-center gap-2 mb-4">
+<img alt="Reviewer" class="w-6 h-6 rounded-full" data-alt="Small avatar of a male system architect, sharp studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBI8w2TS0I3EmPHU38fosLru4fytge-VwyN-0ErMoPgYEnBVIdD0j5Ae35hXLwKEa2V_WTTYWZracGY7JzsqaGI_XEonZbSPQH4J5zYvyNU36wuPqSPg0HvlrUasAZgiH8sLh1YYJZ8QKCyAxn3vgb1uB4dCQcxUNlGfecbipNj1F0bdepbw9-7_4LTRaA6iBkJNf4zOzhr5xZRsEq51wrPdnCJ3IsJiPEAgVd4ItCPi8OSlZo_XEp9dmQi7kpzLqH8bXraKQ4Rvvg"/>
+<span class="text-[10px] text-outline">Pending Approval</span>
+</div>
+<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">
+<div class="h-full bg-tertiary rounded-full" style="width: 100%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Done Column -->
+<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">
+<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-2">
+<span class="text-[11px] font-mono bg-surface-container-highest px-1.5 py-0.5 rounded text-[#3fb950]">D</span>
+<h3 class="font-headline font-bold text-sm tracking-wide uppercase text-on-surface">Done</h3>
+</div>
+<span class="text-xs font-mono text-outline-variant">12</span>
+</div>
+<div class="flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar opacity-70 hover:opacity-100 transition-opacity">
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#176</span>
+<span class="material-symbols-outlined text-[18px] text-[#3fb950]">check_circle</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface/50 mb-4 leading-snug line-through">Security Patch v4.2 Deployment</h4>
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>COMPLETED</span>
+<span class="text-[#3fb950]">2h ago</span>
+</div>
+</div>
+<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 group">
+<div class="flex justify-between items-start mb-3">
+<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">#174</span>
+<span class="material-symbols-outlined text-[18px] text-[#3fb950]">check_circle</span>
+</div>
+<h4 class="text-sm font-medium text-on-surface/50 mb-4 leading-snug line-through">Core_Processor Load Balancing</h4>
+<div class="flex items-center justify-between text-[10px] font-mono text-outline">
+<span>COMPLETED</span>
+<span class="text-[#3fb950]">5h ago</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Floating Telemetry Stream -->
+<div class="fixed bottom-6 right-6 w-80 bg-surface-container-lowest/80 backdrop-blur-xl border border-outline-variant/20 rounded-xl shadow-2xl p-4 z-50">
+<div class="flex items-center justify-between mb-4">
+<h5 class="font-headline font-bold text-xs tracking-widest text-primary uppercase">Telemetry Stream</h5>
+<div class="flex gap-1">
+<div class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div>
+<div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+<div class="w-1.5 h-1.5 rounded-full bg-primary/10"></div>
+</div>
+</div>
+<div class="space-y-2 font-mono text-[10px]">
+<div class="flex gap-2">
+<span class="text-outline-variant">[14:22:01]</span>
+<span class="text-on-surface">Task #195: Injected 402kb metadata</span>
+</div>
+<div class="flex gap-2">
+<span class="text-outline-variant">[14:22:05]</span>
+<span class="text-primary">Node_01: Pulse response 24ms</span>
+</div>
+<div class="flex gap-2">
+<span class="text-outline-variant">[14:22:12]</span>
+<span class="text-error">Shard_02: Connection reset (retrying...)</span>
+</div>
+<div class="flex gap-2">
+<span class="text-outline-variant">[14:22:15]</span>
+<span class="text-on-surface-variant">Worker: 0x4f2 allocated to thread_9</span>
+</div>
+</div>
+</div>
+</body></html>

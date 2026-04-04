@@ -295,3 +295,213 @@ describe("ClaudeRunResult", () => {
     expect(result.costUsd).toBeUndefined();
   });
 });
+
+describe("cost fallback behavior", () => {
+  let mockChild: EventEmitter & {
+    pid: number;
+    stdin: { write: () => void; end: () => void };
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: () => void;
+    killed: boolean;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockChild = Object.assign(new EventEmitter(), {
+      pid: 12345,
+      stdin: { write: vi.fn(), end: vi.fn() },
+      stdout: new EventEmitter(),
+      stderr: new EventEmitter(),
+      kill: vi.fn(),
+      killed: false,
+    });
+
+    mockSpawn.mockReturnValue(mockChild as any);
+  });
+
+  it("should calculate fallback cost when total_cost_usd is 0", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      // Simulate Claude CLI response with cost 0 but usage info
+      const response = JSON.stringify({
+        type: "result",
+        result: "success",
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500,
+          cache_creation_input_tokens: 100,
+          cache_read_input_tokens: 200
+        }
+      });
+      mockChild.stdout.emit("data", Buffer.from(response + "\n"));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBeGreaterThan(0);
+    // Expected cost calculation:
+    // input: (1000 * 3.0) / 1000000 = 0.003
+    // output: (500 * 15.0) / 1000000 = 0.0075
+    // cache_creation: (100 * 3.0 * 1.25) / 1000000 = 0.000375
+    // cache_read: (200 * 3.0 * 0.1) / 1000000 = 0.00006
+    // total: 0.010935
+    expect(result.costUsd).toBeCloseTo(0.010935, 6);
+  });
+
+  it("should calculate fallback cost when total_cost_usd is undefined", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "haiku",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      // Simulate Claude CLI response without total_cost_usd but with usage
+      const response = JSON.stringify({
+        type: "result",
+        result: "success",
+        usage: {
+          input_tokens: 2000,
+          output_tokens: 1000
+        }
+      });
+      mockChild.stdout.emit("data", Buffer.from(response + "\n"));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBeGreaterThan(0);
+    // Expected cost for haiku:
+    // input: (2000 * 0.25) / 1000000 = 0.0005
+    // output: (1000 * 1.25) / 1000000 = 0.00125
+    // total: 0.00175
+    expect(result.costUsd).toBeCloseTo(0.00175, 6);
+  });
+
+  it("should use original cost when total_cost_usd is valid", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "opus",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      // Simulate Claude CLI response with valid cost
+      const response = JSON.stringify({
+        type: "result",
+        result: "success",
+        total_cost_usd: 0.05,
+        usage: {
+          input_tokens: 1000,
+          output_tokens: 500
+        }
+      });
+      mockChild.stdout.emit("data", Buffer.from(response + "\n"));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBe(0.05); // Should use original value
+  });
+
+  it("should return 0 cost when no usage and total_cost_usd is 0", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      // Simulate Claude CLI response with no cost and no usage
+      const response = JSON.stringify({
+        type: "result",
+        result: "success",
+        total_cost_usd: 0
+      });
+      mockChild.stdout.emit("data", Buffer.from(response + "\n"));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(true);
+    expect(result.costUsd).toBe(0); // Should remain 0
+  });
+
+  it("should apply fallback for error results too", async () => {
+    const options: ClaudeRunOptions = {
+      prompt: "test prompt",
+      config: {
+        path: "claude",
+        model: "sonnet",
+        maxTurns: 10,
+        timeout: 30000,
+        additionalArgs: [],
+      },
+    };
+
+    const runPromise = runClaude(options);
+
+    setTimeout(() => {
+      // Simulate error response with usage but no cost
+      const response = JSON.stringify({
+        type: "result",
+        result: "Error occurred",
+        is_error: true,
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 500,
+          output_tokens: 100
+        }
+      });
+      mockChild.stdout.emit("data", Buffer.from(response + "\n"));
+      mockChild.emit("close", 0);
+    }, 10);
+
+    const result = await runPromise;
+    expect(result.success).toBe(false);
+    expect(result.costUsd).toBeGreaterThan(0);
+    // Expected cost calculation for sonnet:
+    // input: (500 * 3.0) / 1000000 = 0.0015
+    // output: (100 * 15.0) / 1000000 = 0.0015
+    // total: 0.003
+    expect(result.costUsd).toBeCloseTo(0.003, 6);
+  });
+});

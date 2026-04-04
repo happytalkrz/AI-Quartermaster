@@ -119,7 +119,8 @@ describe("ensureCleanState", () => {
       "test-branch",
       123,
       "test-slug",
-      { cwd: "/tmp" }
+      { cwd: "/tmp" },
+      undefined
     );
     expect(result).toEqual({
       path: "/tmp/new-worktree",

@@ -31,6 +31,7 @@ export interface PhaseExecutorContext {
   skillsContext?: string;
   pastFailures?: string;
   jobLogger?: JobLogger;
+  locale?: string;
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
@@ -87,7 +88,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
     let rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
 
     // Check token usage and optimize if budget exceeded
-    const tokenUsage = analyzeTokenUsage(rendered, modelName);
+    const tokenUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
     if (tokenUsage.exceedsLimit) {
       logger.warn(
         `Phase ${ctx.phase.index} prompt exceeds token budget: ${tokenUsage.estimatedTokens.toLocaleString()} tokens ` +
@@ -99,10 +100,10 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       if (previousSummary.length > 1000 && ctx.previousResults.length > 0) {
         logger.warn(`Attempting to reduce previousResults context to fit budget...`);
         const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1);
-        optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens);
+        optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens, ctx.locale || 'en');
         rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
 
-        const optimizedUsage = analyzeTokenUsage(rendered, modelName);
+        const optimizedUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
         if (!optimizedUsage.exceedsLimit) {
           logger.warn(
             `Successfully reduced prompt to ${optimizedUsage.estimatedTokens.toLocaleString()} tokens ` +

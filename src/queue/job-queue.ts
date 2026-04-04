@@ -28,12 +28,26 @@ export class JobQueue {
   private stuckAborted: Set<string> = new Set();
   private isProcessing: boolean = false;
   private needsReprocess: boolean = false;
+  private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
+  private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
 
-  constructor(store: JobStore, concurrency: number, handler: JobHandler, stuckTimeoutMs: number = 600000) {
+  constructor(
+    store: JobStore,
+    concurrency: number,
+    handler: JobHandler,
+    stuckTimeoutMs: number = 600000,
+    projectConcurrency?: Record<string, number>
+  ) {
     this.store = store;
     this.concurrency = concurrency;
     this.handler = handler;
     this.stuckTimeoutMs = stuckTimeoutMs;
+
+    if (projectConcurrency) {
+      Object.entries(projectConcurrency).forEach(([repo, limit]) => {
+        this.projectConcurrency.set(repo, limit);
+      });
+    }
 
     // Periodically check for stuck jobs
     this.stuckChecker = setInterval(() => this.checkStuckJobs(), STUCK_CHECK_INTERVAL_MS);
@@ -170,8 +184,8 @@ export class JobQueue {
     let checkpoint = null;
     try {
       checkpoint = loadCheckpoint(dataDir, issueNumber);
-    } catch (checkpointErr) {
-      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${checkpointErr}`);
+    } catch (checkpointErr: unknown) {
+      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${getErrorMessage(checkpointErr)}`);
     }
 
     if (checkpoint) {
@@ -181,8 +195,8 @@ export class JobQueue {
       if (checkpoint.worktreePath) {
         logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
         Promise.resolve(removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true }))
-          .catch(worktreeErr => {
-            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${worktreeErr}`);
+          .catch((worktreeErr: unknown) => {
+            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${getErrorMessage(worktreeErr)}`);
           });
       }
 
@@ -190,8 +204,8 @@ export class JobQueue {
       if (checkpoint.branchName) {
         logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
         Promise.resolve(deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot }))
-          .catch(branchErr => {
-            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${branchErr}`);
+          .catch((branchErr: unknown) => {
+            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${getErrorMessage(branchErr)}`);
           });
       }
     }
@@ -200,8 +214,8 @@ export class JobQueue {
     try {
       logger.info(`Removing checkpoint for issue #${issueNumber}`);
       removeCheckpoint(dataDir, issueNumber);
-    } catch (err) {
-      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${err}`);
+    } catch (err: unknown) {
+      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${getErrorMessage(err)}`);
     }
   }
 
@@ -318,6 +332,37 @@ export class JobQueue {
     };
   }
 
+  /**
+   * Checks if a new job can be started for the given repo based on project-specific concurrency limits.
+   */
+  private canStartJobForRepo(repo: string): boolean {
+    const projectLimit = this.projectConcurrency.get(repo);
+    if (!projectLimit) {
+      return true;
+    }
+    const currentRunning = this.runningByRepo.get(repo) ?? 0;
+    return currentRunning < projectLimit;
+  }
+
+  /**
+   * Increments the running count for a repo.
+   */
+  private addJobToRepo(jobId: string, repo: string): void {
+    this.runningByRepo.set(repo, (this.runningByRepo.get(repo) ?? 0) + 1);
+  }
+
+  /**
+   * Decrements the running count for a repo.
+   */
+  private removeJobFromRepo(jobId: string, repo: string): void {
+    const current = this.runningByRepo.get(repo) ?? 0;
+    if (current > 1) {
+      this.runningByRepo.set(repo, current - 1);
+    } else {
+      this.runningByRepo.delete(repo);
+    }
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -372,14 +417,22 @@ export class JobQueue {
           }
         }
 
+        // Check project-specific concurrency limits
+        if (!this.canStartJobForRepo(job.repo)) {
+          logger.info(`Job ${jobId} deferred due to project concurrency limit for repo ${job.repo}`);
+          deferred.push(jobId);
+          continue;
+        }
+
         this.running.add(jobId);
+        this.addJobToRepo(jobId, job.repo);
         this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
 
         logger.info(`Job started: ${jobId}`);
 
         // Run async - don't await, let it run in background
-        this.executeJob(job).catch(err => {
-          logger.error(`Job ${jobId} unexpected error: ${err}`);
+        this.executeJob(job).catch((err: unknown) => {
+          logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
         });
       }
 
@@ -436,7 +489,7 @@ export class JobQueue {
           error: "Pipeline completed but no PR was created",
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       this.store.update(job.id, {
         status: "failure",
         completedAt: new Date().toISOString(),
@@ -444,6 +497,7 @@ export class JobQueue {
       });
     } finally {
       this.running.delete(job.id);
+      this.removeJobFromRepo(job.id, job.repo);
       // Process next in queue (defer via setImmediate to avoid deep call stacks)
       setImmediate(() => this.processNext());
     }

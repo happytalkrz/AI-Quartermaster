@@ -174,7 +174,7 @@ export async function withRetry<T>(
         logger.info(`${contextStr}Operation succeeded after ${backoff.getAttempt()} retries`);
       }
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       lastError = error;
 
       if (!isRetryableError(error)) {

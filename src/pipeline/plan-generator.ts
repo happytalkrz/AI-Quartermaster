@@ -64,6 +64,7 @@ export interface PlanGeneratorContext {
   modeHint?: string;
   maxPhases?: number;
   sensitivePaths?: string;
+  locale?: string;
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
@@ -172,18 +173,18 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     // Token budget cap: 프롬프트 크기 체크 및 축소
     const claudeConfig = configForTask(ctx.claudeConfig, "plan");
     const modelName = claudeConfig.model;
-    let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+    let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName, ctx.locale || 'en');
 
     logger.info(`Initial prompt token analysis: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
 
     // Helper to update and re-render
-    const updateAndRerender = (updateFn: (data: any) => any, stage: string) => {
+    const updateAndRerender = (updateFn: (data: PlanTemplateData) => PlanTemplateData, stage: string) => {
       templateData = updateFn(templateData);
       finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
       if (ctx.modeHint) {
         finalPrompt += `\n\n## 추가 지시\n\n${ctx.modeHint}`;
       }
-      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName);
+      tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName, ctx.locale || 'en');
       logger.info(`After ${stage}: ${tokenAnalysis.estimatedTokens}/${tokenAnalysis.effectiveLimit} tokens (${tokenAnalysis.usagePercentage.toFixed(1)}%)`);
     };
 
@@ -191,14 +192,13 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     if (tokenAnalysis.exceedsLimit && ctx.repoStructure) {
       logger.warn(`Prompt exceeds token limit (${tokenAnalysis.estimatedTokens} > ${tokenAnalysis.effectiveLimit}), truncating repository structure`);
       const repoTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.3);
-      const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget);
+      const truncatedRepoStructure = truncateRepoStructure(ctx.repoStructure, repoTokenBudget, ctx.locale || 'en');
 
       updateAndRerender(
         (data) => {
-          const baseTemplateData = data.context ? data : baseData;
           return {
             ...data,
-            repo: { ...baseTemplateData.repo, structure: truncatedRepoStructure },
+            repo: { ...baseData.repo, structure: truncatedRepoStructure },
           };
         },
         "repo structure truncation"
@@ -209,7 +209,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     if (tokenAnalysis.exceedsLimit && ctx.issue.body) {
       logger.warn(`Prompt still exceeds token limit after repo truncation, truncating issue body`);
       const issueBodyTokenBudget = Math.floor(tokenAnalysis.effectiveLimit * 0.2);
-      const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget);
+      const truncatedIssueBody = truncateToTokenBudget(ctx.issue.body, issueBodyTokenBudget, ctx.locale || 'en');
 
       updateAndRerender(
         (data) => ({

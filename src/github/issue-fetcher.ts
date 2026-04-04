@@ -1,5 +1,6 @@
 import { runCli, CliRunOptions } from "../utils/cli-runner.js";
 import { sanitizeGhError, sanitizeErrorMessage } from "../utils/error-sanitizer.js";
+import { getCached, setCached } from "./github-cache.js";
 
 export interface GitHubIssue {
   number: number;
@@ -13,6 +14,15 @@ export async function fetchIssue(
   issueNumber: number,
   options?: { ghPath?: string; timeout?: number }
 ): Promise<GitHubIssue> {
+  // 캐시 키 생성: issue:{repo}:{issueNumber}
+  const cacheKey = `issue:${repo}:${issueNumber}`;
+
+  // 캐시에서 조회
+  const cached = getCached<GitHubIssue>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const ghPath = options?.ghPath ?? "gh";
   const cliOptions: CliRunOptions = {
     timeout: options?.timeout,
@@ -49,10 +59,15 @@ export async function fetchIssue(
     typeof l === "string" ? l : l.name
   );
 
-  return {
+  const issue: GitHubIssue = {
     number: parsed.number,
     title: parsed.title,
     body: parsed.body,
     labels,
   };
+
+  // 결과를 캐시에 저장
+  setCached(cacheKey, issue);
+
+  return issue;
 }

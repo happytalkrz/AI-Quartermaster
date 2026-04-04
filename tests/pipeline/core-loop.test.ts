@@ -120,14 +120,13 @@ function makePhase(index: number, name: string, dependsOn?: number[]): Phase {
   };
 }
 
-function makeSuccessResult(phaseIndex: number, phaseName: string): PhaseResult {
-  return {
+function makeSuccessResult(phaseIndex: number, phaseName: string, costUsd?: number): PhaseResult {
+  const result: PhaseResult = {
     phaseIndex,
     phaseName,
     success: true,
     commitHash: "abc12345",
     durationMs: 1000,
-    costUsd: 0.01,
     usage: {
       inputTokens: 100,
       outputTokens: 50,
@@ -135,6 +134,13 @@ function makeSuccessResult(phaseIndex: number, phaseName: string): PhaseResult {
       inputCacheWriteTokens: 0,
     },
   };
+
+  // Only add costUsd if provided
+  if (costUsd !== undefined) {
+    result.costUsd = costUsd;
+  }
+
+  return result;
 }
 
 function makeFailureResult(phaseIndex: number, phaseName: string, error = "Test error", errorCategory: "TS_ERROR" | "TIMEOUT" | "SAFETY_VIOLATION" = "TS_ERROR"): PhaseResult {
@@ -826,7 +832,7 @@ describe("runCoreLoop", () => {
       const phases = [makePhase(0, "Test")];
       const plan = makePlan(phases);
 
-      mockGeneratePlan.mockResolvedValue({ plan });
+      mockGeneratePlan.mockResolvedValue({ plan, costUsd: 0 });
       mockSchedulePhases.mockReturnValue({
         success: true,
         groups: [{ level: 0, phases: phases }],

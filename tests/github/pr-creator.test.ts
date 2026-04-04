@@ -58,17 +58,19 @@ describe("createDraftPR", () => {
     expect(mockRunCli).toHaveBeenCalled();
   });
 
-  it("should return null on failure", async () => {
+  it("should throw on failure", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "error", exitCode: 1 });
-    const result = await createDraftPR(prConfig, ghConfig, ctx, { cwd: "/tmp", promptsDir: "/prompts" });
-    expect(result).toBe(null);
+    await expect(createDraftPR(prConfig, ghConfig, ctx, { cwd: "/tmp", promptsDir: "/prompts" }))
+      .rejects
+      .toThrow("Failed to create PR: error");
   });
 
   it("should skip in dry run mode", async () => {
     const dryConfig = { ...prConfig };
     const dryGh = { ...ghConfig };
     const result = await createDraftPR(dryConfig, dryGh, ctx, { cwd: "/tmp", promptsDir: "/prompts", dryRun: true });
-    expect(result).toBe("DRY_RUN");
+    expect(result.url).toBe("https://github.com/dry-run");
+    expect(result.number).toBe(0);
   });
 });
 

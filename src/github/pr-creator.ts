@@ -80,7 +80,7 @@ export async function createDraftPR(
 
   if (options?.dryRun) {
     logger.info(`[DRY RUN] Would create PR: ${title}`);
-    return "DRY_RUN" as any;
+    return { url: "https://github.com/dry-run", number: 0 };
   }
 
   // Build gh pr create command
@@ -113,8 +113,7 @@ export async function createDraftPR(
   });
 
   if (result.exitCode !== 0) {
-    logger.warn(`Failed to create PR: ${result.stderr}`);
-    return null;
+    throw new Error(`Failed to create PR: ${result.stderr}`);
   }
 
   // gh pr create outputs the PR URL

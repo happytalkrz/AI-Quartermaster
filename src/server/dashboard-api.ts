@@ -5,7 +5,9 @@ import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
-import type { ProjectConfig } from "../types/config.js";
+import type { ProjectConfig, AQConfig } from "../types/config.js";
+import type { ConfigWatcher } from "../config/config-watcher.js";
+import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -53,13 +55,32 @@ function isValidSessionToken(token: string): boolean {
 }
 
 /**
+ * Applies runtime configuration changes to system components.
+ */
+function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
+  const logger = getLogger();
+
+  // Update JobQueue concurrency
+  if (newConfig.general.concurrency !== oldConfig.general.concurrency) {
+    queue.setConcurrency(newConfig.general.concurrency);
+    logger.info(`Concurrency updated: ${oldConfig.general.concurrency} → ${newConfig.general.concurrency}`);
+  }
+
+  // Update logger level
+  if (newConfig.general.logLevel !== oldConfig.general.logLevel) {
+    setGlobalLogLevel(newConfig.general.logLevel);
+    logger.info(`Log level updated: ${oldConfig.general.logLevel} → ${newConfig.general.logLevel}`);
+  }
+}
+
+/**
  * Creates dashboard API routes.
  * If apiKey is provided, all /api/* routes require `Authorization: Bearer <key>`.
  * SSE endpoints (/api/events, /api/jobs/:id/logs/stream) cannot set headers in the
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string): Hono {
   const api = new Hono();
 
   // Subscribe to JobStore events for real-time broadcasts
@@ -145,7 +166,36 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, apiKey?:
         return c.json({ error: "Invalid request body" }, 400);
       }
 
+      // Update configuration file
       updateConfigSection(process.cwd(), body);
+
+      // Apply runtime changes if configWatcher is available
+      if (configWatcher) {
+        try {
+          // Load updated config for runtime application
+          const newConfig = loadConfig(projectRoot);
+
+          // Apply runtime changes immediately (force update)
+          if (body.general?.concurrency !== undefined) {
+            queue.setConcurrency(newConfig.general.concurrency);
+          }
+          if (body.general?.logLevel !== undefined) {
+            setGlobalLogLevel(newConfig.general.logLevel);
+          }
+
+          // Broadcast config change to SSE clients
+          broadcastToAllClients('configChanged', {
+            changes: body,
+            timestamp: new Date().toISOString()
+          });
+        } catch (runtimeError) {
+          // Log runtime application error but don't fail the request
+          const logger = getLogger();
+          const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
+          logger.warn(`Failed to apply runtime config changes: ${errMsg}`);
+        }
+      }
+
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";

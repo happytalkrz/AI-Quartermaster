@@ -346,7 +346,7 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
-  const dashboardRoutes = createDashboardRoutes(store, queue, apiKey);
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;

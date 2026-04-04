@@ -530,8 +530,8 @@ async function statsCommand(args: CliArgs): Promise<void> {
 
   if (costStats.topExpensiveJobs.length > 0) {
     console.log("\nTop Expensive Jobs:");
-    for (const job of costStats.topExpensiveJobs.slice(0, 5)) {
-      console.log(`  #${job.issueNumber.toString().padEnd(5)} ${job.repo.padEnd(20)} $${job.totalCostUsd.toFixed(2)}`);
+    for (const job of costStats.topExpensiveJobs) {
+      console.log(`  #${String(job.issueNumber).padEnd(5)} ${job.repo.padEnd(20)} $${job.totalCostUsd.toFixed(2)}`);
     }
   }
 

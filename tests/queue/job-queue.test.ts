@@ -899,4 +899,85 @@ describe("JobQueue", () => {
       expect(removeCheckpointSpy).toHaveBeenCalled();
     });
   });
+
+  describe("setConcurrency", () => {
+    it("should update concurrency and trigger processing", async () => {
+      let resolveCount = 0;
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        resolveCount++;
+        await new Promise(r => setTimeout(r, 50));
+        return {};
+      });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Enqueue 3 jobs with concurrency=1
+      queue.enqueue(1, "test/repo");
+      queue.enqueue(2, "test/repo2");
+      queue.enqueue(3, "test/repo3");
+
+      // Wait a bit, only 1 should be running
+      await new Promise(r => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(1);
+      expect(queue.getStatus().pending).toBe(2);
+
+      // Increase concurrency to 3
+      queue.setConcurrency(3);
+      expect(queue.getStatus().concurrency).toBe(3);
+
+      // Wait for all to start processing
+      await new Promise(r => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(2); // remaining 2 should now be running
+      expect(queue.getStatus().pending).toBe(0);
+
+      // Wait for all to complete
+      await new Promise(r => setTimeout(r, 100));
+      expect(resolveCount).toBe(3);
+    });
+
+    it("should validate concurrency value", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      expect(() => queue.setConcurrency(0)).toThrow("Concurrency must be a positive integer");
+      expect(() => queue.setConcurrency(-1)).toThrow("Concurrency must be a positive integer");
+      expect(() => queue.setConcurrency(1.5)).toThrow("Concurrency must be a positive integer");
+
+      // Should not throw for valid values
+      expect(() => queue.setConcurrency(1)).not.toThrow();
+      expect(() => queue.setConcurrency(5)).not.toThrow();
+    });
+
+    it("should reduce concurrency without affecting running jobs", async () => {
+      let running = 0;
+      let maxRunning = 0;
+      const handler: JobHandler = vi.fn().mockImplementation(async () => {
+        running++;
+        maxRunning = Math.max(maxRunning, running);
+        await new Promise(r => setTimeout(r, 100));
+        running--;
+        return {};
+      });
+
+      const queue = new JobQueue(store, 3, handler);
+
+      // Enqueue 3 jobs
+      queue.enqueue(1, "test/repo");
+      queue.enqueue(2, "test/repo2");
+      queue.enqueue(3, "test/repo3");
+
+      // Wait for all to start
+      await new Promise(r => setTimeout(r, 50));
+      expect(queue.getStatus().running).toBe(3);
+
+      // Reduce concurrency - running jobs should continue
+      queue.setConcurrency(1);
+      expect(queue.getStatus().concurrency).toBe(1);
+      expect(queue.getStatus().running).toBe(3); // still 3 running
+
+      // Wait for completion
+      await new Promise(r => setTimeout(r, 150));
+      expect(maxRunning).toBe(3); // max was still 3
+    });
+  });
 });

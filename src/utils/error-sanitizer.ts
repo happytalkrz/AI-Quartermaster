@@ -18,11 +18,11 @@ export function sanitizeErrorMessage(message: string): string {
     sanitized = sanitized.substring(0, 197) + '...';
   }
 
-  // GitHub 토큰 (ghp_, gho_, ghu_, ghs_, ghr_)
-  sanitized = sanitized.replace(/gh[pous]_[A-Za-z0-9_]{36}/g, '[REDACTED]');
+  // GitHub 토큰 (ghp_, gho_, ghu_, ghs_, ghr_) - 36자 이상
+  sanitized = sanitized.replace(/gh[pous]_[A-Za-z0-9_]{36,}/g, '[REDACTED]');
 
   // 토큰/키 패턴 (토큰 뒤의 값만 제거)
-  sanitized = sanitized.replace(/(\b(?:token|key|password|secret|auth)\s*[=:]\s*)([^\s\n]{8,})/gi, '$1[REDACTED]');
+  sanitized = sanitized.replace(/(\b(?:token|key|password|secret|auth)\s*[=:\s]+)([^\s\n]{8,})/gi, '$1[REDACTED]');
 
   // 파일 시스템 경로 (홈 디렉토리)
   sanitized = sanitized.replace(/\/home\/[^\/\s]+/g, '[REDACTED]');

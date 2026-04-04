@@ -362,23 +362,17 @@ describe("phase-scheduler", () => {
       ];
 
       const result = schedulePhases(phases, true);
-      console.log('Complex test result groups:', result.groups.map(g => ({ level: g.level, phases: g.phases.map(p => p.index) })));
       expect(result.success).toBe(true);
 
       // Expected behavior:
       // Level 0: Phase 0 (init, no deps)
-      // Level 1: Phase 2 (no explicit deps, but has conflict serialization), Phase 1 (depends on 0)
-      // OR serialized completely depending on conflict resolution
-      expect(result.groups.length).toBeGreaterThan(0);
+      // Level 1: Phase 1 (depends on 0)
+      // Level 2: Phase 2 (serialized due to file conflict with Phase 1)
+      expect(result.groups).toHaveLength(3);
 
       expect(result.groups[0].phases.map(p => p.index)).toEqual([0]);
-      // The exact layout may vary, let's see what we get
-      if (result.groups.length >= 2) {
-        console.log('Level 1 phases:', result.groups[1].phases.map(p => p.index));
-      }
-      if (result.groups.length >= 3) {
-        console.log('Level 2 phases:', result.groups[2].phases.map(p => p.index));
-      }
+      expect(result.groups[1].phases.map(p => p.index)).toEqual([1]); // Phase 1 depends on 0
+      expect(result.groups[2].phases.map(p => p.index)).toEqual([2]); // Phase 2 serialized after 1 due to conflict
     });
   });
 });

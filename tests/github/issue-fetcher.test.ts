@@ -43,7 +43,7 @@ describe("fetchIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith(
       "gh",
       ["issue", "view", "123", "--repo", "test/repo", "--json", "number,title,body,labels"],
-      {}
+      { timeout: undefined }
     );
   });
 
@@ -118,7 +118,7 @@ describe("fetchIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith(
       "/custom/gh",
       ["issue", "view", "100", "--repo", "test/repo", "--json", "number,title,body,labels"],
-      {}
+      { timeout: undefined }
     );
   });
 
@@ -269,7 +269,7 @@ describe("fetchIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith(
       "gh",
       ["issue", "view", "600", "--repo", "test/repo", "--json", "number,title,body,labels"],
-      {}
+      { timeout: undefined }
     );
   });
 
@@ -292,7 +292,7 @@ describe("fetchIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith(
       "gh",
       ["issue", "view", "700", "--repo", "org-name/repo-with-dashes_and_underscores", "--json", "number,title,body,labels"],
-      {}
+      { timeout: undefined }
     );
   });
 
@@ -316,7 +316,7 @@ describe("fetchIssue", () => {
     expect(mockRunCli).toHaveBeenCalledWith(
       "gh",
       ["issue", "view", "999999", "--repo", "test/repo", "--json", "number,title,body,labels"],
-      {}
+      { timeout: undefined }
     );
   });
 });

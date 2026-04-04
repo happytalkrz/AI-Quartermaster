@@ -101,7 +101,7 @@ describe("Dashboard API - /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
     });
 
     it("should require Bearer token authentication", async () => {
@@ -338,7 +338,7 @@ describe("Dashboard API - PUT /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
     });
 
     it("should require Bearer token authentication", async () => {
@@ -523,7 +523,7 @@ describe("Dashboard API - Projects Management", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, apiKey);
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
   });
 
   describe("POST /api/projects", () => {

@@ -104,6 +104,8 @@ export interface ReviewConfig {
   enabled: boolean;
   rounds: ReviewRound[];
   simplify: SimplifyConfig;
+  /** 통합 리뷰 모드 활성화 - true시 1회 호출로 3가지 관점 통합 평가 */
+  unifiedMode?: boolean;
 }
 
 export interface PrConfig {

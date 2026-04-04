@@ -231,6 +231,7 @@ const reviewConfigSchema = z.object({
   enabled: z.boolean(),
   rounds: z.array(reviewRoundSchema),
   simplify: simplifyConfigSchema,
+  unifiedMode: z.boolean().optional(),
 });
 
 const prConfigSchema = z.object({
@@ -286,6 +287,7 @@ const projectConfigSchema = z.object({
     enabled: z.boolean(),
     rounds: z.array(reviewRoundSchema),
     simplify: simplifyConfigSchema,
+    unifiedMode: z.boolean().optional(),
   }).partial().optional(),
   pr: prConfigSchema.partial().optional(),
   safety: z.object({

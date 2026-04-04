@@ -40,6 +40,8 @@ export class JobStore extends EventEmitter {
   private db: AQDatabase;
   private dataDir: string;
   private maxJobs: number;
+  // 메모리 캐시: running/queued 상태의 job만 캐싱
+  private cache: Map<string, Job> = new Map();
 
   constructor(dataDir: string, maxJobs: number = 1000) {
     super();
@@ -53,6 +55,80 @@ export class JobStore extends EventEmitter {
     this.migrateFromJson().catch(err => {
       logger.error(`JSON migration failed: ${getErrorMessage(err)}`);
     });
+
+    // 시작 시 running/queued job을 캐시로 로드
+    this.loadActiveJobsToCache();
+  }
+
+  /**
+   * 시작 시 running/queued 상태의 job들을 캐시로 로드
+   */
+  private loadActiveJobsToCache(): void {
+    try {
+      const allDbJobs = this.db.listJobs();
+      let loadedCount = 0;
+
+      for (const dbJob of allDbJobs) {
+        if (dbJob.status === "queued" || dbJob.status === "running") {
+          const job = this.dbJobToJob(dbJob);
+          this.cache.set(job.id, job);
+          loadedCount++;
+        }
+      }
+
+      if (loadedCount > 0) {
+        logger.info(`Loaded ${loadedCount} active jobs to cache`);
+      }
+    } catch (err: unknown) {
+      logger.error(`Failed to load active jobs to cache: ${getErrorMessage(err)}`);
+    }
+  }
+
+  /**
+   * job을 캐시에 추가 (running/queued 상태만)
+   */
+  private addToCache(job: Job): void {
+    if (job.status === "queued" || job.status === "running") {
+      this.cache.set(job.id, job);
+      logger.debug(`Job cached: ${job.id} (${job.status})`);
+    }
+  }
+
+  /**
+   * 캐시에서 job 제거
+   */
+  private removeFromCache(id: string): void {
+    if (this.cache.delete(id)) {
+      logger.debug(`Job removed from cache: ${id}`);
+    }
+  }
+
+  /**
+   * 캐시 업데이트 및 동기화
+   */
+  private updateCache(job: Job): void {
+    if (job.status === "queued" || job.status === "running") {
+      // running/queued 상태면 캐시에 추가/업데이트
+      this.cache.set(job.id, job);
+      logger.debug(`Job cache updated: ${job.id} (${job.status})`);
+    } else {
+      // 다른 상태로 변경되면 캐시에서 제거
+      this.removeFromCache(job.id);
+    }
+  }
+
+  /**
+   * 캐시에서 job 조회
+   */
+  private getCachedJob(id: string): Job | undefined {
+    return this.cache.get(id);
+  }
+
+  /**
+   * 캐시된 모든 job 조회
+   */
+  private getCachedJobs(): Job[] {
+    return Array.from(this.cache.values());
   }
 
   /**
@@ -159,6 +235,9 @@ export class JobStore extends EventEmitter {
     const dbJob = this.jobToDbJob(job);
     this.db.createJob(dbJob);
 
+    // 캐시에 추가 (queued 상태이므로)
+    this.addToCache(job);
+
     logger.info(`Job created: ${id}`);
     this.emit('jobCreated', job);
 
@@ -175,6 +254,13 @@ export class JobStore extends EventEmitter {
   }
 
   get(id: string): Job | undefined {
+    // 캐시 우선 조회
+    const cachedJob = this.getCachedJob(id);
+    if (cachedJob) {
+      return cachedJob;
+    }
+
+    // 캐시 미스 시 SQLite에서 조회
     const dbJob = this.db.getJob(id);
     return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
@@ -223,16 +309,45 @@ export class JobStore extends EventEmitter {
     const dbJob = this.jobToDbJob(updatedJob);
     this.db.updateJob(id, dbJob);
 
+    // 캐시 동기화
+    this.updateCache(updatedJob);
+
     this.emit('jobUpdated', updatedJob, previousJob);
     return updatedJob;
   }
 
   list(): Job[] {
     const dbJobs = this.db.listJobs();
-    return dbJobs.map(dbJob => this.dbJobToJob(dbJob));
+    const allJobs = dbJobs.map(dbJob => this.dbJobToJob(dbJob));
+
+    // 캐시된 job들로 업데이트 (최신 상태 반영)
+    const cachedJobs = this.getCachedJobs();
+    const jobMap = new Map<string, Job>();
+
+    // 먼저 SQLite에서 가져온 모든 job을 맵에 추가
+    for (const job of allJobs) {
+      jobMap.set(job.id, job);
+    }
+
+    // 캐시된 job으로 덮어쓰기 (더 최신 상태)
+    for (const cachedJob of cachedJobs) {
+      jobMap.set(cachedJob.id, cachedJob);
+    }
+
+    return Array.from(jobMap.values())
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   findByIssue(issueNumber: number, repo: string): Job | undefined {
+    // 캐시에서 우선 조회 (running/queued 상태만 캐싱됨)
+    const cachedJobs = this.getCachedJobs();
+    for (const job of cachedJobs) {
+      if (job.issueNumber === issueNumber && job.repo === repo) {
+        return job;
+      }
+    }
+
+    // 캐시 미스 시 SQLite에서 조회
     const dbJob = this.db.findJobByIssue(issueNumber, repo);
     return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
@@ -324,6 +439,9 @@ export class JobStore extends EventEmitter {
     const success = this.db.deleteJob(id);
 
     if (success) {
+      // 캐시에서도 제거
+      this.removeFromCache(id);
+
       logger.info(`Job deleted: ${id}`);
       if (job) {
         this.emit('jobDeleted', job);

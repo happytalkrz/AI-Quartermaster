@@ -528,4 +528,121 @@ describe("JobStore", () => {
       expect(stats.avgCostUsd).toBe(8.00); // 16.0 / 2 = 8.0
     });
   });
+
+  describe("Memory Cache Optimization", () => {
+    it("should cache running/queued jobs for fast access", () => {
+      // Create jobs in different states
+      const queuedJob = store.create(100, "test/repo");
+      const runningJob = store.create(101, "test/repo");
+      store.update(runningJob.id, { status: "running", startedAt: new Date().toISOString() });
+
+      const completedJob = store.create(102, "test/repo");
+      store.update(completedJob.id, { status: "success", completedAt: new Date().toISOString() });
+
+      // Test cache hit for running/queued jobs
+      const retrievedQueuedJob = store.get(queuedJob.id);
+      expect(retrievedQueuedJob).toBeTruthy();
+      expect(retrievedQueuedJob?.status).toBe("queued");
+
+      const retrievedRunningJob = store.get(runningJob.id);
+      expect(retrievedRunningJob).toBeTruthy();
+      expect(retrievedRunningJob?.status).toBe("running");
+
+      // Test that completed job is not in cache but still accessible
+      const retrievedCompletedJob = store.get(completedJob.id);
+      expect(retrievedCompletedJob).toBeTruthy();
+      expect(retrievedCompletedJob?.status).toBe("success");
+    });
+
+    it("should synchronize cache when job status changes", () => {
+      const job = store.create(200, "test/repo");
+
+      // Job should be in cache (queued)
+      let retrieved = store.get(job.id);
+      expect(retrieved?.status).toBe("queued");
+
+      // Update to running - should stay in cache
+      store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
+      retrieved = store.get(job.id);
+      expect(retrieved?.status).toBe("running");
+
+      // Update to completed - should be removed from cache but still accessible
+      store.update(job.id, { status: "success", completedAt: new Date().toISOString() });
+      retrieved = store.get(job.id);
+      expect(retrieved?.status).toBe("success");
+    });
+
+    it("should handle findByIssue with cache priority", () => {
+      // Create multiple jobs for same issue
+      const job1 = store.create(300, "test/repo");
+      store.update(job1.id, { status: "failure", completedAt: new Date().toISOString() });
+
+      const job2 = store.create(300, "test/repo");
+      // job2 stays queued
+
+      // findByIssue should return the cached (queued) job
+      const found = store.findByIssue(300, "test/repo");
+      expect(found).toBeTruthy();
+      expect(found?.id).toBe(job2.id);
+      expect(found?.status).toBe("queued");
+    });
+
+    it("should list jobs with cache priority", () => {
+      // Create jobs
+      const job1 = store.create(400, "test/repo");
+      const job2 = store.create(401, "test/repo");
+      store.update(job2.id, { status: "running", startedAt: new Date().toISOString() });
+
+      const allJobs = store.list();
+
+      // Should include both cached and non-cached jobs
+      expect(allJobs.length).toBeGreaterThanOrEqual(2);
+
+      const job1Found = allJobs.find(j => j.id === job1.id);
+      const job2Found = allJobs.find(j => j.id === job2.id);
+
+      expect(job1Found?.status).toBe("queued");
+      expect(job2Found?.status).toBe("running");
+    });
+
+    it("should remove from cache when job is deleted", () => {
+      const job = store.create(500, "test/repo");
+
+      // Verify job exists
+      expect(store.get(job.id)).toBeTruthy();
+
+      // Remove job
+      const removed = store.remove(job.id);
+      expect(removed).toBe(true);
+
+      // Should not be accessible anymore
+      expect(store.get(job.id)).toBeUndefined();
+    });
+
+    it("should load active jobs to cache on initialization", () => {
+      // Create some jobs in different states
+      const queuedJob = store.create(600, "test/repo");
+      const runningJob = store.create(601, "test/repo");
+      store.update(runningJob.id, { status: "running", startedAt: new Date().toISOString() });
+
+      const completedJob = store.create(602, "test/repo");
+      store.update(completedJob.id, { status: "success", completedAt: new Date().toISOString() });
+
+      // Create new store instance - should load active jobs to cache
+      const newStore = new JobStore(dataDir);
+
+      // Active jobs should be accessible immediately (from cache)
+      const retrievedQueued = newStore.get(queuedJob.id);
+      expect(retrievedQueued?.status).toBe("queued");
+
+      const retrievedRunning = newStore.get(runningJob.id);
+      expect(retrievedRunning?.status).toBe("running");
+
+      // Completed job should still be accessible (from SQLite)
+      const retrievedCompleted = newStore.get(completedJob.id);
+      expect(retrievedCompleted?.status).toBe("success");
+
+      newStore.close();
+    });
+  });
 });

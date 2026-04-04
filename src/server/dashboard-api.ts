@@ -22,6 +22,8 @@ const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
 interface SSEClient {
   id: string;
   controller: ReadableStreamDefaultController<Uint8Array>;
+  connectedAt: number;
+  lastHeartbeat: number;
 }
 
 // SSE event data types
@@ -36,23 +38,55 @@ type SSEEventData =
 const sseClients = new Map<string, SSEClient>();
 const encoder = new TextEncoder();
 
-function broadcastToAllClients<T extends SSEEventData['event']>(
-  event: T,
-  data: Extract<SSEEventData, { event: T }>['data']
-): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+// Periodic cleanup intervals
+let tokenCleanupInterval: ReturnType<typeof setInterval> | undefined;
+let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+
+// Cleanup constants
+const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+const CLIENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
+function removeStaleClients(): void {
+  const now = Date.now();
   const clientsToRemove: string[] = [];
 
   for (const [clientId, client] of sseClients) {
-    try {
-      client.controller.enqueue(encoder.encode(message));
-    } catch {
-      // Client disconnected, mark for removal
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
       clientsToRemove.push(clientId);
     }
   }
 
-  // Clean up disconnected clients
+  for (const clientId of clientsToRemove) {
+    try {
+      const client = sseClients.get(clientId);
+      client?.controller.close();
+    } catch {
+      // Ignore errors when closing already closed streams
+    }
+    sseClients.delete(clientId);
+  }
+}
+
+function broadcastToAllClients(event: string, data: any): void {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const now = Date.now();
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
+      clientsToRemove.push(clientId);
+      continue;
+    }
+
+    try {
+      client.controller.enqueue(encoder.encode(message));
+      client.lastHeartbeat = now;
+    } catch {
+      clientsToRemove.push(clientId);
+    }
+  }
+
   for (const clientId of clientsToRemove) {
     sseClients.delete(clientId);
   }
@@ -62,6 +96,50 @@ function pruneExpiredTokens(): void {
   const now = Date.now();
   for (const [token, expiry] of sessionTokens) {
     if (now > expiry) sessionTokens.delete(token);
+  }
+}
+
+function sendHeartbeat(): void {
+  const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
+  const clientsToRemove: string[] = [];
+
+  for (const [clientId, client] of sseClients) {
+    try {
+      client.controller.enqueue(encoder.encode(heartbeatMessage));
+    } catch {
+      clientsToRemove.push(clientId);
+    }
+  }
+
+  for (const clientId of clientsToRemove) {
+    sseClients.delete(clientId);
+  }
+}
+
+function startPeriodicCleanup(): void {
+  // Stop existing intervals if any
+  stopPeriodicCleanup();
+
+  // Start token cleanup interval
+  tokenCleanupInterval = setInterval(() => {
+    pruneExpiredTokens();
+  }, TOKEN_CLEANUP_INTERVAL_MS);
+
+  // Start heartbeat interval
+  heartbeatInterval = setInterval(() => {
+    sendHeartbeat();
+    removeStaleClients();
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopPeriodicCleanup(): void {
+  if (tokenCleanupInterval) {
+    clearInterval(tokenCleanupInterval);
+    tokenCleanupInterval = undefined;
+  }
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = undefined;
   }
 }
 
@@ -575,8 +653,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
     const stream = new ReadableStream({
       start(controller) {
-        // Register client
-        sseClients.set(clientId, { id: clientId, controller });
+        // Register client with timestamps
+        const now = Date.now();
+        sseClients.set(clientId, {
+          id: clientId,
+          controller,
+          connectedAt: now,
+          lastHeartbeat: now
+        });
 
         // Send initial state
         const sendInitialState = () => {
@@ -616,6 +700,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       },
     });
   });
+
+  // Start periodic cleanup when dashboard routes are created
+  startPeriodicCleanup();
 
   // Helper to read current version from package.json
   const getCurrentVersion = (): string => {

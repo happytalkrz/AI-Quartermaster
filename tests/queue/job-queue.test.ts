@@ -978,7 +978,7 @@ describe("JobQueue", () => {
       const handler: JobHandler = vi.fn().mockImplementation(async () => {
         running++;
         maxRunning = Math.max(maxRunning, running);
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 150));
         running--;
         return {};
       });
@@ -990,7 +990,7 @@ describe("JobQueue", () => {
       queue.enqueue(2, "test/repo2");
       queue.enqueue(3, "test/repo3");
 
-      // Wait for all to start
+      // Wait for all to start (allow time for reprocessing)
       await new Promise(r => setTimeout(r, 50));
       expect(queue.getStatus().running).toBe(3);
 

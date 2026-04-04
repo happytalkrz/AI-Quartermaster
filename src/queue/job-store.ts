@@ -40,10 +40,12 @@ export class JobStore extends EventEmitter {
   private watcher: FSWatcher | null = null;
   private debounceTimers: Map<string, NodeJS.Timeout> = new Map();
   private internalDeletes: Set<string> = new Set();
+  private maxJobs: number;
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, maxJobs: number = 1000) {
     super();
     this.dataDir = resolve(dataDir, "jobs");
+    this.maxJobs = maxJobs;
     mkdirSync(this.dataDir, { recursive: true });
     this.loadAll();
     this.startWatching();
@@ -79,6 +81,15 @@ export class JobStore extends EventEmitter {
     this.save(job);
     logger.info(`Job created: ${id}`);
     this.emit('jobCreated', job);
+
+    // Auto-prune if cache size exceeds maxJobs
+    if (this.cache.size > this.maxJobs) {
+      const pruned = this.prune(this.maxJobs);
+      if (pruned > 0) {
+        logger.info(`Auto-pruned ${pruned} jobs due to cache size limit (${this.maxJobs})`);
+      }
+    }
+
     return job;
   }
 

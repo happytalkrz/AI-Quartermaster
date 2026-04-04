@@ -107,8 +107,10 @@ function renderJobDetail(job) {
     html += '<div class="flex items-center gap-2 mt-4 text-sm text-primary font-mono"><div class="w-2 h-2 bg-primary rounded-full animate-pulse"></div>' + esc(job.currentStep) + '</div>';
   }
 
-  // Log viewer
-  html += renderLogSection(job);
+  // Log viewer - only include in desktop layout
+  if (window.innerWidth > 1080) {
+    html += renderLogSection(job);
+  }
 
   return html;
 }
@@ -243,6 +245,48 @@ function renderLogSection(job) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Mobile Activity Log Renderer
+   ══════════════════════════════════════════════════════════════ */
+function renderMobileActivityLog(job) {
+  var container = document.getElementById('mobile-activity-log');
+  if (!container) return;
+
+  // Hide container if no job selected or on desktop
+  if (!job || window.innerWidth > 1080) {
+    container.style.display = 'none';
+    return;
+  }
+
+  // Show container for mobile layout
+  container.style.display = 'block';
+
+  if (!job.logs || job.logs.length === 0) {
+    container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';
+    return;
+  }
+
+  var maxLines = job.status === 'running' ? 10 : 20;
+  var lines = job.logs.slice(-maxLines);
+
+  var html = '<div class="space-y-3">';
+  html += '<div class="flex items-center justify-between">';
+  html += '<h3 class="text-xs font-headline font-bold text-outline uppercase tracking-widest">' + t('telemetry') + '</h3>';
+  html += '<button onclick="navigateTo(\'logs\')" class="text-[10px] text-primary hover:underline uppercase font-bold">' + t('expandLogs') + '</button>';
+  html += '</div>';
+
+  html += '<div class="relative">';
+  html += '<div class="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-surface-container to-transparent pointer-events-none z-10 rounded-t-xl"></div>';
+  html += '<div class="bg-surface-container-lowest p-4 rounded-xl font-mono text-xs leading-relaxed border border-outline-variant/10 max-h-64 overflow-y-auto custom-scrollbar">';
+
+  lines.forEach(function(line) {
+    html += colorizeLogLine(line);
+  });
+
+  html += '</div></div></div>';
+  container.innerHTML = html;
+}
+
+/* ══════════════════════════════════════════════════════════════
    Logs Full View
    ══════════════════════════════════════════════════════════════ */
 function renderLogsView(job) {
@@ -317,6 +361,7 @@ function renderFromState() {
     emptyEl.classList.remove('hidden');
     emptyEl.classList.add('flex');
     document.getElementById('job-detail').innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
+    renderMobileActivityLog(null);
     startLiveTickers();
     return;
   }
@@ -341,6 +386,9 @@ function renderFromState() {
   // Render detail
   var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
   document.getElementById('job-detail').innerHTML = renderJobDetail(selectedJob);
+
+  // Render mobile activity log
+  renderMobileActivityLog(selectedJob);
 
   // Auto-scroll log
   var lb = document.getElementById('detail-log-box');
@@ -593,3 +641,16 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          '</textarea>' +
          '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Responsive Activity Log Handler
+   ══════════════════════════════════════════════════════════════ */
+window.addEventListener('resize', function() {
+  // Re-render mobile activity log when window size changes
+  if (selectedJobId && currentJobs) {
+    var selectedJob = currentJobs.find(function(j) { return j.id === selectedJobId; });
+    if (selectedJob) {
+      renderMobileActivityLog(selectedJob);
+    }
+  }
+});

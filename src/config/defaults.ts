@@ -153,4 +153,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
   },
   executionMode: "standard",
+  hooks: {
+    // No hooks configured by default - users can add them in config.yml
+  },
 };

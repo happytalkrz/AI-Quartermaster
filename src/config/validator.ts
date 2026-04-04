@@ -296,6 +296,28 @@ const projectConfigSchema = z.object({
   }).partial().optional(),
 }).strict();
 
+// Hook validation schemas
+const hookDefinitionSchema = z.object({
+  command: z.string().min(1),
+  timeout: z.number().int().positive().optional(),
+});
+
+const hookTimingSchema = z.enum([
+  "pre-plan",
+  "post-plan",
+  "pre-phase",
+  "post-phase",
+  "pre-review",
+  "post-review",
+  "pre-pr",
+  "post-pr",
+]);
+
+const hooksConfigSchema = z.record(
+  hookTimingSchema,
+  z.array(hookDefinitionSchema)
+).optional();
+
 const aqConfigSchema = z.object({
   general: generalConfigSchema,
   git: gitConfigSchema,
@@ -304,6 +326,7 @@ const aqConfigSchema = z.object({
   review: reviewConfigSchema,
   pr: prConfigSchema,
   safety: safetyConfigSchema,
+  hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
 }).superRefine((data, ctx) => {
   const hasAllowedRepos = data.git.allowedRepos.length > 0;

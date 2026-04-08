@@ -11,6 +11,36 @@ var currentProject = localStorage.getItem('aqm-current-project') || 'all';
 var allProjects = [];
 
 /* ══════════════════════════════════════════════════════════════
+   Kanban
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Maps a job's status and pipeline state to a kanban column.
+ * @param {object} job
+ * @returns {'queued'|'planning'|'implementing'|'reviewing'|'done'}
+ */
+function mapJobToKanbanColumn(job) {
+  var status = job.status;
+  var state = job.state;
+
+  if (status === 'queued') return 'queued';
+
+  if (status === 'running') {
+    var planningStates = ['RECEIVED', 'VALIDATED', 'BASE_SYNCED', 'BRANCH_CREATED', 'WORKTREE_CREATED', 'PLAN_GENERATED'];
+    var implementingStates = ['PHASE_IN_PROGRESS', 'PHASE_FAILED'];
+    var reviewingStates = ['REVIEWING', 'SIMPLIFYING', 'FINAL_VALIDATING', 'DRAFT_PR_CREATED', 'CI_CHECKING', 'CI_FIXING'];
+
+    if (planningStates.indexOf(state) !== -1) return 'planning';
+    if (implementingStates.indexOf(state) !== -1) return 'implementing';
+    if (reviewingStates.indexOf(state) !== -1) return 'reviewing';
+    if (state === 'DONE') return 'done';
+    return 'implementing';
+  }
+
+  return 'done';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Filter
    ══════════════════════════════════════════════════════════════ */
 function filterJobs(jobs) {

@@ -1,6 +1,6 @@
 import { runClaude } from "../claude/claude-runner.js";
-import type { ClaudeCliConfig } from "../types/config.js";
-import { configForTask } from "../claude/model-router.js";
+import type { ClaudeCliConfig, ExecutionMode } from "../types/config.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -78,6 +78,9 @@ export interface RetryWithFixOptions<T> {
   /** 커밋 메시지 템플릿 (attempt 번호가 포함됨) */
   commitMessageTemplate: string;
 
+  /** 실행 모드 (경제성/표준/철저) — 기본값: "standard" */
+  executionMode?: ExecutionMode;
+
   /** 재시도 시작 시 호출되는 콜백 (선택사항) */
   onAttempt?: (attempt: number, maxRetries: number, description: string) => void;
 
@@ -120,6 +123,7 @@ export async function retryWithClaudeFix<T>(
     cwd,
     gitPath,
     commitMessageTemplate,
+    executionMode = "standard",
     onAttempt,
     onSuccess,
     onFailure
@@ -151,7 +155,7 @@ export async function retryWithClaudeFix<T>(
       await runClaude({
         prompt: fixPrompt,
         cwd,
-        config: configForTask(claudeConfig, "fallback"),
+        config: configForTaskWithMode(claudeConfig, "fallback", executionMode),
       });
 
       // 변경사항 커밋

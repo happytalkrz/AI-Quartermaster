@@ -534,7 +534,6 @@ export async function autoFixCiFailures(
   };
 
   // push 후 원격 브랜치 업데이트를 위한 커스텀 동작 추가
-  const originalCheckFn = retryOptions.checkFn;
   const originalRevalidateFn = retryOptions.revalidateFn;
 
   // checkFn을 수정하여 push 수행

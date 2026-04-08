@@ -213,3 +213,46 @@ export const HealthCheckResponseSchema = z.object({
 }).strict();
 
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
+
+// Repository 뷰 관련 타입들
+export const RepositoryHealthSchema = z.object({
+  status: z.enum(["healthy", "warning", "error"]),
+  gitRemoteAccess: z.boolean(),
+  localPathExists: z.boolean(),
+  diskSpaceStatus: z.enum(["ok", "warning", "error"]),
+  lastChecked: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type RepositoryHealth = z.infer<typeof RepositoryHealthSchema>;
+
+export const RepositoryStatsSchema = z.object({
+  totalJobs: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  queuedCount: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(1), // 0-1 범위
+  avgDurationMs: z.number().nonnegative().nullable(),
+  lastActivity: z.string().nullable(), // ISO 8601 timestamp, 마지막 job 시간
+}).strict();
+
+export type RepositoryStats = z.infer<typeof RepositoryStatsSchema>;
+
+export const RepositoryInfoSchema = z.object({
+  repo: z.string(),
+  path: z.string(),
+  baseBranch: z.string().optional(),
+  mode: z.enum(["code", "content"]).optional(),
+  worktreeCount: z.number().int().nonnegative(),
+  health: RepositoryHealthSchema,
+  stats: RepositoryStatsSchema,
+}).strict();
+
+export type RepositoryInfo = z.infer<typeof RepositoryInfoSchema>;
+
+// GET /api/projects 응답 스키마
+export const GetProjectsResponseSchema = z.object({
+  projects: z.array(RepositoryInfoSchema),
+}).strict();
+
+export type GetProjectsResponse = z.infer<typeof GetProjectsResponseSchema>;

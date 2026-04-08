@@ -10,12 +10,13 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse, type RepositoryInfo, type RepositoryHealth, type RepositoryStats } from "../types/api.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { existsSync, statSync } from "fs";
+import { listWorktrees } from "../git/worktree-manager.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -453,8 +454,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
-  // Get projects list
-  api.get("/api/projects", (c) => {
+  // Get projects list with extended repository information
+  api.get("/api/projects", async (c) => {
     try {
       const projectRoot = process.cwd();
       const config = loadConfig(projectRoot);
@@ -463,7 +464,140 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ projects: [] });
       }
 
-      return c.json({ projects: config.projects });
+      // Get all jobs for statistics calculation
+      const allJobs = store.list();
+
+      // Build repository info for each project in parallel
+      const repositoryInfoPromises = config.projects.map(async (project): Promise<RepositoryInfo> => {
+        try {
+          // Calculate project statistics
+          const projectJobs = allJobs.filter(job => job.repo === project.repo);
+          const totalJobs = projectJobs.length;
+          const successCount = projectJobs.filter(job => job.status === "success").length;
+          const failureCount = projectJobs.filter(job => job.status === "failure").length;
+          const runningCount = projectJobs.filter(job => job.status === "running").length;
+          const queuedCount = projectJobs.filter(job => job.status === "queued").length;
+          const successRate = totalJobs > 0 ? successCount / totalJobs : 0;
+
+          const completedJobs = projectJobs.filter(job => job.completedAt && job.startedAt);
+          const avgDurationMs = completedJobs.length > 0
+            ? Math.round(completedJobs.reduce((sum, job) => {
+                const duration = new Date(job.completedAt!).getTime() - new Date(job.startedAt!).getTime();
+                return sum + duration;
+              }, 0) / completedJobs.length)
+            : null;
+
+          const lastActivity = projectJobs.length > 0
+            ? projectJobs.reduce((latest: string | null, job) => {
+                const jobTime = job.completedAt || job.createdAt;
+                return !latest || new Date(jobTime) > new Date(latest) ? jobTime : latest;
+              }, null as string | null)
+            : null;
+
+          const stats: RepositoryStats = {
+            totalJobs,
+            successCount,
+            failureCount,
+            runningCount,
+            queuedCount,
+            successRate,
+            avgDurationMs,
+            lastActivity,
+          };
+
+          // Perform health checks
+          const gitPath = config.git?.gitPath || "git";
+          const [gitRemoteCheck, localPathCheck, diskSpaceCheck] = await Promise.all([
+            checkGitRemoteAccess(project.path, gitPath).catch(() => ({ status: "error" as const, message: "Health check failed" })),
+            checkLocalPath(project.path).catch(() => ({ status: "error" as const, message: "Path check failed" })),
+            checkDiskSpace(project.path).catch(() => ({ status: "error" as const, message: "Disk check failed" })),
+          ]);
+
+          let healthStatus: "healthy" | "warning" | "error" = "healthy";
+          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
+            healthStatus = "error";
+          } else if (diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error") {
+            healthStatus = diskSpaceCheck.status;
+          }
+
+          const health: RepositoryHealth = {
+            status: healthStatus,
+            gitRemoteAccess: gitRemoteCheck.status === "ok",
+            localPathExists: localPathCheck.status === "ok",
+            diskSpaceStatus: diskSpaceCheck.status as "ok" | "warning" | "error",
+            lastChecked: new Date().toISOString(),
+          };
+
+          // Count worktrees
+          let worktreeCount = 0;
+          try {
+            const gitConfig = config.git || {
+              defaultBaseBranch: "main",
+              branchTemplate: "aq-{{issueNumber}}",
+              commitMessageTemplate: "",
+              remoteAlias: "origin",
+              allowedRepos: [],
+              gitPath: gitPath,
+              fetchDepth: 1,
+              signCommits: false,
+            };
+            const worktrees = await listWorktrees(gitConfig, { cwd: project.path });
+            worktreeCount = worktrees.length;
+          } catch (error: unknown) {
+            // If listing worktrees fails, count as 0 and log the error
+            const logger = getLogger();
+            logger.warn(`Failed to count worktrees for ${project.repo}: ${getErrorMessage(error)}`);
+          }
+
+          const repositoryInfo: RepositoryInfo = {
+            repo: project.repo,
+            path: project.path,
+            baseBranch: project.baseBranch,
+            mode: project.mode,
+            worktreeCount,
+            health,
+            stats,
+          };
+
+          return repositoryInfo;
+        } catch (error: unknown) {
+          const logger = getLogger();
+          logger.error(`Failed to build repository info for ${project.repo}: ${getErrorMessage(error)}`);
+
+          // Return minimal info with error status on failure
+          const fallbackHealth: RepositoryHealth = {
+            status: "error",
+            gitRemoteAccess: false,
+            localPathExists: false,
+            diskSpaceStatus: "error",
+            lastChecked: new Date().toISOString(),
+          };
+
+          const fallbackStats: RepositoryStats = {
+            totalJobs: 0,
+            successCount: 0,
+            failureCount: 0,
+            runningCount: 0,
+            queuedCount: 0,
+            successRate: 0,
+            avgDurationMs: null,
+            lastActivity: null,
+          };
+
+          return {
+            repo: project.repo,
+            path: project.path,
+            baseBranch: project.baseBranch,
+            mode: project.mode,
+            worktreeCount: 0,
+            health: fallbackHealth,
+            stats: fallbackStats,
+          };
+        }
+      });
+
+      const projects = await Promise.all(repositoryInfoPromises);
+      return c.json({ projects });
     } catch (error: unknown) {
       const logger = getLogger();
       logger.error(`Failed to load projects: ${getErrorMessage(error)}`);

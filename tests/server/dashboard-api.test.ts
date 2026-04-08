@@ -28,6 +28,12 @@ vi.mock("../../src/update/self-updater.js", () => ({
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
+  existsSync: vi.fn(),
+  statSync: vi.fn(),
+  readdirSync: vi.fn(),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
 }));
 
 // Mock imports
@@ -40,6 +46,12 @@ const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-m
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
 const mockSelfUpdater = vi.mocked(await import("../../src/update/self-updater.js")).SelfUpdater;
 const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
+const mockExistsSync = vi.mocked(await import("fs")).existsSync;
+const mockStatSync = vi.mocked(await import("fs")).statSync;
+const mockReaddirSync = vi.mocked(await import("fs")).readdirSync;
+const mockMkdirSync = vi.mocked(await import("fs")).mkdirSync;
+const mockWriteFileSync = vi.mocked(await import("fs")).writeFileSync;
+const mockUnlinkSync = vi.mocked(await import("fs")).unlinkSync;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -1205,6 +1217,326 @@ describe("Dashboard API - Projects Management", () => {
       expect(response.status).toBe(400);
       const result = await response.json();
       expect(result.error).toContain("Configuration validation failed");
+    });
+  });
+
+  describe("GET /api/projects", () => {
+    it("should return projects list successfully", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: [
+          { repo: "owner/repo1", path: "/path/to/repo1", baseBranch: "main", mode: "code" },
+          { repo: "owner/repo2", path: "/path/to/repo2", baseBranch: "develop", mode: "content" }
+        ]
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ size: 1000 } as any);
+      mockReaddirSync.mockReturnValue([]);
+
+      const response = await app.request("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.projects).toHaveLength(2);
+      expect(result.projects[0].repo).toBe("owner/repo1");
+      expect(result.projects[0].health).toBeDefined();
+      expect(result.projects[0].stats).toBeDefined();
+    });
+
+    it("should return empty list when no projects configured", async () => {
+      const projectConfig = {
+        general: { projectName: "test-project" },
+        projects: []
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+
+      const response = await app.request("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.projects).toHaveLength(0);
+    });
+
+    it("should return 500 when config loading fails", async () => {
+      mockLoadConfig.mockImplementation(() => {
+        throw new Error("Config load error");
+      });
+
+      const response = await app.request("/api/projects", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toContain("Failed to load projects");
+    });
+
+    it("should require authentication", async () => {
+      const response = await app.request("/api/projects", {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(401);
+    });
+  });
+});
+
+describe("Dashboard API - Storage Management", () => {
+  let app: Hono;
+  const apiKey = "test-api-key-123";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+  });
+
+  describe("GET /api/storage", () => {
+    it("should return storage information successfully", async () => {
+      const projectConfig = {
+        general: { logDir: "/path/to/logs" }
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ size: 5000 } as any);
+      mockReaddirSync.mockReturnValue(["app.log", "error.log"]);
+
+      const response = await app.request("/api/storage", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.storage).toBeDefined();
+      expect(result.storage.database).toBeDefined();
+      expect(result.storage.logs).toBeDefined();
+      expect(result.storage.total).toBeDefined();
+      expect(result.timestamp).toBeDefined();
+    });
+
+    it("should handle missing database file", async () => {
+      const projectConfig = {
+        general: { logDir: "/path/to/logs" }
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockExistsSync.mockImplementation((path: string) => !path.includes("aqm.db"));
+      mockStatSync.mockReturnValue({ size: 1000 } as any);
+      mockReaddirSync.mockReturnValue(["app.log"]);
+
+      const response = await app.request("/api/storage", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.storage.database.sizeBytes).toBe(0);
+    });
+
+    it("should handle missing log directory", async () => {
+      const projectConfig = {
+        general: { logDir: "/path/to/logs" }
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockExistsSync.mockImplementation((path: string) => path.includes("aqm.db"));
+      mockStatSync.mockReturnValue({ size: 2000 } as any);
+
+      const response = await app.request("/api/storage", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.storage.logs.sizeBytes).toBe(0);
+    });
+
+    it("should return 500 on storage info error", async () => {
+      mockLoadConfig.mockImplementation(() => {
+        throw new Error("Config error");
+      });
+
+      const response = await app.request("/api/storage", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toContain("Storage info failed:");
+    });
+
+    it("should work without authentication (no auth middleware)", async () => {
+      const projectConfig = {
+        general: { logDir: "/path/to/logs" }
+      };
+
+      mockLoadConfig.mockReturnValue(projectConfig as any);
+      mockExistsSync.mockReturnValue(true);
+      mockStatSync.mockReturnValue({ size: 1000 } as any);
+      mockReaddirSync.mockReturnValue([]);
+
+      const response = await app.request("/api/storage", {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe("POST /api/storage/cleanup", () => {
+    it("should perform storage cleanup successfully", async () => {
+      // Mock JobStore methods that cleanupOldData uses
+      mockJobStore.list.mockReturnValue([
+        { id: "job1", createdAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString() },
+        { id: "job2", createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() }
+      ] as any);
+
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          olderThanDays: 30,
+          dryRun: false
+        })
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.cleaned).toBeDefined();
+      expect(result.cleaned.jobsCount).toBeGreaterThanOrEqual(0);
+      expect(result.cleaned.phasesCount).toBeGreaterThanOrEqual(0);
+      expect(result.cleaned.logsCount).toBeGreaterThanOrEqual(0);
+      expect(result.cleaned.freedBytes).toBeGreaterThanOrEqual(0);
+      expect(result.dryRun).toBe(false);
+      expect(result.timestamp).toBeDefined();
+    });
+
+    it("should perform dry run cleanup", async () => {
+      mockJobStore.list.mockReturnValue([]);
+
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          olderThanDays: 30,
+          dryRun: true
+        })
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.dryRun).toBe(true);
+      expect(result.cleaned).toBeDefined();
+    });
+
+    it("should use default values when not provided", async () => {
+      mockJobStore.list.mockReturnValue([]);
+
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.dryRun).toBe(false); // default
+    });
+
+    it("should return 500 for invalid request body (Zod validation error)", async () => {
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          olderThanDays: -5 // invalid: must be positive
+        })
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toContain("Storage cleanup failed:");
+    });
+
+    it("should return 500 for malformed JSON", async () => {
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: "invalid json"
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toContain("Storage cleanup failed:");
+    });
+
+    it("should work without authentication (no auth middleware)", async () => {
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ olderThanDays: 30 })
+      });
+
+      expect(response.status).toBe(200);
+    });
+
+    it("should return 500 on cleanup error", async () => {
+      // Mock the cleanup operation to fail by mocking the job store operations
+      mockJobStore.list.mockImplementation(() => {
+        throw new Error("Database error");
+      });
+
+      const response = await app.request("/api/storage/cleanup", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ olderThanDays: 30 })
+      });
+
+      expect(response.status).toBe(500);
+      const result = await response.json();
+      expect(result.error).toContain("Storage cleanup failed");
     });
   });
 });

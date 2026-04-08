@@ -223,8 +223,18 @@ export async function pollCiStatus(
       onStatusUpdate(status);
     }
 
-    // checks가 0개면 CI가 아직 시작 안 된 것 → 대기
+    // checks가 0개면 CI가 아직 시작 안 된 것 → 5분까지 대기, 이후 skip
     if (status.checks.length === 0) {
+      if (elapsed >= 300000) {
+        logger.warn(`No CI checks found after 5 minutes for PR #${prNumber} — skipping CI check (Draft PR or no CI configured)`);
+        return {
+          overall: "success",
+          checks: [],
+          failedChecks: [],
+          pendingChecks: [],
+          lastCheckedAt: new Date().toISOString(),
+        };
+      }
       logger.info(`No CI checks found yet for PR #${prNumber}, waiting...`);
       await new Promise(resolve => setTimeout(resolve, intervalMs));
       continue;

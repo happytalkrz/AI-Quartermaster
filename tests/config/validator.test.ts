@@ -236,7 +236,7 @@ describe("validateConfig", () => {
 
   it("should throw error for invalid logLevel", () => {
     const invalidConfig = updateNested(validConfig, "general", {
-      logLevel: "invalid" as any,
+      logLevel: "invalid" as never,
     });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
@@ -244,7 +244,7 @@ describe("validateConfig", () => {
 
   it("should throw error for invalid locale", () => {
     const invalidConfig = updateNested(validConfig, "general", {
-      locale: "fr" as any,
+      locale: "fr" as never,
     });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
@@ -252,7 +252,7 @@ describe("validateConfig", () => {
 
   it("should throw error for invalid mergeMethod", () => {
     const invalidConfig = updateNested(validConfig, "pr", {
-      mergeMethod: "invalid" as any,
+      mergeMethod: "invalid" as never,
     });
 
     expect(() => validateConfig(invalidConfig)).toThrow();
@@ -264,7 +264,7 @@ describe("validateConfig", () => {
         {
           name: "test-review",
           promptTemplate: "Review: {diff}",
-          failAction: "invalid" as any,
+          failAction: "invalid" as never,
           maxRetries: 1,
           model: null,
         },

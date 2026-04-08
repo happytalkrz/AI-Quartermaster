@@ -22,13 +22,13 @@ const TEST_CONSTANTS = {
 /**
  * Deep merge utility for config objects
  */
-function mergeDeep<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+function mergeDeep<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
   const result = structuredClone(target);
 
   for (const key in source) {
     const sourceValue = source[key];
     if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
-      result[key] = mergeDeep(result[key] || {} as any, sourceValue);
+      result[key] = mergeDeep(result[key] || {} as Record<string, unknown>, sourceValue);
     } else if (sourceValue !== undefined) {
       result[key] = sourceValue;
     }
@@ -101,27 +101,27 @@ export function makePhaseResult(
 // ---------------------------------------------------------------------------
 
 type MockSet = {
-  fetchIssue: any;
-  syncBaseBranch: any;
-  createWorkBranch: any;
-  createWorktree: any;
-  installDependencies: any;
-  runCli: any;
-  runCoreLoop: any;
-  pushBranch: any;
-  checkConflicts: any;
-  attemptRebase: any;
-  enableAutoMerge: any;
-  addIssueComment: any;
-  createDraftPR: any;
-  removeWorktree: any;
-  getDiffContent: any;
-  runReviews: any;
-  runSimplify: any;
-  runFinalValidation: any;
-  validateIssue: any;
-  validatePlan: any;
-  validateBeforePush: any;
+  fetchIssue: vi.Mock;
+  syncBaseBranch: vi.Mock;
+  createWorkBranch: vi.Mock;
+  createWorktree: vi.Mock;
+  installDependencies: vi.Mock;
+  runCli: vi.Mock;
+  runCoreLoop: vi.Mock;
+  pushBranch: vi.Mock;
+  checkConflicts: vi.Mock;
+  attemptRebase: vi.Mock;
+  enableAutoMerge: vi.Mock;
+  addIssueComment: vi.Mock;
+  createDraftPR: vi.Mock;
+  removeWorktree: vi.Mock;
+  getDiffContent: vi.Mock;
+  runReviews: vi.Mock;
+  runSimplify: vi.Mock;
+  runFinalValidation: vi.Mock;
+  validateIssue: vi.Mock;
+  validatePlan: vi.Mock;
+  validateBeforePush: vi.Mock;
   closeIssue: ReturnType<typeof vi.mocked>;
 };
 

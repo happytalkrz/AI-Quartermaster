@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { extractJson, type ClaudeRunOptions, type ClaudeRunResult, runClaude } from "../../src/claude/claude-runner.js";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
 // Mock child_process
@@ -95,7 +95,7 @@ describe("runClaude retry behavior", () => {
       killed: false,
     });
 
-    mockSpawn.mockReturnValue(mockChild as any);
+    mockSpawn.mockReturnValue(mockChild as ChildProcess);
   });
 
   afterEach(() => {
@@ -144,7 +144,7 @@ describe("runClaude retry behavior", () => {
         }
       }, 10);
 
-      return child as any;
+      return child as ChildProcess;
     });
 
     const runPromise = runClaude(options);
@@ -190,7 +190,7 @@ describe("runClaude retry behavior", () => {
         child.emit("close", 1);
       }, 10);
 
-      return child as any;
+      return child as ChildProcess;
     });
 
     const runPromise = runClaude(options);
@@ -317,7 +317,7 @@ describe("cost fallback behavior", () => {
       killed: false,
     });
 
-    mockSpawn.mockReturnValue(mockChild as any);
+    mockSpawn.mockReturnValue(mockChild as ChildProcess);
   });
 
   it("should calculate fallback cost when total_cost_usd is 0", async () => {

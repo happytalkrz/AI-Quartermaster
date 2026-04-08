@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, existsSync, unlinkSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync, existsSync, unlinkSync, type FSWatcher } from "fs";
 import { resolve } from "path";
 import { ConfigWatcher, ConfigChangeEvent } from "../../src/config/config-watcher.js";
+
+// Type for accessing private members in tests
+type ConfigWatcherWithPrivates = ConfigWatcher & {
+  watchers: Map<string, FSWatcher>;
+  errorCounts: Map<string, number>;
+  pendingChanges: Set<string>;
+  handleWatcherError(filePath: string, type: 'base' | 'local', error: unknown): void;
+};
 
 describe("ConfigWatcher", () => {
   let testDir: string;
@@ -227,12 +235,12 @@ general:
     watcher.startWatching();
 
     // Verify that watchers are set up
-    expect((watcher as any).watchers.size).toBeGreaterThan(0);
+    expect((watcher as ConfigWatcherWithPrivates).watchers.size).toBeGreaterThan(0);
 
     watcher.stopWatching();
 
     // Verify that watchers are cleaned up
-    expect((watcher as any).watchers.size).toBe(0);
+    expect((watcher as ConfigWatcherWithPrivates).watchers.size).toBe(0);
   });
 
   it("should handle non-existent project directory gracefully", () => {
@@ -249,7 +257,7 @@ general:
     return new Promise<void>((done) => {
       let watcherDisabledReceived = false;
 
-      watcher.on('watcherDisabled', (_) => {
+      watcher.on('watcherDisabled', (event) => {
         if (watcherDisabledReceived) return;
         watcherDisabledReceived = true;
 
@@ -265,7 +273,7 @@ general:
       setTimeout(() => {
         // Trigger multiple errors to exceed retry limit
         for (let i = 0; i < 5; i++) {
-          (watcher as any).handleWatcherError(configPath, 'base', new Error(`Test error ${i + 1}`));
+          (watcher as ConfigWatcherWithPrivates).handleWatcherError(configPath, 'base', new Error(`Test error ${i + 1}`));
         }
       }, 50);
     });
@@ -275,17 +283,17 @@ general:
     watcher.startWatching();
 
     // Add some error counts by triggering errors
-    (watcher as any).handleWatcherError(configPath, 'base', new Error('Test error'));
+    (watcher as ConfigWatcherWithPrivates).handleWatcherError(configPath, 'base', new Error('Test error'));
 
     // Verify error counts exist
-    expect((watcher as any).errorCounts.size).toBeGreaterThan(0);
+    expect((watcher as ConfigWatcherWithPrivates).errorCounts.size).toBeGreaterThan(0);
 
     watcher.stopWatching();
 
     // Verify all resources are cleaned up
-    expect((watcher as any).watchers.size).toBe(0);
-    expect((watcher as any).pendingChanges.size).toBe(0);
-    expect((watcher as any).errorCounts.size).toBe(0);
+    expect((watcher as ConfigWatcherWithPrivates).watchers.size).toBe(0);
+    expect((watcher as ConfigWatcherWithPrivates).pendingChanges.size).toBe(0);
+    expect((watcher as ConfigWatcherWithPrivates).errorCounts.size).toBe(0);
   });
 
   it("should attempt to restart watcher after error", () => {
@@ -294,7 +302,7 @@ general:
 
       // Use watcherDisabled event to detect when max retries are exceeded
       // This is a more reliable way to test error handling
-      watcher.on('watcherDisabled', (_) => {
+      watcher.on('watcherDisabled', (event) => {
         if (!errorHandled) {
           errorHandled = true;
           expect(event.filePath).toBe(configPath);
@@ -309,7 +317,7 @@ general:
       // Simulate multiple errors to exceed retry limit (4 errors > 3 max retries)
       setTimeout(() => {
         for (let i = 0; i < 4; i++) {
-          (watcher as any).handleWatcherError(configPath, 'base', new Error(`Test error ${i + 1}`));
+          (watcher as ConfigWatcherWithPrivates).handleWatcherError(configPath, 'base', new Error(`Test error ${i + 1}`));
         }
       }, 100);
 
@@ -335,7 +343,7 @@ general:
       });
 
       // Trigger error for non-existent file
-      (watcher as any).handleWatcherError(nonExistentFile, 'local', new Error('File not found'));
+      (watcher as ConfigWatcherWithPrivates).handleWatcherError(nonExistentFile, 'local', new Error('File not found'));
 
       // Wait for potential restart attempt
       setTimeout(() => {

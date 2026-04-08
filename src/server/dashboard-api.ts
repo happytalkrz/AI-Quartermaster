@@ -645,6 +645,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
               }, null as string | null)
             : null;
 
+          // Calculate total cost from all jobs
+          const totalCost = projectJobs.length > 0
+            ? projectJobs.reduce((sum, job) => {
+                return sum + (job.totalCostUsd || 0);
+              }, 0)
+            : null;
+
           const stats: RepositoryStats = {
             totalJobs,
             successCount,
@@ -654,6 +661,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
             successRate,
             avgDurationMs,
             lastActivity,
+            totalCost,
           };
 
           // Perform health checks
@@ -733,6 +741,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
             successRate: 0,
             avgDurationMs: null,
             lastActivity: null,
+            totalCost: null,
           };
 
           return {

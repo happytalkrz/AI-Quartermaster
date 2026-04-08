@@ -768,17 +768,21 @@ function renderRepositoryCard(repo) {
           '<span class="text-xs font-bold uppercase">' + repo.health.status + '</span>' +
         '</div>' +
       '</div>' +
-      '<div class="grid grid-cols-3 gap-4 mb-4">' +
+      '<div class="grid grid-cols-4 gap-3 mb-4">' +
         '<div class="text-center">' +
-          '<div class="text-2xl font-bold font-mono text-on-surface">' + repo.stats.totalJobs + '</div>' +
+          '<div class="text-xl font-bold font-mono text-on-surface">' + repo.stats.totalJobs + '</div>' +
           '<div class="text-[10px] uppercase tracking-wider text-outline">Total Jobs</div>' +
         '</div>' +
         '<div class="text-center">' +
-          '<div class="text-2xl font-bold font-mono text-[#3fb950]">' + successRate + '%</div>' +
+          '<div class="text-xl font-bold font-mono text-[#3fb950]">' + successRate + '%</div>' +
           '<div class="text-[10px] uppercase tracking-wider text-outline">Success Rate</div>' +
         '</div>' +
         '<div class="text-center">' +
-          '<div class="text-2xl font-bold font-mono text-primary">' + repo.worktreeCount + '</div>' +
+          '<div class="text-xl font-bold font-mono text-tertiary">$' + (repo.stats.totalCost ? repo.stats.totalCost.toFixed(2) : '0.00') + '</div>' +
+          '<div class="text-[10px] uppercase tracking-wider text-outline">Cost</div>' +
+        '</div>' +
+        '<div class="text-center">' +
+          '<div class="text-xl font-bold font-mono text-primary">' + repo.worktreeCount + '</div>' +
           '<div class="text-[10px] uppercase tracking-wider text-outline">Worktrees</div>' +
         '</div>' +
       '</div>' +

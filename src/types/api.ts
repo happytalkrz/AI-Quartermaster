@@ -234,6 +234,7 @@ export const RepositoryStatsSchema = z.object({
   successRate: z.number().min(0).max(1), // 0-1 범위
   avgDurationMs: z.number().nonnegative().nullable(),
   lastActivity: z.string().nullable(), // ISO 8601 timestamp, 마지막 job 시간
+  totalCost: z.number().nonnegative().nullable(), // USD 단위의 총 비용
 }).strict();
 
 export type RepositoryStats = z.infer<typeof RepositoryStatsSchema>;

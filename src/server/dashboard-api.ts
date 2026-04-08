@@ -10,7 +10,9 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse, type StatsResponse, StatsResponseSchema } from "../types/api.js";
+import { getStatsByProject, getStatsByTimeRange, getCostsByIssue } from "../store/queries.js";
+import type { AQDatabase } from "../store/database.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -761,7 +763,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       const { project, timeRange } = parseResult.data;
 
-      // Get base job list
+      // Access database from JobStore
+      const database = (store as unknown as { db: AQDatabase }).db;
+
+      // Get base job list for basic stats
       let jobs = store.list();
 
       // Apply project filter
@@ -794,6 +799,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         });
       }
 
+      // Basic statistics
       const total = jobs.length;
       const successCount = jobs.filter(j => j.status === "success").length;
       const failureCount = jobs.filter(j => j.status === "failure").length;
@@ -810,7 +816,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
 
-      return c.json({
+      // Extended cost statistics using queries
+      const costStats = getCostsByIssue(database, project, timeRange);
+
+      // Project breakdown (only when no specific project filter)
+      const projectBreakdown = project ? undefined : getStatsByProject(database, timeRange);
+
+      // Time range breakdown for trending
+      const timeRangeBreakdown = getStatsByTimeRange(database, project);
+
+      const response: StatsResponse = {
         total,
         successCount,
         failureCount,
@@ -821,9 +836,54 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         successRate,
         project: project || null,
         timeRange,
-      });
+        costStats,
+        projectBreakdown,
+        timeRangeBreakdown
+      };
+
+      // Validate response with Zod schema
+      const validateResult = StatsResponseSchema.safeParse(response);
+      if (!validateResult.success) {
+        return c.json({
+          error: "Invalid stats response format",
+          details: validateResult.error
+        }, 500);
+      }
+
+      return c.json(response);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch stats: ${getErrorMessage(error)}` }, 500);
+    }
+  });
+
+  // Dedicated costs endpoint
+  api.get("/api/stats/costs", (c) => {
+    try {
+      // Parse query parameters using Zod schema (same as stats)
+      const queryParams = {
+        project: c.req.query("project"),
+        timeRange: c.req.query("timeRange") || "7d",
+      };
+
+      const parseResult = GetStatsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: parseResult.error
+        }, 400);
+      }
+
+      const { project, timeRange } = parseResult.data;
+
+      // Access database from JobStore
+      const database = (store as unknown as { db: AQDatabase }).db;
+
+      // Get detailed cost statistics using queries
+      const costStats = getCostsByIssue(database, project, timeRange);
+
+      return c.json(costStats);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch cost stats: ${getErrorMessage(error)}` }, 500);
     }
   });
 

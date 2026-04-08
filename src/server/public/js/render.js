@@ -709,6 +709,116 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Repositories View Rendering
+   ══════════════════════════════════════════════════════════════ */
+function renderRepositories(projects) {
+  var container = document.querySelector('#view-repositories .grid.grid-cols-1.xl\\:grid-cols-2');
+  if (!container) return;
+
+  // Keep the "Add Repository" card and add project cards after it
+  var addCard = container.querySelector('.border-dashed');
+  if (!addCard) return;
+
+  // Clear existing repository cards (keep only the add card)
+  var existingCards = container.querySelectorAll('.bg-\\[\\#262a31\\]');
+  existingCards.forEach(function(card) { card.remove(); });
+
+  // Add repository cards
+  projects.forEach(function(repo) {
+    var cardHtml = renderRepositoryCard(repo);
+    container.insertAdjacentHTML('beforeend', cardHtml);
+  });
+}
+
+function renderRepositoryCard(repo) {
+  var healthColor = repo.health.status === 'healthy' ? '#3fb950' :
+                    repo.health.status === 'warning' ? '#f79e0f' : '#f85149';
+  var healthIcon = repo.health.status === 'healthy' ? 'check_circle' :
+                   repo.health.status === 'warning' ? 'warning' : 'error';
+
+  // Format file size
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    var k = 1024;
+    var sizes = ['B', 'KB', 'MB', 'GB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+
+  var successRate = repo.stats.totalJobs > 0
+    ? Math.round((repo.stats.successfulJobs / repo.stats.totalJobs) * 100)
+    : 0;
+
+  var lastActivity = repo.stats.lastJobTime
+    ? new Date(repo.stats.lastJobTime).toLocaleDateString()
+    : 'Never';
+
+  return '<div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">' +
+    '<div class="p-6 flex-1">' +
+      '<div class="flex items-start justify-between mb-4">' +
+        '<div>' +
+          '<h3 class="text-lg font-headline font-bold text-on-surface mb-1">' + esc(repo.repo) + '</h3>' +
+          '<div class="flex items-center gap-2 text-xs text-outline">' +
+            '<span class="material-symbols-outlined text-sm">folder_open</span>' +
+            '<span class="font-mono">' + esc(repo.path) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="flex items-center gap-2 px-2 py-1 rounded-lg" style="background: ' + healthColor + '15; color: ' + healthColor + '">' +
+          '<span class="material-symbols-outlined text-sm" style="font-variation-settings: \'FILL\' 1">' + healthIcon + '</span>' +
+          '<span class="text-xs font-bold uppercase">' + repo.health.status + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="grid grid-cols-3 gap-4 mb-4">' +
+        '<div class="text-center">' +
+          '<div class="text-2xl font-bold font-mono text-on-surface">' + repo.stats.totalJobs + '</div>' +
+          '<div class="text-[10px] uppercase tracking-wider text-outline">Total Jobs</div>' +
+        '</div>' +
+        '<div class="text-center">' +
+          '<div class="text-2xl font-bold font-mono text-[#3fb950]">' + successRate + '%</div>' +
+          '<div class="text-[10px] uppercase tracking-wider text-outline">Success Rate</div>' +
+        '</div>' +
+        '<div class="text-center">' +
+          '<div class="text-2xl font-bold font-mono text-primary">' + repo.worktreeCount + '</div>' +
+          '<div class="text-[10px] uppercase tracking-wider text-outline">Worktrees</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="flex items-center justify-between text-xs text-outline">' +
+        '<span>Last Activity: ' + lastActivity + '</span>' +
+        '<span>' + (repo.baseBranch || 'main') + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="bg-surface-container-high p-4 border-t border-outline-variant/20">' +
+      '<div class="flex items-center justify-between text-xs">' +
+        '<span class="text-outline">Branch: ' + (repo.baseBranch || 'main') + '</span>' +
+        '<span class="text-outline">Mode: ' + (repo.mode || 'code') + '</span>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderStoragePanel(storage) {
+  // Update Total DB Size
+  var dbSizeElement = document.querySelector('#view-repositories .flex.gap-4 .flex.items-center.gap-4:first-child .text-lg.font-mono');
+  if (dbSizeElement) {
+    dbSizeElement.textContent = formatBytes(storage.database.sizeBytes);
+  }
+
+  // Update Log Volume
+  var logSizeElement = document.querySelector('#view-repositories .flex.gap-4 .flex.items-center.gap-4:last-child .text-lg.font-mono');
+  if (logSizeElement) {
+    logSizeElement.textContent = formatBytes(storage.logs.sizeBytes);
+  }
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  var k = 1024;
+  var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/* ══════════════════════════════════════════════════════════════
    Responsive Activity Log Handler
    ══════════════════════════════════════════════════════════════ */
 window.addEventListener('resize', function() {

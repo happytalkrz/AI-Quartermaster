@@ -42,6 +42,11 @@ function navigateTo(view) {
   if (view === 'settings') {
     loadSettings();
   }
+
+  // If navigating to repositories view, load repositories data
+  if (view === 'repositories') {
+    loadRepositoriesView();
+  }
 }
 
 // Bind navigation clicks
@@ -775,6 +780,34 @@ function initProjectSelection() {
       dropdown.classList.add('hidden');
     }
   });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Repositories View
+   ══════════════════════════════════════════════════════════════ */
+function loadRepositoriesView() {
+  // Load both projects and storage data in parallel
+  Promise.all([
+    fetchProjects().catch(function() { return { projects: [] }; }),
+    fetchStorage().catch(function() { return { storage: { database: { sizeBytes: 0 }, logs: { sizeBytes: 0 } } }; })
+  ])
+    .then(function(results) {
+      var projectsData = results[0];
+      var storageData = results[1];
+
+      // Render repositories
+      if (projectsData.projects) {
+        renderRepositories(projectsData.projects);
+      }
+
+      // Update storage panel
+      if (storageData.storage) {
+        renderStoragePanel(storageData.storage);
+      }
+    })
+    .catch(function(error) {
+      console.error('Failed to load repositories view:', error);
+    });
 }
 
 window.setSettingsTab = setSettingsTab;

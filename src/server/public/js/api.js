@@ -73,3 +73,30 @@ function saveApiKey() {
   connectSSE();
   apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Repositories API
+   ══════════════════════════════════════════════════════════════ */
+function fetchProjects() {
+  return apiFetch('/api/projects')
+    .then(function(r) { return r.json(); });
+}
+
+function fetchStorage() {
+  return apiFetch('/api/storage')
+    .then(function(r) { return r.json(); });
+}
+
+function cleanupStorage(options) {
+  options = options || {};
+  var requestBody = {
+    olderThanDays: options.olderThanDays || 30,
+    dryRun: options.dryRun || false
+  };
+
+  return apiFetch('/api/storage/cleanup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody)
+  }).then(function(r) { return r.json(); });
+}

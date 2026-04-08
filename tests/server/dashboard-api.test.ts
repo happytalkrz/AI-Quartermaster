@@ -43,6 +43,24 @@ const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
+
+// Mock database for queries
+const mockDatabase = {
+  db: {
+    prepare: vi.fn().mockReturnValue({
+      all: vi.fn().mockReturnValue([]),
+      get: vi.fn().mockReturnValue({
+        total: 2,
+        success_count: 1,
+        failure_count: 1,
+        avg_duration_ms: 5000,
+        total_cost_usd: 0.05,
+        avg_cost_usd: 0.025
+      }),
+    })
+  }
+};
+
 const mockJobStore: JobStore = {
   list: vi.fn().mockReturnValue([]),
   get: vi.fn(),
@@ -50,6 +68,7 @@ const mockJobStore: JobStore = {
   remove: vi.fn(),
   on: globalEmitter.on.bind(globalEmitter),
   emit: globalEmitter.emit.bind(globalEmitter),
+  db: mockDatabase, // Add db property for stats queries
 } as any;
 
 const mockJobQueue: JobQueue = {

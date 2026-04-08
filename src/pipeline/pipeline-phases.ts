@@ -4,7 +4,6 @@ import { getModePreset, getExecutionModePreset, detectExecutionModeFromLabels } 
 import { resolveProject } from "../config/project-resolver.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
 import { handleCoreLoopFailure } from "./pipeline-error-handler.js";
 import { runReviewPhase, runSimplifyPhase, type ReviewContext, type SimplifyContext } from "./pipeline-review.js";
 import { runValidationPhase } from "./pipeline-validation.js";
@@ -14,7 +13,7 @@ import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from 
 import { PipelineTimer } from "../safety/timeout-manager.js";
 import { formatResult } from "./result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "./pipeline-context.js";
-import { pollCiStatus, autoFixCiFailures, type CiPollingConfig } from "./ci-checker.js";
+// CI polling imports removed - functionality disabled
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE

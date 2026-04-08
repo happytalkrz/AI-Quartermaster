@@ -17,7 +17,7 @@ export class HookRegistry {
 
   getAllTimings(): HookTiming[] {
     return Object.entries(this.config)
-      .filter(([_, hooks]) => hooks && hooks.length > 0)
+      .filter(([, hooks]) => hooks && hooks.length > 0)
       .map(([timing]) => timing as HookTiming);
   }
 

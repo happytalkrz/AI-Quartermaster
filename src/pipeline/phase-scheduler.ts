@@ -163,7 +163,7 @@ export function schedulePhases(phases: Phase[], enableParallelPhases: boolean = 
 
     if (fileConflicts.size > 0) {
       // Add serial dependencies for conflicting phases
-      for (const [file, conflictingPhases] of fileConflicts) {
+      for (const [, conflictingPhases] of fileConflicts) {
         // Sort conflicting phases by index to ensure consistent ordering
         conflictingPhases.sort((a, b) => a - b);
 

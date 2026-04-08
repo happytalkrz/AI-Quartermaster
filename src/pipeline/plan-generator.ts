@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
 import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
-import { configForTask, configForTaskWithMode } from "../claude/model-router.js";
+import { configForTaskWithMode } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../types/pipeline.js";

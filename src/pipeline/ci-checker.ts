@@ -167,6 +167,13 @@ export async function pollCiStatus(
 
   logger.info(`Starting CI polling for PR #${prNumber} (max duration: ${maxDurationMs}ms, interval: ${intervalMs}ms)`);
 
+  // CI 시작 대기: PR 생성 직후에는 CI가 아직 트리거 안 됐을 수 있음
+  // 최소 1회는 interval 대기 후 체크
+  logger.info(`Waiting ${intervalMs}ms for CI to start...`);
+  await new Promise(resolve => setTimeout(resolve, intervalMs));
+
+  let consecutiveResults = 0; // 같은 결과 연속 횟수
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const elapsed = Date.now() - startTime;
@@ -194,10 +201,23 @@ export async function pollCiStatus(
       onStatusUpdate(status);
     }
 
-    // 완료 조건 확인
+    // checks가 0개면 CI가 아직 시작 안 된 것 → 대기
+    if (status.checks.length === 0) {
+      logger.info(`No CI checks found yet for PR #${prNumber}, waiting...`);
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+      continue;
+    }
+
+    // 완료 조건 확인 — 연속 2회 같은 결과여야 확정 (1회만으로는 이전 커밋 결과일 수 있음)
     if (status.overall === "success" || status.overall === "failure") {
-      logger.info(`CI polling completed: ${status.overall}`);
-      return status;
+      consecutiveResults++;
+      if (consecutiveResults >= 2) {
+        logger.info(`CI polling completed: ${status.overall} (confirmed ${consecutiveResults} times)`);
+        return status;
+      }
+      logger.info(`CI result: ${status.overall} (${consecutiveResults}/2 confirmations), waiting...`);
+    } else {
+      consecutiveResults = 0;
     }
 
     // 다음 폴링까지 대기

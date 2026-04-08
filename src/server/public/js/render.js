@@ -746,11 +746,11 @@ function renderRepositoryCard(repo) {
   }
 
   var successRate = repo.stats.totalJobs > 0
-    ? Math.round((repo.stats.successfulJobs / repo.stats.totalJobs) * 100)
+    ? Math.round((repo.stats.successCount / repo.stats.totalJobs) * 100)
     : 0;
 
-  var lastActivity = repo.stats.lastJobTime
-    ? new Date(repo.stats.lastJobTime).toLocaleDateString()
+  var lastActivity = repo.stats.lastActivity
+    ? new Date(repo.stats.lastActivity).toLocaleDateString()
     : 'Never';
 
   return '<div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">' +

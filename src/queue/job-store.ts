@@ -89,6 +89,10 @@ export class JobStore extends EventEmitter {
     }
   }
 
+  getAqDb(): AQDatabase {
+    return this.db;
+  }
+
   /**
    * 캐시에서 job 제거
    */

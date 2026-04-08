@@ -28,6 +28,9 @@ vi.mock("../../src/utils/logger.js", () => ({
 vi.mock("../../src/safety/rollback-manager.js", () => ({
   ensureCleanState: vi.fn(),
 }));
+vi.mock("../../src/git/diff-collector.js", () => ({
+  collectDiff: vi.fn(),
+}));
 
 import { retryPhase, type PhaseRetryContext } from "../../src/pipeline/phase-retry.js";
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
@@ -37,6 +40,7 @@ import { runShell } from "../../src/utils/cli-runner.js";
 import { classifyError } from "../../src/pipeline/error-classifier.js";
 import { autoCommitIfDirty, getHeadHash } from "../../src/git/commit-helper.js";
 import { ensureCleanState } from "../../src/safety/rollback-manager.js";
+import { collectDiff } from "../../src/git/diff-collector.js";
 import type { Plan, Phase, ErrorHistoryEntry } from "../../src/types/pipeline.js";
 import type { GitHubIssue } from "../../src/github/issue-fetcher.js";
 
@@ -49,6 +53,7 @@ const mockClassifyError = vi.mocked(classifyError);
 const mockAutoCommitIfDirty = vi.mocked(autoCommitIfDirty);
 const mockGetHeadHash = vi.mocked(getHeadHash);
 const mockEnsureCleanState = vi.mocked(ensureCleanState);
+const mockCollectDiff = vi.mocked(collectDiff);
 
 function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
   return {
@@ -155,6 +160,12 @@ describe("retryPhase", () => {
     mockEnsureCleanState.mockResolvedValue({
       path: "/tmp/project",
       branch: "test-branch",
+    });
+    mockCollectDiff.mockResolvedValue({
+      filesChanged: 0,
+      insertions: 0,
+      deletions: 0,
+      changedFiles: [],
     });
   });
 
@@ -474,6 +485,306 @@ describe("retryPhase", () => {
       expect(mockJobLogger.log).toHaveBeenCalledWith("[INFO] Something else");
       expect(mockJobLogger.log).not.toHaveBeenCalledWith("Regular stderr line");
       expect(mockJobLogger.setProgress).toHaveBeenCalled();
+    });
+  });
+
+  describe("partial success retry scenarios", () => {
+    it("should target only failed files when isPartialRetry is true", async () => {
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts", "src/utils.ts"],
+          failedFiles: ["src/broken.ts", "src/failing.ts"],
+        },
+        phase: {
+          index: 0,
+          name: "TestPhase",
+          description: "Phase TestPhase description",
+          targetFiles: ["src/component.ts", "src/utils.ts", "src/broken.ts", "src/failing.ts"],
+          commitStrategy: "atomic",
+          verificationCriteria: ["TestPhase criteria"],
+          dependsOn: [],
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockRenderTemplate).toHaveBeenCalledWith("Template content", expect.objectContaining({
+        phase: expect.objectContaining({
+          files: ["src/broken.ts", "src/failing.ts"], // Only failed files
+        }),
+        retry: expect.objectContaining({
+          isPartialRetry: true,
+          succeededFiles: ["src/component.ts", "src/utils.ts"],
+          failedFiles: ["src/broken.ts", "src/failing.ts"],
+        }),
+      }));
+    });
+
+    it("should target all files when isPartialRetry is false", async () => {
+      const ctx = makeContext({
+        isPartialRetry: false,
+        phase: {
+          index: 0,
+          name: "TestPhase",
+          description: "Phase TestPhase description",
+          targetFiles: ["src/component.ts", "src/utils.ts"],
+          commitStrategy: "atomic",
+          verificationCriteria: ["TestPhase criteria"],
+          dependsOn: [],
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockRenderTemplate).toHaveBeenCalledWith("Template content", expect.objectContaining({
+        phase: expect.objectContaining({
+          files: ["src/component.ts", "src/utils.ts"], // All target files
+        }),
+        retry: expect.objectContaining({
+          isPartialRetry: false,
+          succeededFiles: [],
+          failedFiles: [],
+        }),
+      }));
+    });
+
+    it("should return partial success when partial retry succeeds with Claude but tests fail", async () => {
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 1,
+        insertions: 5,
+        deletions: 2,
+        changedFiles: ["src/fixed.ts"],
+      });
+      mockRunShell.mockResolvedValue({
+        exitCode: 1,
+        stdout: "1 test failed",
+        stderr: "",
+      });
+      mockClassifyError.mockReturnValue("VERIFICATION_FAILED");
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("partial");
+      expect(result.error).toContain("Tests failed after retry");
+      expect(result.partial).toEqual({
+        succeededFiles: ["src/fixed.ts"],
+        failedFiles: [],
+      });
+    });
+
+    it("should return complete success when partial retry succeeds and tests pass", async () => {
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 2,
+        insertions: 10,
+        deletions: 3,
+        changedFiles: ["src/fixed1.ts", "src/fixed2.ts"],
+      });
+      mockRunShell.mockResolvedValue({
+        exitCode: 0,
+        stdout: "All tests pass",
+        stderr: "",
+      });
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken1.ts", "src/broken2.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe("success");
+      expect(result.partial).toBeUndefined();
+      expect(result.warnings).toEqual([]);
+      expect(result.errors).toEqual([]);
+    });
+
+    it("should handle collectDiff error gracefully during partial retry", async () => {
+      mockCollectDiff.mockRejectedValue(new Error("Git diff failed"));
+      mockRunShell.mockResolvedValue({
+        exitCode: 1,
+        stdout: "Test failed",
+        stderr: "",
+      });
+      mockClassifyError.mockReturnValue("VERIFICATION_FAILED");
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("failure");
+      expect(result.error).toContain("Tests failed after retry");
+      expect(result.partial).toBeUndefined();
+    });
+  });
+
+  describe("partial success retry scenarios", () => {
+    it("should target only failed files when isPartialRetry is true", async () => {
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts", "src/utils.ts"],
+          failedFiles: ["src/broken.ts", "src/failing.ts"],
+        },
+        phase: {
+          index: 0,
+          name: "TestPhase",
+          description: "Phase TestPhase description",
+          targetFiles: ["src/component.ts", "src/utils.ts", "src/broken.ts", "src/failing.ts"],
+          commitStrategy: "atomic",
+          verificationCriteria: ["TestPhase criteria"],
+          dependsOn: [],
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockRenderTemplate).toHaveBeenCalledWith("Template content", expect.objectContaining({
+        phase: expect.objectContaining({
+          files: ["src/broken.ts", "src/failing.ts"], // Only failed files
+        }),
+        retry: expect.objectContaining({
+          isPartialRetry: true,
+          succeededFiles: ["src/component.ts", "src/utils.ts"],
+          failedFiles: ["src/broken.ts", "src/failing.ts"],
+        }),
+      }));
+    });
+
+    it("should target all files when isPartialRetry is false", async () => {
+      const ctx = makeContext({
+        isPartialRetry: false,
+        phase: {
+          index: 0,
+          name: "TestPhase",
+          description: "Phase TestPhase description",
+          targetFiles: ["src/component.ts", "src/utils.ts"],
+          commitStrategy: "atomic",
+          verificationCriteria: ["TestPhase criteria"],
+          dependsOn: [],
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockRenderTemplate).toHaveBeenCalledWith("Template content", expect.objectContaining({
+        phase: expect.objectContaining({
+          files: ["src/component.ts", "src/utils.ts"], // All target files
+        }),
+        retry: expect.objectContaining({
+          isPartialRetry: false,
+          succeededFiles: [],
+          failedFiles: [],
+        }),
+      }));
+    });
+
+    it("should return partial success when partial retry succeeds with Claude but tests fail", async () => {
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 1,
+        insertions: 5,
+        deletions: 2,
+        changedFiles: ["src/fixed.ts"],
+      });
+      mockRunShell.mockResolvedValue({
+        exitCode: 1,
+        stdout: "1 test failed",
+        stderr: "",
+      });
+      mockClassifyError.mockReturnValue("VERIFICATION_FAILED");
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("partial");
+      expect(result.error).toContain("Tests failed after retry");
+      expect(result.partial).toEqual({
+        succeededFiles: ["src/fixed.ts"],
+        failedFiles: [],
+      });
+    });
+
+    it("should return complete success when partial retry succeeds and tests pass", async () => {
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 2,
+        insertions: 10,
+        deletions: 3,
+        changedFiles: ["src/fixed1.ts", "src/fixed2.ts"],
+      });
+      mockRunShell.mockResolvedValue({
+        exitCode: 0,
+        stdout: "All tests pass",
+        stderr: "",
+      });
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken1.ts", "src/broken2.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe("success");
+      expect(result.partial).toBeUndefined();
+      expect(result.warnings).toEqual([]);
+      expect(result.errors).toEqual([]);
+    });
+
+    it("should handle collectDiff error gracefully during partial retry", async () => {
+      mockCollectDiff.mockRejectedValue(new Error("Git diff failed"));
+      mockRunShell.mockResolvedValue({
+        exitCode: 1,
+        stdout: "Test failed",
+        stderr: "",
+      });
+      mockClassifyError.mockReturnValue("VERIFICATION_FAILED");
+
+      const ctx = makeContext({
+        isPartialRetry: true,
+        partialResult: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+      });
+
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("failure");
+      expect(result.error).toContain("Tests failed after retry");
+      expect(result.partial).toBeUndefined();
     });
   });
 

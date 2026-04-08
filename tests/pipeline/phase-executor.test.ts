@@ -22,7 +22,15 @@ vi.mock("../../src/git/diff-collector.js", () => ({
   collectDiff: vi.fn(),
 }));
 
-import { executePhase } from "../../src/pipeline/phase-executor.js";
+import { executePhase, isFullSuccess, isPartialSuccess, isFailure } from "../../src/pipeline/phase-executor.js";
+import {
+  isSuccessPhaseResult,
+  isFailurePhaseResult,
+  isPartialPhaseResult,
+  isSuccessExtendedPhaseResult,
+  isFailureExtendedPhaseResult,
+  isPartialExtendedPhaseResult,
+} from "../../src/types/pipeline.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { runCli, runShell } from "../../src/utils/cli-runner.js";
 import type { PhaseExecutorContext } from "../../src/pipeline/phase-executor.js";
@@ -655,5 +663,313 @@ describe("executePhase", () => {
     // Verify correct commit message template was used
     const commitCall = gitCommitCalls[0];
     expect(commitCall[1]).toContain("[#42] Phase 1: Phase One");
+  });
+
+  describe("partial success scenarios", () => {
+    it("returns partial success when Claude succeeds but tests fail with changed files", async () => {
+      mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+        .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+      // Tests fail
+      mockRunShell.mockResolvedValue({ stdout: "3 tests failed", stderr: "", exitCode: 1 });
+      // Mock collectDiff to return changed files
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 2,
+        insertions: 10,
+        deletions: 5,
+        changedFiles: ["src/component.ts", "src/utils.ts"],
+      });
+
+      const result = await executePhase(makeCtx());
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("partial");
+      expect(result.error).toContain("Tests failed");
+      expect(result.errorCategory).toBe("VERIFICATION_FAILED");
+      expect(result.partial).toEqual({
+        succeededFiles: ["src/component.ts", "src/utils.ts"],
+        failedFiles: []
+      });
+      expect(result.warnings).toEqual([]);
+      expect(result.errors).toEqual([expect.stringContaining("Tests failed")]);
+    });
+
+    it("returns failure when Claude succeeds but tests fail with no changed files", async () => {
+      mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+        .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+      // Tests fail
+      mockRunShell.mockResolvedValue({ stdout: "3 tests failed", stderr: "", exitCode: 1 });
+      // Mock collectDiff to return no changed files
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 0,
+        insertions: 0,
+        deletions: 0,
+        changedFiles: [],
+      });
+
+      const result = await executePhase(makeCtx());
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("failure");
+      expect(result.error).toContain("Tests failed");
+      expect(result.errorCategory).toBe("VERIFICATION_FAILED");
+      expect(result.partial).toBeUndefined();
+      expect(result.warnings).toEqual([]);
+      expect(result.errors).toEqual([expect.stringContaining("Tests failed")]);
+    });
+
+    it("handles collectDiff error gracefully and continues with empty succeeded files", async () => {
+      mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+        .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+      // Tests fail
+      mockRunShell.mockResolvedValue({ stdout: "3 tests failed", stderr: "", exitCode: 1 });
+      // Mock collectDiff to throw error
+      mockCollectDiff.mockRejectedValue(new Error("Git diff failed"));
+
+      const result = await executePhase(makeCtx());
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("failure");
+      expect(result.error).toContain("Tests failed");
+      expect(result.partial).toBeUndefined();
+    });
+  });
+
+  describe("helper functions", () => {
+    it("isFullSuccess returns true for success status", () => {
+      const result = {
+        success: true,
+        status: "success"
+      };
+      expect(isFullSuccess(result)).toBe(true);
+    });
+
+    it("isFullSuccess returns false for partial or failure status", () => {
+      
+
+      const partialResult = {
+        success: false,
+        status: "partial"
+      };
+      expect(isFullSuccess(partialResult)).toBe(false);
+
+      const failureResult = {
+        success: false,
+        status: "failure"
+      };
+      expect(isFullSuccess(failureResult)).toBe(false);
+    });
+
+    it("isPartialSuccess returns true only for partial status", () => {
+      
+
+      const partialResult = {
+        success: false,
+        status: "partial"
+      };
+      expect(isPartialSuccess(partialResult)).toBe(true);
+
+      const successResult = {
+        success: true,
+        status: "success"
+      };
+      expect(isPartialSuccess(successResult)).toBe(false);
+
+      const failureResult = {
+        success: false,
+        status: "failure"
+      };
+      expect(isPartialSuccess(failureResult)).toBe(false);
+    });
+
+    it("isFailure returns true only for failure status", () => {
+      
+
+      const failureResult = {
+        success: false,
+        status: "failure"
+      };
+      expect(isFailure(failureResult)).toBe(true);
+
+      const successResult = {
+        success: true,
+        status: "success"
+      };
+      expect(isFailure(successResult)).toBe(false);
+
+      const partialResult = {
+        success: false,
+        status: "partial"
+      };
+      expect(isFailure(partialResult)).toBe(false);
+    });
+  });
+
+  describe("ExtendedPhaseResult type guards", () => {
+    it("should correctly identify SuccessExtendedPhaseResult", () => {
+      const successResult = {
+        status: "success",
+        success: true,
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: [],
+      };
+
+      expect(isSuccessExtendedPhaseResult(successResult)).toBe(true);
+      expect(isFailureExtendedPhaseResult(successResult)).toBe(false);
+      expect(isPartialExtendedPhaseResult(successResult)).toBe(false);
+    });
+
+    it("should correctly identify FailureExtendedPhaseResult", () => {
+      const failureResult = {
+        status: "failure",
+        success: false,
+        error: "Something went wrong",
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: ["Something went wrong"],
+      };
+
+      expect(isSuccessExtendedPhaseResult(failureResult)).toBe(false);
+      expect(isFailureExtendedPhaseResult(failureResult)).toBe(true);
+      expect(isPartialExtendedPhaseResult(failureResult)).toBe(false);
+    });
+
+    it("should correctly identify PartialExtendedPhaseResult", () => {
+      const partialResult = {
+        status: "partial",
+        success: false,
+        partial: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: [],
+      };
+
+      expect(isSuccessExtendedPhaseResult(partialResult)).toBe(false);
+      expect(isFailureExtendedPhaseResult(partialResult)).toBe(false);
+      expect(isPartialExtendedPhaseResult(partialResult)).toBe(true);
+    });
+  });
+
+  describe("PhaseResult type guards", () => {
+    it("should correctly identify success PhaseResult", () => {
+      const successResult = {
+        success: true,
+        status: "success"
+      };
+
+      expect(isSuccessPhaseResult(successResult)).toBe(true);
+      expect(isFailurePhaseResult(successResult)).toBe(false);
+      expect(isPartialPhaseResult(successResult)).toBe(false);
+
+      // Test legacy success (success: true, no status)
+      const legacySuccessResult = {
+        success: true
+      };
+
+      expect(isSuccessPhaseResult(legacySuccessResult)).toBe(true);
+      expect(isFailurePhaseResult(legacySuccessResult)).toBe(false);
+      expect(isPartialPhaseResult(legacySuccessResult)).toBe(false);
+    });
+
+    it("should correctly identify failure PhaseResult", () => {
+      const failureResult = {
+        success: false,
+        status: "failure"
+      };
+
+      expect(isSuccessPhaseResult(failureResult)).toBe(false);
+      expect(isFailurePhaseResult(failureResult)).toBe(true);
+      expect(isPartialPhaseResult(failureResult)).toBe(false);
+
+      // Test legacy failure (success: false, no status)
+      const legacyFailureResult = {
+        success: false
+      };
+
+      expect(isSuccessPhaseResult(legacyFailureResult)).toBe(false);
+      expect(isFailurePhaseResult(legacyFailureResult)).toBe(true);
+      expect(isPartialPhaseResult(legacyFailureResult)).toBe(false);
+    });
+
+    it("should correctly identify partial PhaseResult", () => {
+      const partialResult = {
+        success: false,
+        status: "partial"
+      };
+
+      expect(isSuccessPhaseResult(partialResult)).toBe(false);
+      expect(isFailurePhaseResult(partialResult)).toBe(false);
+      expect(isPartialPhaseResult(partialResult)).toBe(true);
+    });
+  });
+
+  describe("ExtendedPhaseResult type guards", () => {
+    it("should correctly identify SuccessExtendedPhaseResult", () => {
+      const successResult = {
+        status: "success",
+        success: true,
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: [],
+      };
+
+      expect(isSuccessExtendedPhaseResult(successResult)).toBe(true);
+      expect(isFailureExtendedPhaseResult(successResult)).toBe(false);
+      expect(isPartialExtendedPhaseResult(successResult)).toBe(false);
+    });
+
+    it("should correctly identify FailureExtendedPhaseResult", () => {
+      const failureResult = {
+        status: "failure",
+        success: false,
+        error: "Something went wrong",
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: ["Something went wrong"],
+      };
+
+      expect(isSuccessExtendedPhaseResult(failureResult)).toBe(false);
+      expect(isFailureExtendedPhaseResult(failureResult)).toBe(true);
+      expect(isPartialExtendedPhaseResult(failureResult)).toBe(false);
+    });
+
+    it("should correctly identify PartialExtendedPhaseResult", () => {
+      const partialResult = {
+        status: "partial",
+        success: false,
+        partial: {
+          succeededFiles: ["src/component.ts"],
+          failedFiles: ["src/broken.ts"],
+        },
+        phaseIndex: 0,
+        phaseName: "Test",
+        durationMs: 1000,
+        warnings: [],
+        errors: [],
+      };
+
+      expect(isSuccessExtendedPhaseResult(partialResult)).toBe(false);
+      expect(isFailureExtendedPhaseResult(partialResult)).toBe(false);
+      expect(isPartialExtendedPhaseResult(partialResult)).toBe(true);
+    });
   });
 });

@@ -74,10 +74,39 @@ export function detectCircularDependencies(phases: Phase[]): number[] {
 }
 
 /**
+ * Detects file conflicts between phases by checking for overlapping targetFiles
+ * Returns conflicting phase indices grouped by file path
+ */
+export function detectFileConflicts(phases: Phase[]): Map<string, number[]> {
+  const fileToPhases = new Map<string, number[]>();
+
+  // Group phases by each target file they modify
+  for (const phase of phases) {
+    for (const file of phase.targetFiles) {
+      if (!fileToPhases.has(file)) {
+        fileToPhases.set(file, []);
+      }
+      fileToPhases.get(file)!.push(phase.index);
+    }
+  }
+
+  // Filter to only return files that have conflicts (>1 phase)
+  const conflicts = new Map<string, number[]>();
+  for (const [file, phaseIndices] of fileToPhases) {
+    if (phaseIndices.length > 1) {
+      conflicts.set(file, phaseIndices);
+    }
+  }
+
+  return conflicts;
+}
+
+/**
  * Performs topological sorting of phases based on their dependencies
  * Returns phases grouped by execution level for parallel execution
+ * File conflicts are resolved by forcing conflicting phases into serial execution
  */
-export function schedulePhases(phases: Phase[]): ScheduleResult {
+export function schedulePhases(phases: Phase[], enableParallelPhases: boolean = true): ScheduleResult {
   if (phases.length === 0) {
     return { success: true, groups: [] };
   }
@@ -124,6 +153,36 @@ export function schedulePhases(phases: Phase[]): ScheduleResult {
         const deps = dependents.get(depIndex) || [];
         deps.push(phase.index);
         dependents.set(depIndex, deps);
+      }
+    }
+  }
+
+  // Handle file conflicts if parallel phases are enabled
+  if (enableParallelPhases) {
+    const fileConflicts = detectFileConflicts(phases);
+
+    if (fileConflicts.size > 0) {
+      // Add serial dependencies for conflicting phases
+      for (const [file, conflictingPhases] of fileConflicts) {
+        // Sort conflicting phases by index to ensure consistent ordering
+        conflictingPhases.sort((a, b) => a - b);
+
+        // Create serial chain: each phase depends on the previous one
+        for (let i = 1; i < conflictingPhases.length; i++) {
+          const currentPhaseIndex = conflictingPhases[i];
+          const previousPhaseIndex = conflictingPhases[i - 1];
+
+          // Add dependency: current phase depends on previous phase
+          const currentInDegree = inDegree.get(currentPhaseIndex) || 0;
+          inDegree.set(currentPhaseIndex, currentInDegree + 1);
+
+          // Add to dependents list of previous phase
+          const deps = dependents.get(previousPhaseIndex) || [];
+          if (!deps.includes(currentPhaseIndex)) {
+            deps.push(currentPhaseIndex);
+            dependents.set(previousPhaseIndex, deps);
+          }
+        }
       }
     }
   }

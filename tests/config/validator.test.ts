@@ -117,6 +117,10 @@ describe("validateConfig", () => {
       rollbackStrategy: "none",
       strict: false,
     },
+    features: {
+      parallelPhases: false,
+    },
+    executionMode: "standard",
   };
 
   it("should validate and return a valid config", () => {

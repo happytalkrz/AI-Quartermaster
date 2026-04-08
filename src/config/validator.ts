@@ -278,6 +278,10 @@ const safetyConfigSchema = z.object({
   strict: z.boolean().default(true),
 });
 
+const featuresConfigSchema = z.object({
+  parallelPhases: z.boolean(),
+});
+
 const projectConfigSchema = z.object({
   repo: z.string().min(1),
   path: z.string().min(1),
@@ -332,6 +336,8 @@ const aqConfigSchema = z.object({
   review: reviewConfigSchema,
   pr: prConfigSchema,
   safety: safetyConfigSchema,
+  features: featuresConfigSchema,
+  executionMode: z.enum(["economy", "standard", "thorough"]),
   hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
 }).superRefine((data, ctx) => {

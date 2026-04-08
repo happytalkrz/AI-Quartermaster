@@ -158,6 +158,11 @@ export interface SafetyConfig {
   strict: boolean;
 }
 
+export interface FeaturesConfig {
+  /** 병렬 Phase 실행 활성화 여부 (안정성을 위해 기본값은 false) */
+  parallelPhases: boolean;
+}
+
 export interface ExecutionModePreset {
   reviewRounds: number;
   enableAdvancedReview: boolean;
@@ -236,6 +241,7 @@ export interface AQConfig {
   review: ReviewConfig;
   pr: PrConfig;
   safety: SafetyConfig;
+  features: FeaturesConfig;
   executionMode: ExecutionMode;
   hooks?: HooksConfig;        // pipeline hooks configuration
   projects?: ProjectConfig[];  // per-project overrides

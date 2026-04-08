@@ -40,6 +40,61 @@ function renderJobListItem(job, isSelected) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Render Kanban Card
+   ══════════════════════════════════════════════════════════════ */
+function renderKanbanCard(job) {
+  var color = statusColor(job.status);
+  var isRunning = job.status === 'running';
+  var dur = fmtDuration(job);
+  var relative = relativeTime(job.createdAt);
+
+  // Status badge
+  var badgeHtml = '';
+  if (isRunning) {
+    badgeHtml = '<span class="text-[9px] bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20 px-1.5 py-0.5 rounded uppercase font-bold flex items-center gap-1"><span class="w-1 h-1 bg-[#58a6ff] rounded-full animate-pulse"></span>Running</span>';
+  } else {
+    badgeHtml = '<span class="text-[9px] px-1.5 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
+  }
+
+  // Issue title (truncated for cards)
+  var issueTitle = job.issueTitle || '';
+  var truncatedTitle = issueTitle.length > 30 ? issueTitle.substring(0, 30) + '...' : issueTitle;
+
+  // Progress percentage
+  var progress = (typeof job.progress === 'number') ? job.progress : 0;
+
+  // Progress bar
+  var progressBarHtml = '<div class="h-1.5 bg-surface-variant rounded-full overflow-hidden mt-2">';
+  if (job.status === 'failure') {
+    progressBarHtml += '<div class="h-full bg-[#f85149] rounded-full transition-all duration-300" style="width:' + progress + '%"></div>';
+  } else if (job.status === 'success') {
+    progressBarHtml += '<div class="h-full bg-[#3fb950] rounded-full" style="width:100%"></div>';
+  } else if (isRunning) {
+    progressBarHtml += '<div class="h-full bg-[#58a6ff] rounded-full transition-all duration-300" style="width:' + progress + '%"></div>';
+  } else {
+    progressBarHtml += '<div class="h-full bg-outline-variant/30 rounded-full" style="width:' + progress + '%"></div>';
+  }
+  progressBarHtml += '</div>';
+
+  return '<div class="bg-surface-container-low hover:bg-surface-container p-3 rounded-lg ring-1 ring-outline-variant/10 hover:ring-outline-variant/20 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')" draggable="true">' +
+    '<div class="flex justify-between items-start mb-2">' +
+      '<div class="min-w-0 flex-1">' +
+        '<span class="text-sm font-bold text-on-surface block">#' + job.issueNumber + '</span>' +
+        (job.repo ? '<span class="text-[10px] text-outline uppercase tracking-wider font-medium">' + esc(job.repo) + '</span>' : '') +
+      '</div>' +
+      badgeHtml +
+    '</div>' +
+    (truncatedTitle ? '<div class="text-xs text-on-surface-variant mb-2 leading-tight">' + esc(truncatedTitle) + '</div>' : '') +
+    '<div class="flex justify-between items-center text-[10px] text-outline font-mono">' +
+      '<span>' + esc(job.id).substring(0, 12) + '</span>' +
+      '<span>' + (dur ? dur : relative) + '</span>' +
+    '</div>' +
+    progressBarHtml +
+    '<div class="text-[9px] text-outline/60 text-center mt-1">' + progress + '%</div>' +
+  '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Render Job Detail
    ══════════════════════════════════════════════════════════════ */
 function renderJobDetail(job) {

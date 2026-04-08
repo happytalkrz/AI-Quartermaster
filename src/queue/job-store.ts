@@ -423,7 +423,14 @@ export class JobStore extends EventEmitter {
   }
 
   shouldBlockRepickup(issueNumber: number, repo: string): boolean {
-    return this.findCompletedByIssue(issueNumber, repo) !== undefined;
+    const existingJob = this.findAnyByIssue(issueNumber, repo);
+    if (!existingJob) return false;
+
+    // queued, running, success 상태의 잡이 있으면 차단
+    // failure, cancelled, archived 상태는 재시도 가능하므로 차단하지 않음
+    return existingJob.status === "queued" ||
+           existingJob.status === "running" ||
+           existingJob.status === "success";
   }
 
   findFailedJobsForRetry(): Job[] {

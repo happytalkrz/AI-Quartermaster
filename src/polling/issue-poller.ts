@@ -178,7 +178,19 @@ export class IssuePoller {
 
     for (const issue of issues) {
       if (this.store.shouldBlockRepickup(issue.number, repo)) {
-        logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (성공한 잡 존재), 건너뜀`);
+        // 차단 이유를 상태별로 구분하여 로그 출력
+        const existingJob = this.store.findAnyByIssue(issue.number, repo);
+        if (existingJob) {
+          if (existingJob.status === "running" || existingJob.status === "queued") {
+            logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 처리 중), 건너뜀`);
+          } else if (existingJob.status === "success") {
+            logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (성공 완료된 잡 존재), 건너뜀`);
+          } else {
+            logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 존재), 건너뜀`);
+          }
+        } else {
+          logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단, 건너뜀`);
+        }
         continue;
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);

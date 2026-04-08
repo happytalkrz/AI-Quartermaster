@@ -256,3 +256,51 @@ export const GetProjectsResponseSchema = z.object({
 }).strict();
 
 export type GetProjectsResponse = z.infer<typeof GetProjectsResponseSchema>;
+
+// Storage 관리 API 스키마들
+export const StorageInfoSchema = z.object({
+  database: z.object({
+    sizeBytes: z.number().int().nonnegative(),
+    path: z.string(),
+  }),
+  logs: z.object({
+    sizeBytes: z.number().int().nonnegative(),
+    path: z.string(),
+  }),
+  total: z.object({
+    sizeBytes: z.number().int().nonnegative(),
+    usageRatio: z.number().min(0).max(1), // 0-1 범위
+  }),
+}).strict();
+
+export type StorageInfo = z.infer<typeof StorageInfoSchema>;
+
+// GET /api/storage 응답 스키마
+export const GetStorageResponseSchema = z.object({
+  storage: StorageInfoSchema,
+  timestamp: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type GetStorageResponse = z.infer<typeof GetStorageResponseSchema>;
+
+// POST /api/storage/cleanup 요청 스키마
+export const StorageCleanupRequestSchema = z.object({
+  olderThanDays: z.number().int().positive().default(30),
+  dryRun: z.boolean().default(false),
+}).strict();
+
+export type StorageCleanupRequest = z.infer<typeof StorageCleanupRequestSchema>;
+
+// POST /api/storage/cleanup 응답 스키마
+export const StorageCleanupResponseSchema = z.object({
+  cleaned: z.object({
+    jobsCount: z.number().int().nonnegative(),
+    phasesCount: z.number().int().nonnegative(),
+    logsCount: z.number().int().nonnegative(),
+    freedBytes: z.number().int().nonnegative(),
+  }),
+  dryRun: z.boolean(),
+  timestamp: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type StorageCleanupResponse = z.infer<typeof StorageCleanupResponseSchema>;

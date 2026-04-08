@@ -116,6 +116,10 @@ describe("validateConfig", () => {
       allowedLabels: ["bug", "feature"],
       rollbackStrategy: "none",
       strict: false,
+      rules: {
+        allow: [],
+        deny: [],
+      },
     },
     features: {
       parallelPhases: false,

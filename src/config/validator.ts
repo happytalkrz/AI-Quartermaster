@@ -261,6 +261,11 @@ const timeoutsConfigSchema = z.object({
   prCreation: z.number().positive(),
 });
 
+const safetyRulesSchema = z.object({
+  allow: z.array(z.string()),
+  deny: z.array(z.string()),
+});
+
 const safetyConfigSchema = z.object({
   sensitivePaths: z.array(z.string()),
   maxPhases: z.number().int().min(1).max(20),
@@ -276,6 +281,7 @@ const safetyConfigSchema = z.object({
   allowedLabels: z.array(z.string()),
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
   strict: z.boolean().default(true),
+  rules: safetyRulesSchema.default({ allow: [], deny: [] }),
 });
 
 const featuresConfigSchema = z.object({

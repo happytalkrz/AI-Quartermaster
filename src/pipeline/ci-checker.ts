@@ -89,18 +89,39 @@ export async function checkPrCiStatus(
   logger.debug(`Checking CI status for PR #${prNumber} in ${repo}`);
 
   try {
-    // gh pr checks 명령어로 CI 상태 가져오기
+    // 1. PR의 head SHA 가져오기
+    const prResult = await runGhCommand(
+      ghConfig.path,
+      ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid", "--jq", ".headRefOid"],
+      {},
+      ghConfig.retry
+    );
+
+    if (prResult.exitCode !== 0 || !prResult.stdout.trim()) {
+      logger.warn(`Failed to get PR head SHA: ${prResult.stderr}`);
+      return {
+        overall: "pending",
+        checks: [],
+        failedChecks: [],
+        pendingChecks: [],
+        lastCheckedAt: new Date().toISOString(),
+      };
+    }
+
+    const headSha = prResult.stdout.trim();
+
+    // 2. 해당 커밋의 check-runs 가져오기 (gh api)
     const result = await runGhCommand(
       ghConfig.path,
-      ["pr", "checks", String(prNumber), "--repo", repo, "--json"],
+      ["api", `repos/${repo}/commits/${headSha}/check-runs`],
       {},
       ghConfig.retry
     );
 
     if (result.exitCode !== 0) {
-      logger.warn(`Failed to get PR checks: ${result.stderr}`);
+      logger.warn(`Failed to get check runs: ${result.stderr}`);
       return {
-        overall: "failure",
+        overall: "pending",
         checks: [],
         failedChecks: [],
         pendingChecks: [],
@@ -109,7 +130,8 @@ export async function checkPrCiStatus(
     }
 
     // JSON 파싱
-    const checksData = JSON.parse(result.stdout.trim());
+    const apiResponse = JSON.parse(result.stdout.trim());
+    const checksData = apiResponse.check_runs || [];
     const checks: CiCheck[] = checksData.map((check: unknown) => parseCheckData(check));
 
     // 상태 분석
@@ -344,9 +366,9 @@ function parseCheckData(checkData: unknown): CiCheck {
     name: String(data.name || "unknown"),
     status: (data.status as CiStatus) || "error",
     conclusion: (data.conclusion as CiStatus) || null,
-    detailsUrl: String(data.detailsUrl || ""),
-    startedAt: String(data.startedAt || new Date().toISOString()),
-    completedAt: data.completedAt ? String(data.completedAt) : null,
+    detailsUrl: String(data.details_url || data.detailsUrl || ""),
+    startedAt: String(data.started_at || data.startedAt || new Date().toISOString()),
+    completedAt: (data.completed_at || data.completedAt) ? String(data.completed_at || data.completedAt) : null,
   };
 }
 

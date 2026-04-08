@@ -213,3 +213,33 @@ export const HealthCheckResponseSchema = z.object({
 }).strict();
 
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
+
+// Timeline API types
+export interface PhaseTimelineItem {
+  phaseIndex: number;
+  phaseName: string;
+  startOffsetMs: number;
+  durationMs: number;
+  status: "success" | "failure" | "running" | "pending";
+  costUsd?: number;
+  error?: string;
+}
+
+export const TimelineResponseSchema = z.object({
+  jobId: z.string(),
+  issueNumber: z.number(),
+  repo: z.string(),
+  totalDurationMs: z.number(),
+  totalCostUsd: z.number().optional(),
+  phases: z.array(z.object({
+    phaseIndex: z.number(),
+    phaseName: z.string(),
+    startOffsetMs: z.number(),
+    durationMs: z.number(),
+    status: z.enum(["success", "failure", "running", "pending"]),
+    costUsd: z.number().optional(),
+    error: z.string().optional(),
+  })),
+}).strict();
+
+export type TimelineResponse = z.infer<typeof TimelineResponseSchema>;

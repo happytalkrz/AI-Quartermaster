@@ -10,7 +10,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse, type TimelineResponse } from "../types/api.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -719,6 +719,43 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     const job = store.get(c.req.param("id"));
     if (!job) return c.json({ error: "Job not found" }, 404);
     return c.json(job);
+  });
+
+  // Get job timeline
+  api.get("/api/jobs/:id/timeline", (c) => {
+    const job = store.get(c.req.param("id"));
+    if (!job) return c.json({ error: "Job not found" }, 404);
+
+    // Calculate timeline data from phaseResults
+    let currentOffset = 0;
+    const phases = (job.phaseResults || []).map((phaseResult, index) => {
+      const startOffsetMs = currentOffset;
+      currentOffset += phaseResult.durationMs;
+
+      return {
+        phaseIndex: index + 1,
+        phaseName: phaseResult.name,
+        startOffsetMs,
+        durationMs: phaseResult.durationMs,
+        status: phaseResult.success ? "success" as const : "failure" as const,
+        costUsd: phaseResult.costUsd,
+        error: phaseResult.error,
+      };
+    });
+
+    const totalDurationMs = phases.reduce((sum, phase) => sum + phase.durationMs, 0);
+    const totalCostUsd = phases.reduce((sum, phase) => sum + (phase.costUsd || 0), 0);
+
+    const response: TimelineResponse = {
+      jobId: job.id,
+      issueNumber: job.issueNumber,
+      repo: job.repo,
+      totalDurationMs,
+      totalCostUsd: totalCostUsd > 0 ? totalCostUsd : undefined,
+      phases,
+    };
+
+    return c.json(response);
   });
 
   // Cancel a job

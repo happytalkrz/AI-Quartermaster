@@ -85,6 +85,10 @@ function renderJobDetail(job) {
   if (!isActive) {
     html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors">' + t('delete') + '</button>';
   }
+  // Timeline button (always visible)
+  html += '<button onclick="showTimelineModal(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-2">';
+  html += '<span class="material-symbols-outlined text-sm">analytics</span>';
+  html += 'Timeline</button>';
   html += '</div></div>';
 
   // Phase progress bar

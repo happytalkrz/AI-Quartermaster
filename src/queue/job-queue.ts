@@ -1,7 +1,8 @@
 import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import { JobStore, Job } from "./job-store.js";
+import { JobStore, Job as StoreJob } from "./job-store.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -13,6 +14,78 @@ import { ProjectErrorState } from "../types/config.js";
 const logger = getLogger();
 
 export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string }>;
+
+/**
+ * StoreJob을 새로운 discriminated union Job 타입으로 변환
+ */
+function convertStoreJobToJob(storeJob: StoreJob): Job {
+  const base = {
+    id: storeJob.id,
+    issueNumber: storeJob.issueNumber,
+    repo: storeJob.repo,
+    createdAt: storeJob.createdAt,
+    lastUpdatedAt: storeJob.lastUpdatedAt,
+    logs: storeJob.logs,
+    currentStep: storeJob.currentStep,
+    dependencies: storeJob.dependencies,
+    phaseResults: storeJob.phaseResults,
+    progress: storeJob.progress,
+    isRetry: storeJob.isRetry,
+    costUsd: storeJob.costUsd,
+    totalCostUsd: storeJob.totalCostUsd,
+    totalUsage: storeJob.totalUsage
+  };
+
+  switch (storeJob.status) {
+    case "queued":
+      return {
+        ...base,
+        status: "queued"
+      };
+    case "running":
+      return {
+        ...base,
+        status: "running",
+        startedAt: storeJob.startedAt!,
+        error: storeJob.error
+      };
+    case "success":
+      return {
+        ...base,
+        status: "success",
+        startedAt: storeJob.startedAt!,
+        completedAt: storeJob.completedAt!,
+        prUrl: storeJob.prUrl!
+      };
+    case "failure":
+      return {
+        ...base,
+        status: "failure",
+        startedAt: storeJob.startedAt!,
+        completedAt: storeJob.completedAt!,
+        error: storeJob.error!
+      };
+    case "cancelled":
+      return {
+        ...base,
+        status: "cancelled",
+        completedAt: storeJob.completedAt!,
+        startedAt: storeJob.startedAt,
+        error: storeJob.error
+      };
+    case "archived":
+      return {
+        ...base,
+        status: "archived",
+        startedAt: storeJob.startedAt,
+        completedAt: storeJob.completedAt,
+        prUrl: storeJob.prUrl,
+        error: storeJob.error
+      };
+    default:
+      throw new Error(`Unknown job status: ${(storeJob as Job).status}`);
+  }
+}
 
 const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // check every minute
 
@@ -153,13 +226,13 @@ export class JobQueue {
     let recovered = 0;
 
     for (const job of jobs) {
-      if (job.status === "running") {
+      if (isRunningJob(job)) {
         // Was running when server died — reset to queued
         this.store.update(job.id, { status: "queued", startedAt: undefined });
         this.pending.push(job.id);
         recovered++;
         logger.info(`Job recovered (was running): ${job.id}`);
-      } else if (job.status === "queued") {
+      } else if (isQueuedJob(job)) {
         this.pending.push(job.id);
         recovered++;
         logger.info(`Job recovered (was queued): ${job.id}`);
@@ -233,25 +306,29 @@ export class JobQueue {
     // Check for existing job
     const existing = this.store.findAnyByIssue(issueNumber, repo);
     if (existing) {
-      if (existing.status === "success") {
+      if (isSuccessJob(existing)) {
         logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing.id}`);
         return undefined;
       }
 
-      if (existing.status === "failure" || existing.status === "cancelled") {
+      if (isFailureJob(existing) || isCancelledJob(existing)) {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
         this.cleanupFailedJobArtifacts(issueNumber);
         this.store.archive(existing.id);
-      } else {
+      } else if (isActiveJob(existing)) {
         // queued/running statuses should still block
         logger.warn(`Job for issue #${issueNumber} (${repo}) already exists: ${existing.id} (status: ${existing.status})`);
+        return undefined;
+      } else {
+        // archived status - should not happen but log for debugging
+        logger.warn(`Job for issue #${issueNumber} (${repo}) in unexpected state: ${existing.id} (status: ${existing.status})`);
         return undefined;
       }
     }
 
     const job = this.store.create(issueNumber, repo, dependencies, isRetry);
-    // Snapshot before processNext() may mutate cache entry
-    const snapshot = { ...job };
+    // Convert StoreJob to discriminated union Job type
+    const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
     logger.info(`Job enqueued: ${job.id} (pending: ${this.pending.length}, running: ${this.running.size})`);
 
@@ -267,14 +344,27 @@ export class JobQueue {
   retryJob(jobId: string): Job | undefined {
     const oldJob = this.store.get(jobId);
     if (!oldJob) return undefined;
-    if (oldJob.status !== "failure" && oldJob.status !== "cancelled") return undefined;
+    if (!isFailureJob(oldJob) && !isCancelledJob(oldJob)) return undefined;
 
     // PR이 이미 생성된 job은 재시도 방지 (stuck 오판으로 failure 표시된 경우)
     const logs = oldJob.logs ?? [];
     const hasPR = oldJob.prUrl || logs.some((l: string) => l.includes("PR: https://"));
     if (hasPR) {
       logger.warn(`Job ${jobId} already has a PR — fixing status to success instead of retrying`);
-      this.store.update(jobId, { status: "success", error: undefined });
+
+      // Extract PR URL from logs or use existing prUrl
+      let prUrl = oldJob.prUrl;
+      if (!prUrl) {
+        const prLogEntry = logs.find((l: string) => l.includes("PR: https://"));
+        if (prLogEntry) {
+          const match = prLogEntry.match(/PR: (https:\/\/[^\s]+)/);
+          if (match) {
+            prUrl = match[1];
+          }
+        }
+      }
+
+      this.store.update(jobId, { status: "success", error: undefined, prUrl });
       return undefined;
     }
 
@@ -507,7 +597,7 @@ export class JobQueue {
             let depFailed = false;
             for (const depNum of job.dependencies) {
               const depJob = this.store.findAnyByIssue(depNum, job.repo);
-              if (depJob && (depJob.status === "failure" || depJob.status === "cancelled")) {
+              if (depJob && (isFailureJob(depJob) || isCancelledJob(depJob))) {
                 logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
                 this.store.update(jobId, {
                   status: "failure",
@@ -549,7 +639,7 @@ export class JobQueue {
         logger.info(`Job started: ${jobId}`);
 
         // Run async - don't await, let it run in background
-        this.executeJob(job).catch((err: unknown) => {
+        this.executeJob(convertStoreJobToJob(job)).catch((err: unknown) => {
           logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
         });
       }

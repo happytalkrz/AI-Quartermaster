@@ -1,6 +1,5 @@
-import type { Job } from "./job-store.js";
+import type { Job, UsageInfo, PhaseResultInfo } from "../types/pipeline.js";
 import { JobStore } from "./job-store.js";
-import type { UsageInfo } from "../types/pipeline.js";
 
 /**
  * Appends log messages to a job and updates its current step.
@@ -25,7 +24,7 @@ export class JobLogger {
     this.log(step);
   }
 
-  setPhaseResults(results: Job["phaseResults"]): void {
+  setPhaseResults(results: PhaseResultInfo[]): void {
     this.store.update(this.jobId, { phaseResults: results });
   }
 

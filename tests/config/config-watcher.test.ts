@@ -249,7 +249,7 @@ general:
     return new Promise<void>((done) => {
       let watcherDisabledReceived = false;
 
-      watcher.on('watcherDisabled', (event) => {
+      watcher.on('watcherDisabled', (_) => {
         if (watcherDisabledReceived) return;
         watcherDisabledReceived = true;
 
@@ -294,7 +294,7 @@ general:
 
       // Use watcherDisabled event to detect when max retries are exceeded
       // This is a more reliable way to test error handling
-      watcher.on('watcherDisabled', (event) => {
+      watcher.on('watcherDisabled', (_) => {
         if (!errorHandled) {
           errorHandled = true;
           expect(event.filePath).toBe(configPath);
@@ -328,7 +328,7 @@ general:
     return new Promise<void>((done) => {
       let watcherDisabledReceived = false;
 
-      watcher.on('watcherDisabled', (event) => {
+      watcher.on('watcherDisabled', (_) => {
         if (watcherDisabledReceived) return;
         watcherDisabledReceived = true;
         done();

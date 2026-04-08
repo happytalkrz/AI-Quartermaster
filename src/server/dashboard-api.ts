@@ -900,7 +900,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // SSE endpoint for real-time updates
-  api.get("/api/events", (_c) => {
+  api.get("/api/events", (_) => {
     const clientId = randomUUID();
     let intervalId: ReturnType<typeof setInterval> | undefined;
 

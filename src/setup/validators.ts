@@ -186,9 +186,9 @@ export function handleValidationError(validationResult: ValidationResult, fieldN
  * @returns Promise<string> 유효한 입력값
  */
 export async function validateWithRetry(
-  _prompt: string,
-  _validator: (input: string) => ValidationResult | Promise<ValidationResult>,
-  _fieldName: string
+  _: string,
+  __: (input: string) => ValidationResult | Promise<ValidationResult>,
+  ___: string
 ): Promise<string> {
   // 실제 입력 받기는 setup-wizard.ts에서 구현될 예정
   // 여기서는 검증 로직만 제공

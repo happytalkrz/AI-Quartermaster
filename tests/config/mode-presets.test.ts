@@ -5,7 +5,6 @@ import {
   getExecutionModePreset,
   detectExecutionModeFromLabels,
 } from "../../src/config/mode-presets.js";
-import type { PipelineMode, ExecutionMode } from "../../src/types/config.js";
 
 describe("mode-presets", () => {
   describe("getModePreset", () => {

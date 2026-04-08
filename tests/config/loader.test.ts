@@ -634,7 +634,7 @@ describe("detectGitInfo", () => {
   });
 
   it("should handle git command failures gracefully", async () => {
-    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (_, __) => {
       // All git commands fail but function should still return some result
       throw new Error("Git command failed");
     });
@@ -1106,7 +1106,7 @@ projects:
   });
 
   it("should throw error when no repo detected and not provided", async () => {
-    vi.spyOn(cliRunner, "runCli").mockImplementation(async (command, args) => {
+    vi.spyOn(cliRunner, "runCli").mockImplementation(async (_, __) => {
       // Git commands succeed but return no repo info
       return { exitCode: 1, stdout: "", stderr: "no remote" };
     });

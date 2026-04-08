@@ -105,8 +105,8 @@ async function retryValidationWithFixes(
   config: import("../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   executionMode: ExecutionMode,
-  _aqRoot?: string,
-  _projectRoot?: string
+  _?: string,
+  __?: string
 ): Promise<boolean> {
 
   const buildFixPromptFn = (validationResult: import("./final-validator.js").ValidationResult) => {
@@ -143,7 +143,7 @@ async function retryValidationWithFixes(
     };
   };
 
-  const onAttempt = (attempt: number, maxRetries: number, _description: string) => {
+  const onAttempt = (attempt: number, maxRetries: number, _: string) => {
     const failedNames = validation.checks
       .filter((c) => !c.passed)
       .map((c) => c.name)
@@ -154,7 +154,7 @@ async function retryValidationWithFixes(
     context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
   };
 
-  const onSuccess = (attempt: number, _result: import("./final-validator.js").ValidationResult) => {
+  const onSuccess = (attempt: number, _: import("./final-validator.js").ValidationResult) => {
     logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
     context.jl?.log(`검증 통과 (retry ${attempt})`);
   };

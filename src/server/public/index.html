@@ -490,10 +490,219 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 
   <!-- ============ Coming Soon Views ============ -->
   <div id="view-repositories" class="view-panel">
-    <div class="flex flex-col items-center justify-center py-32 text-center">
-      <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">inventory_2</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="repositories">Repositories</h2>
-      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
+    <div class="max-w-7xl mx-auto space-y-8">
+      <!-- Section Title -->
+      <div class="flex items-end justify-between">
+        <div>
+          <h2 class="text-4xl font-headline font-bold tracking-tighter text-on-surface">Repository Cluster</h2>
+          <p class="text-outline font-body text-sm mt-1">Manage and monitor automated intelligence worktrees.</p>
+        </div>
+        <div class="flex gap-4">
+          <div class="bg-surface-container-low p-4 rounded-xl flex items-center gap-4 border border-outline-variant/10">
+            <span class="material-symbols-outlined text-primary-container" data-icon="database">database</span>
+            <div>
+              <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Total DB Size</p>
+              <p class="text-lg font-mono font-medium text-on-surface">1.2 GB</p>
+            </div>
+          </div>
+          <div class="bg-surface-container-low p-4 rounded-xl flex items-center gap-4 border border-outline-variant/10">
+            <span class="material-symbols-outlined text-tertiary" data-icon="description">description</span>
+            <div>
+              <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Log Volume</p>
+              <p class="text-lg font-mono font-medium text-on-surface">450 MB</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Grid Layout -->
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <!-- Add Repository Card -->
+        <div class="group h-full min-h-[340px] rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center hover:border-primary-container hover:bg-primary-container/5 transition-all cursor-pointer">
+          <div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+            <span class="material-symbols-outlined text-3xl text-outline group-hover:text-primary-container" data-icon="add">add</span>
+          </div>
+          <span class="font-headline font-bold text-sm tracking-widest text-outline group-hover:text-on-surface">ADD REPOSITORY</span>
+          <p class="text-xs text-outline/50 mt-2">Connect a new Git worktree to Kinetic Command</p>
+        </div>
+
+        <!-- Repository Card 1 -->
+        <div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">
+          <div class="p-6 flex-1">
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-xl font-headline font-bold text-[#a2c9ff]">facebook/react</h3>
+                  <span class="material-symbols-outlined text-sm text-outline" data-icon="open_in_new">open_in_new</span>
+                </div>
+                <p class="text-xs font-mono text-outline">/home/user/workspace/react-core</p>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">
+                <span class="w-2 h-2 rounded-full bg-[#3fb950] animate-pulse"></span>
+                <span class="text-[10px] font-headline font-bold uppercase tracking-tighter">Active</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4 mb-6">
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-xs text-primary" data-icon="account_tree">account_tree</span>
+                  <span class="font-mono text-sm">main</span>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Worktrees</p>
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-xs text-tertiary" data-icon="layers">layers</span>
+                  <span class="font-mono text-sm">3 active</span>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Health</p>
+                <div class="flex gap-1 items-center">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+                  <span class="text-[10px] text-outline ml-1">STABLE</span>
+                </div>
+              </div>
+            </div>
+            <div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20">
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>
+                <p class="text-xl font-headline font-bold">45</p>
+              </div>
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Success</p>
+                <p class="text-xl font-headline font-bold text-[#3fb950]">92%</p>
+              </div>
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>
+                <p class="text-xl font-headline font-bold text-tertiary">$12.50</p>
+              </div>
+            </div>
+          </div>
+          <div class="px-6 py-3 bg-surface-container-highest flex justify-between items-center border-t border-white/5">
+            <span class="text-[10px] text-outline font-body flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs" data-icon="schedule">schedule</span>
+              Last active 2 hours ago
+            </span>
+            <div class="flex gap-2">
+              <button class="p-1.5 hover:text-primary transition-colors">
+                <span class="material-symbols-outlined text-sm" data-icon="terminal">terminal</span>
+              </button>
+              <button class="p-1.5 hover:text-primary transition-colors">
+                <span class="material-symbols-outlined text-sm" data-icon="sync">sync</span>
+              </button>
+              <button class="p-1.5 hover:text-error transition-colors">
+                <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Repository Card 2 -->
+        <div class="bg-[#262a31] rounded-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-4px] hover:shadow-2xl hover:shadow-black/40">
+          <div class="p-6 flex-1">
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-xl font-headline font-bold text-[#a2c9ff]">vercel/next.js</h3>
+                  <span class="material-symbols-outlined text-sm text-outline" data-icon="open_in_new">open_in_new</span>
+                </div>
+                <p class="text-xs font-mono text-outline">/home/user/automation/next-deploy</p>
+              </div>
+              <div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">
+                <span class="w-2 h-2 rounded-full bg-[#c1c7d0]"></span>
+                <span class="text-[10px] font-headline font-bold uppercase tracking-tighter text-outline">Inactive</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-4 mb-6">
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-xs text-primary" data-icon="account_tree">account_tree</span>
+                  <span class="font-mono text-sm">v14-stable</span>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Worktrees</p>
+                <div class="flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-xs text-tertiary" data-icon="layers">layers</span>
+                  <span class="font-mono text-sm">1 active</span>
+                </div>
+              </div>
+              <div class="space-y-1">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline">Health</p>
+                <div class="flex gap-1 items-center">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>
+                  <span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                  <span class="text-[10px] text-error font-bold ml-1">LOCAL MISSING</span>
+                </div>
+              </div>
+            </div>
+            <div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20 grayscale opacity-60">
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>
+                <p class="text-xl font-headline font-bold">128</p>
+              </div>
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Success</p>
+                <p class="text-xl font-headline font-bold text-[#3fb950]">100%</p>
+              </div>
+              <div class="px-2 text-center">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>
+                <p class="text-xl font-headline font-bold text-tertiary">$0.00</p>
+              </div>
+            </div>
+          </div>
+          <div class="px-6 py-3 bg-surface-container-highest flex justify-between items-center border-t border-white/5">
+            <span class="text-[10px] text-outline font-body flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs" data-icon="schedule">schedule</span>
+              Last active 14 days ago
+            </span>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 bg-primary text-on-primary text-[10px] font-headline font-bold uppercase tracking-widest rounded hover:bg-primary-container transition-colors">
+                RE-LINK
+              </button>
+              <button class="p-1.5 hover:text-error transition-colors">
+                <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Storage Management Section -->
+        <div class="col-span-full">
+          <div class="relative overflow-hidden rounded-2xl bg-surface-container-low border border-outline-variant/10 p-8 flex flex-col md:flex-row items-center justify-between gap-8">
+            <div class="flex-1 space-y-4">
+              <div class="flex items-center gap-3">
+                <div class="p-2 bg-primary/10 rounded-lg">
+                  <span class="material-symbols-outlined text-primary" data-icon="auto_delete">auto_delete</span>
+                </div>
+                <h3 class="text-xl font-headline font-bold">Data Maintenance Shell</h3>
+              </div>
+              <p class="text-outline text-sm leading-relaxed max-w-xl font-body">
+                Kinetic Command retains telemetry data for 30 days by default. Automated cleanup schedules ensure high-performance operation of the digital quartermaster node.
+              </p>
+            </div>
+            <div class="flex items-center gap-12">
+              <div class="text-right">
+                <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Active Retention</p>
+                <div class="h-2 w-48 bg-surface-container-highest rounded-full overflow-hidden">
+                  <div class="h-full bg-gradient-to-r from-primary to-primary-container" style="width: 65%;"></div>
+                </div>
+                <p class="text-xs font-mono mt-2 text-primary-container">65% Capacity Reached</p>
+              </div>
+              <button class="flex items-center gap-2 px-6 py-3 bg-surface-container-highest border-b-2 border-primary-container text-on-surface font-headline font-bold text-xs tracking-widest uppercase hover:bg-surface-bright active:translate-y-0.5 transition-all">
+                <span class="material-symbols-outlined text-sm" data-icon="cleaning_services">cleaning_services</span>
+                Clean Old Data
+              </button>
+            </div>
+            <!-- Decorative telemetry line at the bottom -->
+            <div class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-primary/20 to-transparent"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div id="view-automations" class="view-panel">

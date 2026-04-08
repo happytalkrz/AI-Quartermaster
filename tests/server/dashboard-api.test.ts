@@ -26,6 +26,37 @@ vi.mock("../../src/update/self-updater.js", () => ({
   SelfUpdater: vi.fn(),
 }));
 
+vi.mock("../../src/store/queries.js", () => ({
+  getJobStats: vi.fn().mockReturnValue({
+    total: 3,
+    successCount: 1,
+    failureCount: 1,
+    runningCount: 1,
+    queuedCount: 0,
+    cancelledCount: 0,
+    avgDurationMs: 0,
+    successRate: 33,
+    project: null,
+    timeRange: "7d",
+  }),
+  getCostStats: vi.fn().mockReturnValue({
+    project: null,
+    timeRange: "30d",
+    groupBy: "project",
+    summary: {
+      totalCostUsd: 0,
+      jobCount: 0,
+      avgCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheCreationTokens: 0,
+      totalCacheReadTokens: 0,
+    },
+    breakdown: [],
+  }),
+  getProjectSummary: vi.fn().mockReturnValue([]),
+}));
+
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
 }));
@@ -50,6 +81,7 @@ const mockJobStore: JobStore = {
   remove: vi.fn(),
   on: globalEmitter.on.bind(globalEmitter),
   emit: globalEmitter.emit.bind(globalEmitter),
+  getAqDb: vi.fn().mockReturnValue({}),
 } as any;
 
 const mockJobQueue: JobQueue = {

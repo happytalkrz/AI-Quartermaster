@@ -18,6 +18,9 @@ vi.mock("../../src/review/token-estimator.js", () => ({
   analyzeTokenUsage: vi.fn(),
   summarizeForBudget: vi.fn(),
 }));
+vi.mock("../../src/git/diff-collector.js", () => ({
+  collectDiff: vi.fn(),
+}));
 
 import { executePhase } from "../../src/pipeline/phase-executor.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
@@ -26,6 +29,7 @@ import type { PhaseExecutorContext } from "../../src/pipeline/phase-executor.js"
 
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
 import { analyzeTokenUsage, summarizeForBudget } from "../../src/review/token-estimator.js";
+import { collectDiff } from "../../src/git/diff-collector.js";
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockRunCli = vi.mocked(runCli);
@@ -34,6 +38,7 @@ const mockRenderTemplate = vi.mocked(renderTemplate);
 const mockLoadTemplate = vi.mocked(loadTemplate);
 const mockAnalyzeTokenUsage = vi.mocked(analyzeTokenUsage);
 const mockSummarizeForBudget = vi.mocked(summarizeForBudget);
+const mockCollectDiff = vi.mocked(collectDiff);
 
 function makeCtx(overrides: Partial<PhaseExecutorContext> = {}): PhaseExecutorContext {
   return {
@@ -76,7 +81,14 @@ function makeCtx(overrides: Partial<PhaseExecutorContext> = {}): PhaseExecutorCo
     lintCommand: "",
     gitPath: "git",
     gitConfig: {
-      commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+      commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
+      defaultBaseBranch: "main",
+      branchTemplate: "aqm-{{issueNumber}}-{{slug}}",
+      remoteAlias: "origin",
+      allowedRepos: [],
+      gitPath: "git",
+      fetchDepth: 50,
+      signCommits: false,
     },
     ...overrides,
   };
@@ -96,6 +108,12 @@ describe("executePhase", () => {
       usagePercentage: 0.6,
     });
     mockSummarizeForBudget.mockReturnValue("summarized content");
+    mockCollectDiff.mockResolvedValue({
+      filesChanged: 2,
+      insertions: 10,
+      deletions: 5,
+      changedFiles: ["src/foo.ts", "src/bar.ts"],
+    });
   });
 
   it("returns success result when Claude succeeds and tests pass", async () => {
@@ -113,6 +131,9 @@ describe("executePhase", () => {
     expect(result.phaseName).toBe("Phase One");
     expect(result.commitHash).toBe("abc12345");
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(result.status).toBe("success");
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
   });
 
   it("returns failure result when Claude call fails", async () => {
@@ -124,6 +145,9 @@ describe("executePhase", () => {
     expect(result.phaseName).toBe("Phase One");
     expect(result.error).toContain("Phase implementation failed");
     expect(result.errorCategory).toBe("TS_ERROR");
+    expect(result.status).toBe("failure");
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([expect.stringContaining("Phase implementation failed")]);
   });
 
   it("returns failure when tests fail", async () => {
@@ -562,7 +586,14 @@ describe("executePhase", () => {
 
     const ctx = makeCtx({
       gitConfig: {
-        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
+        defaultBaseBranch: "main",
+        branchTemplate: "aqm-{{issueNumber}}-{{slug}}",
+        remoteAlias: "origin",
+        allowedRepos: [],
+        gitPath: "git",
+        fetchDepth: 50,
+        signCommits: false,
       }
     });
 
@@ -570,6 +601,9 @@ describe("executePhase", () => {
 
     expect(result.success).toBe(true);
     expect(result.commitHash).toBe("deadbeef");
+    expect(result.status).toBe("success");
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
 
     // Verify that git add and git commit were NOT called (auto-commit was skipped)
     const cliCalls = mockRunCli.mock.calls;
@@ -592,7 +626,14 @@ describe("executePhase", () => {
 
     const ctx = makeCtx({
       gitConfig: {
-        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
+        commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}",
+        defaultBaseBranch: "main",
+        branchTemplate: "aqm-{{issueNumber}}-{{slug}}",
+        remoteAlias: "origin",
+        allowedRepos: [],
+        gitPath: "git",
+        fetchDepth: 50,
+        signCommits: false,
       }
     });
 
@@ -600,6 +641,9 @@ describe("executePhase", () => {
 
     expect(result.success).toBe(true);
     expect(result.commitHash).toBe("abcdef12");
+    expect(result.status).toBe("success");
+    expect(result.warnings).toEqual([]);
+    expect(result.errors).toEqual([]);
 
     // Verify that auto-commit was performed
     const cliCalls = mockRunCli.mock.calls;

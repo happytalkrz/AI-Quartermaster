@@ -13,6 +13,7 @@ import type { JobLogger } from "../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 import { phaseProgress } from "./progress-tracker.js";
 import { analyzeTokenUsage, summarizeForBudget } from "../review/token-estimator.js";
+import { collectDiff } from "../git/diff-collector.js";
 
 const logger = getLogger();
 
@@ -163,26 +164,72 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       logger.info(`Auto-committing uncommitted changes for phase ${ctx.phase.index}`);
     }
 
-    // 4. Run verification (test + lint) — skip if command is empty
+    // 4. Collect succeeded files after Claude implementation
+    let succeededFiles: string[] = [];
+    try {
+      const baseBranch = ctx.gitConfig.defaultBaseBranch || 'main';
+      const diffStats = await collectDiff(ctx.gitConfig, baseBranch, { cwd: ctx.cwd });
+      succeededFiles = diffStats.changedFiles;
+      jl?.log(`Claude 구현으로 ${succeededFiles.length}개 파일 변경됨: ${succeededFiles.join(', ')}`);
+    } catch (error: unknown) {
+      logger.warn(`Failed to collect diff after Claude implementation: ${getErrorMessage(error)}`);
+    }
+
+    // 5. Run verification (test + lint) — skip if command is empty
+    let testPassed = true;
+    let testError: string | undefined;
     if (ctx.testCommand) {
       logger.info(`Running verification for phase ${ctx.phase.index}: ${ctx.phase.name}`);
       const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
       if (testResult.exitCode !== 0) {
-        throw new Error(`Tests failed:\n${testResult.stdout}\n${testResult.stderr}`);
+        testPassed = false;
+        testError = `Tests failed:\n${testResult.stdout}\n${testResult.stderr}`;
+
+        // If Claude succeeded but tests failed, this is a partial success
+        if (succeededFiles.length > 0) {
+          const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
+          jl?.log(`부분 성공: Claude 구현은 완료됐지만 테스트 실패`);
+
+          return {
+            phaseIndex: ctx.phase.index,
+            phaseName: ctx.phase.name,
+            success: false,
+            status: "partial",
+            error: testError,
+            errorCategory: classifyError(testError),
+            partial: {
+              succeededFiles,
+              failedFiles: [] // 테스트 실패는 전체 검증 실패로 처리
+            },
+            commitHash,
+            durationMs: Date.now() - startTime,
+            costUsd: claudeResult.costUsd,
+            usage: claudeResult.usage,
+            warnings: [],
+            errors: [testError],
+          };
+        } else {
+          // No files were changed, treat as complete failure
+          throw new Error(testError);
+        }
       }
     }
 
-    // 5. Get latest commit hash
+    // 6. Get latest commit hash
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
+    // Full success
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
       success: true,
+      status: "success",
       commitHash,
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
       usage: claudeResult.usage,
+      warnings: [],
+      errors: [],
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
@@ -190,12 +237,36 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
       success: false,
+      status: "failure",
       error: errMsg,
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
       costUsd: claudeResult?.costUsd,
       usage: claudeResult?.usage,
+      warnings: [],
+      errors: [errMsg],
     };
   }
+}
+
+/**
+ * PhaseResult가 완전한 성공인지 확인합니다.
+ */
+export function isFullSuccess(result: PhaseResult): boolean {
+  return result.success === true && result.status === "success";
+}
+
+/**
+ * PhaseResult가 부분 성공인지 확인합니다.
+ */
+export function isPartialSuccess(result: PhaseResult): boolean {
+  return result.success === false && result.status === "partial";
+}
+
+/**
+ * PhaseResult가 완전한 실패인지 확인합니다.
+ */
+export function isFailure(result: PhaseResult): boolean {
+  return result.success === false && result.status === "failure";
 }

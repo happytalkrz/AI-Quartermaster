@@ -183,6 +183,9 @@ describe("retryPhase", () => {
           errorMessage: "Previous error message",
           errorHistory: undefined,
           lastOutput: "",
+          isPartialRetry: false,
+          succeededFiles: [],
+          failedFiles: [],
         },
         config: {
           testCommand: "npm test",
@@ -303,9 +306,13 @@ describe("retryPhase", () => {
         phaseIndex: 0,
         phaseName: "TestPhase",
         success: true,
+        status: "success",
         commitHash: "abc12345",
         durationMs: expect.any(Number),
         costUsd: undefined,
+        usage: undefined,
+        warnings: [],
+        errors: [],
       });
     });
 
@@ -346,11 +353,15 @@ describe("retryPhase", () => {
         phaseIndex: 0,
         phaseName: "TestPhase",
         success: false,
+        status: "failure",
         error: "Phase retry failed: Claude failed",
         errorCategory: "CLI_CRASH",
         lastOutput: "Phase retry failed: Claude failed",
         durationMs: expect.any(Number),
         costUsd: undefined,
+        usage: undefined,
+        warnings: [],
+        errors: ["Phase retry failed: Claude failed"],
       });
     });
 
@@ -370,11 +381,15 @@ describe("retryPhase", () => {
         phaseIndex: 0,
         phaseName: "TestPhase",
         success: false,
+        status: "failure",
         error: "Tests failed after retry:\nTest output\nTest failed",
         errorCategory: "VERIFICATION_FAILED",
         lastOutput: expect.stringMatching(/Tests failed after retry/),
         durationMs: expect.any(Number),
         costUsd: undefined,
+        usage: undefined,
+        warnings: [],
+        errors: ["Tests failed after retry:\nTest output\nTest failed"],
       });
     });
 

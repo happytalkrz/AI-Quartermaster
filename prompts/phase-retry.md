@@ -13,6 +13,26 @@
 - **Phase**: {{phase.index}}/{{phase.totalCount}} -- {{phase.name}}
 - **설명**: {{phase.description}}
 - **대상 파일**: {{phase.files}}
+{{#retry.isPartialRetry}}
+
+## 부분 성공 재시도 안내
+
+⚠️ **이전 구현이 부분적으로 성공했습니다.**
+
+### 이미 성공한 파일들 (보존 필요)
+다음 파일들은 이미 성공적으로 변경되었으므로 **수정하지 마세요**:
+{{#retry.succeededFiles}}
+- {{.}}
+{{/retry.succeededFiles}}
+
+### 재시도 대상 파일들
+다음 파일들만 수정하거나 재작업하세요:
+{{#retry.failedFiles}}
+- {{.}}
+{{/retry.failedFiles}}
+
+**중요**: 성공한 파일들의 변경사항을 유지하면서 실패한 부분만 수정하세요.
+{{/retry.isPartialRetry}}
 
 ## 이전 시도 실패 정보
 

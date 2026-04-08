@@ -14,6 +14,7 @@ import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
 import { phaseProgress } from "./progress-tracker.js";
 import { ensureCleanState, type WorktreeManager } from "../safety/rollback-manager.js";
 import type { WorktreeInfo } from "../git/worktree-manager.js";
+import { collectDiff } from "../git/diff-collector.js";
 
 const logger = getLogger();
 
@@ -85,6 +86,12 @@ export interface PhaseRetryContext {
   gitConfig: GitConfig;
   worktreeConfig: WorktreeConfig;
   slug: string;
+  // 부분 성공 재시도 지원
+  partialResult?: {
+    succeededFiles: string[];
+    failedFiles: string[];
+  };
+  isPartialRetry?: boolean;
 }
 
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
@@ -119,6 +126,11 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       : ctx.previousError.slice(-1500);
     const errorHistory = hasErrorHistory ? prepareErrorHistoryForTemplate(ctx.errorHistory!) : undefined;
 
+    // 부분 성공 재시도를 위한 대상 파일 결정
+    const targetFiles = ctx.isPartialRetry && ctx.partialResult
+      ? ctx.partialResult.failedFiles
+      : ctx.phase.targetFiles;
+
     const rendered = renderTemplate(template, {
       issue: {
         number: String(ctx.issue.number),
@@ -128,7 +140,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         index: String(ctx.phase.index + 1),
         name: ctx.phase.name,
         description: ctx.phase.description,
-        files: ctx.phase.targetFiles,
+        files: targetFiles,
         totalCount: String(ctx.plan.phases.length),
       },
       retry: {
@@ -138,6 +150,10 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         errorMessage,
         errorHistory: errorHistory as unknown as import("../prompt/template-renderer.js").TemplateVariables,
         lastOutput: ctx.lastOutput || "",
+        // 부분 성공 정보 추가
+        isPartialRetry: ctx.isPartialRetry || false,
+        succeededFiles: ctx.partialResult?.succeededFiles || [],
+        failedFiles: ctx.partialResult?.failedFiles || [],
       },
       config: {
         testCommand: ctx.testCommand,
@@ -179,24 +195,71 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       logger.info(`Auto-committing retry changes for phase ${ctx.phase.index + 1}`);
     }
 
+    // Collect succeeded files after Claude retry
+    let succeededFiles: string[] = [];
+    try {
+      const baseBranch = ctx.gitConfig.defaultBaseBranch || 'main';
+      const diffStats = await collectDiff(ctx.gitConfig, baseBranch, { cwd: ctx.cwd });
+      succeededFiles = diffStats.changedFiles;
+      jl?.log(`Claude 재시도로 ${succeededFiles.length}개 파일 변경됨: ${succeededFiles.join(', ')}`);
+    } catch (error: unknown) {
+      logger.warn(`Failed to collect diff after Claude retry: ${getErrorMessage(error)}`);
+    }
+
     // Run verification
+    let testPassed = true;
+    let testError: string | undefined;
     if (ctx.testCommand) {
       logger.info(`Running verification after retry for phase ${ctx.phase.index + 1}`);
       const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
       if (testResult.exitCode !== 0) {
-        throw new Error(`Tests failed after retry:\n${testResult.stdout}\n${testResult.stderr}`);
+        testPassed = false;
+        testError = `Tests failed after retry:\n${testResult.stdout}\n${testResult.stderr}`;
+
+        // If Claude succeeded but tests failed, this is a partial success
+        if (succeededFiles.length > 0) {
+          const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
+          jl?.log(`부분 성공: Claude 재시도는 완료됐지만 테스트 실패`);
+
+          return {
+            phaseIndex: ctx.phase.index,
+            phaseName: ctx.phase.name,
+            success: false,
+            status: "partial",
+            error: testError,
+            errorCategory: classifyError(testError),
+            partial: {
+              succeededFiles,
+              failedFiles: [] // 테스트 실패는 전체 검증 실패로 처리
+            },
+            commitHash,
+            durationMs: Date.now() - startTime,
+            costUsd: claudeResult.costUsd,
+            usage: claudeResult.usage,
+            warnings: [],
+            errors: [testError],
+          };
+        } else {
+          // No files were changed, treat as complete failure
+          throw new Error(testError);
+        }
       }
     }
 
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
+    // Full success
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
       success: true,
+      status: "success",
       commitHash,
       durationMs: Date.now() - startTime,
       costUsd: claudeResult.costUsd,
+      usage: claudeResult.usage,
+      warnings: [],
+      errors: [],
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
@@ -204,11 +267,15 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
       success: false,
+      status: "failure",
       error: errMsg,
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
       costUsd: claudeResult?.costUsd,
+      usage: claudeResult?.usage,
+      warnings: [],
+      errors: [errMsg],
     };
   }
 }

@@ -335,6 +335,104 @@ function renderMobileActivityLog(job) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Kanban Card
+   ══════════════════════════════════════════════════════════════ */
+function renderKanbanCard(job) {
+  var column = mapJobToKanbanColumn(job);
+  var issueNum = '#' + (job.issueNumber || '?');
+  var title = esc(job.issueTitle || job.repo || '');
+  var elapsed = fmtDuration(job) || '—';
+  var pct = (typeof job.progress === 'number') ? job.progress : 0;
+
+  // Done card
+  if (column === 'done') {
+    var completedTime = relativeTime(job.updatedAt || job.createdAt);
+    return '<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 group" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+      '<div class="flex justify-between items-start mb-3">' +
+        '<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">' + issueNum + '</span>' +
+        '<span class="material-symbols-outlined text-[18px] text-[#3fb950]">check_circle</span>' +
+      '</div>' +
+      '<h4 class="text-sm font-medium text-on-surface/50 mb-4 leading-snug line-through">' + title + '</h4>' +
+      '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
+        '<span>COMPLETED</span>' +
+        '<span class="text-[#3fb950]">' + completedTime + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Implementing — Failed card
+  if (column === 'implementing' && job.status === 'failure') {
+    var errMsg = job.error ? esc(job.error).substring(0, 40) : 'ERR: FAILED';
+    return '<div class="bg-[#262a31] p-4 rounded-md border border-error/20 hover:border-error/40 transition-all cursor-pointer group" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+      '<div class="flex justify-between items-start mb-3">' +
+        '<span class="text-[10px] font-mono text-error/60 font-bold tracking-wider">' + issueNum + '</span>' +
+        '<span class="material-symbols-outlined text-[18px] text-error">report</span>' +
+      '</div>' +
+      '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + title + '</h4>' +
+      '<div class="p-2 bg-error-container/20 rounded text-[10px] font-mono text-error mb-4">' + errMsg + '</div>' +
+      '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
+        '<div class="h-full bg-error rounded-full" style="width:' + pct + '%"></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Implementing — Running card (pulse animation)
+  if (column === 'implementing') {
+    return '<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/30 bg-gradient-to-br from-[#262a31] to-[#1c2026] relative overflow-hidden group" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+      '<div class="absolute top-0 right-0 p-2"><div class="pulse-dot"></div></div>' +
+      '<div class="flex justify-between items-start mb-3">' +
+        '<span class="text-[10px] font-mono text-primary font-bold tracking-wider">' + issueNum + '</span>' +
+      '</div>' +
+      '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + title + '</h4>' +
+      '<div class="space-y-3">' +
+        '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
+          '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[12px] animate-spin">refresh</span> SYNCING</span>' +
+          '<span class="text-primary">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="w-full h-1.5 bg-surface-container-low rounded-full overflow-hidden">' +
+          '<div class="h-full bg-gradient-to-r from-primary to-primary-container rounded-full" style="width:' + pct + '%"></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Queued, Planning, Reviewing — base card
+  var progressBarColor = 'bg-outline-variant';
+  var progressWidth = 0;
+  var issueNumClass = 'text-outline-variant';
+  var extraContent = '';
+
+  if (column === 'planning') {
+    progressBarColor = 'bg-primary/40';
+    progressWidth = pct || 25;
+    issueNumClass = 'text-primary';
+  } else if (column === 'reviewing') {
+    progressBarColor = 'bg-tertiary';
+    progressWidth = 100;
+    issueNumClass = 'text-outline-variant';
+    extraContent = '<span class="material-symbols-outlined text-[16px] text-tertiary mb-4 block">warning</span>';
+  }
+
+  return '<div class="bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+    '<div class="flex justify-between items-start mb-3">' +
+      '<span class="text-[10px] font-mono ' + issueNumClass + ' font-bold tracking-wider">' + issueNum + '</span>' +
+      '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>' +
+    '</div>' +
+    '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + title + '</h4>' +
+    extraContent +
+    '<div class="space-y-3">' +
+      '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
+        '<span>ELAPSED</span>' +
+        '<span class="text-on-surface-variant">' + elapsed + '</span>' +
+      '</div>' +
+      '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
+        '<div class="h-full ' + progressBarColor + ' rounded-full" style="width:' + progressWidth + '%"></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Logs Full View
    ══════════════════════════════════════════════════════════════ */
 function renderLogsView(job) {

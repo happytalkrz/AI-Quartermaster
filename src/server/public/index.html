@@ -497,10 +497,14 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     </div>
   </div>
   <div id="view-automations" class="view-panel">
-    <div class="flex flex-col items-center justify-center py-32 text-center">
-      <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">precision_manufacturing</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="automations">Automations</h2>
-      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
+        <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+        <span data-i18n="automations">Automations</span>
+      </h2>
+    </div>
+    <div id="kanban-board" class="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
+      <!-- Kanban columns rendered dynamically by kanban.js -->
     </div>
   </div>
   <div id="view-settings" class="view-panel">
@@ -611,6 +615,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <script src="js/state.js"></script>
 <script src="js/modal.js"></script>
 <script src="js/render.js"></script>
+<script src="js/kanban.js"></script>
 <script src="js/app.js"></script>
 
 <!-- Confirm Modal -->

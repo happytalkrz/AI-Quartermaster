@@ -37,9 +37,11 @@ Thumbs.db
 .omc/
 .mcp.json
 stitch-proxy.sh
-.claude/
 .claude-*
-CLAUDE.md
+.claude/worktrees/
+.claude/settings*.json
+.claude/skill-usage.jsonl
+.claude/doc/
 AGENTS.md
 .cursorrules
 .cursor/

@@ -4,50 +4,32 @@ import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog } from "../store/database.js";
 import { JsonMigrator } from "./json-migrator.js";
+import type {
+  Job,
+  JobStatus,
+  QueuedJob,
+  RunningJob,
+  SuccessJob,
+  FailureJob,
+  CancelledJob,
+  ArchivedJob,
+  PhaseResultInfo,
+  UsageStats
+} from "../types/pipeline.js";
 
 const logger = getLogger();
 
-export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
-
-export interface Job {
-  id: string;
-  issueNumber: number;
-  repo: string;
-  status: JobStatus;
-  createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  prUrl?: string;
-  error?: string;
-  lastUpdatedAt?: string;
-  logs?: string[];
-  currentStep?: string;
-  dependencies?: number[];
-  phaseResults?: Array<{
-    name: string;
-    success: boolean;
-    commit?: string;
-    durationMs: number;
-    error?: string;
-    costUsd?: number;
-    usage?: {
-      input_tokens: number;
-      output_tokens: number;
-      cache_creation_input_tokens?: number;
-      cache_read_input_tokens?: number;
-    };
-  }>;
-  progress?: number;  // 0-100 overall pipeline progress
-  isRetry?: boolean;  // Indicates if this job is a retry of a previously failed job
-  costUsd?: number;
-  totalCostUsd?: number;
-  totalUsage?: {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-  };
-}
+// Re-export Job types for backward compatibility
+export type {
+  Job,
+  JobStatus,
+  QueuedJob,
+  RunningJob,
+  SuccessJob,
+  FailureJob,
+  CancelledJob,
+  ArchivedJob
+} from "../types/pipeline.js";
 
 export class JobStore extends EventEmitter {
   private db: AQDatabase;
@@ -168,16 +150,12 @@ export class JobStore extends EventEmitter {
    * DatabaseJob을 Job 인터페이스로 변환
    */
   private dbJobToJob(dbJob: DatabaseJob): Job {
-    const job: Job = {
+    // 공통 필드들
+    const baseFields = {
       id: dbJob.id,
       issueNumber: dbJob.issueNumber,
       repo: dbJob.repo,
-      status: dbJob.status,
       createdAt: dbJob.createdAt,
-      startedAt: dbJob.startedAt,
-      completedAt: dbJob.completedAt,
-      prUrl: dbJob.prUrl,
-      error: dbJob.error,
       lastUpdatedAt: dbJob.lastUpdatedAt,
       currentStep: dbJob.currentStep,
       dependencies: dbJob.dependencies,
@@ -185,13 +163,14 @@ export class JobStore extends EventEmitter {
       isRetry: dbJob.isRetry,
       costUsd: dbJob.costUsd,
       totalCostUsd: dbJob.totalCostUsd,
-      totalUsage: dbJob.totalUsage
+      totalUsage: dbJob.totalUsage as UsageStats | undefined
     };
 
     // Phase 결과를 phaseResults 배열로 변환
     const phases = this.db.getPhasesByJob(dbJob.id);
+    let phaseResults: PhaseResultInfo[] | undefined = undefined;
     if (phases.length > 0) {
-      job.phaseResults = phases.map(phase => ({
+      phaseResults = phases.map(phase => ({
         name: phase.phaseName,
         success: phase.success,
         commit: phase.commitHash,
@@ -209,11 +188,77 @@ export class JobStore extends EventEmitter {
 
     // 로그를 logs 배열로 변환
     const logs = this.db.getLogsByJob(dbJob.id);
-    if (logs.length > 0) {
-      job.logs = logs.map(log => log.message);
-    }
+    const logMessages = logs.length > 0 ? logs.map(log => log.message) : undefined;
 
-    return job;
+    // 상태별로 올바른 타입 반환
+    switch (dbJob.status) {
+      case "queued":
+        return {
+          ...baseFields,
+          status: "queued",
+          logs: logMessages,
+          phaseResults
+        } as QueuedJob;
+
+      case "running":
+        return {
+          ...baseFields,
+          status: "running",
+          startedAt: dbJob.startedAt!,
+          error: dbJob.error,
+          logs: logMessages,
+          phaseResults
+        } as RunningJob;
+
+      case "success":
+        return {
+          ...baseFields,
+          status: "success",
+          startedAt: dbJob.startedAt!,
+          completedAt: dbJob.completedAt!,
+          prUrl: dbJob.prUrl!,
+          logs: logMessages,
+          phaseResults
+        } as SuccessJob;
+
+      case "failure":
+        return {
+          ...baseFields,
+          status: "failure",
+          startedAt: dbJob.startedAt!,
+          completedAt: dbJob.completedAt!,
+          error: dbJob.error!,
+          prUrl: dbJob.prUrl,
+          logs: logMessages,
+          phaseResults
+        } as FailureJob;
+
+      case "cancelled":
+        return {
+          ...baseFields,
+          status: "cancelled",
+          completedAt: dbJob.completedAt!,
+          startedAt: dbJob.startedAt,
+          error: dbJob.error,
+          logs: logMessages,
+          phaseResults
+        } as CancelledJob;
+
+      case "archived":
+        return {
+          ...baseFields,
+          status: "archived",
+          startedAt: dbJob.startedAt,
+          completedAt: dbJob.completedAt,
+          prUrl: dbJob.prUrl,
+          error: dbJob.error,
+          logs: logMessages,
+          phaseResults
+        } as ArchivedJob;
+
+      default:
+        throw new Error(`Unknown job status: ${dbJob.status}`);
+    }
   }
 
   /**
@@ -241,9 +286,9 @@ export class JobStore extends EventEmitter {
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: Job['phaseResults']): Job {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[]): QueuedJob {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const job: Job = {
+    const job: QueuedJob = {
       id,
       issueNumber,
       repo,
@@ -315,7 +360,157 @@ export class JobStore extends EventEmitter {
     if (!currentJob) return undefined;
 
     const previousJob = { ...currentJob };
-    const updatedJob = { ...currentJob, ...updates };
+
+    // 상태별로 올바른 discriminated union 타입 생성
+    let updatedJob: Job;
+    const newStatus = updates.status || currentJob.status;
+
+    const baseFields = {
+      ...currentJob,
+      ...updates,
+      lastUpdatedAt: new Date().toISOString()
+    };
+
+    switch (newStatus) {
+      case "queued":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "queued",
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage
+        } as QueuedJob;
+        break;
+
+      case "running":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "running",
+          startedAt: baseFields.startedAt || new Date().toISOString(),
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage,
+          error: baseFields.error
+        } as RunningJob;
+        break;
+
+      case "success":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "success",
+          startedAt: baseFields.startedAt!,
+          completedAt: baseFields.completedAt || new Date().toISOString(),
+          prUrl: baseFields.prUrl!,
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage
+        } as SuccessJob;
+        break;
+
+      case "failure":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "failure",
+          startedAt: baseFields.startedAt!,
+          completedAt: baseFields.completedAt || new Date().toISOString(),
+          error: baseFields.error!,
+          prUrl: baseFields.prUrl,
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage
+        } as FailureJob;
+        break;
+
+      case "cancelled":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "cancelled",
+          completedAt: baseFields.completedAt || new Date().toISOString(),
+          startedAt: baseFields.startedAt,
+          error: baseFields.error,
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage
+        } as CancelledJob;
+        break;
+
+      case "archived":
+        updatedJob = {
+          id: baseFields.id,
+          issueNumber: baseFields.issueNumber,
+          repo: baseFields.repo,
+          status: "archived",
+          startedAt: baseFields.startedAt,
+          completedAt: baseFields.completedAt,
+          prUrl: baseFields.prUrl,
+          error: baseFields.error,
+          createdAt: baseFields.createdAt,
+          lastUpdatedAt: baseFields.lastUpdatedAt,
+          logs: baseFields.logs,
+          currentStep: baseFields.currentStep,
+          dependencies: baseFields.dependencies,
+          phaseResults: baseFields.phaseResults,
+          progress: baseFields.progress,
+          isRetry: baseFields.isRetry,
+          costUsd: baseFields.costUsd,
+          totalCostUsd: baseFields.totalCostUsd,
+          totalUsage: baseFields.totalUsage
+        } as ArchivedJob;
+        break;
+
+      default:
+        throw new Error(`Unknown job status: ${newStatus}`);
+    }
 
     // Phase results가 업데이트되었다면 별도로 처리
     if (updates.phaseResults) {
@@ -423,7 +618,14 @@ export class JobStore extends EventEmitter {
   }
 
   shouldBlockRepickup(issueNumber: number, repo: string): boolean {
-    return this.findCompletedByIssue(issueNumber, repo) !== undefined;
+    const existingJob = this.findAnyByIssue(issueNumber, repo);
+    if (!existingJob) return false;
+
+    // queued, running, success 상태의 잡이 있으면 차단
+    // failure, cancelled, archived 상태는 재시도 가능하므로 차단하지 않음
+    return existingJob.status === "queued" ||
+           existingJob.status === "running" ||
+           existingJob.status === "success";
   }
 
   findFailedJobsForRetry(): Job[] {

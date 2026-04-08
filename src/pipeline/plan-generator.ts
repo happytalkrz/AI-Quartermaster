@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
 import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
+import { configForTask, configForTaskWithMode } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
@@ -66,6 +66,7 @@ export interface PlanGeneratorContext {
   sensitivePaths?: string;
   locale?: string;
   cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
+  executionMode?: import("../types/config.js").ExecutionMode;  // execution mode for model routing
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
@@ -172,7 +173,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     }
 
     // Token budget cap: 프롬프트 크기 체크 및 축소
-    const claudeConfig = configForTask(ctx.claudeConfig, "plan");
+    const claudeConfig = configForTaskWithMode(ctx.claudeConfig, "plan", ctx.executionMode || "standard");
     const modelName = claudeConfig.model;
     let tokenAnalysis = analyzeTokenUsage(finalPrompt, modelName, ctx.locale || 'en');
 
@@ -235,7 +236,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     const result = await runClaude({
       prompt: finalPrompt,
       cwd: ctx.cwd,
-      config: configForTask(ctx.claudeConfig, "plan"),
+      config: configForTaskWithMode(ctx.claudeConfig, "plan", ctx.executionMode || "standard"),
       jsonSchema: planSchema,
       maxTurns: 10,
       enableAgents: false,

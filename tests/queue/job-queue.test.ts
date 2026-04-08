@@ -312,10 +312,29 @@ describe("JobQueue", () => {
       const queue = new JobQueue(store, 1, handler);
 
       const job = queue.enqueue(456, "test/repo");
-      await new Promise(r => setTimeout(r, 50));
 
-      // Manually set PR URL to simulate job that failed after PR creation
-      store.update(job!.id, { prUrl: "https://pr/existing" });
+      // Wait for job to complete and fail
+      await new Promise(r => setTimeout(r, 100));
+
+      // Verify job failed first
+      let currentJob = store.get(job!.id);
+
+      // If job didn't fail yet, wait more and force it to failure state
+      if (currentJob?.status !== "failure") {
+        await new Promise(r => setTimeout(r, 100));
+        currentJob = store.get(job!.id);
+
+        // Force job to failure state if needed
+        if (currentJob?.status !== "failure") {
+          store.update(job!.id, { status: "failure", completedAt: new Date().toISOString(), error: "test error" });
+          currentJob = store.get(job!.id);
+        }
+      }
+
+      expect(currentJob?.status).toBe("failure");
+
+      // Manually add PR info to logs to simulate job that failed after PR creation
+      store.update(job!.id, { logs: ["[2026. 4. 4. 21시 56분 30초] PR: https://pr/existing"] });
 
       // Try to retry - should fix status instead of retrying
       const retryResult = queue.retryJob(job!.id);

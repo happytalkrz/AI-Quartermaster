@@ -1,22 +1,26 @@
-import { handlePipelineFailure } from "./pipeline-publish.js";
-import { initializePipelineState, transitionState } from "./pipeline-context.js";
-import { getErrorMessage } from "../utils/error-utils.js";
+import { initializePipelineState } from "./pipeline-context.js";
+import { routeError } from "./pipeline-error-handler.js";
+import { validatePipelineResult } from "./pipeline-result-validator.js";
 import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
   executeCoreLoopPhase,
-  executePostProcessingPhases,
-  type PostProcessingContext
+  executePostProcessingPhases
 } from "./pipeline-phases.js";
 import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
 import { clearCache } from "../github/github-cache.js";
+import {
+  handleDuplicatePR,
+  extractValidatedSetupValues,
+  createPostProcessingContext
+} from "./orchestrator-helpers.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
-  const { issueNumber, repo, config, aqRoot } = input;
+  const { config, aqRoot } = input;
   const startTime = Date.now();
 
   // Initialize pipeline state
@@ -26,23 +30,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     // Phase 1: Initial Setup (Project, Duplicate PR check, Issue validation)
     const setupResult = await executeInitialSetupPhases(input, runtime, config, aqRoot);
 
-    // Early return for duplicate PR
-    if (setupResult.duplicatePRUrl) {
-      return { success: true, state: "DONE", prUrl: setupResult.duplicatePRUrl };
+    // Handle duplicate PR early return
+    const duplicateResult = handleDuplicatePR(setupResult);
+    if (duplicateResult) {
+      return duplicateResult;
     }
 
-    const { issue, mode, checkpoint } = setupResult;
-
-    // Validate required values from setup
-    if (!issue) {
-      throw new Error("Issue not fetched during setup");
-    }
-    if (!mode) {
-      throw new Error("Pipeline mode not determined during setup");
-    }
-
-    // Provide default checkpoint function if not available
-    const checkpointFn = checkpoint || (() => {});
+    // Extract validated setup values
+    const { issue, mode, checkpointFn } = extractValidatedSetupValues(setupResult);
 
     // Phase 2: Environment Setup (Git + Work environment)
     const envResult = await executeEnvironmentSetup(
@@ -75,19 +70,16 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
 
     // Phase 4: Post-processing (Review, Simplify, Validation, Publish)
-    const postProcessingContext: PostProcessingContext = {
+    const postProcessingContext = createPostProcessingContext({
       issue,
       coreResult: coreResult.coreResult,
-      gitConfig: setupResult.gitConfig,
-      project: setupResult.project,
-      worktreePath: runtime.worktreePath!,
-      promptsDir: setupResult.promptsDir,
-      skillsContext: envResult.skillsContext,
+      setupResult,
+      envResult,
       preset: coreResult.preset,
-      timer: setupResult.timer,
-      checkpoint: checkpointFn,
+      runtime,
+      checkpointFn,
       jobLogger: input.jobLogger
-    };
+    });
 
     const finalResult = await executePostProcessingPhases(
       postProcessingContext,
@@ -97,17 +89,10 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       startTime
     );
 
-    // Verify that prUrl was successfully created
-    if (!finalResult.prUrl) {
-      transitionState(runtime, "FAILED");
-      const errorMessage = "Pipeline completed but failed to create PR URL";
-      return {
-        success: false,
-        state: "FAILED",
-        error: errorMessage,
-        report: finalResult.report,
-        totalCostUsd: finalResult.totalCostUsd
-      };
+    // Validate pipeline result
+    const validationError = validatePipelineResult({ finalResult, runtime });
+    if (validationError) {
+      return validationError;
     }
 
     return {
@@ -119,75 +104,12 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
 
   } catch (error: unknown) {
-    // Check if this is a skipped issue due to feasibility check
-    const errorMessage = getErrorMessage(error);
-    const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
-
-    if (isFeasibilitySkip) {
-      const { formatResult } = await import("./result-reporter.js");
-      const skipReason = errorMessage.slice("FEASIBILITY_SKIP:".length).trim();
-      const basicPlan = {
-        issueNumber,
-        title: `Issue #${issueNumber} skipped`,
-        problemDefinition: skipReason,
-        requirements: [],
-        affectedFiles: [],
-        risks: [],
-        phases: [],
-        verificationPoints: [],
-        stopConditions: []
-      };
-      const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
-
-      return {
-        success: true,
-        state: "SKIPPED" as const,
-        report,
-        error: skipReason
-      };
-    }
-
-    // Check if this is a core loop failure with detailed results
-    const errorWithReport = error as Error & { failureResult?: OrchestratorResult };
-    if (errorWithReport.failureResult) {
-      // Core loop failure already handled by handleCoreLoopFailure
-      transitionState(runtime, "FAILED");
-      return errorWithReport.failureResult;
-    }
-
-    // General pipeline failure
-    const failureContext = {
-      error,
-      state: runtime.state,
-      worktreePath: runtime.worktreePath,
-      branchName: runtime.branchName,
-      rollbackHash: runtime.rollbackHash,
-      rollbackStrategy: runtime.rollbackStrategy,
-      gitConfig: runtime.gitConfig,
-      projectRoot: runtime.projectRoot,
-      cleanupOnFailure: config.worktree.cleanupOnFailure,
-      jl: input.jobLogger,
-    };
-
-    const finalErrorMessage = await handlePipelineFailure(failureContext);
-    transitionState(runtime, "FAILED");
-
-    // Generate a basic report for failed pipelines
-    const { formatResult } = await import("./result-reporter.js");
-    const basicPlan = {
-      issueNumber,
-      title: "Pipeline failed",
-      problemDefinition: "Pipeline execution failed",
-      requirements: [],
-      affectedFiles: [],
-      risks: [],
-      phases: [],
-      verificationPoints: [],
-      stopConditions: []
-    };
-    const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
-
-    return { success: false, state: "FAILED", error: finalErrorMessage, report };
+    return await routeError(error, {
+      runtime,
+      input,
+      config,
+      startTime
+    });
   } finally {
     // 파이프라인 종료 시 캐시 정리 - 성공/실패 모두 메모리 누수 방지
     clearCache();

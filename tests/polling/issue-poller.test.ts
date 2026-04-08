@@ -25,6 +25,7 @@ const mockListOpenPrs = vi.mocked(listOpenPrs);
 const mockStore = {
   shouldBlockRepickup: vi.fn(),
   findFailedJobsForRetry: vi.fn().mockReturnValue([]),
+  findAnyByIssue: vi.fn(),
 };
 
 const mockQueue = {
@@ -559,6 +560,198 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       } finally {
         vi.spyOn(Date, 'now').mockImplementation(originalDateNow);
       }
+    });
+  });
+
+  describe("shouldBlockRepickup integration", () => {
+    it("should skip issues blocked by shouldBlockRepickup", async () => {
+      const config = makeConfig();
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // Mock shouldBlockRepickup to return true for specific issue
+      mockStore.shouldBlockRepickup.mockImplementation((issueNumber: number) =>
+        issueNumber === 123
+      );
+
+      // Mock findAnyByIssue to return a running job for blocked issue
+      mockStore.findAnyByIssue.mockImplementation((issueNumber: number) =>
+        issueNumber === 123 ? { id: "job-123", status: "running", issueNumber: 123, repo: "test/repo" } : null
+      );
+
+      // Mock issues response
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([
+          { number: 123, title: "Blocked issue", state: "open" },
+          { number: 124, title: "New issue", state: "open" }
+        ]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Verify shouldBlockRepickup was called for both issues
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(123, "test/repo");
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(124, "test/repo");
+
+      // Verify only non-blocked issue was enqueued
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(124, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(123, "test/repo");
+    });
+
+    it("should handle different blocking job statuses", async () => {
+      const config = makeConfig();
+
+      // Test queued status blocking
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
+      mockStore.findAnyByIssue.mockReturnValueOnce({
+        id: "job-100", status: "queued", issueNumber: 100, repo: "test/repo"
+      });
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([{ number: 100, title: "Queued job", state: "open" }]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(100, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(100, "test/repo");
+
+      // Reset and test running status blocking
+      vi.clearAllMocks();
+      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
+      mockStore.findAnyByIssue.mockReturnValueOnce({
+        id: "job-101", status: "running", issueNumber: 101, repo: "test/repo"
+      });
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([{ number: 101, title: "Running job", state: "open" }]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(101, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(101, "test/repo");
+
+      // Reset and test success status blocking
+      vi.clearAllMocks();
+      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
+      mockStore.findAnyByIssue.mockReturnValueOnce({
+        id: "job-102", status: "success", issueNumber: 102, repo: "test/repo"
+      });
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([{ number: 102, title: "Success job", state: "open" }]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(102, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(102, "test/repo");
+    });
+
+    it("should enqueue available issues when shouldBlockRepickup returns false", async () => {
+      const config = makeConfig();
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // Mock shouldBlockRepickup to allow all issues
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockStore.findAnyByIssue.mockReturnValue(null);
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([
+          { number: 200, title: "Available task 1", state: "open" },
+          { number: 201, title: "Available task 2", state: "open" }
+        ]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Verify shouldBlockRepickup was called for all issues
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(200, "test/repo");
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(201, "test/repo");
+
+      // Verify all issues were enqueued
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(200, "test/repo");
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(201, "test/repo");
+    });
+
+    it("should handle mixed blocked and available issues correctly", async () => {
+      const config = makeConfig();
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // Mock mixed scenarios: block 300 and 302, allow 301
+      mockStore.shouldBlockRepickup
+        .mockReturnValueOnce(true)  // issue 300 blocked
+        .mockReturnValueOnce(false) // issue 301 available
+        .mockReturnValueOnce(true); // issue 302 blocked
+
+      mockStore.findAnyByIssue
+        .mockReturnValueOnce({ id: "job-300", status: "running", issueNumber: 300, repo: "test/repo" })
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce({ id: "job-302", status: "queued", issueNumber: 302, repo: "test/repo" });
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([
+          { number: 300, title: "Blocked by running", state: "open" },
+          { number: 301, title: "Available task", state: "open" },
+          { number: 302, title: "Blocked by queued", state: "open" }
+        ]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Verify shouldBlockRepickup was called for all issues
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(300, "test/repo");
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(301, "test/repo");
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(302, "test/repo");
+
+      // Verify only available issue was enqueued
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(301, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(300, "test/repo");
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(302, "test/repo");
+
+      // Verify findAnyByIssue was called for blocked issues to get job details
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(300, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(302, "test/repo");
+    });
+
+    it("should correctly integrate shouldBlockRepickup with existing job lookup", async () => {
+      const config = makeConfig();
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // Mock shouldBlockRepickup to return true and verify findAnyByIssue integration
+      mockStore.shouldBlockRepickup.mockReturnValue(true);
+      mockStore.findAnyByIssue.mockReturnValue({
+        id: "job-400",
+        status: "success",
+        issueNumber: 400,
+        repo: "test/repo",
+        completedAt: new Date().toISOString()
+      });
+
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify([{ number: 400, title: "Completed task", state: "open" }]),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
+
+      // Verify the integration flow: shouldBlockRepickup -> findAnyByIssue for job details
+      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(400, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(400, "test/repo");
+
+      // Verify issue was not enqueued due to blocking
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(400, "test/repo");
     });
   });
 });

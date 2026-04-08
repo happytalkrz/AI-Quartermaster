@@ -144,6 +144,10 @@ export async function executeInitialSetupPhases(
   const { issue, checkpoint } = issueResult;
   const mode = issueResult.mode;
   const executionMode = issueResult.executionMode;
+
+  // Validate setup results
+  validateSetupResult(issue, mode, checkpoint);
+
   transitionState(runtime, "VALIDATED");
 
   return {
@@ -661,4 +665,30 @@ export async function executePostProcessingPhases(
     report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl),
     totalCostUsd: coreResult.totalCostUsd
   };
+}
+
+/**
+ * Validate setup result values and provide defaults
+ */
+function validateSetupResult(
+  issue: GitHubIssue | undefined,
+  mode: PipelineMode | undefined,
+  checkpoint: ((overrides?: Partial<PipelineCheckpoint>) => void) | undefined
+): {
+  issue: GitHubIssue;
+  mode: PipelineMode;
+  checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void
+} {
+  // Validate required values from setup
+  if (!issue) {
+    throw new Error("Issue not fetched during setup");
+  }
+  if (!mode) {
+    throw new Error("Pipeline mode not determined during setup");
+  }
+
+  // Provide default checkpoint function if not available
+  const checkpointFn = checkpoint || (() => {});
+
+  return { issue, mode, checkpoint: checkpointFn };
 }

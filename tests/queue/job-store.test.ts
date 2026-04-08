@@ -128,19 +128,19 @@ describe("JobStore", () => {
       expect(result).toBe(false);
     });
 
-    it("should return false when only queued job exists for the issue", () => {
+    it("should return true when queued job exists for the issue", () => {
       store.create(42, "test/repo"); // default status is "queued"
 
       const result = store.shouldBlockRepickup(42, "test/repo");
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
-    it("should return false when only running job exists for the issue", () => {
+    it("should return true when running job exists for the issue", () => {
       const job = store.create(42, "test/repo");
       store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
 
       const result = store.shouldBlockRepickup(42, "test/repo");
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
     it("should return false when only archived job exists for the issue", () => {

@@ -87,6 +87,9 @@ function makeContext(overrides: Partial<CoreLoopContext> = {}): CoreLoopContext 
         port: 3000,
         host: "localhost",
       },
+      features: {
+        parallelPhases: false,
+      },
     },
     promptsDir: "/tmp/prompts",
     cwd: "/tmp/project",
@@ -196,7 +199,7 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(3);
-      expect(mockSchedulePhases).toHaveBeenCalledWith(phases);
+      expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(3);
 
       // All phases should have been called (order may vary due to parallel execution)
@@ -238,7 +241,7 @@ describe("runCoreLoop", () => {
 
       expect(result.success).toBe(true);
       expect(result.phaseResults).toHaveLength(4);
-      expect(mockSchedulePhases).toHaveBeenCalledWith(phases);
+      expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(4);
     });
 
@@ -1016,6 +1019,124 @@ describe("runCoreLoop", () => {
         claudeConfig: expect.any(Object),
         promptsDir: expect.any(String),
         cwd: expect.any(String),
+      });
+    });
+  });
+
+  describe("feature flags", () => {
+    describe("parallelPhases", () => {
+      it("should pass feature flag state to schedulePhases", async () => {
+        const phases = [makePhase(0, "Test")];
+        const plan = makePlan(phases);
+
+        mockGeneratePlan.mockResolvedValue({ plan });
+        mockSchedulePhases.mockReturnValue({
+          success: true,
+          groups: [{ level: 0, phases: phases }],
+        });
+        mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+
+        // Test with parallelPhases enabled
+        const contextWithParallel = makeContext({
+          config: {
+            ...makeContext().config,
+            features: { parallelPhases: true },
+          },
+        });
+
+        await runCoreLoop(contextWithParallel);
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, true);
+
+        // Reset mocks
+        mockSchedulePhases.mockClear();
+
+        // Test with parallelPhases disabled (default)
+        await runCoreLoop(makeContext());
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
+      });
+
+      it("should handle undefined features config gracefully", async () => {
+        const phases = [makePhase(0, "Test")];
+        const plan = makePlan(phases);
+
+        mockGeneratePlan.mockResolvedValue({ plan });
+        mockSchedulePhases.mockReturnValue({
+          success: true,
+          groups: [{ level: 0, phases: phases }],
+        });
+        mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+
+        // Test with features config undefined
+        const contextWithoutFeatures = makeContext({
+          config: {
+            ...makeContext().config,
+            features: undefined as any,
+          },
+        });
+
+        await runCoreLoop(contextWithoutFeatures);
+
+        // Should default to false when features is undefined
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
+      });
+    });
+  });
+
+  describe("feature flags", () => {
+    describe("parallelPhases", () => {
+      it("should pass feature flag state to schedulePhases", async () => {
+        const phases = [makePhase(0, "Test")];
+        const plan = makePlan(phases);
+
+        mockGeneratePlan.mockResolvedValue({ plan });
+        mockSchedulePhases.mockReturnValue({
+          success: true,
+          groups: [{ level: 0, phases: phases }],
+        });
+        mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+
+        // Test with parallelPhases enabled
+        const contextWithParallel = makeContext({
+          config: {
+            ...makeContext().config,
+            features: { parallelPhases: true },
+          },
+        });
+
+        await runCoreLoop(contextWithParallel);
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, true);
+
+        // Reset mocks
+        mockSchedulePhases.mockClear();
+
+        // Test with parallelPhases disabled (default)
+        await runCoreLoop(makeContext());
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
+      });
+
+      it("should handle undefined features config gracefully", async () => {
+        const phases = [makePhase(0, "Test")];
+        const plan = makePlan(phases);
+
+        mockGeneratePlan.mockResolvedValue({ plan });
+        mockSchedulePhases.mockReturnValue({
+          success: true,
+          groups: [{ level: 0, phases: phases }],
+        });
+        mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+
+        // Test with features config undefined
+        const contextWithoutFeatures = makeContext({
+          config: {
+            ...makeContext().config,
+            features: undefined as any,
+          },
+        });
+
+        await runCoreLoop(contextWithoutFeatures);
+
+        // Should default to false when features is undefined
+        expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       });
     });
   });

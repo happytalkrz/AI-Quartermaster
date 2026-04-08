@@ -186,6 +186,63 @@ export const GetStatsQuerySchema = z.object({
 
 export type GetStatsQuery = z.infer<typeof GetStatsQuerySchema>;
 
+// StatsResponse 응답 타입 (GET /api/stats)
+export const StatsResponseSchema = z.object({
+  total: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  queuedCount: z.number().int().nonnegative(),
+  cancelledCount: z.number().int().nonnegative(),
+  avgDurationMs: z.number().nonnegative(),
+  successRate: z.number().min(0).max(100),
+  project: z.string().nullable(),
+  timeRange: z.enum(["24h", "7d", "30d", "all"]),
+});
+
+export type StatsResponse = z.infer<typeof StatsResponseSchema>;
+
+// GetCosts 쿼리 스키마 (GET /api/costs)
+export const GetCostsQuerySchema = z.object({
+  project: z.string().optional(),
+  timeRange: z.enum(["24h", "7d", "30d", "all"]).default("30d"),
+  groupBy: z.enum(["project", "day", "week", "month"]).default("project"),
+}).strict();
+
+export type GetCostsQuery = z.infer<typeof GetCostsQuerySchema>;
+
+// CostsResponse 응답 타입 (GET /api/costs)
+export const CostEntrySchema = z.object({
+  label: z.string(),
+  totalCostUsd: z.number().nonnegative(),
+  jobCount: z.number().int().nonnegative(),
+  avgCostUsd: z.number().nonnegative(),
+  totalInputTokens: z.number().int().nonnegative(),
+  totalOutputTokens: z.number().int().nonnegative(),
+  totalCacheCreationTokens: z.number().int().nonnegative(),
+  totalCacheReadTokens: z.number().int().nonnegative(),
+});
+
+export type CostEntry = z.infer<typeof CostEntrySchema>;
+
+export const CostsResponseSchema = z.object({
+  project: z.string().nullable(),
+  timeRange: z.enum(["24h", "7d", "30d", "all"]),
+  groupBy: z.enum(["project", "day", "week", "month"]),
+  summary: z.object({
+    totalCostUsd: z.number().nonnegative(),
+    jobCount: z.number().int().nonnegative(),
+    avgCostUsd: z.number().nonnegative(),
+    totalInputTokens: z.number().int().nonnegative(),
+    totalOutputTokens: z.number().int().nonnegative(),
+    totalCacheCreationTokens: z.number().int().nonnegative(),
+    totalCacheReadTokens: z.number().int().nonnegative(),
+  }),
+  breakdown: z.array(CostEntrySchema),
+});
+
+export type CostsResponse = z.infer<typeof CostsResponseSchema>;
+
 // HealthCheck 응답 스키마 (GET /api/health)
 export const HealthCheckResponseSchema = z.object({
   project: z.string(),

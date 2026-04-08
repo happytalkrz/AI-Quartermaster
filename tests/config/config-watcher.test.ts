@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync, existsSync, unlinkSync } from "fs";
 import { resolve } from "path";
 import { ConfigWatcher, ConfigChangeEvent } from "../../src/config/config-watcher.js";

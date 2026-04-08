@@ -4,7 +4,7 @@ import { retryPhase } from "./phase-retry.js";
 import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
 import { schedulePhases } from "./phase-scheduler.js";
 import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory } from "../types/pipeline.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -108,7 +108,6 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       .substring(0, 16);
 
     // Load static template parts for caching
-    const planTemplatePath = resolve(ctx.promptsDir, "plan-generation.md");
     const phaseTemplatePath = resolve(ctx.promptsDir, "phase-implementation.md");
 
     try {

@@ -258,8 +258,6 @@ export async function executeCoreLoopPhase(
   const projectConfig = { ...config, commands: project.commands, safety: project.safety };
   const patternStore = new PatternStore(dataDir);
   const preset = getModePreset(mode);
-  const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
-  const executionModePreset = getExecutionModePreset(executionMode);
 
   const coreResult = await runCoreLoop({
     issue,

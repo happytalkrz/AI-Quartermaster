@@ -1,4 +1,3 @@
-import type { ErrorCategory } from "./pipeline.js";
 
 /**
  * Base error class for AI-Quartermaster with standardized error handling

@@ -4,6 +4,16 @@
    Kanban Board
    ══════════════════════════════════════════════════════════════ */
 
+// Inject card fade-in keyframe once
+(function() {
+  var styleId = 'kanban-styles';
+  if (document.getElementById(styleId)) return;
+  var style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = '@keyframes kanban-card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }';
+  document.head.appendChild(style);
+}());
+
 var KANBAN_COLUMNS = [
   { id: 'queued',       label: 'Queued',       badge: 'Q', colorClass: 'text-outline' },
   { id: 'planning',     label: 'Planning',     badge: 'P', colorClass: 'text-primary' },
@@ -75,4 +85,31 @@ function renderKanbanBoard(jobs) {
   return '<div class="flex gap-6 h-full overflow-x-auto custom-scrollbar px-1 pb-1">' +
     columns +
   '</div>';
+}
+
+/**
+ * Filters jobs for the kanban board (project + archived filter, no status filter).
+ * @returns {object[]}
+ */
+function getKanbanJobs() {
+  var jobs = currentJobs.filter(function(j) { return j.status !== 'archived'; });
+  if (currentProject && currentProject !== 'all') {
+    jobs = jobs.filter(function(j) { return j.repo === currentProject; });
+  }
+  return jobs;
+}
+
+/**
+ * Updates the kanban board DOM with current job state.
+ * Triggers a card fade-in animation on each update.
+ */
+function updateKanbanBoard() {
+  var kanbanEl = document.getElementById('kanban-board');
+  if (!kanbanEl) return;
+
+  kanbanEl.innerHTML = renderKanbanBoard(getKanbanJobs());
+
+  kanbanEl.querySelectorAll('[data-job-id]').forEach(function(card) {
+    card.style.animation = 'kanban-card-in 0.25s ease-out';
+  });
 }

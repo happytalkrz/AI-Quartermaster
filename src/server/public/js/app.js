@@ -32,6 +32,11 @@ function navigateTo(view) {
     }
   });
 
+  // If navigating to automations view, render kanban board
+  if (view === 'automations') {
+    updateKanbanBoard();
+  }
+
   // If navigating to logs view and we have a selected job, show its logs
   if (view === 'logs' && selectedJobId) {
     var job = currentJobs.find(function(j) { return j.id === selectedJobId; });
@@ -511,7 +516,12 @@ function connectSSE() {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   };
   es.onmessage = function(e) {
-    try { handleData(JSON.parse(e.data)); } catch (_) {}
+    try {
+      handleData(JSON.parse(e.data));
+      if (currentView === 'automations') {
+        updateKanbanBoard();
+      }
+    } catch (_) {}
   };
   es.onerror = function() {
     setConnState('disconnected');

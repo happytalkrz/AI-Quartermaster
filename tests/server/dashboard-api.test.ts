@@ -1675,6 +1675,232 @@ describe("Dashboard API - Version Management", () => {
     });
   });
 
+  describe("GET /api/jobs/:id/timeline", () => {
+    describe("without API key", () => {
+      let app: Hono;
+
+      beforeEach(() => {
+        vi.clearAllMocks();
+        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      });
+
+      it("should return timeline for job with successful phases", async () => {
+        const mockJob = {
+          id: "test-job-1",
+          issueNumber: 123,
+          repo: "test/repo",
+          phaseResults: [
+            {
+              phaseIndex: 1,
+              name: "Planning",
+              success: true,
+              durationMs: 5000,
+              costUsd: 0.15,
+            },
+            {
+              phaseIndex: 2,
+              name: "Implementation",
+              success: true,
+              durationMs: 12000,
+              costUsd: 0.32,
+            },
+          ],
+        };
+
+        mockJobStore.get.mockReturnValue(mockJob);
+
+        const response = await app.request("/api/jobs/test-job-1/timeline");
+        expect(response.status).toBe(200);
+
+        const result = await response.json();
+        expect(result).toEqual({
+          jobId: "test-job-1",
+          issueNumber: 123,
+          repo: "test/repo",
+          totalDurationMs: 17000,
+          totalCostUsd: 0.47,
+          phases: [
+            {
+              phaseIndex: 1,
+              phaseName: "Planning",
+              startOffsetMs: 0,
+              durationMs: 5000,
+              status: "success",
+              costUsd: 0.15,
+            },
+            {
+              phaseIndex: 2,
+              phaseName: "Implementation",
+              startOffsetMs: 5000,
+              durationMs: 12000,
+              status: "success",
+              costUsd: 0.32,
+            },
+          ],
+        });
+      });
+
+      it("should return timeline for job with failed phases", async () => {
+        const mockJob = {
+          id: "test-job-2",
+          issueNumber: 456,
+          repo: "test/repo",
+          phaseResults: [
+            {
+              phaseIndex: 1,
+              name: "Planning",
+              success: true,
+              durationMs: 3000,
+              costUsd: 0.10,
+            },
+            {
+              phaseIndex: 2,
+              name: "Implementation",
+              success: false,
+              durationMs: 8000,
+              costUsd: 0.20,
+              error: "Build failed: syntax error",
+            },
+          ],
+        };
+
+        mockJobStore.get.mockReturnValue(mockJob);
+
+        const response = await app.request("/api/jobs/test-job-2/timeline");
+        expect(response.status).toBe(200);
+
+        const result = await response.json();
+        expect(result).toEqual({
+          jobId: "test-job-2",
+          issueNumber: 456,
+          repo: "test/repo",
+          totalDurationMs: 11000,
+          totalCostUsd: 0.30000000000000004,
+          phases: [
+            {
+              phaseIndex: 1,
+              phaseName: "Planning",
+              startOffsetMs: 0,
+              durationMs: 3000,
+              status: "success",
+              costUsd: 0.10,
+              error: undefined,
+            },
+            {
+              phaseIndex: 2,
+              phaseName: "Implementation",
+              startOffsetMs: 3000,
+              durationMs: 8000,
+              status: "failure",
+              costUsd: 0.20,
+              error: "Build failed: syntax error",
+            },
+          ],
+        });
+      });
+
+      it("should return timeline for job with no phases", async () => {
+        const mockJob = {
+          id: "test-job-3",
+          issueNumber: 789,
+          repo: "test/repo",
+          phaseResults: [],
+        };
+
+        mockJobStore.get.mockReturnValue(mockJob);
+
+        const response = await app.request("/api/jobs/test-job-3/timeline");
+        expect(response.status).toBe(200);
+
+        const result = await response.json();
+        expect(result).toEqual({
+          jobId: "test-job-3",
+          issueNumber: 789,
+          repo: "test/repo",
+          totalDurationMs: 0,
+          phases: [],
+        });
+      });
+
+      it("should return timeline for job with undefined phaseResults", async () => {
+        const mockJob = {
+          id: "test-job-4",
+          issueNumber: 101112,
+          repo: "test/repo",
+        };
+
+        mockJobStore.get.mockReturnValue(mockJob);
+
+        const response = await app.request("/api/jobs/test-job-4/timeline");
+        expect(response.status).toBe(200);
+
+        const result = await response.json();
+        expect(result).toEqual({
+          jobId: "test-job-4",
+          issueNumber: 101112,
+          repo: "test/repo",
+          totalDurationMs: 0,
+          phases: [],
+        });
+      });
+
+      it("should return 404 for non-existent job", async () => {
+        mockJobStore.get.mockReturnValue(undefined);
+
+        const response = await app.request("/api/jobs/non-existent/timeline");
+        expect(response.status).toBe(404);
+
+        const result = await response.json();
+        expect(result.error).toBe("Job not found");
+      });
+    });
+
+    describe("with API key", () => {
+      const apiKey = "test-api-key-123";
+      let app: Hono;
+
+      beforeEach(() => {
+        vi.clearAllMocks();
+        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      });
+
+      it("should require Bearer token authentication", async () => {
+        const response = await app.request("/api/jobs/test-job-1/timeline");
+
+        expect(response.status).toBe(401);
+        const result = await response.json();
+        expect(result.error).toBe("Unauthorized");
+      });
+
+      it("should return timeline with valid Bearer token", async () => {
+        const mockJob = {
+          id: "test-job-1",
+          issueNumber: 123,
+          repo: "test/repo",
+          phaseResults: [
+            {
+              phaseIndex: 1,
+              name: "Planning",
+              success: true,
+              durationMs: 5000,
+            },
+          ],
+        };
+
+        mockJobStore.get.mockReturnValue(mockJob);
+
+        const response = await app.request("/api/jobs/test-job-1/timeline", {
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        expect(response.status).toBe(200);
+
+        const result = await response.json();
+        expect(result.jobId).toBe("test-job-1");
+        expect(result.phases).toHaveLength(1);
+      });
+    });
+  });
+
   describe("SSE Resource Management", () => {
     it("should handle SSE client connections properly", async () => {
       const response = await app.request("/api/events?token=test-token");

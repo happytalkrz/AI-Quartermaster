@@ -5,7 +5,7 @@ import { runReviews } from "../review/review-orchestrator.js";
 import { runAnalyst } from "../review/analyst-runner.js";
 import { runSimplify } from "../review/simplify-runner.js";
 import { retryWithClaudeFix } from "./retry-with-fix.js";
-import { configForTaskWithMode } from "../claude/model-router.js";
+// import { configForTaskWithMode } from "../claude/model-router.js"; // TODO: 향후 사용예정
 import { getLogger } from "../utils/logger.js";
 import { PROGRESS_REVIEW_START } from "./progress-tracker.js";
 import type {

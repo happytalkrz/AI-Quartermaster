@@ -628,8 +628,9 @@ function buildCiFixPromptSync(
 
 /**
  * CI 실패 로그를 분석하여 Claude용 수정 프롬프트를 생성합니다. (비동기 버전)
+ * TODO: 향후 필요시 사용
  */
-async function buildCiFixPrompt(
+/* async function buildCiFixPrompt(
   ciStatus: CiStatusSummary,
   options: CiAutoFixOptions
 ): Promise<string> {

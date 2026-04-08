@@ -257,7 +257,7 @@ export async function executeCoreLoopPhase(
   const patternStore = new PatternStore(dataDir);
   const preset = getModePreset(mode);
   const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
-  const executionModePreset = getExecutionModePreset(executionMode);
+  // const executionModePreset = getExecutionModePreset(executionMode); // TODO: 향후 사용예정
 
   const coreResult = await runCoreLoop({
     issue,
@@ -425,7 +425,7 @@ export async function executePostProcessingPhases(
     timer,
     (checkState: string) => isPastState(runtime.state, checkState as PipelineState),
     preset.skipFinalValidation,
-    detectExecutionModeFromLabels(issue.labels, "standard"),
+    executionMode,
     (overrides?: Partial<PipelineCheckpoint>) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
     issueNumber,
     repo,

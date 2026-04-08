@@ -529,28 +529,24 @@ export async function executePostProcessingPhases(
   const ciPollingConfig: CiPollingConfig = {
     intervalMs: 30000, // 30초마다 체크
     maxDurationMs: 1800000, // 최대 30분 대기
-    failOnTimeout: false, // 타임아웃 시에도 실패로 처리하지 않고 현재 상태 유지
+    failOnTimeout: false,
   };
 
   try {
-    // CI 상태 폴링
     const ciStatus = await pollCiStatus(
       prNumber,
       repo,
       project.commands.ghCli,
       ciPollingConfig,
       (status) => {
-        // CI 상태 업데이트 콜백
         jl?.log(`CI 상태: ${status.overall} (${status.pendingChecks.length}개 대기, ${status.failedChecks.length}개 실패)`);
       }
     );
 
     if (ciStatus.overall === "success") {
-      // CI 성공 - 정상 완료 처리
       logger.info(`CI passed for PR #${prNumber}`);
       jl?.log("CI 통과! 작업 완료 처리 중...");
 
-      // Cleanup on success
       const cleanupContext = {
         worktreePath: runtime.worktreePath,
         gitConfig,
@@ -573,13 +569,11 @@ export async function executePostProcessingPhases(
       jl?.setProgress(PROGRESS_DONE);
 
     } else if (ciStatus.overall === "failure") {
-      // CI 실패 - CI_FIXING 상태로 전환하고 자동 수정 시도
       logger.warn(`CI failed for PR #${prNumber}`);
       jl?.log(`CI 실패 감지. 자동 수정 시작...`);
 
       transitionState(runtime, "CI_FIXING");
 
-      // CI 자동 수정 루프 실행
       try {
         jl?.log("CI 자동 수정 루프 시작...");
 
@@ -597,11 +591,9 @@ export async function executePostProcessingPhases(
         });
 
         if (fixResult.success) {
-          // CI 자동 수정 성공 - DONE 상태로 전환
           logger.info(`CI auto-fix succeeded after ${fixResult.attempts} attempts`);
-          jl?.log(`✅ CI 자동 수정 성공! (${fixResult.attempts}회 시도)`);
+          jl?.log(`CI 자동 수정 성공! (${fixResult.attempts}회 시도)`);
 
-          // 성공 시 cleanup 진행
           const cleanupContext = {
             worktreePath: runtime.worktreePath,
             branchName: runtime.branchName,
@@ -624,34 +616,24 @@ export async function executePostProcessingPhases(
           transitionState(runtime, "DONE");
           jl?.setProgress(PROGRESS_DONE);
         } else {
-          // CI 자동 수정 실패
           logger.error(`CI auto-fix failed after ${fixResult.attempts} attempts: ${fixResult.error}`);
-          jl?.log(`❌ CI 자동 수정 실패 (${fixResult.attempts}회 시도): ${fixResult.error}`);
-
-          // 실패 시 worktree 유지 (수동 수정을 위해)
+          jl?.log(`CI 자동 수정 실패 (${fixResult.attempts}회 시도): ${fixResult.error}`);
           jl?.log("CI 실패로 인해 worktree를 유지함. 수동으로 수정해주세요.");
         }
       } catch (fixErr: unknown) {
-        // 자동 수정 시도 중 에러 발생
         logger.error(`CI auto-fix error: ${getErrorMessage(fixErr)}`);
         jl?.log(`CI 자동 수정 중 오류 발생: ${getErrorMessage(fixErr)}`);
         jl?.log("worktree를 유지하고 수동 수정이 필요합니다.");
       }
 
     } else {
-      // pending 상태 (타임아웃 등) - 현재 상태 유지
       logger.warn(`CI check ended with pending status for PR #${prNumber}`);
       jl?.log("CI 확인 타임아웃. 수동으로 CI 상태를 확인해주세요.");
-
-      // 타임아웃의 경우 worktree를 유지하고 사용자가 수동으로 처리하도록 함
     }
 
   } catch (ciErr: unknown) {
-    // CI 체크 자체에서 에러 발생
     logger.error(`CI check error for PR #${prNumber}: ${getErrorMessage(ciErr)}`);
     jl?.log(`CI 체크 중 오류 발생: ${getErrorMessage(ciErr)}`);
-
-    // 에러 시에도 worktree 유지하고 사용자가 처리하도록 함
     transitionState(runtime, "CI_FIXING");
   }
 

@@ -1,14 +1,17 @@
 import { formatResult, printResult } from "./result-reporter.js";
 import { rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
-import { saveResult } from "./pipeline-context.js";
+import { saveResult, transitionState } from "./pipeline-context.js";
 import { PatternStore } from "../learning/pattern-store.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
+import { handlePipelineFailure } from "./pipeline-publish.js";
 import type { PipelineState } from "../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../queue/job-logger.js";
 import type { PipelineReport } from "./result-reporter.js";
 import type { CoreLoopResult } from "./core-loop.js";
 import type { AQConfig, GitConfig } from "../types/config.js";
+import type { PipelineRuntime, OrchestratorResult } from "./pipeline-context.js";
 
 const logger = getLogger();
 
@@ -122,4 +125,133 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
     error: errorMessage,
     report
   };
+}
+
+export interface FeasibilitySkipContext {
+  issueNumber: number;
+  repo: string;
+  errorMessage: string;
+  startTime: number;
+}
+
+/**
+ * Handle feasibility skip error (FEASIBILITY_SKIP:)
+ */
+export async function handleFeasibilitySkipError(context: FeasibilitySkipContext): Promise<OrchestratorResult> {
+  const { issueNumber, repo, errorMessage, startTime } = context;
+
+  const skipReason = errorMessage.slice("FEASIBILITY_SKIP:".length).trim();
+  const basicPlan = createBasicPlan(issueNumber, `Issue #${issueNumber} skipped`, skipReason);
+  const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
+
+  return {
+    success: true,
+    state: "SKIPPED" as const,
+    report,
+    error: skipReason
+  };
+}
+
+export interface GeneralPipelineFailureContext {
+  error: unknown;
+  runtime: PipelineRuntime;
+  input: { issueNumber: number; repo: string; jobLogger?: JobLogger };
+  config: AQConfig;
+  startTime: number;
+}
+
+/**
+ * Handle general pipeline failure with proper context and cleanup
+ */
+export async function handleGeneralPipelineError(context: GeneralPipelineFailureContext): Promise<OrchestratorResult> {
+  const { error, runtime, input, config, startTime } = context;
+  const { issueNumber, repo } = input;
+
+  // General pipeline failure
+  const failureContext = {
+    error,
+    state: runtime.state,
+    worktreePath: runtime.worktreePath,
+    branchName: runtime.branchName,
+    rollbackHash: runtime.rollbackHash,
+    rollbackStrategy: runtime.rollbackStrategy,
+    gitConfig: runtime.gitConfig,
+    projectRoot: runtime.projectRoot,
+    cleanupOnFailure: config.worktree.cleanupOnFailure,
+    jl: input.jobLogger,
+  };
+
+  const finalErrorMessage = await handlePipelineFailure(failureContext);
+  transitionState(runtime, "FAILED");
+
+  // Generate a basic report for failed pipelines
+  const basicPlan = createBasicPlan(issueNumber, "Pipeline failed", "Pipeline execution failed");
+  const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
+
+  return {
+    success: false,
+    state: "FAILED",
+    error: finalErrorMessage,
+    report
+  };
+}
+
+/**
+ * Create a basic plan structure for error reporting
+ */
+function createBasicPlan(issueNumber: number, title: string, problemDefinition: string) {
+  return {
+    issueNumber,
+    title,
+    problemDefinition,
+    requirements: [],
+    affectedFiles: [],
+    risks: [],
+    phases: [],
+    verificationPoints: [],
+    stopConditions: []
+  };
+}
+
+/**
+ * Route errors to appropriate handlers
+ */
+export async function routeError(
+  error: unknown,
+  context: {
+    runtime: PipelineRuntime;
+    input: { issueNumber: number; repo: string; jobLogger?: JobLogger };
+    config: AQConfig;
+    startTime: number;
+  }
+): Promise<OrchestratorResult> {
+  const errorMessage = getErrorMessage(error);
+
+  // Check if this is a skipped issue due to feasibility check
+  const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
+  if (isFeasibilitySkip) {
+    return handleFeasibilitySkipError({
+      issueNumber: context.input.issueNumber,
+      repo: context.input.repo,
+      errorMessage,
+      startTime: context.startTime
+    });
+  }
+
+  // Check if this is a core loop failure with detailed results
+  const errorWithReport = error as Error & { failureResult?: OrchestratorResult };
+  if (errorWithReport.failureResult) {
+    // Core loop failure already handled by handleCoreLoopFailure
+    transitionState(context.runtime, "FAILED");
+    return errorWithReport.failureResult;
+  }
+
+  // General pipeline failure
+  return handleGeneralPipelineError({
+    error,
+    runtime: context.runtime,
+    input: context.input,
+    config: context.config,
+    startTime: context.startTime
+  });
 }

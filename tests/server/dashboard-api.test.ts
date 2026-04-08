@@ -1521,6 +1521,7 @@ describe("Dashboard API - Storage Management", () => {
 
     it("should return 500 on cleanup error", async () => {
       // Mock the cleanup operation to fail by mocking the job store operations
+      // Use dryRun: true to trigger the store.list() path that we can mock
       mockJobStore.list.mockImplementation(() => {
         throw new Error("Database error");
       });
@@ -1531,7 +1532,7 @@ describe("Dashboard API - Storage Management", () => {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ olderThanDays: 30 })
+        body: JSON.stringify({ olderThanDays: 30, dryRun: true })
       });
 
       expect(response.status).toBe(500);

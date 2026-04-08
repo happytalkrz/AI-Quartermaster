@@ -534,7 +534,6 @@ export async function autoFixCiFailures(
   };
 
   // push 후 원격 브랜치 업데이트를 위한 커스텀 동작 추가
-  const originalCheckFn = retryOptions.checkFn;
   const originalRevalidateFn = retryOptions.revalidateFn;
 
   // checkFn을 수정하여 push 수행
@@ -627,71 +626,6 @@ function buildCiFixPromptSync(
   }
 }
 
-/**
- * CI 실패 로그를 분석하여 Claude용 수정 프롬프트를 생성합니다. (비동기 버전)
- */
-async function buildCiFixPrompt(
-  ciStatus: CiStatusSummary,
-  options: CiAutoFixOptions
-): Promise<string> {
-  const logger = getLogger();
-
-  try {
-    // 실패한 CI 로그 가져오기
-    const ciLogs = await getCiFailureLogs(
-      options.prNumber,
-      options.repo,
-      options.ghConfig
-    );
-
-    // CI 수정 프롬프트 템플릿 로드
-    const templatePath = resolve(options.promptsDir, "ci-fix.md");
-    let template: string;
-
-    try {
-      template = loadTemplate(templatePath);
-    } catch (err: unknown) {
-      logger.warn(`[CI_AUTO_FIX] CI fix template not found at ${templatePath}, using fallback`);
-      template = getFallbackCiFixTemplate();
-    }
-
-    // 로그 정보를 텍스트로 변환
-    const logsText = ciLogs.map(log => {
-      const jobsText = log.failedJobLogs.map(job =>
-        `#### ${job.jobName}\n${job.logContent}${job.error ? `\nError: ${job.error}` : ''}`
-      ).join('\n\n');
-
-      return `### ${log.workflowName} (ID: ${log.runId})\n${log.parseError || jobsText}`;
-    }).join('\n\n');
-
-    // 템플릿 렌더링
-    const prompt = renderTemplate(template, {
-      pr: {
-        number: String(options.prNumber),
-        repo: options.repo
-      },
-      ci: {
-        overall: ciStatus.overall,
-        failedChecksCount: String(ciStatus.failedChecks.length),
-        totalChecksCount: String(ciStatus.checks.length),
-        lastCheckedAt: ciStatus.lastCheckedAt
-      },
-      failedChecks: ciStatus.failedChecks.map(check =>
-        `- ${check.name}: ${check.conclusion || check.status} (${check.detailsUrl})`
-      ).join('\n') as string,
-      logs: logsText
-    });
-
-    return prompt;
-
-  } catch (err: unknown) {
-    logger.error(`[CI_AUTO_FIX] Error building fix prompt: ${getErrorMessage(err)}`);
-
-    // 최소한의 fallback 프롬프트
-    const errorSummary = ciStatus.failedChecks.map(c => `- ${c.name}: ${c.conclusion}`).join('\n');
-    return `CI가 실패했습니다. 다음 체크들을 수정하세요:\n\n${errorSummary}\n\n각 실패한 체크를 분석하고 코드를 수정한 후 git commit을 실행하세요.`;
-  }
-}
 
 /**
  * CI 수정 프롬프트 템플릿 (fallback)

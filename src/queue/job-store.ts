@@ -6,7 +6,6 @@ import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog } from "../store/da
 import { JsonMigrator } from "./json-migrator.js";
 import type {
   Job,
-  JobStatus,
   QueuedJob,
   RunningJob,
   SuccessJob,

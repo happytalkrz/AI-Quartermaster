@@ -87,6 +87,7 @@ export interface ErrorHistoryEntry {
   timestamp: string;
 }
 
+// 기존 PhaseResult 인터페이스 (호환성 유지)
 export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
@@ -98,7 +99,78 @@ export interface PhaseResult {
   durationMs: number;
   costUsd?: number;
   usage?: UsageInfo;
+  // 확장 필드들 (선택적으로 추가)
+  warnings?: string[];
+  errors?: string[];
+  status?: "success" | "failure" | "partial";
+  partial?: {
+    succeededFiles: string[];
+    failedFiles: string[];
+  };
 }
+
+// 확장된 PhaseResult Discriminated Union Types
+
+export type ExtendedPhaseResultStatus = "success" | "failure" | "partial";
+
+/**
+ * 확장된 PhaseResult의 공통 필드들
+ */
+export interface BaseExtendedPhaseResult {
+  phaseIndex: number;
+  phaseName: string;
+  commitHash?: string;
+  lastOutput?: string;
+  durationMs: number;
+  costUsd?: number;
+  usage?: UsageInfo;
+  warnings: string[];
+  errors: string[];
+}
+
+/**
+ * 성공한 Phase 결과 (확장 버전)
+ */
+export interface SuccessExtendedPhaseResult extends BaseExtendedPhaseResult {
+  status: "success";
+  success: true;
+  // 성공했으므로 에러 없음
+  error?: never;
+  errorCategory?: never;
+  // 성공했으므로 부분 성공 정보 없음
+  partial?: never;
+}
+
+/**
+ * 실패한 Phase 결과 (확장 버전)
+ */
+export interface FailureExtendedPhaseResult extends BaseExtendedPhaseResult {
+  status: "failure";
+  success: false;
+  error: string; // 실패했으므로 에러 메시지 필수
+  errorCategory?: ErrorCategory;
+  // 실패했으므로 부분 성공 정보 없음
+  partial?: never;
+}
+
+/**
+ * 부분 성공한 Phase 결과 (확장 버전)
+ */
+export interface PartialExtendedPhaseResult extends BaseExtendedPhaseResult {
+  status: "partial";
+  success: false; // 완전히 성공하지 않았으므로 false
+  error?: string; // 부분 성공 시에도 에러 정보가 있을 수 있음
+  errorCategory?: ErrorCategory;
+  partial: {
+    succeededFiles: string[];
+    failedFiles: string[];
+  };
+}
+
+/**
+ * 모든 확장된 PhaseResult 상태의 Union 타입
+ */
+export type ExtendedPhaseResult = SuccessExtendedPhaseResult | FailureExtendedPhaseResult | PartialExtendedPhaseResult;
 
 export interface PipelineResult {
   issueNumber: number;
@@ -536,4 +608,50 @@ export function isCompletedJob(job: Job): job is SuccessJob | FailureJob | Cance
  */
 export function isActiveJob(job: Job): job is QueuedJob | RunningJob {
   return job.status === "queued" || job.status === "running";
+}
+
+// PhaseResult 타입 가드 함수들
+
+/**
+ * PhaseResult가 성공 상태인지 확인
+ */
+export function isSuccessPhaseResult(result: PhaseResult): boolean {
+  return result.success === true || result.status === "success";
+}
+
+/**
+ * PhaseResult가 실패 상태인지 확인
+ */
+export function isFailurePhaseResult(result: PhaseResult): boolean {
+  return result.success === false && result.status !== "partial";
+}
+
+/**
+ * PhaseResult가 부분 성공 상태인지 확인
+ */
+export function isPartialPhaseResult(result: PhaseResult): boolean {
+  return result.status === "partial";
+}
+
+// ExtendedPhaseResult 타입 가드 함수들
+
+/**
+ * SuccessExtendedPhaseResult 타입 가드
+ */
+export function isSuccessExtendedPhaseResult(result: ExtendedPhaseResult): result is SuccessExtendedPhaseResult {
+  return result.status === "success";
+}
+
+/**
+ * FailureExtendedPhaseResult 타입 가드
+ */
+export function isFailureExtendedPhaseResult(result: ExtendedPhaseResult): result is FailureExtendedPhaseResult {
+  return result.status === "failure";
+}
+
+/**
+ * PartialExtendedPhaseResult 타입 가드
+ */
+export function isPartialExtendedPhaseResult(result: ExtendedPhaseResult): result is PartialExtendedPhaseResult {
+  return result.status === "partial";
 }

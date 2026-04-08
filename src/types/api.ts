@@ -213,3 +213,123 @@ export const HealthCheckResponseSchema = z.object({
 }).strict();
 
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
+
+// Stats response types
+export interface CostStats {
+  totalCostUsd: number;
+  avgCostUsd: number;
+  jobCount: number;
+  topExpensiveJobs: Array<{
+    id: string;
+    issueNumber: number;
+    totalCostUsd: number;
+    repo: string;
+  }>;
+}
+
+export interface ProjectStats {
+  repo: string;
+  total: number;
+  successCount: number;
+  failureCount: number;
+  runningCount: number;
+  queuedCount: number;
+  cancelledCount: number;
+  avgDurationMs: number;
+  successRate: number;
+  costStats: CostStats;
+}
+
+export interface TimeRangeBreakdown {
+  timeRange: "24h" | "7d" | "30d" | "all";
+  total: number;
+  successCount: number;
+  failureCount: number;
+  avgDurationMs: number;
+  successRate: number;
+  totalCostUsd: number;
+  avgCostUsd: number;
+}
+
+export interface StatsResponse {
+  // Basic job counts (existing)
+  total: number;
+  successCount: number;
+  failureCount: number;
+  runningCount: number;
+  queuedCount: number;
+  cancelledCount: number;
+
+  // Performance metrics (existing)
+  avgDurationMs: number;
+  successRate: number;
+
+  // Query context (existing)
+  project: string | null;
+  timeRange: "24h" | "7d" | "30d" | "all";
+
+  // Extended cost analytics
+  costStats: CostStats;
+
+  // Project breakdown (when no specific project filter)
+  projectBreakdown?: ProjectStats[];
+
+  // Time series data for trending
+  timeRangeBreakdown?: TimeRangeBreakdown[];
+}
+
+export const StatsResponseSchema = z.object({
+  total: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  queuedCount: z.number().int().nonnegative(),
+  cancelledCount: z.number().int().nonnegative(),
+  avgDurationMs: z.number().nonnegative(),
+  successRate: z.number().int().min(0).max(100),
+  project: z.string().nullable(),
+  timeRange: z.enum(["24h", "7d", "30d", "all"]),
+  costStats: z.object({
+    totalCostUsd: z.number().nonnegative(),
+    avgCostUsd: z.number().nonnegative(),
+    jobCount: z.number().int().nonnegative(),
+    topExpensiveJobs: z.array(z.object({
+      id: z.string(),
+      issueNumber: z.number().int().positive(),
+      totalCostUsd: z.number().nonnegative(),
+      repo: z.string(),
+    })),
+  }),
+  projectBreakdown: z.array(z.object({
+    repo: z.string(),
+    total: z.number().int().nonnegative(),
+    successCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    runningCount: z.number().int().nonnegative(),
+    queuedCount: z.number().int().nonnegative(),
+    cancelledCount: z.number().int().nonnegative(),
+    avgDurationMs: z.number().nonnegative(),
+    successRate: z.number().int().min(0).max(100),
+    costStats: z.object({
+      totalCostUsd: z.number().nonnegative(),
+      avgCostUsd: z.number().nonnegative(),
+      jobCount: z.number().int().nonnegative(),
+      topExpensiveJobs: z.array(z.object({
+        id: z.string(),
+        issueNumber: z.number().int().positive(),
+        totalCostUsd: z.number().nonnegative(),
+        repo: z.string(),
+      })),
+    }),
+  })).optional(),
+  timeRangeBreakdown: z.array(z.object({
+    timeRange: z.enum(["24h", "7d", "30d", "all"]),
+    total: z.number().int().nonnegative(),
+    successCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    avgDurationMs: z.number().nonnegative(),
+    successRate: z.number().int().min(0).max(100),
+    totalCostUsd: z.number().nonnegative(),
+    avgCostUsd: z.number().nonnegative(),
+  })).optional(),
+}).strict();

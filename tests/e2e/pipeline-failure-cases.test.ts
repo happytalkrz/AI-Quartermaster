@@ -60,6 +60,13 @@ vi.mock("../../src/pipeline/pipeline-context.js", async () => {
     initializePipelineState: vi.fn(),
   };
 });
+vi.mock("../../src/safety/rollback-manager.js", () => ({
+  rollbackToCheckpoint: vi.fn(),
+}));
+vi.mock("../../src/pipeline/pipeline-git-setup.js", () => ({
+  setupGitEnvironment: vi.fn(),
+  prepareWorkEnvironment: vi.fn(),
+}));
 
 import { runPipeline } from "../../src/pipeline/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
@@ -75,6 +82,8 @@ import type { PipelineRuntime } from "../../src/pipeline/pipeline-context.js";
 
 // Import helpers from e2e utils
 import { makeConfig, setupSuccessMocks, makePlan, makePhaseResult, createDefaultMocks } from "./helpers/e2e-test-utils.js";
+import { rollbackToCheckpoint } from "../../src/safety/rollback-manager.js";
+import { setupGitEnvironment, prepareWorkEnvironment } from "../../src/pipeline/pipeline-git-setup.js";
 
 const mockFetchIssue = vi.mocked(fetchIssue);
 const mockCloseIssue = vi.mocked(closeIssue);
@@ -87,6 +96,9 @@ const mockValidatePlan = vi.mocked(validatePlan);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
 const mockTransitionState = vi.mocked(transitionState);
 const mockInitializePipelineState = vi.mocked(initializePipelineState);
+const mockRollbackToCheckpoint = vi.mocked(rollbackToCheckpoint);
+const mockSetupGitEnvironment = vi.mocked(setupGitEnvironment);
+const mockPrepareWorkEnvironment = vi.mocked(prepareWorkEnvironment);
 
 // Capture state transitions for verification
 const capturedStateTransitions: Array<{ from: PipelineState; to: PipelineState }> = [];
@@ -95,10 +107,24 @@ function setupStateCapture(): void {
   capturedStateTransitions.length = 0;
   let currentState: PipelineState = "RECEIVED";
 
-  mockTransitionState.mockImplementation((runtime: PipelineRuntime, newState: PipelineState) => {
+  mockTransitionState.mockImplementation((
+    runtime: PipelineRuntime,
+    newState: PipelineState,
+    context?: {
+      worktreePath?: string;
+      branchName?: string;
+      projectRoot?: string;
+      rollbackHash?: string;
+      rollbackStrategy?: "none" | "all" | "failed-only";
+    }
+  ) => {
     capturedStateTransitions.push({ from: currentState, to: newState });
     currentState = newState;
     runtime.state = newState;
+    if (context?.worktreePath !== undefined) runtime.worktreePath = context.worktreePath;
+    if (context?.branchName !== undefined) runtime.branchName = context.branchName;
+    if (context?.rollbackHash !== undefined) runtime.rollbackHash = context.rollbackHash;
+    if (context?.rollbackStrategy !== undefined) runtime.rollbackStrategy = context.rollbackStrategy;
   });
 
   mockInitializePipelineState.mockResolvedValue({
@@ -114,6 +140,17 @@ describe("E2E: Pipeline Failure Cases", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupStateCapture();
+    mockSetupGitEnvironment.mockResolvedValue({
+      state: "WORKTREE_CREATED" as PipelineState,
+      branchName: "aq/42-fix-bug",
+      worktreePath: "/tmp/wt/42-fix-bug",
+    });
+    mockPrepareWorkEnvironment.mockResolvedValue({
+      rollbackHash: undefined,
+      projectConventions: "",
+      skillsContext: "",
+      repoStructure: "",
+    });
   });
 
   describe("Core Loop Failures", () => {
@@ -391,6 +428,140 @@ describe("E2E: Pipeline Failure Cases", () => {
       expect(result.success).toBe(false);
       expect(result.state).toBe("FAILED");
       expect(result.error).toBeDefined();
+    });
+  });
+
+  describe("Rollback Behavior", () => {
+    function setupRollbackMocks(): void {
+      setupSuccessMocks(2, {
+        fetchIssue: mockFetchIssue,
+        syncBaseBranch: vi.fn(),
+        createWorkBranch: vi.fn().mockResolvedValue({
+          baseBranch: "master",
+          workBranch: "aq/42-fix-bug",
+        }),
+        createWorktree: vi.fn(),
+        installDependencies: vi.fn(),
+        runCli: vi.fn(),
+        runCoreLoop: mockCoreLoop,
+        pushBranch: vi.fn(),
+        checkConflicts: vi.fn(),
+        attemptRebase: vi.fn(),
+        enableAutoMerge: vi.fn(),
+        addIssueComment: vi.fn(),
+        closeIssue: mockCloseIssue,
+        createDraftPR: vi.fn(),
+        removeWorktree: vi.fn(),
+        getDiffContent: vi.fn(),
+        runReviews: mockRunReviews,
+        runSimplify: mockRunSimplify,
+        runFinalValidation: mockFinalValidation,
+        validateIssue: mockValidateIssue,
+        validatePlan: mockValidatePlan,
+        validateBeforePush: mockValidateBeforePush,
+      });
+    }
+
+    it("should call rollbackToCheckpoint with rollbackHash when strategy is 'all'", async () => {
+      const rollbackHash = "deadbeef12345678";
+      mockPrepareWorkEnvironment.mockResolvedValue({
+        rollbackHash,
+        projectConventions: "",
+        skillsContext: "",
+        repoStructure: "",
+      });
+
+      setupRollbackMocks();
+
+      const plan = makePlan(2);
+      mockCoreLoop.mockResolvedValue({
+        success: false,
+        plan,
+        phaseResults: [
+          makePhaseResult(0, "Phase 1", true),
+          makePhaseResult(1, "Phase 2", false, { error: "Build failed" }),
+        ],
+        error: "Phase 2 execution failed",
+      });
+
+      const config = makeConfig();
+      config.safety.rollbackStrategy = "all";
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+      expect(mockRollbackToCheckpoint).toHaveBeenCalledOnce();
+      expect(mockRollbackToCheckpoint).toHaveBeenCalledWith(
+        rollbackHash,
+        expect.objectContaining({ cwd: "/tmp/wt/42-fix-bug" })
+      );
+    });
+
+    it("should call rollbackToCheckpoint with last successful commit when strategy is 'failed-only'", async () => {
+      setupRollbackMocks();
+
+      const plan = makePlan(2);
+      const successfulPhase = makePhaseResult(0, "Phase 1", true);
+      mockCoreLoop.mockResolvedValue({
+        success: false,
+        plan,
+        phaseResults: [
+          successfulPhase,
+          makePhaseResult(1, "Phase 2", false, { error: "TypeScript error" }),
+        ],
+        error: "Phase 2 execution failed",
+      });
+
+      const config = makeConfig();
+      config.safety.rollbackStrategy = "failed-only";
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+      expect(mockRollbackToCheckpoint).toHaveBeenCalledOnce();
+      expect(mockRollbackToCheckpoint).toHaveBeenCalledWith(
+        successfulPhase.commitHash,
+        expect.objectContaining({ cwd: "/tmp/wt/42-fix-bug" })
+      );
+    });
+
+    it("should not call rollbackToCheckpoint when strategy is 'none'", async () => {
+      setupRollbackMocks();
+
+      mockCoreLoop.mockResolvedValue({
+        success: false,
+        plan: makePlan(1),
+        phaseResults: [
+          makePhaseResult(0, "Phase 1", false, { error: "Build failed" }),
+        ],
+        error: "Phase 1 execution failed",
+      });
+
+      const config = makeConfig();
+      config.safety.rollbackStrategy = "none";
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config,
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+      expect(mockRollbackToCheckpoint).not.toHaveBeenCalled();
     });
   });
 

@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getCached,
   setCached,
   clearCache,
   getCacheSize,
   hasCached,
-  deleteCached
+  deleteCached,
+  evictExpired,
+  memoize,
 } from "../../src/github/github-cache.js";
 
 describe("github-cache", () => {
@@ -180,6 +182,185 @@ describe("github-cache", () => {
       expect(retrievedUser).toEqual(user);
       expect(retrievedUser?.id).toBe(1);
       expect(retrievedUser?.name).toBe("John");
+    });
+  });
+
+  describe("TTL (Time-To-Live)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should return value before TTL expires", () => {
+      setCached("ttl-key", "value", 1000);
+      vi.advanceTimersByTime(999);
+      expect(getCached<string>("ttl-key")).toBe("value");
+    });
+
+    it("should return undefined after TTL expires", () => {
+      setCached("ttl-key", "value", 1000);
+      vi.advanceTimersByTime(1001);
+      expect(getCached<string>("ttl-key")).toBeUndefined();
+    });
+
+    it("hasCached should return false for expired entry", () => {
+      setCached("ttl-key", "value", 500);
+      vi.advanceTimersByTime(501);
+      expect(hasCached("ttl-key")).toBe(false);
+    });
+
+    it("expired entry should be removed from cache after getCached", () => {
+      setCached("ttl-key", "value", 500);
+      vi.advanceTimersByTime(501);
+      getCached("ttl-key");
+      expect(getCacheSize()).toBe(0);
+    });
+
+    it("no TTL means never expires", () => {
+      setCached("no-ttl", "value");
+      vi.advanceTimersByTime(999_999_999);
+      expect(getCached<string>("no-ttl")).toBe("value");
+    });
+  });
+
+  describe("evictExpired", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should remove expired entries and return count", () => {
+      setCached("exp1", "v1", 500);
+      setCached("exp2", "v2", 500);
+      setCached("keep", "v3", 2000);
+
+      vi.advanceTimersByTime(600);
+
+      const removed = evictExpired();
+      expect(removed).toBe(2);
+      expect(getCacheSize()).toBe(1);
+      expect(getCached<string>("keep")).toBe("v3");
+    });
+
+    it("should return 0 when no entries are expired", () => {
+      setCached("key1", "value1");
+      setCached("key2", "value2", 1000);
+
+      const removed = evictExpired();
+      expect(removed).toBe(0);
+      expect(getCacheSize()).toBe(2);
+    });
+
+    it("should return 0 on empty cache", () => {
+      expect(evictExpired()).toBe(0);
+    });
+  });
+
+  describe("memoize", () => {
+    beforeEach(() => {
+      clearCache();
+    });
+
+    it("should return cached result on second call", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        return { id, name: "item" };
+      });
+
+      const r1 = await fn(1);
+      const r2 = await fn(1);
+
+      expect(r1).toEqual({ id: 1, name: "item" });
+      expect(r2).toEqual({ id: 1, name: "item" });
+      expect(callCount).toBe(1);
+    });
+
+    it("should call fn separately for different args", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        return id * 2;
+      });
+
+      await fn(1);
+      await fn(2);
+      await fn(1);
+
+      expect(callCount).toBe(2);
+    });
+
+    it("should not cache errors", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        if (callCount === 1) throw new Error("transient error");
+        return id;
+      });
+
+      await expect(fn(1)).rejects.toThrow("transient error");
+      const result = await fn(1);
+      expect(result).toBe(1);
+      expect(callCount).toBe(2);
+    });
+
+    it("should deduplicate concurrent in-flight calls", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        await Promise.resolve();
+        return id;
+      });
+
+      const [r1, r2, r3] = await Promise.all([fn(5), fn(5), fn(5)]);
+
+      expect(r1).toBe(5);
+      expect(r2).toBe(5);
+      expect(r3).toBe(5);
+      expect(callCount).toBe(1);
+    });
+
+    it("should respect TTL option", async () => {
+      vi.useFakeTimers();
+      try {
+        let callCount = 0;
+        const fn = memoize(async () => {
+          callCount++;
+          return "value";
+        }, { ttl: 1000 });
+
+        await fn();
+        vi.advanceTimersByTime(1001);
+        await fn();
+
+        expect(callCount).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should use custom keyFn", async () => {
+      let callCount = 0;
+      const fn = memoize(
+        async (a: number, b: number) => {
+          callCount++;
+          return a + b;
+        },
+        { keyFn: (a, b) => `${a}+${b}` },
+      );
+
+      const r1 = await fn(1, 2);
+      const r2 = await fn(1, 2);
+
+      expect(r1).toBe(3);
+      expect(r2).toBe(3);
+      expect(callCount).toBe(1);
     });
   });
 

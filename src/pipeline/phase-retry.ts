@@ -91,6 +91,7 @@ export interface PhaseRetryContext {
 
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   const startTime = Date.now();
+  const startedAt = new Date().toISOString();
   const jl = ctx.jobLogger;
   let claudeResult: ClaudeRunResult | undefined;
 
@@ -210,6 +211,8 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       success: true,
       commitHash,
       durationMs: Date.now() - startTime,
+      startedAt,
+      completedAt: new Date().toISOString(),
       costUsd: claudeResult.costUsd,
     };
   } catch (error: unknown) {
@@ -222,6 +225,8 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
+      startedAt,
+      completedAt: new Date().toISOString(),
       costUsd: claudeResult?.costUsd,
     };
   }

@@ -307,6 +307,8 @@ describe("retryPhase", () => {
         success: true,
         commitHash: "abc12345",
         durationMs: expect.any(Number),
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
         costUsd: undefined,
       });
     });
@@ -352,6 +354,8 @@ describe("retryPhase", () => {
         errorCategory: "CLI_CRASH",
         lastOutput: "Phase retry failed: Claude failed",
         durationMs: expect.any(Number),
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
         costUsd: undefined,
       });
     });
@@ -376,6 +380,8 @@ describe("retryPhase", () => {
         errorCategory: "VERIFICATION_FAILED",
         lastOutput: expect.stringMatching(/Tests failed after retry/),
         durationMs: expect.any(Number),
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
         costUsd: undefined,
       });
     });

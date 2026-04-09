@@ -91,7 +91,7 @@ export async function checkForUpdates(aqRoot: string): Promise<void> {
   }
 }
 
-async function startCommand(args: CliArgs): Promise<void> {
+export async function startCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
 
   // Check for updates (non-blocking)
@@ -343,12 +343,9 @@ async function startCommand(args: CliArgs): Promise<void> {
     }
   };
 
-  // === Polling mode ===
-  let poller: IssuePoller | undefined;
-  if (isPollingMode) {
-    poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
-    poller.start();
-  }
+  // === Poller: always start (webhook mode uses it as fallback for missed events) ===
+  const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
+  poller.start();
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;

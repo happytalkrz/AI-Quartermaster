@@ -85,6 +85,8 @@ export interface PhaseRetryContext {
   gitConfig: GitConfig;
   worktreeConfig: WorktreeConfig;
   slug: string;
+  /** 이전 Phase 실행 결과. partial=true인 경우 성공한 파일은 보존하고 failedFiles만 재시도. */
+  partialResult?: PhaseResult;
 }
 
 export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
@@ -93,23 +95,29 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   let claudeResult: ClaudeRunResult | undefined;
 
   try {
-    logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index + 1}`);
-    const cleanStateResult = await ensureCleanState(
-      ctx.checkpoint,
-      ctx.worktreeManager,
-      {
-        cwd: ctx.cwd,
-        gitPath: ctx.gitPath,
-        gitConfig: ctx.gitConfig,
-        worktreeConfig: ctx.worktreeConfig,
-        branchName: ctx.worktreeInfo.branch,
-        issueNumber: ctx.issue.number,
-        slug: ctx.slug,
-        worktreePath: ctx.worktreeInfo.path
-      }
-    );
+    const isPartial = ctx.partialResult?.partial === true;
 
-    ctx.worktreeInfo = cleanStateResult;
+    if (isPartial) {
+      logger.info(`Partial retry: skipping ensureCleanState for phase ${ctx.phase.index + 1} (attempt ${ctx.attempt})`);
+    } else {
+      logger.info(`Ensuring clean state before retry attempt ${ctx.attempt} for phase ${ctx.phase.index + 1}`);
+      const cleanStateResult = await ensureCleanState(
+        ctx.checkpoint,
+        ctx.worktreeManager,
+        {
+          cwd: ctx.cwd,
+          gitPath: ctx.gitPath,
+          gitConfig: ctx.gitConfig,
+          worktreeConfig: ctx.worktreeConfig,
+          branchName: ctx.worktreeInfo.branch,
+          issueNumber: ctx.issue.number,
+          slug: ctx.slug,
+          worktreePath: ctx.worktreeInfo.path
+        }
+      );
+      ctx.worktreeInfo = cleanStateResult;
+    }
+
     const templatePath = resolve(ctx.promptsDir, "phase-retry.md");
     const template = loadTemplate(templatePath);
 
@@ -118,6 +126,10 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       ? `최근 에러: ${ctx.previousError.slice(-500)}`
       : ctx.previousError.slice(-1500);
     const errorHistory = hasErrorHistory ? prepareErrorHistoryForTemplate(ctx.errorHistory!) : undefined;
+
+    const failedFiles = isPartial && ctx.partialResult?.failedFiles?.length
+      ? ctx.partialResult.failedFiles.join("\n")
+      : "";
 
     const rendered = renderTemplate(template, {
       issue: {
@@ -138,6 +150,8 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         errorMessage,
         errorHistory: errorHistory as unknown as import("../prompt/template-renderer.js").TemplateVariables,
         lastOutput: ctx.lastOutput || "",
+        isPartial: isPartial ? "true" : "",
+        failedFiles,
       },
       config: {
         testCommand: ctx.testCommand,

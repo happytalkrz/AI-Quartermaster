@@ -183,6 +183,8 @@ describe("retryPhase", () => {
           errorMessage: "Previous error message",
           errorHistory: undefined,
           lastOutput: "",
+          isPartial: "",
+          failedFiles: "",
         },
         config: {
           testCommand: "npm test",
@@ -512,6 +514,98 @@ describe("retryPhase", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Clean state failed");
+    });
+  });
+
+  describe("partial retry", () => {
+    it("should skip ensureCleanState when partialResult.partial is true", async () => {
+      const ctx = makeContext({
+        partialResult: {
+          phaseIndex: 0,
+          phaseName: "TestPhase",
+          success: false,
+          partial: true,
+          failedFiles: ["src/a.ts", "src/b.ts"],
+          successfulFiles: ["src/c.ts"],
+          durationMs: 1000,
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockEnsureCleanState).not.toHaveBeenCalled();
+    });
+
+    it("should call ensureCleanState when partialResult.partial is false", async () => {
+      const ctx = makeContext({
+        partialResult: {
+          phaseIndex: 0,
+          phaseName: "TestPhase",
+          success: false,
+          partial: false,
+          durationMs: 1000,
+        },
+      });
+
+      await retryPhase(ctx);
+
+      expect(mockEnsureCleanState).toHaveBeenCalledOnce();
+    });
+
+    it("should call ensureCleanState when partialResult is not provided", async () => {
+      const ctx = makeContext();
+
+      await retryPhase(ctx);
+
+      expect(mockEnsureCleanState).toHaveBeenCalledOnce();
+    });
+
+    it("should pass isPartial=true and failedFiles to template when partial", async () => {
+      const ctx = makeContext({
+        partialResult: {
+          phaseIndex: 0,
+          phaseName: "TestPhase",
+          success: false,
+          partial: true,
+          failedFiles: ["src/a.ts", "src/b.ts"],
+          successfulFiles: ["src/c.ts"],
+          durationMs: 1000,
+        },
+      });
+
+      await retryPhase(ctx);
+
+      const renderCall = mockRenderTemplate.mock.calls[0][1] as any;
+      expect(renderCall.retry.isPartial).toBe("true");
+      expect(renderCall.retry.failedFiles).toBe("src/a.ts\nsrc/b.ts");
+    });
+
+    it("should pass isPartial=empty and failedFiles=empty when not partial", async () => {
+      const ctx = makeContext();
+
+      await retryPhase(ctx);
+
+      const renderCall = mockRenderTemplate.mock.calls[0][1] as any;
+      expect(renderCall.retry.isPartial).toBe("");
+      expect(renderCall.retry.failedFiles).toBe("");
+    });
+
+    it("should handle partial=true with no failedFiles gracefully", async () => {
+      const ctx = makeContext({
+        partialResult: {
+          phaseIndex: 0,
+          phaseName: "TestPhase",
+          success: false,
+          partial: true,
+          durationMs: 1000,
+        },
+      });
+
+      await retryPhase(ctx);
+
+      const renderCall = mockRenderTemplate.mock.calls[0][1] as any;
+      expect(renderCall.retry.isPartial).toBe("true");
+      expect(renderCall.retry.failedFiles).toBe("");
     });
   });
 });

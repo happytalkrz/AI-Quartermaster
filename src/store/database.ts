@@ -443,4 +443,9 @@ export class AQDatabase {
   transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)();
   }
+
+  // Raw SQLite 접근 (queries.ts 전용)
+  getDb(): SQLite.Database {
+    return this.db;
+  }
 }

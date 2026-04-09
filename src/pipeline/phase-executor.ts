@@ -7,6 +7,7 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
 import { classifyError } from "./error-classifier.js";
+import { parseTscOutput, parseVitestOutput } from "./verification-parser.js";
 import type { GitHubIssue } from "../github/issue-fetcher.js";
 import { getLogger } from "../utils/logger.js";
 import type { JobLogger } from "../queue/job-logger.js";
@@ -168,6 +169,57 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       logger.info(`Running verification for phase ${ctx.phase.index}: ${ctx.phase.name}`);
       const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
       if (testResult.exitCode !== 0) {
+        const output = [testResult.stdout, testResult.stderr].filter(Boolean).join("\n");
+
+        // Detect partial vitest success: some files passed, some failed
+        const vitestResult = parseVitestOutput(output);
+        if (vitestResult.totalFiles > 0 && vitestResult.passedFiles.length > 0 && vitestResult.failedFiles.length > 0) {
+          logger.warn(
+            `Phase ${ctx.phase.index} partial success: ` +
+            `${vitestResult.passedFiles.length} passed, ${vitestResult.failedFiles.length} failed`
+          );
+          const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
+          const errors = vitestResult.failedFiles.map(f => `FAIL: ${f}`);
+          const warnings = vitestResult.failedTests.length > 0
+            ? vitestResult.failedTests.map(t => `Test failed: ${t}`)
+            : undefined;
+          return {
+            phaseIndex: ctx.phase.index,
+            phaseName: ctx.phase.name,
+            success: true,
+            partial: true,
+            errors,
+            warnings,
+            commitHash,
+            durationMs: Date.now() - startTime,
+            costUsd: claudeResult?.costUsd,
+            usage: claudeResult?.usage,
+          };
+        }
+
+        // Detect partial tsc success: errors only in specific files
+        const tscResult = parseTscOutput(output);
+        if (tscResult.hasErrors && Object.keys(tscResult.errorsByFile).length > 0 && vitestResult.totalFiles === 0) {
+          logger.warn(
+            `Phase ${ctx.phase.index} partial success: tsc errors in ${Object.keys(tscResult.errorsByFile).length} file(s)`
+          );
+          const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
+          const errors = Object.entries(tscResult.errorsByFile).flatMap(([file, msgs]) =>
+            msgs.map(msg => `${file}: ${msg}`)
+          );
+          return {
+            phaseIndex: ctx.phase.index,
+            phaseName: ctx.phase.name,
+            success: true,
+            partial: true,
+            errors,
+            commitHash,
+            durationMs: Date.now() - startTime,
+            costUsd: claudeResult?.costUsd,
+            usage: claudeResult?.usage,
+          };
+        }
+
         throw new Error(`Tests failed:\n${testResult.stdout}\n${testResult.stderr}`);
       }
     }

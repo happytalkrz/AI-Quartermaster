@@ -7,7 +7,19 @@ var i18n = {
   ko: {
     dashboard: "대시보드",
     logs: "로그",
-    repositories: "저장소",
+    repositories: {
+      _: "저장소",
+      subtitle: "등록된 레포지토리와 스토리지 사용량을 관리합니다.",
+      totalDbSize: "전체 DB 크기",
+      logVolume: "로그 볼륨",
+      addRepo: "저장소 추가",
+      addRepoDesc: "새 Git 레포지토리를 연결합니다",
+      loading: "로딩 중...",
+      storageMgmt: "스토리지 관리",
+      storageDesc: "AQM은 기본적으로 텔레메트리 데이터를 30일간 보관합니다. 오래된 데이터를 정리하여 디스크 공간을 확보할 수 있습니다.",
+      retention: "데이터 보관율",
+      cleanData: "오래된 데이터 정리"
+    },
     automations: "자동화",
     settings: { _: "설정", general: "일반", safety: "안전", review: "리뷰" },
     totalJobs: "전체 작업",
@@ -66,7 +78,19 @@ var i18n = {
   en: {
     dashboard: "Dashboard",
     logs: "Logs",
-    repositories: "Repositories",
+    repositories: {
+      _: "Repositories",
+      subtitle: "Manage registered repositories and storage usage.",
+      totalDbSize: "Total DB Size",
+      logVolume: "Log Volume",
+      addRepo: "Add Repository",
+      addRepoDesc: "Connect a new Git repository",
+      loading: "Loading...",
+      storageMgmt: "Storage Management",
+      storageDesc: "AQM retains telemetry data for 30 days by default. Clean up old data to free disk space.",
+      retention: "Data Retention",
+      cleanData: "Clean Old Data"
+    },
     automations: "Automations",
     settings: { _: "Settings", general: "General", safety: "Safety", review: "Review" },
     totalJobs: "Total Jobs",

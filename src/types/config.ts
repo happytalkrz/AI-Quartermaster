@@ -4,6 +4,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
 export type MergeMethod = "merge" | "squash" | "rebase";
+export type WorkerRole = "implementation" | "review";
 
 export interface RetryConfig {
   maxRetries: number;
@@ -140,6 +141,11 @@ export interface FeasibilityCheckConfig {
   skipReasons: string[];
 }
 
+export interface SafetyRules {
+  allow: string[];
+  deny: string[];
+}
+
 export interface SafetyConfig {
   sensitivePaths: string[];
   maxPhases: number;
@@ -156,11 +162,14 @@ export interface SafetyConfig {
   rollbackStrategy: "none" | "all" | "failed-only";
   feasibilityCheck: FeasibilityCheckConfig;
   strict: boolean;
+  rules: SafetyRules;
 }
 
 export interface FeaturesConfig {
   /** 병렬 Phase 실행 활성화 여부 (안정성을 위해 기본값은 false) */
   parallelPhases: boolean;
+  /** Claude 다중 AI 워커 풀 활성화 여부 */
+  multiAI: boolean;
 }
 
 export interface ExecutionModePreset {

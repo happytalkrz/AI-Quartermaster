@@ -82,6 +82,7 @@ export interface EnsureCleanStateOptions {
   issueNumber: number;
   slug: string;
   worktreePath: string;
+  repoSlug?: string;
 }
 
 /**
@@ -125,7 +126,7 @@ export async function ensureCleanState(
         options.issueNumber,
         options.slug,
         { cwd: options.cwd },
-        undefined  // repoSlug not available in rollback context
+        options.repoSlug
       );
 
       logger.info(`Clean state restored via worktree recreation at ${newWorktreeInfo.path}`);

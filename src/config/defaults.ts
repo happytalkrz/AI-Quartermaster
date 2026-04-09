@@ -28,7 +28,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     cleanupOnSuccess: true,
     cleanupOnFailure: false,
     maxAge: "24h",
-    dirTemplate: "{{issueNumber}}-{{slug}}",
+    dirTemplate: "{{repoSlug}}-{{issueNumber}}-{{slug}}",
   },
   commands: {
     claudeCli: {
@@ -152,9 +152,14 @@ export const DEFAULT_CONFIG: AQConfig = {
       ],
     },
     strict: true,
+    rules: {
+      allow: [],
+      deny: [],
+    },
   },
   features: {
     parallelPhases: false,  // 안정성을 위해 기본값은 false
+    multiAI: false,        // 기본값은 false
   },
   executionMode: "standard",
 };

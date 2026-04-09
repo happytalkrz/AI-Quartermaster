@@ -382,6 +382,46 @@ describe("JobStore", () => {
       smallStore.stopWatching();
     });
 
+    it("should prune by lastUpdatedAt (LRU) not completedAt", () => {
+      const smallStore = new JobStore(dataDir, 3);
+
+      // job1: 먼저 완료됨 → lastUpdatedAt이 더 오래됨 (LRU 대상)
+      const job1 = smallStore.create(1, "test/repo");
+      smallStore.update(job1.id, {
+        status: "success",
+        startedAt: new Date().toISOString(),
+        prUrl: "https://github.com/test/pr/1"
+      });
+
+      // job2: 나중에 완료됨 → lastUpdatedAt이 더 최근 → 보존 대상
+      const job2 = smallStore.create(2, "test/repo");
+      smallStore.update(job2.id, {
+        status: "failure",
+        startedAt: new Date().toISOString(),
+        error: "test error"
+      });
+
+      // job1의 lastUpdatedAt < job2의 lastUpdatedAt (순차 실행)
+      const updatedJob1 = smallStore.get(job1.id)!;
+      const updatedJob2 = smallStore.get(job2.id)!;
+      expect(updatedJob1.lastUpdatedAt! <= updatedJob2.lastUpdatedAt!).toBe(true);
+
+      // job3, job4 추가 → 총 4개, 한계(3) 초과 → prune 발동
+      const job3 = smallStore.create(3, "test/repo");
+      smallStore.create(4, "test/repo");
+
+      const remainingJobs = smallStore.list();
+      const remainingIds = remainingJobs.map(j => j.id);
+
+      // LRU 기준: lastUpdatedAt이 더 오래된 job1이 삭제되어야 함
+      expect(remainingIds).not.toContain(job1.id);
+      // job2는 더 최근에 업데이트되었으므로 보존
+      expect(remainingIds).toContain(job2.id);
+      expect(remainingIds).toContain(job3.id);
+
+      smallStore.stopWatching();
+    });
+
     it("should not prune running or queued jobs", () => {
       const smallStore = new JobStore(dataDir, 2);
 

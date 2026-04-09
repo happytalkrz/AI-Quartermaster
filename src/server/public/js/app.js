@@ -42,6 +42,16 @@ function navigateTo(view) {
   if (view === 'settings') {
     loadSettings();
   }
+
+  // If navigating to repositories view, render it
+  if (view === 'repositories') {
+    renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
+  }
+
+  // If navigating to automations view, render it
+  if (view === 'automations') {
+    renderAutomationsPanel();
+  }
 }
 
 // Bind navigation clicks
@@ -474,6 +484,8 @@ function deleteProject(id) {
    ══════════════════════════════════════════════════════════════ */
 var es = null;
 var reconnectTimer = null;
+var reconnectDelay = 1000;
+var reconnectAttempts = 0;
 
 function setConnState(state) {
   var dot = document.getElementById('conn-dot');
@@ -509,6 +521,8 @@ function connectSSE() {
   es.onopen = function() {
     setConnState('connected');
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectDelay = 1000;
+    reconnectAttempts = 0;
   };
   es.onmessage = function(e) {
     try { handleData(JSON.parse(e.data)); } catch (_) {}
@@ -516,7 +530,9 @@ function connectSSE() {
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
-    reconnectTimer = setTimeout(connectSSE, 4000);
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   };
 }
 
@@ -680,6 +696,20 @@ applyTranslations();
     themeBtn.textContent = document.documentElement.classList.contains('dark') ? 'dark_mode' : 'light_mode';
   }
   initArchivedToggle();
+
+  // Restore automations view toggle state (kanban button/panel visibility)
+  if (currentAutomationsView === 'kanban') {
+    var btnList    = document.getElementById('btn-automations-list');
+    var btnKanban  = document.getElementById('btn-automations-kanban');
+    var listView   = document.getElementById('automations-list-view');
+    var kanbanView = document.getElementById('automations-kanban-view');
+    var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
+    var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
+    if (btnList)   btnList.className   = inactiveClass;
+    if (btnKanban) btnKanban.className = activeClass;
+    if (listView)   listView.classList.add('hidden');
+    if (kanbanView) kanbanView.classList.remove('hidden');
+  }
 })();
 
 // Bind project form submit event
@@ -703,6 +733,15 @@ loadVersionInfo();
 initProjectSelection();
 
 connectSSE();
+
+// 탭 활성화 시 SSE 재연결
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && (!es || es.readyState === EventSource.CLOSED)) {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectDelay = 1000;
+    connectSSE();
+  }
+});
 
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
 /* ══════════════════════════════════════════════════════════════
@@ -777,6 +816,92 @@ function initProjectSelection() {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Automations View Toggle
+   ══════════════════════════════════════════════════════════════ */
+function setAutomationsView(view) {
+  currentAutomationsView = view;
+  localStorage.setItem('aqm-automations-view', view);
+
+  var listView   = document.getElementById('automations-list-view');
+  var kanbanView = document.getElementById('automations-kanban-view');
+  var btnList    = document.getElementById('btn-automations-list');
+  var btnKanban  = document.getElementById('btn-automations-kanban');
+
+  var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
+  var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
+
+  if (view === 'kanban') {
+    if (listView)   listView.classList.add('hidden');
+    if (kanbanView) kanbanView.classList.remove('hidden');
+    if (btnList)   btnList.className   = inactiveClass;
+    if (btnKanban) btnKanban.className = activeClass;
+    renderAutomationsKanban();
+  } else {
+    if (listView)   listView.classList.remove('hidden');
+    if (kanbanView) kanbanView.classList.add('hidden');
+    if (btnList)   btnList.className   = activeClass;
+    if (btnKanban) btnKanban.className = inactiveClass;
+    renderAutomationsList();
+  }
+}
+
+function renderAutomationsList() {
+  var listEl   = document.getElementById('automations-job-list');
+  var detailEl = document.getElementById('automations-job-detail');
+  var emptyEl  = document.getElementById('automations-empty-state');
+  if (!listEl) return;
+
+  var filtered = filterJobs(currentJobs);
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '';
+    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    if (detailEl) detailEl.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
+    return;
+  }
+
+  if (emptyEl) { emptyEl.classList.add('hidden'); emptyEl.classList.remove('flex'); }
+
+  if (!selectedJobId || !filtered.find(function(j) { return j.id === selectedJobId; })) {
+    var firstActive = filtered.find(function(j) { return j.status === 'running' || j.status === 'queued'; });
+    selectedJobId = (firstActive || filtered[0]).id;
+  }
+
+  listEl.innerHTML = filtered.map(function(j) {
+    return renderJobListItem(j, j.id === selectedJobId);
+  }).join('');
+
+  if (detailEl) {
+    var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
+    detailEl.innerHTML = renderJobDetail(selectedJob);
+  }
+}
+
+function renderAutomationsKanban() {
+  var boardEl = document.getElementById('kanban-board');
+  if (!boardEl) return;
+  boardEl.innerHTML = renderKanban(filterJobs(currentJobs));
+}
+
+function renderAutomationsPanel() {
+  if (currentView !== 'automations') return;
+  if (currentAutomationsView === 'kanban') {
+    renderAutomationsKanban();
+  } else {
+    renderAutomationsList();
+  }
+}
+
+// SSE/data 업데이트 시 automations 패널도 갱신
+(function() {
+  var orig = renderFromState;
+  renderFromState = function() {
+    orig();
+    renderAutomationsPanel();
+  };
+})();
+
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
@@ -785,3 +910,4 @@ window.performUpdate = performUpdate;
 window.dismissUpdate = dismissUpdate;
 window.toggleProjectDropdown = toggleProjectDropdown;
 window.setProject = setProject;
+window.setAutomationsView = setAutomationsView;

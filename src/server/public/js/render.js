@@ -40,6 +40,57 @@ function renderJobListItem(job, isSelected) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Render Kanban Card
+   ══════════════════════════════════════════════════════════════ */
+function renderKanbanCard(job) {
+  var color = statusColor(job.status);
+  var isRunning = job.status === 'running';
+  var dur = fmtDuration(job);
+  var pct = (typeof job.progress === 'number') ? job.progress : 0;
+  var isSelected = job.id === selectedJobId;
+
+  var issueTitle = job.issueTitle || '';
+  var truncatedTitle = issueTitle.length > 50 ? issueTitle.substring(0, 50) + '...' : issueTitle;
+
+  // Status badge
+  var badgeHtml;
+  if (isRunning) {
+    badgeHtml = '<span class="text-[10px] bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20 px-1.5 py-0.5 rounded uppercase font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-pulse"></span>Running</span>';
+  } else {
+    badgeHtml = '<span class="text-[10px] px-1.5 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
+  }
+
+  // Progress bar
+  var progressHtml = '';
+  if (pct > 0 || isRunning) {
+    var barColor = job.status === 'failure' ? '#f85149' : job.status === 'success' ? '#3fb950' : '#58a6ff';
+    var barWidth = job.status === 'success' ? '100' : pct;
+    progressHtml = '<div class="h-1 bg-surface-variant rounded-full overflow-hidden mt-2">' +
+      '<div class="h-full rounded-full transition-all duration-500' + (isRunning ? ' relative overflow-hidden' : '') + '" style="width:' + barWidth + '%;background:' + barColor + '">' +
+      (isRunning ? '<div class="absolute inset-0 shimmer-bar"></div>' : '') +
+      '</div></div>';
+  }
+
+  var borderStyle = isSelected
+    ? 'ring-2 ring-primary border-primary/30'
+    : 'ring-1 ring-outline-variant/10 hover:ring-outline-variant/30';
+  var bgStyle = isSelected ? 'bg-surface-container-high' : 'bg-surface-container-low hover:bg-surface-container';
+
+  return '<div class="' + bgStyle + ' ' + borderStyle + ' p-3 rounded-xl cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+    '<div class="flex justify-between items-start gap-2">' +
+      '<span class="text-xs font-bold text-on-surface/80 shrink-0">#' + job.issueNumber + '</span>' +
+      badgeHtml +
+    '</div>' +
+    (truncatedTitle ? '<div class="text-xs text-on-surface mt-1 leading-snug">' + esc(truncatedTitle) + '</div>' : '') +
+    progressHtml +
+    '<div class="flex justify-between items-center mt-2">' +
+      '<span class="text-[10px] text-outline font-mono truncate">' + esc(job.repo) + '</span>' +
+      '<span class="text-[10px] text-outline shrink-0">' + (dur || relativeTime(job.createdAt)) + '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Render Job Detail
    ══════════════════════════════════════════════════════════════ */
 function renderJobDetail(job) {
@@ -76,6 +127,9 @@ function renderJobDetail(job) {
 
   // Action buttons
   html += '<div class="flex gap-3">';
+  if (job.phaseResults && job.phaseResults.length > 0) {
+    html += '<button onclick="openTimelineModal(currentJobs.find(function(j){return j.id===\'' + esc(job.id) + '\'})||{})" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">timeline</span> 타임라인</button>';
+  }
   if (isActive) {
     html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors">' + t('cancel') + '</button>';
   }
@@ -707,6 +761,209 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          '</textarea>' +
          '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Repositories View
+   ══════════════════════════════════════════════════════════════ */
+
+var MOCK_REPOS = [
+  {
+    repo: 'myorg/api-service',
+    path: '/home/user/workspace/api-service',
+    baseBranch: 'main',
+    totalJobs: 23,
+    successRate: 87,
+    totalCostUsd: 4.32,
+    worktreeCount: 2,
+    lastActiveAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    isActive: true,
+    health: 'stable'
+  },
+  {
+    repo: 'myorg/frontend',
+    path: '/home/user/workspace/frontend',
+    baseBranch: 'develop',
+    totalJobs: 8,
+    successRate: 100,
+    totalCostUsd: 1.20,
+    worktreeCount: 1,
+    lastActiveAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    isActive: false,
+    health: 'local-missing'
+  }
+];
+
+var MOCK_STORAGE = {
+  dbSizeBytes: 1288490188,
+  logSizeBytes: 471859200,
+  retentionPct: 65
+};
+
+function fmtBytes(bytes) {
+  if (bytes === null || bytes === undefined) return '—';
+  if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(0) + ' MB';
+  if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return bytes + ' B';
+}
+
+function renderRepoCard(repo) {
+  var isActive = repo.isActive;
+  var health = repo.health || 'stable';
+
+  var statusBadge = isActive
+    ? '<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">' +
+        '<span class="w-2 h-2 rounded-full bg-[#3fb950] animate-pulse"></span>' +
+        '<span class="text-[10px] font-headline font-bold uppercase tracking-tighter">Active</span>' +
+      '</div>'
+    : '<div class="flex items-center gap-2 px-3 py-1 bg-surface-container-lowest rounded-full">' +
+        '<span class="w-2 h-2 rounded-full bg-outline"></span>' +
+        '<span class="text-[10px] font-headline font-bold uppercase tracking-tighter text-outline">Inactive</span>' +
+      '</div>';
+
+  var healthHtml = (health === 'local-missing')
+    ? '<div class="flex gap-1 items-center">' +
+        '<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>' +
+        '<span class="w-1.5 h-1.5 rounded-full bg-error"></span>' +
+        '<span class="text-[10px] text-error font-bold ml-1">LOCAL MISSING</span>' +
+      '</div>'
+    : '<div class="flex gap-1 items-center">' +
+        '<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>' +
+        '<span class="w-1.5 h-1.5 rounded-full bg-[#3fb950]"></span>' +
+        '<span class="text-[10px] text-outline ml-1">STABLE</span>' +
+      '</div>';
+
+  var statsClass = isActive ? '' : ' grayscale opacity-60';
+  var successRate = (repo.successRate !== null && repo.successRate !== undefined) ? repo.successRate : null;
+  var successColor = (successRate !== null && successRate >= 90) ? 'text-[#3fb950]' : 'text-tertiary';
+  var successText = successRate !== null ? successRate + '%' : '—';
+  var costText = (repo.totalCostUsd !== null && repo.totalCostUsd !== undefined)
+    ? '$' + Number(repo.totalCostUsd).toFixed(2) : '$0.00';
+  var lastActiveText = repo.lastActiveAt ? relativeTime(repo.lastActiveAt) : '—';
+
+  var footerButtons = (health === 'local-missing')
+    ? '<div class="flex gap-2">' +
+        '<button class="px-3 py-1 bg-primary text-on-primary text-[10px] font-headline font-bold uppercase tracking-widest rounded hover:bg-primary-container transition-colors">RE-LINK</button>' +
+        '<button class="p-1.5 hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+      '</div>'
+    : '<div class="flex gap-2">' +
+        '<button class="p-1.5 hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">terminal</span></button>' +
+        '<button class="p-1.5 hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">sync</span></button>' +
+        '<button class="p-1.5 hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+      '</div>';
+
+  return '<div class="repo-card-dynamic bg-surface-container-high rounded-xl overflow-hidden flex flex-col transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40">' +
+    '<div class="p-6 flex-1">' +
+      '<div class="flex justify-between items-start mb-4">' +
+        '<div>' +
+          '<div class="flex items-center gap-2 mb-1">' +
+            '<h3 class="text-lg font-headline font-bold text-primary">' + esc(repo.repo) + '</h3>' +
+            '<span class="material-symbols-outlined text-sm text-outline">open_in_new</span>' +
+          '</div>' +
+          '<p class="text-xs font-mono text-outline">' + esc(repo.path || '') + '</p>' +
+        '</div>' +
+        statusBadge +
+      '</div>' +
+      '<div class="grid grid-cols-3 gap-4 mb-6">' +
+        '<div class="space-y-1">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>' +
+          '<div class="flex items-center gap-1.5">' +
+            '<span class="material-symbols-outlined text-xs text-primary">account_tree</span>' +
+            '<span class="font-mono text-sm">' + esc(repo.baseBranch || 'main') + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="space-y-1">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Worktrees</p>' +
+          '<div class="flex items-center gap-1.5">' +
+            '<span class="material-symbols-outlined text-xs text-tertiary">layers</span>' +
+            '<span class="font-mono text-sm">' + (repo.worktreeCount || 0) + ' active</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="space-y-1">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Health</p>' +
+          healthHtml +
+        '</div>' +
+      '</div>' +
+      '<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20' + statsClass + '">' +
+        '<div class="px-2 text-center">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>' +
+          '<p class="text-xl font-headline font-bold">' + (repo.totalJobs || 0) + '</p>' +
+        '</div>' +
+        '<div class="px-2 text-center">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Success</p>' +
+          '<p class="text-xl font-headline font-bold ' + successColor + '">' + successText + '</p>' +
+        '</div>' +
+        '<div class="px-2 text-center">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>' +
+          '<p class="text-xl font-headline font-bold text-tertiary">' + costText + '</p>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="px-6 py-3 bg-surface-container-highest flex justify-between items-center border-t border-white/5">' +
+      '<span class="text-[10px] text-outline font-body flex items-center gap-1">' +
+        '<span class="material-symbols-outlined text-xs">schedule</span>' +
+        lastActiveText +
+      '</span>' +
+      footerButtons +
+    '</div>' +
+  '</div>';
+}
+
+function renderStorageSection(storageData) {
+  var data = storageData || {};
+  var dbSizeEl = document.getElementById('repo-stat-db-size');
+  var logSizeEl = document.getElementById('repo-stat-log-size');
+  var retentionBarEl = document.getElementById('repo-retention-bar');
+  var retentionLabelEl = document.getElementById('repo-retention-label');
+
+  if (dbSizeEl) dbSizeEl.textContent = fmtBytes(data.dbSizeBytes);
+  if (logSizeEl) logSizeEl.textContent = fmtBytes(data.logSizeBytes);
+  var pct = data.retentionPct || 0;
+  if (retentionBarEl) retentionBarEl.style.width = pct + '%';
+  if (retentionLabelEl) retentionLabelEl.textContent = pct + '% Capacity Reached';
+}
+
+function renderRepositoriesView(repos, storageData) {
+  var grid = document.getElementById('repo-card-grid');
+  if (!grid) return;
+
+  // Remove loading placeholder
+  var placeholder = document.getElementById('repo-loading-placeholder');
+  if (placeholder) placeholder.remove();
+
+  // Remove previously injected cards
+  grid.querySelectorAll('.repo-card-dynamic').forEach(function(el) { el.remove(); });
+
+  // Inject repo cards
+  var repoList = Array.isArray(repos) ? repos : [];
+  if (repoList.length === 0) {
+    grid.insertAdjacentHTML('beforeend',
+      '<div class="repo-card-dynamic bg-surface-container rounded-xl p-6 flex flex-col items-center justify-center min-h-[200px] ring-1 ring-outline-variant/10">' +
+        '<span class="material-symbols-outlined text-4xl text-outline/20 mb-3">inventory_2</span>' +
+        '<p class="text-sm text-outline font-body">등록된 레포지토리가 없습니다.</p>' +
+      '</div>'
+    );
+  } else {
+    repoList.forEach(function(repo) {
+      grid.insertAdjacentHTML('beforeend', renderRepoCard(repo));
+    });
+  }
+
+  renderStorageSection(storageData);
+}
+
+// Hook into navigateTo for repositories view (mock data until API is connected)
+document.addEventListener('DOMContentLoaded', function() {
+  var orig = window.navigateTo;
+  if (typeof orig === 'function') {
+    window.navigateTo = function(view) {
+      orig(view);
+      if (view === 'repositories') {
+        renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
+      }
+    };
+  }
+});
 
 /* ══════════════════════════════════════════════════════════════
    Responsive Activity Log Handler

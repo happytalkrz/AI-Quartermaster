@@ -104,7 +104,7 @@ import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { transitionState, initializePipelineState } from "../../src/pipeline/pipeline-context.js";
+import { transitionState, initializePipelineState, STATE_ORDER } from "../../src/pipeline/pipeline-context.js";
 import { rollbackToCheckpoint, createCheckpoint } from "../../src/safety/rollback-manager.js";
 import { saveCheckpoint, loadCheckpoint, removeCheckpoint } from "../../src/pipeline/checkpoint.js";
 import {
@@ -1180,6 +1180,153 @@ describe("E2E: Full Pipeline Flow (Dry Run)", () => {
         // This is reflected in the error handling logic behavior
         expect(result.error).toBeDefined();
       });
+    });
+  });
+
+  describe("Complete State Transition Chain", () => {
+    it("should transition through full STATE_ORDER sequence from RECEIVED to DONE", async () => {
+      vi.clearAllMocks();
+
+      capturedStateTransitions.length = 0;
+      let currentState: PipelineState = "RECEIVED";
+
+      mockTransitionState.mockImplementation((runtime: PipelineRuntime, newState: PipelineState) => {
+        capturedStateTransitions.push({ from: currentState, to: newState });
+        currentState = newState;
+        runtime.state = newState;
+      });
+
+      mockInitializePipelineState.mockResolvedValue({
+        state: "RECEIVED",
+        projectRoot: "/tmp/project",
+        gitConfig: {},
+        promptsDir: "/tmp/project/prompts",
+        rollbackStrategy: "none",
+      } as PipelineRuntime);
+
+      mockResolveResolvedProject.mockReturnValue({
+        projectRoot: "/tmp/project",
+        promptsDir: "/tmp/project/prompts",
+        gitConfig: {},
+      });
+
+      mockCheckDuplicatePR.mockResolvedValue({ hasDuplicatePR: false });
+
+      const checkpointFn = vi.fn();
+      mockFetchAndValidateIssue.mockResolvedValue({
+        issue: { number: 42, title: "Fix bug", body: "Fix the bug", labels: [] },
+        mode: "code",
+        checkpoint: checkpointFn,
+      });
+
+      // executeInitialSetupPhases: transitions VALIDATED
+      mockExecuteInitialSetupPhases.mockImplementation(
+        (_input: unknown, runtime: PipelineRuntime) => {
+          mockTransitionState(runtime, "VALIDATED");
+          return Promise.resolve({
+            projectRoot: "/tmp/project",
+            promptsDir: "/tmp/project/prompts",
+            gitConfig: {},
+            project: { repo: "test/repo" },
+            dataDir: "/tmp/project/data",
+            timer: { check: vi.fn(), elapsed: vi.fn() } as unknown as ReturnType<typeof vi.fn>,
+            issue: { number: 42, title: "Fix bug", body: "Fix the bug", labels: [] },
+            mode: "code" as const,
+            checkpoint: checkpointFn,
+          });
+        }
+      );
+
+      // executeEnvironmentSetup: transitions BASE_SYNCED → BRANCH_CREATED → WORKTREE_CREATED
+      mockExecuteEnvironmentSetup.mockImplementation(
+        (_input: unknown, runtime: PipelineRuntime) => {
+          mockTransitionState(runtime, "BASE_SYNCED");
+          mockTransitionState(runtime, "BRANCH_CREATED");
+          mockTransitionState(runtime, "WORKTREE_CREATED");
+          return Promise.resolve({
+            projectConventions: "",
+            skillsContext: "",
+            repoStructure: "",
+            rollbackHash: undefined,
+          });
+        }
+      );
+
+      // executeCoreLoopPhase: transitions PLAN_GENERATED → PHASE_IN_PROGRESS
+      mockExecuteCoreLoopPhase.mockImplementation(
+        (_input: unknown, runtime: PipelineRuntime) => {
+          mockTransitionState(runtime, "PLAN_GENERATED");
+          mockTransitionState(runtime, "PHASE_IN_PROGRESS");
+          return Promise.resolve({
+            coreResult: {
+              plan: makePlan(1),
+              phaseResults: [makePhaseResult(0, "Phase 1", true)],
+              success: true,
+            },
+            preset: {},
+            mode: "code" as const,
+          });
+        }
+      );
+
+      // executePostProcessingPhases: transitions REVIEWING → SIMPLIFYING → FINAL_VALIDATING → DRAFT_PR_CREATED → DONE
+      mockExecutePostProcessingPhases.mockImplementation(
+        (_ctx: unknown, runtime: PipelineRuntime) => {
+          mockTransitionState(runtime, "REVIEWING");
+          mockTransitionState(runtime, "SIMPLIFYING");
+          mockTransitionState(runtime, "FINAL_VALIDATING");
+          mockTransitionState(runtime, "DRAFT_PR_CREATED");
+          mockTransitionState(runtime, "DONE");
+          return Promise.resolve({
+            prUrl: "https://github.com/test/repo/pull/1",
+            report: {
+              issueNumber: 42,
+              repo: "test/repo",
+              phases: [{ name: "Phase 1", success: true, commit: "abc01234", durationMs: 1000 }],
+              totalDurationMs: 1000,
+            },
+            totalCostUsd: 0,
+          });
+        }
+      );
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config: makeConfig(),
+        projectRoot: "/tmp/project",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.state).toBe("DONE");
+
+      // Verify the full state transition chain matches STATE_ORDER
+      const transitionedTo = capturedStateTransitions.map(t => t.to);
+      const expectedChain: PipelineState[] = [
+        "VALIDATED",
+        "BASE_SYNCED",
+        "BRANCH_CREATED",
+        "WORKTREE_CREATED",
+        "PLAN_GENERATED",
+        "PHASE_IN_PROGRESS",
+        "REVIEWING",
+        "SIMPLIFYING",
+        "FINAL_VALIDATING",
+        "DRAFT_PR_CREATED",
+        "DONE",
+      ];
+      expect(transitionedTo).toEqual(expectedChain);
+
+      // Verify each consecutive state pair respects STATE_ORDER ordering
+      for (let i = 0; i < capturedStateTransitions.length - 1; i++) {
+        const current = capturedStateTransitions[i].to;
+        const next = capturedStateTransitions[i + 1].to;
+        const currentIdx = STATE_ORDER.indexOf(current);
+        const nextIdx = STATE_ORDER.indexOf(next);
+        if (currentIdx !== -1 && nextIdx !== -1) {
+          expect(currentIdx).toBeLessThan(nextIdx);
+        }
+      }
     });
   });
 });

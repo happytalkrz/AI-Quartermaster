@@ -15,6 +15,9 @@ import { PipelineTimer } from "../safety/timeout-manager.js";
 import { formatResult } from "./result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "./pipeline-context.js";
 import { pollCiStatus, autoFixCiFailures, type CiPollingConfig } from "./ci-checker.js";
+import { HookRegistry } from "../hooks/hook-registry.js";
+import { HookExecutor } from "../hooks/hook-executor.js";
+import type { HookTiming } from "../types/hooks.js";
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
@@ -32,6 +35,29 @@ import type { PipelineReport } from "./result-reporter.js";
 import type { JobLogger } from "../queue/job-logger.js";
 
 const logger = getLogger();
+
+async function safeExecuteHooks(
+  registry: HookRegistry,
+  executor: HookExecutor,
+  timing: HookTiming,
+  variables?: Record<string, string>
+): Promise<void> {
+  if (!registry.hasHooks(timing)) return;
+  if (variables) {
+    executor.updateVariables(variables);
+  }
+  try {
+    const hooks = registry.getHooks(timing);
+    const results = await executor.executeHooks(hooks);
+    for (const result of results) {
+      if (!result.success) {
+        logger.warn(`Hook [${timing}] failed: ${result.error}`);
+      }
+    }
+  } catch (err: unknown) {
+    logger.warn(`Hook [${timing}] execution error: ${getErrorMessage(err)}`);
+  }
+}
 
 export interface InitialSetupResult {
   projectRoot: string;
@@ -72,6 +98,8 @@ export interface PostProcessingContext {
   timer: PipelineTimer;
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
   jobLogger?: JobLogger;
+  hookRegistry?: HookRegistry;
+  hookExecutor?: HookExecutor;
 }
 
 /**
@@ -246,7 +274,9 @@ export async function executeCoreLoopPhase(
   dataDir: string,
   envResult: EnvironmentSetupResult,
   timer: PipelineTimer,
-  mode: PipelineMode
+  mode: PipelineMode,
+  hookRegistry?: HookRegistry,
+  hookExecutor?: HookExecutor
 ): Promise<CoreLoopExecutionResult> {
   const { repo } = input;
   const jl = input.jobLogger;
@@ -260,6 +290,14 @@ export async function executeCoreLoopPhase(
   const preset = getModePreset(mode);
   const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
   const executionModePreset = getExecutionModePreset(executionMode);
+
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "pre-plan", {
+      repo,
+      issue_number: String(input.issueNumber),
+      mode,
+    });
+  }
 
   const coreResult = await runCoreLoop({
     issue,
@@ -283,6 +321,14 @@ export async function executeCoreLoopPhase(
       durationMs: r.durationMs ?? 0,
     })),
   });
+
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "post-plan", {
+      repo,
+      issue_number: String(input.issueNumber),
+      phase_count: String(coreResult.plan.phases.length),
+    });
+  }
 
   // Re-evaluate mode from Claude's Plan judgment
   let finalMode = mode;
@@ -350,7 +396,7 @@ export async function executePostProcessingPhases(
   config: AQConfig,
   startTime: number
 ): Promise<{ prUrl?: string; report: PipelineReport; totalCostUsd?: number }> {
-  const { issue, coreResult, gitConfig, project, worktreePath, promptsDir, skillsContext, preset, timer, checkpoint } = context;
+  const { issue, coreResult, gitConfig, project, worktreePath, promptsDir, skillsContext, preset, timer, checkpoint, hookRegistry, hookExecutor } = context;
   const { issueNumber, repo, aqRoot } = input;
   const jl = input.jobLogger;
 
@@ -359,6 +405,13 @@ export async function executePostProcessingPhases(
   const executionModePreset = getExecutionModePreset(executionMode);
 
   jl?.setProgress(PROGRESS_REVIEW_START);
+
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "pre-review", {
+      repo,
+      issue_number: String(issueNumber),
+    });
+  }
 
   // Review Phase
   const reviewContext: ReviewContext = {
@@ -384,6 +437,13 @@ export async function executePostProcessingPhases(
 
   const reviewVariables = reviewResult.reviewVariables;
   transitionState(runtime, "REVIEWING");
+
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "post-review", {
+      repo,
+      issue_number: String(issueNumber),
+    });
+  }
 
   // Simplify Phase
   if (reviewVariables) {
@@ -449,6 +509,13 @@ export async function executePostProcessingPhases(
   // Publish Phase
   timer.assertNotExpired("push");
 
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "pre-pr", {
+      repo,
+      issue_number: String(issueNumber),
+    });
+  }
+
   const publishContext = {
     issueNumber,
     repo,
@@ -474,6 +541,14 @@ export async function executePostProcessingPhases(
 
   const prUrl = publishResult.prUrl;
   transitionState(runtime, "DRAFT_PR_CREATED");
+
+  if (hookRegistry && hookExecutor) {
+    await safeExecuteHooks(hookRegistry, hookExecutor, "post-pr", {
+      repo,
+      issue_number: String(issueNumber),
+      pr_url: prUrl ?? "",
+    });
+  }
 
   // dryRun 모드 또는 테스트 환경에서는 CI 체크를 스킵하고 바로 완료 처리
   const isTestEnv = process.env.NODE_ENV === "test" || (prUrl && prUrl.includes("test/repo"));

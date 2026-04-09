@@ -91,6 +91,10 @@ export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
   success: boolean;
+  /** 부분 성공 여부 — 일부 파일만 실패한 경우 true */
+  partial?: boolean;
+  warnings?: string[];
+  errors?: string[];
   commitHash?: string;
   error?: string;
   errorCategory?: ErrorCategory;
@@ -98,6 +102,10 @@ export interface PhaseResult {
   durationMs: number;
   costUsd?: number;
   usage?: UsageInfo;
+  /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
+  failedFiles?: string[];
+  /** 성공적으로 처리된 파일 목록 (partial=true일 때 유효) */
+  successfulFiles?: string[];
 }
 
 export interface PipelineResult {

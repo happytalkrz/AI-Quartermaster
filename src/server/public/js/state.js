@@ -9,6 +9,7 @@ var selectedJobId = null;
 var hideArchived = localStorage.getItem('aqm-hide-archived') === 'true';
 var currentProject = localStorage.getItem('aqm-current-project') || 'all';
 var allProjects = [];
+var currentAutomationsView = localStorage.getItem('aqm-automations-view') || 'list';
 
 /* ══════════════════════════════════════════════════════════════
    Filter

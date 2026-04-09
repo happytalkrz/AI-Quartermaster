@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
+import { fileURLToPath } from "url";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
@@ -21,6 +22,16 @@ import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 
+export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const p of projects) {
+    if (p.concurrency !== undefined) {
+      result[p.repo] = p.concurrency;
+    }
+  }
+  return result;
+}
+
 interface CliArgs {
   command?: string;
   issue?: number;
@@ -37,7 +48,7 @@ interface CliArgs {
   configOverrides?: Record<string, unknown>;
 }
 
-async function runCommand(args: CliArgs): Promise<void> {
+export async function runCommand(args: CliArgs): Promise<void> {
   if (!args.issue || !args.repo) {
     console.error("Usage: aqm run --issue <number> --repo <owner/repo>");
     process.exit(1);
@@ -66,7 +77,7 @@ async function runCommand(args: CliArgs): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function checkForUpdates(aqRoot: string): Promise<void> {
+export async function checkForUpdates(aqRoot: string): Promise<void> {
   try {
     const { runCli } = await import("./utils/cli-runner.js");
     await runCli("git", ["fetch", "--quiet"], { cwd: aqRoot, timeout: 10000 });
@@ -214,6 +225,7 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   const dataDir = resolve(aqRoot, "data");
   const store = new JobStore(dataDir);
+  const projectConcurrency = buildProjectConcurrency(effectiveConfig.projects ?? []);
   const queue = new JobQueue(store, effectiveConfig.general.concurrency, async (job) => {
     const jl = new JobLogger(store, job.id);
     try {
@@ -257,7 +269,7 @@ async function startCommand(args: CliArgs): Promise<void> {
       });
       return { error: errorMsg };
     }
-  }, effectiveConfig.general.stuckTimeoutMs);
+  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined);
 
   // Recover jobs from previous session
   queue.recover();
@@ -433,7 +445,7 @@ async function initCommand(args: CliArgs, rawArgs: string[]): Promise<void> {
   await runInitCommand(aqRoot, initOptions);
 }
 
-async function statusCommand(args: CliArgs): Promise<void> {
+export async function statusCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
   const store = new JobStore(dataDir);
@@ -466,7 +478,7 @@ async function statusCommand(args: CliArgs): Promise<void> {
   console.log();
 }
 
-async function doctorCommand(args: CliArgs): Promise<void> {
+export async function doctorCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const result = tryLoadConfig(aqRoot);
   await runDoctor(result.config, aqRoot, result.error);
@@ -506,7 +518,8 @@ async function planCommand(args: CliArgs): Promise<void> {
     const { JobStore } = await import("./queue/job-store.js");
     const { JobQueue } = await import("./queue/job-queue.js");
     const store = new JobStore(dataDir);
-    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs);
+    const planProjectConcurrency = buildProjectConcurrency(config.projects ?? []);
+    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs, Object.keys(planProjectConcurrency).length > 0 ? planProjectConcurrency : undefined);
 
     let enqueued = 0;
     for (const batch of plan.executionOrder) {
@@ -634,7 +647,7 @@ async function cleanupCommand(args: CliArgs): Promise<void> {
   logger.info(`Cleanup complete. Removed ${removed.length} worktree(s).`);
 }
 
-async function versionCommand(): Promise<void> {
+export async function versionCommand(): Promise<void> {
   try {
     // Read package.json from the AQM installation root
     const packagePath = resolve(process.cwd(), "package.json");
@@ -690,7 +703,7 @@ async function main() {
   }
 }
 
-function printHelp(): void {
+export function printHelp(): void {
   console.log(`
 AI Quartermaster
 
@@ -745,7 +758,7 @@ Environment:
 `);
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const result: CliArgs = {};
 
   // Check if first arg is a subcommand (doesn't start with --)
@@ -792,7 +805,11 @@ function parseArgs(argv: string[]): CliArgs {
   return result;
 }
 
-main().catch((err: unknown) => {
-  console.error("Fatal error:", getErrorMessage(err));
-  process.exit(1);
-});
+// Only execute main() when this file is run directly (not when imported in tests)
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
+  main().catch((err: unknown) => {
+    console.error("Fatal error:", getErrorMessage(err));
+    process.exit(1);
+  });
+}

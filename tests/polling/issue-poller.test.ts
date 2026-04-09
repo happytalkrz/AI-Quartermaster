@@ -228,6 +228,92 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
 
+    it("should track listOpenPrs failures and pause project after threshold", async () => {
+      const pausingQueue = {
+        enqueue: vi.fn(),
+        pauseProject: vi.fn(),
+        isProjectPaused: vi.fn().mockReturnValue(false),
+        getProjectStatus: vi.fn().mockReturnValue(null),
+      };
+      const pauseConfig = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 2 }
+        ]
+      });
+      const pausingPoller = new IssuePoller(pauseConfig, mockStore as any, pausingQueue as any);
+
+      mockListOpenPrs.mockRejectedValue(new Error("Network error"));
+
+      // First failure — not yet at threshold
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+      expect(pausingQueue.pauseProject).not.toHaveBeenCalled();
+
+      // Second failure — should trigger pause
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+      expect(pausingQueue.pauseProject).toHaveBeenCalledWith("test/repo", 30 * 60 * 1000);
+    });
+
+    it("should track checkPrConflict failures and pause project after threshold", async () => {
+      const pausingQueue = {
+        enqueue: vi.fn(),
+        pauseProject: vi.fn(),
+        isProjectPaused: vi.fn().mockReturnValue(false),
+        getProjectStatus: vi.fn().mockReturnValue(null),
+      };
+      const pauseConfig = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 2 }
+        ]
+      });
+      const pausingPoller = new IssuePoller(pauseConfig, mockStore as any, pausingQueue as any);
+
+      mockListOpenPrs.mockResolvedValue([{ number: 123, title: "[#456] test" }]);
+      mockCheckPrConflict.mockRejectedValue(new Error("API error"));
+
+      // First failure
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+      expect(pausingQueue.pauseProject).not.toHaveBeenCalled();
+
+      // Second failure — should trigger pause
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+      expect(pausingQueue.pauseProject).toHaveBeenCalledWith("test/repo", 30 * 60 * 1000);
+    });
+
+    it("should reset error count on successful PR conflict check after failures", async () => {
+      const pausingQueue = {
+        enqueue: vi.fn(),
+        pauseProject: vi.fn(),
+        isProjectPaused: vi.fn().mockReturnValue(false),
+        getProjectStatus: vi.fn().mockReturnValue(null),
+      };
+      const pauseConfig = makeConfig({
+        projects: [
+          { repo: "test/repo", path: "/tmp", baseBranch: "main", pauseThreshold: 3 }
+        ]
+      });
+      const pausingPoller = new IssuePoller(pauseConfig, mockStore as any, pausingQueue as any);
+
+      // Two failures
+      mockListOpenPrs.mockRejectedValueOnce(new Error("Error 1"));
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+
+      mockListOpenPrs.mockRejectedValueOnce(new Error("Error 2"));
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+
+      expect(pausingQueue.pauseProject).not.toHaveBeenCalled();
+
+      // Success with actual PRs (no conflicts) should reset error count
+      mockListOpenPrs.mockResolvedValueOnce([{ number: 123, title: "[#456] test" }]);
+      mockCheckPrConflict.mockResolvedValueOnce(null);
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+
+      // Another failure should start counting from 1 (no pause at threshold=3)
+      mockListOpenPrs.mockRejectedValueOnce(new Error("Error after success"));
+      await (pausingPoller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
+
+      expect(pausingQueue.pauseProject).not.toHaveBeenCalled();
+    });
+
     it("should build correct conflict message with multiple files", async () => {
       const openPrs = [{ number: 789, title: "[#999] Major refactor" }];
       const conflictInfo = {
@@ -309,6 +395,20 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockListOpenPrs).toHaveBeenCalledTimes(2);
       expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-a", { ghPath: "gh", timeout: 30000 });
       expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-b", { ghPath: "gh", timeout: 30000 });
+    });
+
+    it("should pass project-specific timeout to checkProjectPrConflicts during poll", async () => {
+      const configWithTimeout = makeConfig();
+      configWithTimeout.projects[0].commands = {
+        ghCli: { timeout: 60000, path: "gh" }
+      };
+
+      poller = new IssuePoller(configWithTimeout, mockStore as any, mockQueue as any);
+      mockListOpenPrs.mockResolvedValue([]);
+
+      await (poller as any).poll();
+
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh", timeout: 60000 });
     });
 
     it("should handle mixed success and failure in PR conflict checks", async () => {

@@ -28,6 +28,9 @@ export class IssuePoller {
   private selfUpdater: SelfUpdater | undefined;
   private onUpdateAvailable?: UpdateAvailableCallback;
   private pollingErrors = new Map<string, { count: number; lastErrorAt: number }>(); // repo -> error state
+  private lastActivityAt: number = Date.now(); // 마지막 이슈 발견 시각
+  private readonly IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5분 idle 임계값
+  private readonly IDLE_INTERVAL_MS = 5 * 60 * 1000; // 5분 idle 폴링 간격
 
   constructor(
     config: AQConfig,
@@ -64,10 +67,20 @@ export class IssuePoller {
 
   private scheduleNext(): void {
     if (!this.running) return;
+
+    // Idle 감지: 마지막 활동 시간 기준으로 동적 간격 결정
+    const now = Date.now();
+    const timeSinceLastActivity = now - this.lastActivityAt;
+    const isIdle = timeSinceLastActivity > this.IDLE_THRESHOLD_MS;
+
+    const intervalMs = isIdle ? this.IDLE_INTERVAL_MS : this.config.general.pollingIntervalMs;
+
+    logger.debug(`다음 폴링 스케줄링 — 간격: ${intervalMs}ms (${isIdle ? 'idle' : 'normal'} 모드)`);
+
     this.timer = setTimeout(async () => {
       await this.poll();
       this.scheduleNext();
-    }, this.config.general.pollingIntervalMs);
+    }, intervalMs);
   }
 
   private async poll(): Promise<void> {
@@ -179,6 +192,8 @@ export class IssuePoller {
     // 이슈 번호 오름차순 (오래된 이슈 먼저 처리)
     issues.sort((a, b) => a.number - b.number);
 
+    let newIssuesFound = 0;
+
     for (const issue of issues) {
       if (this.store.shouldBlockRepickup(issue.number, repo)) {
         // 차단 이유를 상태별로 구분하여 로그 출력
@@ -198,6 +213,13 @@ export class IssuePoller {
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
       this.queue.enqueue(issue.number, repo);
+      newIssuesFound++;
+    }
+
+    // 새 이슈가 발견되면 활동 시간을 업데이트하여 normal 폴링 간격으로 복귀
+    if (newIssuesFound > 0) {
+      this.lastActivityAt = Date.now();
+      logger.debug(`${newIssuesFound}개 새 이슈 발견 — 활동 시간 업데이트, normal 폴링 간격으로 복귀`);
     }
   }
 

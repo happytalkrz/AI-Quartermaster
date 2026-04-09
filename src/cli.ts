@@ -343,12 +343,9 @@ async function startCommand(args: CliArgs): Promise<void> {
     }
   };
 
-  // === Polling mode ===
-  let poller: IssuePoller | undefined;
-  if (isPollingMode) {
-    poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
-    poller.start();
-  }
+  // === Poller: always start (webhook mode uses it as fallback for missed events) ===
+  const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
+  poller.start();
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;

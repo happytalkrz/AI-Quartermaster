@@ -385,6 +385,213 @@ safety:
   });
 });
 
+describe("loadConfig - 프로젝트별 오버라이드 로딩", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should load project-level commands overrides from YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "yarn test"
+      lint: "yarn lint"
+      build: "yarn build"
+`);
+    const config = loadConfig(testDir);
+
+    expect(config.projects).toHaveLength(1);
+    const project = config.projects![0];
+    expect(project.commands?.test).toBe("yarn test");
+    expect(project.commands?.lint).toBe("yarn lint");
+    expect(project.commands?.build).toBe("yarn build");
+  });
+
+  it("should load project-level typecheck command override from YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      typecheck: "npx tsc --noEmit"
+      preInstall: "npm ci"
+`);
+    const config = loadConfig(testDir);
+
+    const project = config.projects![0];
+    expect(project.commands?.typecheck).toBe("npx tsc --noEmit");
+    expect(project.commands?.preInstall).toBe("npm ci");
+  });
+
+  it("should load project-level safety overrides from YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    safety:
+      maxPhases: 5
+      maxFileChanges: 20
+`);
+    const config = loadConfig(testDir);
+
+    const project = config.projects![0];
+    expect(project.safety?.maxPhases).toBe(5);
+    expect(project.safety?.maxFileChanges).toBe(20);
+  });
+
+  it("should load project-level review overrides from YAML", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    review:
+      enabled: false
+      unifiedMode: true
+`);
+    const config = loadConfig(testDir);
+
+    const project = config.projects![0];
+    expect(project.review?.enabled).toBe(false);
+    expect(project.review?.unifiedMode).toBe(true);
+  });
+
+  it("should load all three override sections (commands, safety, review) simultaneously", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "pnpm test"
+      typecheck: "pnpm typecheck"
+    safety:
+      maxPhases: 8
+      maxFileChanges: 30
+    review:
+      enabled: true
+      unifiedMode: false
+`);
+    const config = loadConfig(testDir);
+
+    const project = config.projects![0];
+    expect(project.commands?.test).toBe("pnpm test");
+    expect(project.commands?.typecheck).toBe("pnpm typecheck");
+    expect(project.safety?.maxPhases).toBe(8);
+    expect(project.safety?.maxFileChanges).toBe(30);
+    expect(project.review?.enabled).toBe(true);
+    expect(project.review?.unifiedMode).toBe(false);
+  });
+
+  it("should keep project overrides independent across multiple projects", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo-a"
+    path: "/path/to/repo-a"
+    commands:
+      test: "jest"
+    safety:
+      maxPhases: 3
+  - repo: "owner/repo-b"
+    path: "/path/to/repo-b"
+    commands:
+      test: "vitest"
+    review:
+      enabled: false
+`);
+    const config = loadConfig(testDir);
+
+    expect(config.projects).toHaveLength(2);
+    const [projectA, projectB] = config.projects!;
+
+    expect(projectA.repo).toBe("owner/repo-a");
+    expect(projectA.commands?.test).toBe("jest");
+    expect(projectA.safety?.maxPhases).toBe(3);
+    expect(projectA.review).toBeUndefined();
+
+    expect(projectB.repo).toBe("owner/repo-b");
+    expect(projectB.commands?.test).toBe("vitest");
+    expect(projectB.safety).toBeUndefined();
+    expect(projectB.review?.enabled).toBe(false);
+  });
+
+  it("should not affect global config when project-level overrides are set", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "global-project"
+  logLevel: "warn"
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "custom-test"
+    safety:
+      maxPhases: 5
+`);
+    const config = loadConfig(testDir);
+
+    // Global config remains unchanged
+    expect(config.general.projectName).toBe("global-project");
+    expect(config.general.logLevel).toBe("warn");
+    expect(config.commands.test).toBe("npm test"); // global default
+    expect(config.safety.maxPhases).toBe(10); // global default
+
+    // Project overrides are stored separately
+    const project = config.projects![0];
+    expect(project.commands?.test).toBe("custom-test");
+    expect(project.safety?.maxPhases).toBe(5);
+  });
+
+  it("should load partial commands override without requiring all fields", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "yarn test"
+`);
+    const config = loadConfig(testDir);
+
+    const project = config.projects![0];
+    // Only test is overridden; other fields are undefined (not set)
+    expect(project.commands?.test).toBe("yarn test");
+    expect(project.commands?.lint).toBeUndefined();
+    expect(project.commands?.build).toBeUndefined();
+  });
+
+  it("should load project overrides from config.local.yml merged on top of config.yml", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "npm test"
+    safety:
+      maxPhases: 5
+`);
+    writeFileSync(join(testDir, "config.local.yml"), `
+projects:
+  - repo: "owner/repo"
+    path: "/path/to/repo"
+    commands:
+      test: "npm run test:ci"
+`);
+    const config = loadConfig(testDir);
+
+    // config.local.yml replaces the entire projects array (deepMerge on arrays replaces)
+    expect(config.projects).toHaveLength(1);
+    const project = config.projects![0];
+    expect(project.commands?.test).toBe("npm run test:ci");
+  });
+});
+
 describe("tryLoadConfig", () => {
   let testDir: string;
 

@@ -91,7 +91,7 @@ export async function checkForUpdates(aqRoot: string): Promise<void> {
   }
 }
 
-async function startCommand(args: CliArgs): Promise<void> {
+export async function startCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
 
   // Check for updates (non-blocking)

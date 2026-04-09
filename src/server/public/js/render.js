@@ -76,6 +76,9 @@ function renderJobDetail(job) {
 
   // Action buttons
   html += '<div class="flex gap-3">';
+  if (job.phaseResults && job.phaseResults.length > 0) {
+    html += '<button onclick="openTimelineModal(currentJobs.find(function(j){return j.id===\'' + esc(job.id) + '\'})||{})" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">timeline</span> 타임라인</button>';
+  }
   if (isActive) {
     html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors">' + t('cancel') + '</button>';
   }

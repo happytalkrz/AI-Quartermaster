@@ -91,6 +91,8 @@ export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
   success: boolean;
+  /** 부분 성공 여부 (일부 파일만 성공, tsc 오류가 일부 파일에만 있는 경우 등) */
+  partial?: boolean;
   warnings?: string[];
   errors?: string[];
   commitHash?: string;

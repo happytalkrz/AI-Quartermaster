@@ -11,7 +11,7 @@ import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats } from "../store/queries.js";
+import { getJobStats, getCostStats, getProjectSummary } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -1017,6 +1017,77 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         timestamp: new Date().toISOString()
       });
       return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
+  });
+
+  // Projects health check endpoint — all configured projects
+  api.get("/api/projects/health", async (c) => {
+    try {
+      const config = loadConfig(process.cwd());
+      const projects = config.projects ?? [];
+
+      if (projects.length === 0) {
+        return c.json({
+          projects: [],
+          summary: { total: 0, healthy: 0, warning: 0, error: 0, checkedAt: new Date().toISOString() },
+        });
+      }
+
+      const gitPath = config.git?.gitPath ?? "git";
+
+      const healthResults = await Promise.all(
+        projects.map(async (projectConfig) => {
+          const projectPath = resolve(process.cwd(), projectConfig.path);
+          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
+            checkGitRemoteAccess(projectPath, gitPath),
+            checkLocalPath(projectPath),
+            checkDiskSpace(projectPath),
+            checkDependencies(projectPath),
+          ]);
+
+          let overallStatus: "healthy" | "warning" | "error" = "healthy";
+          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
+            overallStatus = "error";
+          } else if (
+            diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
+            dependenciesCheck.status === "warning" || dependenciesCheck.status === "error"
+          ) {
+            overallStatus = "warning";
+          }
+
+          return {
+            project: projectConfig.repo,
+            status: overallStatus,
+            checks: {
+              gitRemoteAccess: gitRemoteCheck,
+              localPath: localPathCheck,
+              diskSpace: diskSpaceCheck,
+              dependencies: dependenciesCheck,
+            },
+            lastChecked: new Date().toISOString(),
+          };
+        })
+      );
+
+      const projectStats = getProjectSummary(store.getAqDb());
+      const statsMap = new Map(projectStats.map(s => [s.repo, s]));
+
+      const projectsWithStats = healthResults.map(result => ({
+        ...result,
+        stats: statsMap.get(result.project) ?? null,
+      }));
+
+      const summary = {
+        total: projectsWithStats.length,
+        healthy: projectsWithStats.filter(p => p.status === "healthy").length,
+        warning: projectsWithStats.filter(p => p.status === "warning").length,
+        error: projectsWithStats.filter(p => p.status === "error").length,
+        checkedAt: new Date().toISOString(),
+      };
+
+      return c.json({ projects: projectsWithStats, summary });
+    } catch (error: unknown) {
+      return c.json({ error: `Projects health check failed: ${getErrorMessage(error)}` }, 500);
     }
   });
 

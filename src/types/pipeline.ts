@@ -91,6 +91,9 @@ export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
   success: boolean;
+  partial?: boolean;
+  warnings?: string[];
+  errors?: string[];
   commitHash?: string;
   error?: string;
   errorCategory?: ErrorCategory;

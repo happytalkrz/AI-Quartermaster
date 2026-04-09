@@ -29,6 +29,8 @@ export interface GeneralConfig {
   targetRoot?: string;
   stuckTimeoutMs: number;
   pollingIntervalMs: number;
+  idlePollingIntervalMs: number;
+  idleThresholdCycles: number;
   maxJobs: number;
   autoUpdate: boolean;
 }

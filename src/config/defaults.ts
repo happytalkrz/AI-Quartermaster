@@ -10,6 +10,8 @@ export const DEFAULT_CONFIG: AQConfig = {
     concurrency: 1,
     stuckTimeoutMs: 600000,
     pollingIntervalMs: 60000,
+    idlePollingIntervalMs: 300000,
+    idleThresholdCycles: 3,
     maxJobs: 500,
     autoUpdate: false,
   },

@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
@@ -106,6 +107,7 @@ export function loadConfig(projectRoot: string, options: LoadConfigOptions): AQC
 export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQConfig {
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
+  const userConfigPath = `${homedir()}/.ai-quartermaster/config.yml`;
 
   let config = structuredClone(DEFAULT_CONFIG);
 
@@ -113,23 +115,29 @@ export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQ
     throw new Error(`config.yml not found at ${baseConfigPath}`);
   }
 
-  // 1. Load and merge base config.yml
+  // 1. Load and merge user-level config from home directory if exists (skip in test environment)
+  if (process.env.NODE_ENV !== 'test' && existsSync(userConfigPath)) {
+    const userRaw = parseYamlSafely(readFileSync(userConfigPath, "utf-8"), userConfigPath);
+    config = deepMerge(config, userRaw);
+  }
+
+  // 2. Load and merge base config.yml
   const baseRaw = parseYamlSafely(readFileSync(baseConfigPath, "utf-8"), baseConfigPath);
   config = deepMerge(config, baseRaw);
 
-  // 2. Load and merge config.local.yml if exists
+  // 3. Load and merge config.local.yml if exists
   if (existsSync(localConfigPath)) {
     const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
     config = deepMerge(config, localRaw);
   }
 
-  // 3. Apply environment variables (AQM_*)
+  // 4. Apply environment variables (AQM_*)
   if (options?.envVars !== undefined) {
     const envConfig = parseEnvVars(options.envVars);
     config = deepMerge(config, envConfig);
   }
 
-  // 4. Apply CLI config overrides
+  // 5. Apply CLI config overrides (highest priority)
   if (options?.configOverrides) {
     config = deepMerge(config, options.configOverrides);
   }
@@ -143,6 +151,7 @@ export function tryLoadConfig(projectRoot: string, options: LoadConfigOptions): 
 export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions): TryLoadConfigResult {
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
+  const userConfigPath = `${homedir()}/.ai-quartermaster/config.yml`;
 
   // Check if base config exists
   if (!existsSync(baseConfigPath)) {
@@ -156,6 +165,22 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
   }
 
   let config = structuredClone(DEFAULT_CONFIG);
+
+  // Try to merge user-level config from home directory if exists (skip in test environment)
+  if (process.env.NODE_ENV !== 'test' && existsSync(userConfigPath)) {
+    try {
+      const userRaw = parseYamlSafely(readFileSync(userConfigPath, "utf-8"), userConfigPath);
+      config = deepMerge(config, userRaw);
+    } catch (err: unknown) {
+      return {
+        config: null,
+        error: {
+          type: 'yaml_syntax',
+          message: `Failed to parse user config: ${err instanceof Error ? err.message : 'Unknown error'}`
+        }
+      };
+    }
+  }
 
   // Try to parse base config
   try {
@@ -172,17 +197,16 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
   }
 
   // Try to merge local config if exists
-  try {
-    const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
-    config = deepMerge(config, localRaw);
-  } catch (err: unknown) {
-    // Only fail on non-ENOENT errors (file exists but can't parse)
-    if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code !== "ENOENT") {
+  if (existsSync(localConfigPath)) {
+    try {
+      const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
+      config = deepMerge(config, localRaw);
+    } catch (err: unknown) {
       return {
         config: null,
         error: {
           type: 'yaml_syntax',
-          message: `Failed to parse config.local.yml: ${err.message}`
+          message: `Failed to parse config.local.yml: ${err instanceof Error ? err.message : 'Unknown error'}`
         }
       };
     }
@@ -204,7 +228,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
     }
   }
 
-  // Apply CLI config overrides
+  // Apply CLI config overrides (highest priority)
   if (options?.configOverrides) {
     try {
       config = deepMerge(config, options.configOverrides);

@@ -42,6 +42,11 @@ function navigateTo(view) {
   if (view === 'settings') {
     loadSettings();
   }
+
+  // If navigating to repositories view, render it
+  if (view === 'repositories') {
+    renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
+  }
 }
 
 // Bind navigation clicks

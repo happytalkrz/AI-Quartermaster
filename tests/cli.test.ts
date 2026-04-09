@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand } from "../src/cli.js";
+import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
 import { runPipeline } from "../src/pipeline/orchestrator.js";
 import { JobStore } from "../src/queue/job-store.js";
+import { JobQueue } from "../src/queue/job-queue.js";
 import { runDoctor } from "../src/setup/doctor.js";
 import { runCli } from "../src/utils/cli-runner.js";
+import { IssuePoller } from "../src/polling/issue-poller.js";
+import { createWebhookApp, startServer } from "../src/server/webhook-server.js";
+import { createDashboardRoutes } from "../src/server/dashboard-api.js";
+import { createHealthRoutes } from "../src/server/health.js";
+import { cleanupStalePid, writePidFile } from "../src/server/pid-manager.js";
+import { ConfigWatcher } from "../src/config/config-watcher.js";
 
 vi.mock("../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
@@ -25,6 +32,32 @@ vi.mock("../src/setup/doctor.js", () => ({
 }));
 vi.mock("../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
+}));
+vi.mock("../src/polling/issue-poller.js", () => ({
+  IssuePoller: vi.fn(),
+}));
+vi.mock("../src/queue/job-queue.js", () => ({
+  JobQueue: vi.fn(),
+}));
+vi.mock("../src/server/webhook-server.js", () => ({
+  createWebhookApp: vi.fn(),
+  startServer: vi.fn(),
+}));
+vi.mock("../src/server/dashboard-api.js", () => ({
+  createDashboardRoutes: vi.fn(),
+  applyConfigChanges: vi.fn(),
+}));
+vi.mock("../src/server/health.js", () => ({
+  createHealthRoutes: vi.fn(),
+}));
+vi.mock("../src/server/pid-manager.js", () => ({
+  writePidFile: vi.fn(),
+  cleanupStalePid: vi.fn(),
+  removePidFile: vi.fn(),
+  readPidFile: vi.fn(),
+}));
+vi.mock("../src/config/config-watcher.js", () => ({
+  ConfigWatcher: vi.fn(),
 }));
 
 describe("buildProjectConcurrency", () => {
@@ -390,5 +423,79 @@ describe("doctorCommand", () => {
     await doctorCommand({});
     expect(tryLoadConfig).toHaveBeenCalled();
     expect(runDoctor).toHaveBeenCalled();
+  });
+});
+
+describe("startCommand — IssuePoller 항상 시작", () => {
+  let mockPollerStart: ReturnType<typeof vi.fn>;
+
+  const mockConfigWithProject = {
+    ...mockBaseConfig,
+    projects: [{ repo: "owner/repo", path: "/tmp", baseBranch: "main" }],
+  } as unknown as ReturnType<typeof loadConfig>;
+
+  beforeEach(() => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+
+    mockPollerStart = vi.fn();
+    vi.mocked(IssuePoller).mockImplementation(() => ({
+      start: mockPollerStart,
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+    } as unknown as IssuePoller));
+
+    vi.mocked(JobStore).mockImplementation(() => ({
+      prune: vi.fn(),
+      list: vi.fn().mockReturnValue([]),
+    } as unknown as JobStore));
+
+    vi.mocked(JobQueue).mockImplementation(() => ({
+      recover: vi.fn(),
+      shutdown: vi.fn(),
+      enqueue: vi.fn(),
+    } as unknown as JobQueue));
+
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+
+    vi.mocked(createWebhookApp).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createWebhookApp>);
+    vi.mocked(createDashboardRoutes).mockReturnValue({} as unknown as ReturnType<typeof createDashboardRoutes>);
+    vi.mocked(createHealthRoutes).mockReturnValue({} as unknown as ReturnType<typeof createHealthRoutes>);
+    vi.mocked(cleanupStalePid).mockReturnValue(true);
+
+    vi.mocked(ConfigWatcher).mockImplementation(() => ({
+      on: vi.fn(),
+      startWatching: vi.fn(),
+      stopWatching: vi.fn(),
+    } as unknown as ConfigWatcher));
+
+    vi.mocked(runCli).mockResolvedValue({ stdout: "0\n", stderr: "", exitCode: 0 });
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.restoreAllMocks();
+  });
+
+  it("웹훅 모드에서 IssuePoller.start()가 호출됨 (놓친 이벤트 복구 보장)", async () => {
+    await startCommand({});
+    expect(mockPollerStart).toHaveBeenCalledOnce();
+  });
+
+  it("IssuePoller는 웹훅 앱 설정보다 먼저 생성됨", async () => {
+    const callOrder: string[] = [];
+    vi.mocked(IssuePoller).mockImplementation(() => {
+      callOrder.push("IssuePoller");
+      return { start: vi.fn(), stop: vi.fn(), isRunning: vi.fn().mockReturnValue(false) } as unknown as IssuePoller;
+    });
+    vi.mocked(startServer).mockImplementation(() => {
+      callOrder.push("startServer");
+    });
+
+    await startCommand({});
+
+    expect(callOrder.indexOf("IssuePoller")).toBeLessThan(callOrder.indexOf("startServer"));
   });
 });

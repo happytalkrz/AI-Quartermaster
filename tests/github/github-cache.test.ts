@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   getCached,
   setCached,
   clearCache,
   getCacheSize,
   hasCached,
-  deleteCached
+  deleteCached,
+  evictExpired
 } from "../../src/github/github-cache.js";
 
 describe("github-cache", () => {
@@ -180,6 +181,83 @@ describe("github-cache", () => {
       expect(retrievedUser).toEqual(user);
       expect(retrievedUser?.id).toBe(1);
       expect(retrievedUser?.name).toBe("John");
+    });
+  });
+
+  describe("TTL (Time-To-Live)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should return value before TTL expires", () => {
+      setCached("ttl-key", "value", 1000);
+      vi.advanceTimersByTime(999);
+      expect(getCached<string>("ttl-key")).toBe("value");
+    });
+
+    it("should return undefined after TTL expires", () => {
+      setCached("ttl-key", "value", 1000);
+      vi.advanceTimersByTime(1001);
+      expect(getCached<string>("ttl-key")).toBeUndefined();
+    });
+
+    it("hasCached should return false for expired entry", () => {
+      setCached("ttl-key", "value", 500);
+      vi.advanceTimersByTime(501);
+      expect(hasCached("ttl-key")).toBe(false);
+    });
+
+    it("expired entry should be removed from cache after getCached", () => {
+      setCached("ttl-key", "value", 500);
+      vi.advanceTimersByTime(501);
+      getCached("ttl-key");
+      expect(getCacheSize()).toBe(0);
+    });
+
+    it("no TTL means never expires", () => {
+      setCached("no-ttl", "value");
+      vi.advanceTimersByTime(999_999_999);
+      expect(getCached<string>("no-ttl")).toBe("value");
+    });
+  });
+
+  describe("evictExpired", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should remove expired entries and return count", () => {
+      setCached("exp1", "v1", 500);
+      setCached("exp2", "v2", 500);
+      setCached("keep", "v3", 2000);
+
+      vi.advanceTimersByTime(600);
+
+      const removed = evictExpired();
+      expect(removed).toBe(2);
+      expect(getCacheSize()).toBe(1);
+      expect(getCached<string>("keep")).toBe("v3");
+    });
+
+    it("should return 0 when no entries are expired", () => {
+      setCached("key1", "value1");
+      setCached("key2", "value2", 1000);
+
+      const removed = evictExpired();
+      expect(removed).toBe(0);
+      expect(getCacheSize()).toBe(2);
+    });
+
+    it("should return 0 on empty cache", () => {
+      expect(evictExpired()).toBe(0);
     });
   });
 

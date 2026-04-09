@@ -100,6 +100,10 @@ export interface PhaseResult {
   errorCategory?: ErrorCategory;
   lastOutput?: string;
   durationMs: number;
+  /** Phase 시작 시각 (ISO 8601) */
+  startedAt?: string;
+  /** Phase 완료 시각 (ISO 8601) */
+  completedAt?: string;
   costUsd?: number;
   usage?: UsageInfo;
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
@@ -387,6 +391,10 @@ export interface PhaseResultInfo {
   success: boolean;
   commit?: string;
   durationMs: number;
+  /** Phase 시작 시각 (ISO 8601) */
+  startedAt?: string;
+  /** Phase 완료 시각 (ISO 8601) */
+  completedAt?: string;
   error?: string;
   costUsd?: number;
   usage?: UsageStats;

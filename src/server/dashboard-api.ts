@@ -1039,11 +1039,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const healthResults = await Promise.all(
         projects.map(async (projectConfig) => {
           const projectPath = resolve(process.cwd(), projectConfig.path);
-          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
+          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck, worktreeCount] = await Promise.all([
             checkGitRemoteAccess(projectPath, gitPath),
             checkLocalPath(projectPath),
             checkDiskSpace(projectPath),
             checkDependencies(projectPath),
+            runCli(gitPath, ["worktree", "list", "--porcelain"], { cwd: projectPath }).then(result =>
+              result.exitCode === 0 ? result.stdout.trim().split('\n').filter(line => line.startsWith('worktree ')).length : 0
+            ).catch(() => 0), // Fall back to 0 if git worktree fails
           ]);
 
           let overallStatus: "healthy" | "warning" | "error" = "healthy";
@@ -1061,6 +1064,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
             name: projectConfig.repo,
             path: projectConfig.path,
             status: overallStatus,
+            worktreeCount,
             health: {
               gitRemoteAccess: gitRemoteCheck,
               localPath: localPathCheck,

@@ -110,7 +110,10 @@ export class IssuePoller {
     await Promise.allSettled(issueTasks);
 
     // PR 충돌 체크 (활성 프로젝트만)
-    const prTasks = activeProjects.map(p => this.checkProjectPrConflicts(p.repo, ghPath));
+    const prTasks = activeProjects.map(p => {
+      const projectTimeout = p.commands?.ghCli?.timeout ?? ghTimeout;
+      return this.checkProjectPrConflicts(p.repo, ghPath, projectTimeout);
+    });
     await Promise.allSettled(prTasks);
 
     // 2. Failed job 감지 및 재큐잉
@@ -198,10 +201,10 @@ export class IssuePoller {
     }
   }
 
-  private async checkProjectPrConflicts(repo: string, ghPath: string): Promise<void> {
+  private async checkProjectPrConflicts(repo: string, ghPath: string, timeout: number): Promise<void> {
     try {
       // 오픈 PR 목록 조회
-      const prs = await listOpenPrs(repo, { ghPath });
+      const prs = await listOpenPrs(repo, { ghPath, timeout });
       if (!prs || prs.length === 0) {
         logger.debug(`${repo} — 체크할 오픈 PR 없음`);
         return;
@@ -220,7 +223,7 @@ export class IssuePoller {
         }
 
         // 충돌 체크
-        const conflictInfo = await checkPrConflict(pr.number, repo, { ghPath });
+        const conflictInfo = await checkPrConflict(pr.number, repo, { ghPath, timeout });
         if (conflictInfo) {
           // 충돌 감지 시 이슈에 코멘트 작성
           const conflictMessage = this.buildConflictMessage(conflictInfo);
@@ -250,8 +253,13 @@ export class IssuePoller {
           logger.debug(`PR #${pr.number} (${repo}) — 충돌 없음`);
         }
       }
+
+      // PR 충돌 체크 성공 시 에러 카운트 리셋
+      this.resetPollingErrors(repo);
     } catch (err: unknown) {
-      logger.warn(`${repo} PR 충돌 체크 중 오류: ${getErrorMessage(err)}`);
+      const errorMsg = getErrorMessage(err);
+      logger.warn(`${repo} PR 충돌 체크 중 오류: ${errorMsg}`);
+      this.trackPollingFailure(repo, errorMsg);
     }
   }
 

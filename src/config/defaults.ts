@@ -28,7 +28,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     cleanupOnSuccess: true,
     cleanupOnFailure: false,
     maxAge: "24h",
-    dirTemplate: "{{issueNumber}}-{{slug}}",
+    dirTemplate: "{{repoSlug}}-{{issueNumber}}-{{slug}}",
   },
   commands: {
     claudeCli: {

@@ -58,7 +58,13 @@ export async function createWorktree(
     ...(repoSlug && { repoSlug }),
   };
 
-  const dirName = renderTemplate(worktreeConfig.dirTemplate, templateVars);
+  // Backward compatibility: if repoSlug is not provided, remove the {{repoSlug}}- prefix
+  // from the template to avoid literal "{{repoSlug}}-" appearing in the directory name.
+  const effectiveTemplate = repoSlug
+    ? worktreeConfig.dirTemplate
+    : worktreeConfig.dirTemplate.replace(/\{\{\s*repoSlug\s*\}\}-/g, "");
+
+  const dirName = renderTemplate(effectiveTemplate, templateVars);
 
   // Resolve rootPath relative to cwd if not absolute
   const rootPath = resolve(options.cwd, worktreeConfig.rootPath);

@@ -10,7 +10,8 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { getJobStats, getCostStats } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -350,6 +351,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/jobs", bearerAuth);
     api.use("/api/jobs/*", bearerAuth);
     api.use("/api/stats", bearerAuth);
+    api.use("/api/stats/costs", bearerAuth);
     api.use("/api/config", bearerAuth);
     api.use("/api/projects", bearerAuth);
     api.use("/api/projects/*", bearerAuth);
@@ -745,7 +747,6 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Aggregate stats
   api.get("/api/stats", (c) => {
     try {
-      // Parse query parameters using Zod schema
       const queryParams = {
         project: c.req.query("project"),
         timeRange: c.req.query("timeRange") || "7d",
@@ -759,71 +760,34 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }, 400);
       }
 
-      const { project, timeRange } = parseResult.data;
-
-      // Get base job list
-      let jobs = store.list();
-
-      // Apply project filter
-      if (project) {
-        jobs = jobs.filter(j => j.repo === project);
-      }
-
-      // Apply time range filter
-      if (timeRange !== "all") {
-        const now = new Date();
-        let cutoffTime: Date;
-
-        switch (timeRange) {
-          case "24h":
-            cutoffTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            break;
-          case "7d":
-            cutoffTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            break;
-          case "30d":
-            cutoffTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            break;
-          default:
-            cutoffTime = new Date(0); // No filter
-        }
-
-        jobs = jobs.filter(j => {
-          const createdAt = new Date(j.createdAt);
-          return createdAt >= cutoffTime;
-        });
-      }
-
-      const total = jobs.length;
-      const successCount = jobs.filter(j => j.status === "success").length;
-      const failureCount = jobs.filter(j => j.status === "failure").length;
-      const runningCount = jobs.filter(j => j.status === "running").length;
-      const queuedCount = jobs.filter(j => j.status === "queued").length;
-      const cancelledCount = jobs.filter(j => j.status === "cancelled").length;
-
-      const completed = jobs.filter(j => j.completedAt && j.startedAt);
-      const avgDurationMs = completed.length > 0
-        ? Math.round(completed.reduce((sum, j) => {
-            return sum + (new Date(j.completedAt!).getTime() - new Date(j.startedAt!).getTime());
-          }, 0) / completed.length)
-        : 0;
-
-      const successRate = total > 0 ? Math.round((successCount / total) * 100) : 0;
-
-      return c.json({
-        total,
-        successCount,
-        failureCount,
-        runningCount,
-        queuedCount,
-        cancelledCount,
-        avgDurationMs,
-        successRate,
-        project: project || null,
-        timeRange,
-      });
+      const stats = getJobStats(store.getAqDb(), parseResult.data);
+      return c.json(stats);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch stats: ${getErrorMessage(error)}` }, 500);
+    }
+  });
+
+  // Cost stats
+  api.get("/api/stats/costs", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        timeRange: c.req.query("timeRange") || "30d",
+        groupBy: c.req.query("groupBy") || "project",
+      };
+
+      const parseResult = GetCostsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: parseResult.error
+        }, 400);
+      }
+
+      const costs = getCostStats(store.getAqDb(), parseResult.data);
+      return c.json(costs);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch cost stats: ${getErrorMessage(error)}` }, 500);
     }
   });
 

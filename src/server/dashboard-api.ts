@@ -10,7 +10,9 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, type HealthCheckResponse, type RepositoryInfo, type RepositoriesResponse } from "../types/api.js";
+import { listConfiguredRepos, resolveProject } from "../config/project-resolver.js";
+import { listWorktrees } from "../git/worktree-manager.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -356,6 +358,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/version", bearerAuth);
     api.use("/api/update", bearerAuth);
     api.use("/api/health", bearerAuth);
+    api.use("/api/repositories", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -1033,6 +1036,103 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         timestamp: new Date().toISOString()
       });
       return c.json({ error: `업데이트 실패: ${message}` }, 500);
+    }
+  });
+
+  // Repositories list with health/stats
+  api.get("/api/repositories", async (c) => {
+    try {
+      const config = loadConfig(process.cwd());
+      const repos = listConfiguredRepos(config);
+      const gitPath = config.git?.gitPath || "git";
+
+      const repositories = await Promise.all(
+        repos.map(async (repo): Promise<RepositoryInfo> => {
+          let projectPath = "";
+          try {
+            const resolved = resolveProject(repo, config);
+            projectPath = resolved.path;
+          } catch {
+            // repo configured without path (allowedRepos only, no targetRoot)
+          }
+
+          // Run health checks in parallel
+          const noPath = !projectPath;
+          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
+            noPath
+              ? Promise.resolve({ status: "error" as const, message: "No project path configured" })
+              : checkGitRemoteAccess(projectPath, gitPath),
+            noPath
+              ? Promise.resolve({ status: "error" as const, message: "No project path configured" })
+              : checkLocalPath(projectPath),
+            noPath
+              ? Promise.resolve({ status: "warning" as const, message: "No project path configured" })
+              : checkDiskSpace(projectPath),
+            noPath
+              ? Promise.resolve({ status: "warning" as const, message: "No project path configured" })
+              : checkDependencies(projectPath),
+          ]);
+
+          let healthStatus: "healthy" | "warning" | "error" = "healthy";
+          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
+            healthStatus = "error";
+          } else if (
+            diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
+            dependenciesCheck.status === "warning" || dependenciesCheck.status === "error"
+          ) {
+            healthStatus = "warning";
+          }
+
+          // Count active worktrees (subtract 1 for main worktree)
+          let activeWorktrees = 0;
+          if (projectPath) {
+            try {
+              const worktrees = await listWorktrees(config.git, { cwd: projectPath });
+              activeWorktrees = Math.max(0, worktrees.length - 1);
+            } catch {
+              // listWorktrees failed — leave as 0
+            }
+          }
+
+          // Job stats for this repo
+          const repoJobs = store.list().filter(j => j.repo === repo);
+          const totalJobs = repoJobs.length;
+          const successCount = repoJobs.filter(j => j.status === "success").length;
+          const successRate = totalJobs > 0 ? successCount / totalJobs : 0;
+          const totalCostUsd = repoJobs.reduce((sum, j) => sum + (j.totalCostUsd ?? 0), 0);
+
+          return {
+            repo,
+            path: projectPath,
+            health: {
+              status: healthStatus,
+              checks: {
+                gitRemoteAccess: gitRemoteCheck,
+                localPath: localPathCheck,
+                diskSpace: diskSpaceCheck,
+                dependencies: dependenciesCheck,
+              },
+              lastChecked: new Date().toISOString(),
+            },
+            activeWorktrees,
+            stats: {
+              totalJobs,
+              successRate,
+              totalCostUsd,
+            },
+          };
+        })
+      );
+
+      const response: RepositoriesResponse = {
+        repositories,
+        totalCount: repositories.length,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      return c.json(response);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch repositories: ${getErrorMessage(error)}` }, 500);
     }
   });
 

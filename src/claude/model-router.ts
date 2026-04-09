@@ -1,4 +1,4 @@
-import type { ClaudeCliConfig, ExecutionMode } from "../types/config.js";
+import type { ClaudeCliConfig, ExecutionMode, WorkerRole } from "../types/config.js";
 
 export type TaskType = "plan" | "phase" | "review" | "fallback";
 
@@ -75,6 +75,14 @@ const EXECUTION_MODE_MAX_TURNS: Record<ExecutionMode, number> = {
 };
 
 /**
+ * Worker role specific disallowed tools mapping
+ */
+const WORKER_ROLE_DISALLOWED_TOOLS: Record<WorkerRole, string[]> = {
+  implementation: [],                    // Implementation workers can use all tools
+  review: ["Write", "Edit", "Bash"],    // Review workers blocked from modifying files
+};
+
+/**
  * Resolves maxTurns based on execution mode
  */
 export function resolveMaxTurnsForMode(
@@ -92,15 +100,26 @@ export function resolveMaxTurnsForMode(
 
 /**
  * Creates a copy of ClaudeCliConfig with the model set for the given task type and execution mode.
+ * Optionally includes disallowedTools based on worker role.
  */
 export function configForTaskWithMode(
   config: ClaudeCliConfig,
   taskType: TaskType,
-  executionMode: ExecutionMode
-): ClaudeCliConfig {
-  return {
+  executionMode: ExecutionMode,
+  workerRole?: WorkerRole
+): ClaudeCliConfig & { disallowedTools?: string[] } {
+  const baseConfig = {
     ...config,
     model: resolveModelWithExecutionMode(config, taskType, executionMode),
     maxTurns: resolveMaxTurnsForMode(config, executionMode),
   };
+
+  if (workerRole) {
+    return {
+      ...baseConfig,
+      disallowedTools: WORKER_ROLE_DISALLOWED_TOOLS[workerRole],
+    };
+  }
+
+  return baseConfig;
 }

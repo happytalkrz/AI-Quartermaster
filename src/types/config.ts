@@ -4,6 +4,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export type Locale = "ko" | "en";
 export type ReviewFailAction = "block" | "warn" | "retry";
 export type MergeMethod = "merge" | "squash" | "rebase";
+export type WorkerRole = "implementation" | "review";
 
 export interface RetryConfig {
   maxRetries: number;

@@ -414,6 +414,27 @@ export class JobQueue {
   }
 
   /**
+   * Sets the per-project concurrency limit for the given repo at runtime.
+   * Pass null to remove the project-specific limit.
+   */
+  setProjectConcurrency(repo: string, limit: number | null): void {
+    if (limit !== null && (limit <= 0 || !Number.isInteger(limit))) {
+      throw new Error("Project concurrency limit must be a positive integer");
+    }
+
+    if (limit === null) {
+      this.projectConcurrency.delete(repo);
+      logger.info(`Project concurrency limit removed for ${repo}`);
+    } else {
+      this.projectConcurrency.set(repo, limit);
+      logger.info(`Project concurrency limit for ${repo} set to ${limit}`);
+    }
+
+    // Trigger immediate processing in case capacity increased
+    this.processNext();
+  }
+
+  /**
    * Returns queue status.
    */
   getStatus(): { pending: number; running: number; concurrency: number } {

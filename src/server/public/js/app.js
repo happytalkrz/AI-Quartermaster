@@ -484,6 +484,8 @@ function deleteProject(id) {
    ══════════════════════════════════════════════════════════════ */
 var es = null;
 var reconnectTimer = null;
+var reconnectDelay = 1000;
+var reconnectAttempts = 0;
 
 function setConnState(state) {
   var dot = document.getElementById('conn-dot');
@@ -519,6 +521,8 @@ function connectSSE() {
   es.onopen = function() {
     setConnState('connected');
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectDelay = 1000;
+    reconnectAttempts = 0;
   };
   es.onmessage = function(e) {
     try { handleData(JSON.parse(e.data)); } catch (_) {}
@@ -526,7 +530,9 @@ function connectSSE() {
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
-    reconnectTimer = setTimeout(connectSSE, 4000);
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   };
 }
 
@@ -727,6 +733,15 @@ loadVersionInfo();
 initProjectSelection();
 
 connectSSE();
+
+// 탭 활성화 시 SSE 재연결
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && (!es || es.readyState === EventSource.CLOSED)) {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    reconnectDelay = 1000;
+    connectSSE();
+  }
+});
 
 // 글로벌 함수로 노출 (HTML onclick에서 호출 가능하도록)
 /* ══════════════════════════════════════════════════════════════

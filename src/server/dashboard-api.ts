@@ -42,6 +42,7 @@ let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
 const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
 const CLIENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const MAX_SSE_CLIENTS = 50; // Maximum concurrent SSE connections
 
 function removeStaleClients(): void {
   const now = Date.now();
@@ -57,6 +58,27 @@ function removeStaleClients(): void {
     try {
       const client = sseClients.get(clientId);
       client?.controller.close();
+    } catch {
+      // Ignore errors when closing already closed streams
+    }
+    sseClients.delete(clientId);
+  }
+}
+
+export function getSSEClientCount(): number {
+  return sseClients.size;
+}
+
+function evictOldestClients(targetCount: number): void {
+  if (sseClients.size <= targetCount) return;
+
+  // Sort by connectedAt ascending (oldest first)
+  const sorted = [...sseClients.entries()].sort(([, a], [, b]) => a.connectedAt - b.connectedAt);
+  const toEvict = sorted.slice(0, sseClients.size - targetCount);
+
+  for (const [clientId, client] of toEvict) {
+    try {
+      client.controller.close();
     } catch {
       // Ignore errors when closing already closed streams
     }
@@ -890,6 +912,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
     const stream = new ReadableStream({
       start(controller) {
+        // Enforce connection limit — evict oldest clients before registering new one
+        if (sseClients.size >= MAX_SSE_CLIENTS) {
+          evictOldestClients(MAX_SSE_CLIENTS - 1);
+        }
+
         // Register client with timestamps
         const now = Date.now();
         sseClients.set(clientId, {

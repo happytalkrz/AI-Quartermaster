@@ -8,7 +8,9 @@ AI 병참부는 에러를 다음과 같이 분류하여 관리합니다:
 
 | 에러 타입 | 설명 | 감지 키워드 |
 |-----------|------|-------------|
-| `TS_ERROR` | TypeScript 타입 에러 | `ts1`, `ts2`, `type error`, `cannot find name` |
+| `TS_ERROR` | TypeScript 타입 에러 | `ts1`, `ts2`, `type error`, `cannot find name`, `property does not exist` |
+| `RATE_LIMIT` | API 요청 제한 초과 | `rate limit`, `too many requests`, `x-ratelimit`, `429` |
+| `PROMPT_TOO_LONG` | 프롬프트 토큰 한도 초과 | `prompt is too long`, `prompt too long`, `context length`, `token limit` |
 | `TIMEOUT` | 시간 초과 | `timeout`, `timed out`, `sigterm` |
 | `CLI_CRASH` | CLI 도구 크래시 | `enoent`, `spawn`, `cli_crash`, `exited with code` |
 | `VERIFICATION_FAILED` | 검증 실패 | `tests failed`, `lint`, `verification` |

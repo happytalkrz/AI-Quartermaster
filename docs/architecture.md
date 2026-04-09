@@ -906,7 +906,63 @@ interface FailureLog {
 
 ---
 
-## 8. 기술 스택 요약
+## 8. 소스 모듈 구조
+
+```
+src/
+  cli.ts              # CLI 진입점 (aqm 명령어)
+  pipeline/           # 상태머신 기반 파이프라인
+    orchestrator.ts     # thin 오케스트레이터 (상태 전이 조율)
+    core-loop.ts        # 메인 실행 루프
+    phase-executor.ts   # Phase 단위 Claude 실행
+    plan-generator.ts   # 계획 생성 (Claude 호출)
+    pipeline-phases.ts  # Phase 실행 로직
+    pipeline-review.ts  # 3라운드 리뷰 실행
+    pipeline-publish.ts # Draft PR 생성
+    error-classifier.ts # 에러 분류 (TS_ERROR, RATE_LIMIT 등)
+    phase-retry.ts      # Phase 실패 재시도
+    ...                 # 기타 파이프라인 헬퍼
+  queue/              # 잡 큐 (동시성, stuck 감지, JSON 영속화)
+  safety/             # 안전장치
+    label-filter.ts     # 라벨 기반 필터
+    sensitive-path-guard.ts  # 민감 경로 보호
+    change-limit-guard.ts    # 변경 파일 수 제한
+    timeout-manager.ts  # 타임아웃 관리
+    base-branch-guard.ts     # 베이스 브랜치 보호
+    rule-engine.ts      # 규칙 엔진
+  config/             # YAML 로더, Zod 검증, hot reload
+  types/              # 전체 타입 정의
+  claude/             # Claude CLI 브릿지
+  git/                # worktree, branch 관리
+  server/             # Hono 서버
+    webhook-server.ts   # GitHub Webhook 수신
+    dashboard-api.ts    # REST API + SSE
+    event-dispatcher.ts # SSE 이벤트 디스패처
+    health.ts           # 헬스체크 유틸
+  github/             # 이슈 페치, PR 생성
+  review/             # 리뷰 + 코드 간소화 + 분할 리뷰
+  notification/       # 이슈 코멘트 알림
+  prompt/             # 템플릿 렌더러
+  store/              # 영속성 레이어 (SQLite 기반 DB)
+    database.ts         # DB 연결 및 마이그레이션
+    queries.ts          # 통계/비용 쿼리
+  hooks/              # 이벤트 훅 시스템
+    hook-registry.ts    # 훅 등록 관리
+    hook-executor.ts    # 훅 실행기
+    pattern-store.ts    # 패턴 기반 훅 저장소
+  learning/           # 실행 결과 학습 및 패턴 수집
+  tasks/              # 작업 추상화 레이어
+    aqm-task.ts         # AQM 내부 작업
+    claude-task.ts      # Claude CLI 작업 래퍼
+  update/             # self-updater
+  polling/            # 이슈 폴러
+  utils/              # CLI 러너, 로거, slug
+  setup/              # 셋업 위자드
+```
+
+---
+
+## 9. 기술 스택 요약
 
 | 영역 | 기술 | 버전 요구사항 |
 |------|------|-------------|

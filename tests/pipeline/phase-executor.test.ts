@@ -612,4 +612,107 @@ describe("executePhase", () => {
     const commitCall = gitCommitCalls[0];
     expect(commitCall[1]).toContain("[#42] Phase 1: Phase One");
   });
+
+  // Partial success scenarios
+  it("returns partial success when some vitest test files fail and some pass", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log (getHeadHash in partial path)
+    const partialOutput = [
+      " ✓ tests/pipeline/orchestrator.test.ts (5 tests) 100ms",
+      " × tests/pipeline/phase-executor.test.ts (3 tests | 1 failed) 200ms",
+      "     × should handle error correctly",
+    ].join("\n");
+    mockRunShell.mockResolvedValue({ stdout: partialOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.errors).toEqual(["FAIL: tests/pipeline/phase-executor.test.ts"]);
+    expect(result.warnings).toContain("Test failed: should handle error correctly");
+    expect(result.commitHash).toBe("abc12345");
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("returns partial success without warnings when no individual failing test names captured", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log
+    const partialOutput = [
+      " ✓ tests/a.test.ts (3 tests) 50ms",
+      " FAIL  tests/b.test.ts",
+    ].join("\n");
+    mockRunShell.mockResolvedValue({ stdout: partialOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.errors).toEqual(["FAIL: tests/b.test.ts"]);
+    expect(result.warnings).toBeUndefined();
+    expect(result.commitHash).toBe("deadbeef");
+  });
+
+  it("returns partial success when tsc has errors in specific files", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "cafebabe", stderr: "", exitCode: 0 }); // git log
+    const tscOutput = "src/pipeline/phase-executor.ts(39,3): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.";
+    mockRunShell.mockResolvedValue({ stdout: tscOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors![0]).toContain("src/pipeline/phase-executor.ts");
+    expect(result.errors![0]).toContain("TS2345");
+    expect(result.commitHash).toBe("cafebabe");
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it("returns partial success with errors from multiple tsc-errored files", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "beefdead", stderr: "", exitCode: 0 }); // git log
+    const tscOutput = [
+      "src/foo.ts(10,5): error TS2345: Type mismatch.",
+      "src/bar.ts(5,1): error TS1005: ';' expected.",
+      "src/bar.ts(20,3): error TS2304: Cannot find name 'x'.",
+    ].join("\n");
+    mockRunShell.mockResolvedValue({ stdout: tscOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.errors).toHaveLength(3);
+    expect(result.errors!.some(e => e.startsWith("src/foo.ts:"))).toBe(true);
+    expect(result.errors!.filter(e => e.startsWith("src/bar.ts:")).length).toBe(2);
+  });
+
+  it("falls through to full failure when vitest output has no passed files", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    // All files failed — no passed files, so not partial
+    const allFailedOutput = [
+      " × tests/a.test.ts (3 tests | 3 failed) 100ms",
+      " × tests/b.test.ts (2 tests | 2 failed) 200ms",
+      "     × test one",
+    ].join("\n");
+    mockRunShell.mockResolvedValue({ stdout: allFailedOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(false);
+    expect(result.partial).toBeUndefined();
+    expect(result.errorCategory).toBe("VERIFICATION_FAILED");
+  });
 });

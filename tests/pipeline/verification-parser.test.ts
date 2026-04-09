@@ -82,6 +82,13 @@ describe("parseVitestOutput", () => {
     expect(result.failedFiles).toContain("tests/pipeline/phase-executor.test.ts");
   });
 
+  it("detects ✗ prefix for failed file", () => {
+    const output = " ✗ tests/pipeline/phase-executor.test.ts (3 tests | 1 failed) 200ms";
+    const result = parseVitestOutput(output);
+    expect(result.hasFailures).toBe(true);
+    expect(result.failedFiles).toContain("tests/pipeline/phase-executor.test.ts");
+  });
+
   it("detects PASS prefix for passed file", () => {
     const output = " PASS  tests/pipeline/orchestrator.test.ts";
     const result = parseVitestOutput(output);
@@ -91,6 +98,12 @@ describe("parseVitestOutput", () => {
 
   it("detects ✓ prefix for passed file", () => {
     const output = " ✓ tests/pipeline/orchestrator.test.ts (5 tests) 350ms";
+    const result = parseVitestOutput(output);
+    expect(result.passedFiles).toContain("tests/pipeline/orchestrator.test.ts");
+  });
+
+  it("detects ✅ prefix for passed file", () => {
+    const output = " ✅ tests/pipeline/orchestrator.test.ts (5 tests) 350ms";
     const result = parseVitestOutput(output);
     expect(result.passedFiles).toContain("tests/pipeline/orchestrator.test.ts");
   });

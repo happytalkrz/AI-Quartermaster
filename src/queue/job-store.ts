@@ -671,9 +671,23 @@ export class JobStore extends EventEmitter {
     const completed = allJobs
       .filter(j => j.status === "success" || j.status === "failure" || j.status === "cancelled")
       .sort((a, b) => {
-        const ta = a.completedAt ? new Date(a.completedAt).getTime() : new Date(a.createdAt).getTime();
-        const tb = b.completedAt ? new Date(b.completedAt).getTime() : new Date(b.createdAt).getTime();
-        return ta - tb; // oldest first
+        // LRU: lastUpdatedAt 기준, 없으면 completedAt → createdAt 순으로 fallback
+        const ta = a.lastUpdatedAt
+          ? new Date(a.lastUpdatedAt).getTime()
+          : a.completedAt
+            ? new Date(a.completedAt).getTime()
+            : new Date(a.createdAt).getTime();
+        const tb = b.lastUpdatedAt
+          ? new Date(b.lastUpdatedAt).getTime()
+          : b.completedAt
+            ? new Date(b.completedAt).getTime()
+            : new Date(b.createdAt).getTime();
+
+        // 동일한 timestamp인 경우 createdAt로 tie-break (더 오래된 것 먼저)
+        if (ta === tb) {
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        }
+        return ta - tb; // LRU: 가장 오래전에 사용된 것 먼저
       });
 
     const excess = allJobs.length - maxJobs;

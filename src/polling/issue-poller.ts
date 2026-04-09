@@ -28,6 +28,7 @@ export class IssuePoller {
   private selfUpdater: SelfUpdater | undefined;
   private onUpdateAvailable?: UpdateAvailableCallback;
   private pollingErrors = new Map<string, { count: number; lastErrorAt: number }>(); // repo -> error state
+  private consecutiveIdleCycles = 0; // 연속 idle 사이클 카운터
 
   constructor(
     config: AQConfig,
@@ -62,12 +63,21 @@ export class IssuePoller {
     return this.running;
   }
 
+  getCurrentPollingInterval(): number {
+    const { pollingIntervalMs, idlePollingIntervalMs, idleThresholdCycles } = this.config.general;
+    if (this.consecutiveIdleCycles >= idleThresholdCycles) {
+      return idlePollingIntervalMs;
+    }
+    return pollingIntervalMs;
+  }
+
   private scheduleNext(): void {
     if (!this.running) return;
+    const interval = this.getCurrentPollingInterval();
     this.timer = setTimeout(async () => {
       await this.poll();
       this.scheduleNext();
-    }, this.config.general.pollingIntervalMs);
+    }, interval);
   }
 
   private async poll(): Promise<void> {
@@ -75,6 +85,7 @@ export class IssuePoller {
     const triggerLabels = this.config.safety.allowedLabels;
     const ghPath = this.config.commands.ghCli.path;
     const ghTimeout = this.config.commands.ghCli.timeout;
+    let foundNewActivity = false;
 
     logger.debug(`폴링 사이클 시작 — 프로젝트 ${projects.length}개, 레이블: [${triggerLabels.join(", ")}]`);
 
@@ -107,7 +118,10 @@ export class IssuePoller {
       const projectTimeout = p.commands?.ghCli?.timeout ?? ghTimeout;
       return triggerLabels.map(l => this.pollProjectLabel(p.repo, l, ghPath, projectTimeout));
     });
-    await Promise.allSettled(issueTasks);
+    const issueResults = await Promise.allSettled(issueTasks);
+    if (issueResults.some(r => r.status === "fulfilled" && r.value === true)) {
+      foundNewActivity = true;
+    }
 
     // PR 충돌 체크 (활성 프로젝트만)
     const prTasks = activeProjects.map(p => {
@@ -117,7 +131,21 @@ export class IssuePoller {
     await Promise.allSettled(prTasks);
 
     // 2. Failed job 감지 및 재큐잉
-    await this.pollFailedJobs();
+    const hadFailedJobActivity = await this.pollFailedJobs();
+    if (hadFailedJobActivity) {
+      foundNewActivity = true;
+    }
+
+    // idle 카운터 업데이트
+    if (foundNewActivity) {
+      this.consecutiveIdleCycles = 0;
+    } else {
+      this.consecutiveIdleCycles++;
+      const { idleThresholdCycles, idlePollingIntervalMs } = this.config.general;
+      if (this.consecutiveIdleCycles === idleThresholdCycles) {
+        logger.info(`idle 상태 감지 (${idleThresholdCycles}회 연속) — 폴링 간격 ${idlePollingIntervalMs}ms로 전환`);
+      }
+    }
   }
 
   private async checkForUpdates(): Promise<void> {
@@ -142,8 +170,9 @@ export class IssuePoller {
     label: string,
     ghPath: string,
     timeout: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     let issues: RawIssue[];
+    let enqueuedAny = false;
     try {
       const result = await runCli(
         ghPath,
@@ -161,7 +190,7 @@ export class IssuePoller {
       if (result.exitCode !== 0) {
         logger.warn(`이슈 목록 조회 실패 (${repo}, label=${label}): ${result.stderr || result.stdout}`);
         this.trackPollingFailure(repo, `이슈 목록 조회 실패 (exit ${result.exitCode})`);
-        return;
+        return false;
       }
 
       issues = JSON.parse(result.stdout) as RawIssue[];
@@ -171,7 +200,7 @@ export class IssuePoller {
       const errorMsg = getErrorMessage(err);
       logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${errorMsg}`);
       this.trackPollingFailure(repo, errorMsg);
-      return;
+      return false;
     }
 
     logger.debug(`${repo} — 레이블 "${label}" 오픈 이슈 ${issues.length}개 조회됨`);
@@ -198,7 +227,9 @@ export class IssuePoller {
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
       this.queue.enqueue(issue.number, repo);
+      enqueuedAny = true;
     }
+    return enqueuedAny;
   }
 
   private async checkProjectPrConflicts(repo: string, ghPath: string, timeout: number): Promise<void> {
@@ -280,17 +311,18 @@ ${filesList}베이스 브랜치의 변경으로 인해 이 PR에서 머지 충�
 _자동 생성된 알림 — AQM PR 모니터링_`;
   }
 
-  private async pollFailedJobs(): Promise<void> {
+  private async pollFailedJobs(): Promise<boolean> {
     try {
       const failedJobs = this.store.findFailedJobsForRetry();
 
       if (failedJobs.length === 0) {
         logger.debug("재시도할 실패 job 없음");
-        return;
+        return false;
       }
 
       logger.info(`실패 job ${failedJobs.length}개 발견, 재큐잉 시작`);
 
+      let enqueuedAny = false;
       for (const job of failedJobs) {
         logger.info(`실패 job 재큐잉 — #${job.issueNumber} "${job.repo}" (job: ${job.id})`);
 
@@ -299,12 +331,15 @@ _자동 생성된 알림 — AQM PR 모니터링_`;
 
         if (newJob) {
           logger.info(`재큐잉 성공 — 새 job: ${newJob.id}`);
+          enqueuedAny = true;
         } else {
           logger.warn(`재큐잉 실패 — #${job.issueNumber} (${job.repo})`);
         }
       }
+      return enqueuedAny;
     } catch (err: unknown) {
       logger.warn(`Failed job 폴링 중 오류: ${getErrorMessage(err)}`);
+      return false;
     }
   }
 

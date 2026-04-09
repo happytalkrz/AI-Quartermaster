@@ -854,4 +854,87 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(400, "test/repo");
     });
   });
+
+  describe("동적 폴링 간격 (idle 상태 추적)", () => {
+    it("getCurrentPollingInterval - idle 임계값 미만이면 기본 간격 반환", () => {
+      const config = makeConfig();
+      config.general.pollingIntervalMs = 60000;
+      config.general.idlePollingIntervalMs = 300000;
+      config.general.idleThresholdCycles = 3;
+      const p = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      expect(p.getCurrentPollingInterval()).toBe(60000);
+    });
+
+    it("getCurrentPollingInterval - idle 임계값 도달 시 idle 간격 반환", async () => {
+      const config = makeConfig();
+      config.general.pollingIntervalMs = 60000;
+      config.general.idlePollingIntervalMs = 300000;
+      config.general.idleThresholdCycles = 2;
+      const p = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });
+      mockListOpenPrs.mockResolvedValue([]);
+
+      // 2회 연속 idle 사이클
+      await (p as any).poll();
+      await (p as any).poll();
+
+      expect(p.getCurrentPollingInterval()).toBe(300000);
+    });
+
+    it("새 이슈 발견 시 idle 카운터 리셋", async () => {
+      const config = makeConfig();
+      config.general.pollingIntervalMs = 60000;
+      config.general.idlePollingIntervalMs = 300000;
+      config.general.idleThresholdCycles = 1;
+      config.safety.allowedLabels = ["aqm:ready"];
+      const p = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      mockListOpenPrs.mockResolvedValue([]);
+
+      // 첫 사이클: idle (이슈 없음)
+      mockRunCli.mockResolvedValueOnce({ stdout: "[]", stderr: "", exitCode: 0 });
+      await (p as any).poll();
+      expect(p.getCurrentPollingInterval()).toBe(300000); // idle 전환
+
+      // 두번째 사이클: 새 이슈 발견 → idle 카운터 리셋
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockRunCli.mockResolvedValueOnce({
+        stdout: JSON.stringify([{ number: 42, title: "New issue", labels: [] }]),
+        stderr: "",
+        exitCode: 0
+      });
+      mockQueue.enqueue.mockReturnValue({ id: "job-1" });
+      await (p as any).poll();
+
+      expect(p.getCurrentPollingInterval()).toBe(60000); // 기본 간격으로 복귀
+    });
+
+    it("failed job 재큐잉 시 idle 카운터 리셋", async () => {
+      const failedJob = { id: "job-old", issueNumber: 10, repo: "test/repo" };
+      mockStore.findFailedJobsForRetry.mockReturnValue([failedJob]);
+      mockQueue.enqueue.mockReturnValue({ id: "job-new" });
+
+      const config = makeConfig();
+      config.general.pollingIntervalMs = 60000;
+      config.general.idlePollingIntervalMs = 300000;
+      config.general.idleThresholdCycles = 1;
+      const p = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // 먼저 idle 상태로 진입 (failed job 없는 첫 사이클)
+      mockStore.findFailedJobsForRetry.mockReturnValueOnce([]);
+      mockRunCli.mockResolvedValueOnce({ stdout: "[]", stderr: "", exitCode: 0 });
+      mockListOpenPrs.mockResolvedValue([]);
+      await (p as any).poll();
+      expect(p.getCurrentPollingInterval()).toBe(300000);
+
+      // failed job 재큐잉 사이클
+      mockStore.findFailedJobsForRetry.mockReturnValueOnce([failedJob]);
+      mockRunCli.mockResolvedValueOnce({ stdout: "[]", stderr: "", exitCode: 0 });
+      await (p as any).poll();
+
+      expect(p.getCurrentPollingInterval()).toBe(60000); // idle 카운터 리셋
+    });
+  });
 });

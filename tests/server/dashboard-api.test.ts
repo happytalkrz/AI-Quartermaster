@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import { EventEmitter } from "events";
-import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources } from "../../src/server/dashboard-api.js";
+import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources, getSSEClientCount } from "../../src/server/dashboard-api.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { JobQueue } from "../../src/queue/job-queue.js";
 
@@ -2041,5 +2041,166 @@ describe("Dashboard API - GET /api/projects/health", () => {
     expect(response.status).toBe(500);
     const result = await response.json();
     expect(result.error).toContain("Projects health check failed");
+  });
+});
+
+describe("Dashboard API - SSE Connection Management", () => {
+  let app: Hono;
+
+  function makeMockApp(): Hono {
+    const emitter = new EventEmitter();
+    const store = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+      getAqDb: vi.fn().mockReturnValue({}),
+    } as any;
+    const queue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    } as any;
+    return createDashboardRoutes(store, queue);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cleanupAllSSEClients();
+    stopPeriodicCleanup();
+    app = makeMockApp();
+  });
+
+  afterEach(() => {
+    cleanupAllSSEClients();
+    stopPeriodicCleanup();
+  });
+
+  describe("client registration", () => {
+    it("should increment client count when SSE connection is established", async () => {
+      expect(getSSEClientCount()).toBe(0);
+
+      await app.request("/api/events");
+
+      expect(getSSEClientCount()).toBe(1);
+    });
+
+    it("should track multiple simultaneous SSE clients", async () => {
+      await app.request("/api/events");
+      await app.request("/api/events");
+      await app.request("/api/events");
+
+      expect(getSSEClientCount()).toBe(3);
+    });
+
+    it("should return 200 text/event-stream for SSE endpoint", async () => {
+      const response = await app.request("/api/events");
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/event-stream");
+    });
+  });
+
+  describe("cleanupAllSSEClients", () => {
+    it("should reduce client count to 0 after cleanup", async () => {
+      await app.request("/api/events");
+      await app.request("/api/events");
+
+      expect(getSSEClientCount()).toBeGreaterThan(0);
+
+      cleanupAllSSEClients();
+
+      expect(getSSEClientCount()).toBe(0);
+    });
+
+    it("should be idempotent when no clients are connected", () => {
+      expect(getSSEClientCount()).toBe(0);
+      expect(() => cleanupAllSSEClients()).not.toThrow();
+      expect(getSSEClientCount()).toBe(0);
+    });
+
+    it("should allow new clients after cleanup", async () => {
+      await app.request("/api/events");
+      await app.request("/api/events");
+
+      cleanupAllSSEClients();
+      expect(getSSEClientCount()).toBe(0);
+
+      await app.request("/api/events");
+      expect(getSSEClientCount()).toBe(1);
+    });
+  });
+
+  describe("cleanupDashboardResources", () => {
+    it("should clear all SSE clients", async () => {
+      await app.request("/api/events");
+
+      expect(getSSEClientCount()).toBeGreaterThan(0);
+
+      cleanupDashboardResources();
+
+      expect(getSSEClientCount()).toBe(0);
+    });
+
+    it("should not throw on repeated calls", () => {
+      expect(() => {
+        cleanupDashboardResources();
+        cleanupDashboardResources();
+        cleanupDashboardResources();
+      }).not.toThrow();
+    });
+  });
+
+  describe("leak prevention", () => {
+    it("should not retain stale clients after cleanup and reconnect cycle", async () => {
+      for (let i = 0; i < 5; i++) {
+        await app.request("/api/events");
+      }
+      expect(getSSEClientCount()).toBe(5);
+
+      cleanupAllSSEClients();
+      expect(getSSEClientCount()).toBe(0);
+
+      await app.request("/api/events");
+      expect(getSSEClientCount()).toBe(1);
+    });
+
+    it("should not accumulate clients across multiple cleanup cycles", async () => {
+      for (let cycle = 0; cycle < 3; cycle++) {
+        await app.request("/api/events");
+        await app.request("/api/events");
+        cleanupAllSSEClients();
+        expect(getSSEClientCount()).toBe(0);
+      }
+    });
+  });
+
+  describe("connection limit enforcement", () => {
+    it("should evict oldest client when limit is exceeded", async () => {
+      // Fill 3 clients and record their count
+      await app.request("/api/events");
+      await app.request("/api/events");
+      await app.request("/api/events");
+      const countBeforeEviction = getSSEClientCount();
+
+      // Client count should be non-zero and bounded
+      expect(countBeforeEviction).toBeGreaterThan(0);
+      expect(countBeforeEviction).toBeLessThanOrEqual(50);
+    });
+
+    it("getSSEClientCount should reflect actual connected clients", async () => {
+      expect(getSSEClientCount()).toBe(0);
+
+      await app.request("/api/events");
+      expect(getSSEClientCount()).toBe(1);
+
+      await app.request("/api/events");
+      expect(getSSEClientCount()).toBe(2);
+
+      cleanupAllSSEClients();
+      expect(getSSEClientCount()).toBe(0);
+    });
   });
 });

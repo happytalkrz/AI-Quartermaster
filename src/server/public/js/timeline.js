@@ -62,7 +62,7 @@ function renderTimelineModal(job) {
 
     // Gantt body
     '<div class="p-6">' +
-      renderGanttChart(phases, totalDurationMs) +
+      renderGanttChart(phases, totalDurationMs, job.startedAt ? new Date(job.startedAt) : null) +
     '</div>' +
 
     '</div>' +
@@ -73,7 +73,7 @@ function renderTimelineModal(job) {
    Gantt Chart
    ══════════════════════════════════════════════════════════════ */
 
-function renderGanttChart(phases, totalDurationMs) {
+function renderGanttChart(phases, totalDurationMs, epochStart) {
   if (!phases || phases.length === 0) {
     return '<div class="flex items-center justify-center py-16 text-outline text-sm">' +
       '<span class="material-symbols-outlined text-lg mr-2">hourglass_empty</span>No phase data available</div>';
@@ -99,7 +99,7 @@ function renderGanttChart(phases, totalDurationMs) {
   html += '<div class="space-y-4">';
   var cumulativeMs = 0;
   phases.forEach(function(phase) {
-    html += renderGanttPhaseRow(phase, cumulativeMs, totalDurationMs);
+    html += renderGanttPhaseRow(phase, epochStart, cumulativeMs, totalDurationMs);
     cumulativeMs += (phase.durationMs || 0);
   });
   html += '</div>';
@@ -133,7 +133,7 @@ function buildXAxis(totalDurationMs) {
    Phase Row
    ══════════════════════════════════════════════════════════════ */
 
-function renderGanttPhaseRow(phase, startMs, totalDurationMs) {
+function renderGanttPhaseRow(phase, epochStart, fallbackStartMs, totalDurationMs) {
   var phaseName = phase.name || 'Phase';
   var isSuccess = phase.success === true;
   var isFailed = phase.success === false;
@@ -143,8 +143,20 @@ function renderGanttPhaseRow(phase, startMs, totalDurationMs) {
   var cost = fmtCost(phase.costUsd);
 
   // Bar position (percentage of total)
-  var leftPct = (totalDurationMs > 0 && startMs > 0) ? (startMs / totalDurationMs * 100) : 0;
-  var widthPct = (totalDurationMs > 0 && hasDuration) ? (durationMs / totalDurationMs * 100) : 0;
+  var leftPct, widthPct;
+  if (epochStart && phase.startedAt) {
+    // Timestamp-based: position bar by actual wall-clock time
+    var phaseStartMs = new Date(phase.startedAt) - epochStart;
+    leftPct = totalDurationMs > 0 ? (phaseStartMs / totalDurationMs * 100) : 0;
+    var phaseWidthMs = phase.completedAt
+      ? (new Date(phase.completedAt) - new Date(phase.startedAt))
+      : durationMs;
+    widthPct = totalDurationMs > 0 ? (phaseWidthMs / totalDurationMs * 100) : 0;
+  } else {
+    // Fallback: legacy sequential durationMs-based positioning
+    leftPct = (totalDurationMs > 0 && fallbackStartMs > 0) ? (fallbackStartMs / totalDurationMs * 100) : 0;
+    widthPct = (totalDurationMs > 0 && hasDuration) ? (durationMs / totalDurationMs * 100) : 0;
+  }
 
   // Clamp: always show at least 0.5% width for visible phases
   leftPct = Math.min(Math.max(leftPct, 0), 100);

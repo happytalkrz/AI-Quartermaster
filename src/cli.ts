@@ -21,6 +21,16 @@ import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 
+function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const p of projects) {
+    if (p.concurrency !== undefined) {
+      result[p.repo] = p.concurrency;
+    }
+  }
+  return result;
+}
+
 interface CliArgs {
   command?: string;
   issue?: number;
@@ -214,6 +224,7 @@ async function startCommand(args: CliArgs): Promise<void> {
 
   const dataDir = resolve(aqRoot, "data");
   const store = new JobStore(dataDir);
+  const projectConcurrency = buildProjectConcurrency(effectiveConfig.projects ?? []);
   const queue = new JobQueue(store, effectiveConfig.general.concurrency, async (job) => {
     const jl = new JobLogger(store, job.id);
     try {
@@ -257,7 +268,7 @@ async function startCommand(args: CliArgs): Promise<void> {
       });
       return { error: errorMsg };
     }
-  }, effectiveConfig.general.stuckTimeoutMs);
+  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined);
 
   // Recover jobs from previous session
   queue.recover();
@@ -506,7 +517,8 @@ async function planCommand(args: CliArgs): Promise<void> {
     const { JobStore } = await import("./queue/job-store.js");
     const { JobQueue } = await import("./queue/job-queue.js");
     const store = new JobStore(dataDir);
-    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs);
+    const planProjectConcurrency = buildProjectConcurrency(config.projects ?? []);
+    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs, Object.keys(planProjectConcurrency).length > 0 ? planProjectConcurrency : undefined);
 
     let enqueued = 0;
     for (const batch of plan.executionOrder) {

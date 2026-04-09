@@ -17,11 +17,20 @@ import {
   extractValidatedSetupValues,
   createPostProcessingContext
 } from "./orchestrator-helpers.js";
+import { HookRegistry } from "../hooks/hook-registry.js";
+import { HookExecutor } from "../hooks/hook-executor.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { config, aqRoot } = input;
   const startTime = Date.now();
+
+  // Initialize hook registry and executor from config
+  const hookRegistry = new HookRegistry(config.hooks ?? {});
+  const hookExecutor = new HookExecutor({
+    repo: input.repo,
+    issue_number: String(input.issueNumber),
+  });
 
   // Initialize pipeline state
   const runtime = await initializePipelineState(input, config);
@@ -64,7 +73,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       setupResult.dataDir,
       envResult,
       setupResult.timer,
-      mode
+      mode,
+      hookRegistry,
+      hookExecutor
     );
 
     checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
@@ -80,6 +91,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       checkpointFn,
       jobLogger: input.jobLogger
     });
+    postProcessingContext.hookRegistry = hookRegistry;
+    postProcessingContext.hookExecutor = hookExecutor;
 
     const finalResult = await executePostProcessingPhases(
       postProcessingContext,

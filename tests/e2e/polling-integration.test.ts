@@ -883,4 +883,123 @@ describe("E2E: polling integration", () => {
 
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
+
+  // -------------------------------------------------------------------------
+  // Dynamic polling interval tests
+  // -------------------------------------------------------------------------
+
+  // 21. idle 상태 감지: 연속 idle 사이클이 임계값에 도달하면 idle 간격 반환
+  it("switches to idle polling interval after consecutive idle cycles reach threshold", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+
+    const config = makeConfig();
+    config.general.idleThresholdCycles = 3;
+    config.general.idlePollingIntervalMs = 500;
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(config, store as any, queue as any);
+
+    // 초기 상태: 일반 간격
+    expect((poller as any).getCurrentPollingInterval()).toBe(config.general.pollingIntervalMs);
+
+    // 임계값 미만 사이클 — 아직 일반 간격
+    await (poller as any).poll();
+    await (poller as any).poll();
+    expect((poller as any).consecutiveIdleCycles).toBe(2);
+    expect((poller as any).getCurrentPollingInterval()).toBe(config.general.pollingIntervalMs);
+
+    // 임계값 도달 — idle 간격으로 전환
+    await (poller as any).poll();
+    expect((poller as any).consecutiveIdleCycles).toBe(3);
+    expect((poller as any).getCurrentPollingInterval()).toBe(500);
+  });
+
+  // 22. 간격 전환: idle 이후 추가 사이클에서도 idle 간격 유지
+  it("maintains idle polling interval for subsequent idle cycles beyond threshold", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+
+    const config = makeConfig();
+    config.general.idleThresholdCycles = 2;
+    config.general.idlePollingIntervalMs = 600;
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(config, store as any, queue as any);
+
+    // 임계값 도달
+    await (poller as any).poll();
+    await (poller as any).poll();
+    expect((poller as any).getCurrentPollingInterval()).toBe(600);
+
+    // 임계값 초과 이후에도 idle 간격 유지
+    await (poller as any).poll();
+    await (poller as any).poll();
+    expect((poller as any).consecutiveIdleCycles).toBe(4);
+    expect((poller as any).getCurrentPollingInterval()).toBe(600);
+  });
+
+  // 23. 활동 재개 시 복귀: 새 이슈 감지 시 idle 카운터 리셋, 일반 간격으로 복귀
+  it("resets idle counter and restores normal polling interval when new activity is detected", async () => {
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+
+    const config = makeConfig();
+    config.general.idleThresholdCycles = 2;
+    config.general.idlePollingIntervalMs = 600;
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    poller = new IssuePoller(config, store as any, queue as any);
+
+    // idle 상태로 진입
+    await (poller as any).poll();
+    await (poller as any).poll();
+    expect((poller as any).getCurrentPollingInterval()).toBe(600);
+
+    // 새 이슈 감지 → 활동 재개
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([{ number: 200, title: "New task", labels: ["aq-task"] }]),
+      stderr: "",
+      exitCode: 0,
+    });
+    await (poller as any).poll();
+
+    // 카운터 리셋, 일반 간격으로 복귀
+    expect((poller as any).consecutiveIdleCycles).toBe(0);
+    expect((poller as any).getCurrentPollingInterval()).toBe(config.general.pollingIntervalMs);
+  });
+
+  // 24. 활동 재개: failed job 재큐잉도 활동으로 인정해 idle 카운터 리셋
+  it("resets idle counter when failed job re-queuing counts as activity", async () => {
+    const oldFailureTime = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+    const store = makeJobStore();
+    const queue = makeJobQueue(store);
+
+    const config = makeConfig();
+    config.general.idleThresholdCycles = 1;
+    config.general.idlePollingIntervalMs = 800;
+
+    mockRunCli.mockResolvedValue({ stdout: makeGhIssueListResponse([]), stderr: "", exitCode: 0 });
+
+    // 첫 번째 poll: failed job 없음 + 이슈 없음 → idle 상태 진입
+    store.findFailedJobsForRetry.mockReturnValueOnce([]);
+    poller = new IssuePoller(config, store as any, queue as any);
+    await (poller as any).poll();
+    expect((poller as any).consecutiveIdleCycles).toBe(1);
+    expect((poller as any).getCurrentPollingInterval()).toBe(800);
+
+    // 두 번째 poll: failed job 반환 → 재큐잉 활동 감지
+    store.findFailedJobsForRetry.mockReturnValueOnce([
+      { id: "aq-110-0", issueNumber: 110, repo: "test/repo", status: "failure", createdAt: new Date().toISOString(), completedAt: oldFailureTime }
+    ]);
+
+    await (poller as any).poll();
+
+    // failed job 재큐잉으로 활동 감지 → 카운터 리셋
+    expect((poller as any).consecutiveIdleCycles).toBe(0);
+    expect((poller as any).getCurrentPollingInterval()).toBe(config.general.pollingIntervalMs);
+  });
 });

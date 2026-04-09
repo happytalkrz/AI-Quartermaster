@@ -40,6 +40,57 @@ function renderJobListItem(job, isSelected) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Render Kanban Card
+   ══════════════════════════════════════════════════════════════ */
+function renderKanbanCard(job) {
+  var color = statusColor(job.status);
+  var isRunning = job.status === 'running';
+  var dur = fmtDuration(job);
+  var pct = (typeof job.progress === 'number') ? job.progress : 0;
+  var isSelected = job.id === selectedJobId;
+
+  var issueTitle = job.issueTitle || '';
+  var truncatedTitle = issueTitle.length > 50 ? issueTitle.substring(0, 50) + '...' : issueTitle;
+
+  // Status badge
+  var badgeHtml;
+  if (isRunning) {
+    badgeHtml = '<span class="text-[10px] bg-[#58a6ff]/10 text-[#58a6ff] border border-[#58a6ff]/20 px-1.5 py-0.5 rounded uppercase font-bold flex items-center gap-1"><span class="w-1.5 h-1.5 bg-[#58a6ff] rounded-full animate-pulse"></span>Running</span>';
+  } else {
+    badgeHtml = '<span class="text-[10px] px-1.5 py-0.5 rounded uppercase font-bold" style="background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33">' + statusLabel(job.status, job) + '</span>';
+  }
+
+  // Progress bar
+  var progressHtml = '';
+  if (pct > 0 || isRunning) {
+    var barColor = job.status === 'failure' ? '#f85149' : job.status === 'success' ? '#3fb950' : '#58a6ff';
+    var barWidth = job.status === 'success' ? '100' : pct;
+    progressHtml = '<div class="h-1 bg-surface-variant rounded-full overflow-hidden mt-2">' +
+      '<div class="h-full rounded-full transition-all duration-500' + (isRunning ? ' relative overflow-hidden' : '') + '" style="width:' + barWidth + '%;background:' + barColor + '">' +
+      (isRunning ? '<div class="absolute inset-0 shimmer-bar"></div>' : '') +
+      '</div></div>';
+  }
+
+  var borderStyle = isSelected
+    ? 'ring-2 ring-primary border-primary/30'
+    : 'ring-1 ring-outline-variant/10 hover:ring-outline-variant/30';
+  var bgStyle = isSelected ? 'bg-surface-container-high' : 'bg-surface-container-low hover:bg-surface-container';
+
+  return '<div class="' + bgStyle + ' ' + borderStyle + ' p-3 rounded-xl cursor-pointer transition-colors" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+    '<div class="flex justify-between items-start gap-2">' +
+      '<span class="text-xs font-bold text-on-surface/80 shrink-0">#' + job.issueNumber + '</span>' +
+      badgeHtml +
+    '</div>' +
+    (truncatedTitle ? '<div class="text-xs text-on-surface mt-1 leading-snug">' + esc(truncatedTitle) + '</div>' : '') +
+    progressHtml +
+    '<div class="flex justify-between items-center mt-2">' +
+      '<span class="text-[10px] text-outline font-mono truncate">' + esc(job.repo) + '</span>' +
+      '<span class="text-[10px] text-outline shrink-0">' + (dur || relativeTime(job.createdAt)) + '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Render Job Detail
    ══════════════════════════════════════════════════════════════ */
 function renderJobDetail(job) {

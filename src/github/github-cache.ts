@@ -109,3 +109,59 @@ export function evictExpired(): number {
   }
   return count;
 }
+
+/**
+ * memoize 옵션
+ * @property ttl TTL(밀리초). 지정하지 않으면 만료 없음
+ * @property keyFn 캐시 키 생성 함수. 기본값: JSON.stringify(args)
+ */
+export interface MemoizeOptions<TArgs extends unknown[]> {
+  ttl?: number;
+  keyFn?: (...args: TArgs) => string;
+}
+
+/**
+ * async 함수를 TTL 기반 캐시로 memoize합니다.
+ * 에러는 캐시하지 않으며, 동일 키의 동시 호출은 단일 실행으로 합칩니다.
+ * @param fn memoize할 async 함수
+ * @param options memoize 옵션 (ttl, keyFn)
+ * @returns memoize된 async 함수
+ */
+export function memoize<TArgs extends unknown[], TReturn>(
+  fn: (...args: TArgs) => Promise<TReturn>,
+  options?: MemoizeOptions<TArgs>,
+): (...args: TArgs) => Promise<TReturn> {
+  const inFlight = new Map<string, Promise<TReturn>>();
+
+  return (...args: TArgs): Promise<TReturn> => {
+    const key =
+      options?.keyFn != null
+        ? options.keyFn(...args)
+        : JSON.stringify(args);
+
+    const cached = getCached<TReturn>(key);
+    if (cached !== undefined) {
+      return Promise.resolve(cached);
+    }
+
+    const existing = inFlight.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const promise = fn(...args).then(
+      (result) => {
+        inFlight.delete(key);
+        setCached(key, result, options?.ttl);
+        return result;
+      },
+      (err: unknown) => {
+        inFlight.delete(key);
+        throw err;
+      },
+    );
+
+    inFlight.set(key, promise);
+    return promise;
+  };
+}

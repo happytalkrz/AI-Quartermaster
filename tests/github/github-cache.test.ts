@@ -6,7 +6,8 @@ import {
   getCacheSize,
   hasCached,
   deleteCached,
-  evictExpired
+  evictExpired,
+  memoize,
 } from "../../src/github/github-cache.js";
 
 describe("github-cache", () => {
@@ -258,6 +259,108 @@ describe("github-cache", () => {
 
     it("should return 0 on empty cache", () => {
       expect(evictExpired()).toBe(0);
+    });
+  });
+
+  describe("memoize", () => {
+    beforeEach(() => {
+      clearCache();
+    });
+
+    it("should return cached result on second call", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        return { id, name: "item" };
+      });
+
+      const r1 = await fn(1);
+      const r2 = await fn(1);
+
+      expect(r1).toEqual({ id: 1, name: "item" });
+      expect(r2).toEqual({ id: 1, name: "item" });
+      expect(callCount).toBe(1);
+    });
+
+    it("should call fn separately for different args", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        return id * 2;
+      });
+
+      await fn(1);
+      await fn(2);
+      await fn(1);
+
+      expect(callCount).toBe(2);
+    });
+
+    it("should not cache errors", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        if (callCount === 1) throw new Error("transient error");
+        return id;
+      });
+
+      await expect(fn(1)).rejects.toThrow("transient error");
+      const result = await fn(1);
+      expect(result).toBe(1);
+      expect(callCount).toBe(2);
+    });
+
+    it("should deduplicate concurrent in-flight calls", async () => {
+      let callCount = 0;
+      const fn = memoize(async (id: number) => {
+        callCount++;
+        await Promise.resolve();
+        return id;
+      });
+
+      const [r1, r2, r3] = await Promise.all([fn(5), fn(5), fn(5)]);
+
+      expect(r1).toBe(5);
+      expect(r2).toBe(5);
+      expect(r3).toBe(5);
+      expect(callCount).toBe(1);
+    });
+
+    it("should respect TTL option", async () => {
+      vi.useFakeTimers();
+      try {
+        let callCount = 0;
+        const fn = memoize(async () => {
+          callCount++;
+          return "value";
+        }, { ttl: 1000 });
+
+        await fn();
+        vi.advanceTimersByTime(1001);
+        await fn();
+
+        expect(callCount).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should use custom keyFn", async () => {
+      let callCount = 0;
+      const fn = memoize(
+        async (a: number, b: number) => {
+          callCount++;
+          return a + b;
+        },
+        { keyFn: (a, b) => `${a}+${b}` },
+      );
+
+      const r1 = await fn(1, 2);
+      const r2 = await fn(1, 2);
+
+      expect(r1).toBe(3);
+      expect(r2).toBe(3);
+      expect(callCount).toBe(1);
     });
   });
 

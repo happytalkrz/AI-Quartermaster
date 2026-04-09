@@ -140,6 +140,11 @@ export interface FeasibilityCheckConfig {
   skipReasons: string[];
 }
 
+export interface SafetyRules {
+  allow: string[];
+  deny: string[];
+}
+
 export interface SafetyConfig {
   sensitivePaths: string[];
   maxPhases: number;
@@ -156,6 +161,7 @@ export interface SafetyConfig {
   rollbackStrategy: "none" | "all" | "failed-only";
   feasibilityCheck: FeasibilityCheckConfig;
   strict: boolean;
+  rules: SafetyRules;
 }
 
 export interface FeaturesConfig {

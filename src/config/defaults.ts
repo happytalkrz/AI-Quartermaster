@@ -152,6 +152,10 @@ export const DEFAULT_CONFIG: AQConfig = {
       ],
     },
     strict: true,
+    rules: {
+      allow: [],
+      deny: [],
+    },
   },
   features: {
     parallelPhases: false,  // 안정성을 위해 기본값은 false

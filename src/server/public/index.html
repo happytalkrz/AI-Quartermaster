@@ -488,14 +488,93 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     </div>
   </div>
 
-  <!-- ============ Coming Soon Views ============ -->
+  <!-- ============ Repositories View ============ -->
   <div id="view-repositories" class="view-panel">
-    <div class="flex flex-col items-center justify-center py-32 text-center">
-      <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">inventory_2</span>
-      <h2 class="text-lg font-headline font-bold text-on-surface mb-2" data-i18n="repositories">Repositories</h2>
-      <p class="text-sm text-outline" data-i18n="comingSoon">Coming Soon</p>
+
+    <!-- Section Header -->
+    <div class="flex items-end justify-between mb-8">
+      <div>
+        <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-2">
+          <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+          <span data-i18n="repositories">Repositories</span>
+        </h2>
+        <p class="text-outline font-body text-sm" data-i18n="repositories.subtitle">등록된 레포지토리와 스토리지 사용량을 관리합니다.</p>
+      </div>
+      <!-- Storage Stats -->
+      <div class="flex gap-3">
+        <div class="bg-surface-container p-4 rounded-xl flex items-center gap-3 ring-1 ring-outline-variant/10">
+          <span class="material-symbols-outlined text-primary-container">database</span>
+          <div>
+            <p class="text-[10px] font-headline uppercase tracking-widest text-outline" data-i18n="repositories.totalDbSize">Total DB Size</p>
+            <p id="repo-stat-db-size" class="text-base font-mono font-medium text-on-surface">—</p>
+          </div>
+        </div>
+        <div class="bg-surface-container p-4 rounded-xl flex items-center gap-3 ring-1 ring-outline-variant/10">
+          <span class="material-symbols-outlined text-tertiary">description</span>
+          <div>
+            <p class="text-[10px] font-headline uppercase tracking-widest text-outline" data-i18n="repositories.logVolume">Log Volume</p>
+            <p id="repo-stat-log-size" class="text-base font-mono font-medium text-on-surface">—</p>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- Repository Card Grid -->
+    <div id="repo-card-grid" class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+
+      <!-- Add Repository Card (static) -->
+      <div class="group h-full min-h-[300px] rounded-xl border-2 border-dashed border-outline-variant flex flex-col items-center justify-center hover:border-primary-container hover:bg-primary-container/5 transition-all cursor-pointer" onclick="showAddRepositoryDialog()">
+        <div class="w-14 h-14 rounded-full bg-surface-container flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+          <span class="material-symbols-outlined text-2xl text-outline group-hover:text-primary-container">add</span>
+        </div>
+        <span class="font-headline font-bold text-sm tracking-widest text-outline group-hover:text-on-surface" data-i18n="repositories.addRepo">ADD REPOSITORY</span>
+        <p class="text-xs text-outline/50 mt-2 font-body" data-i18n="repositories.addRepoDesc">새 Git 레포지토리를 연결합니다</p>
+      </div>
+
+      <!-- Dynamic repository cards will be injected here by render.js -->
+      <!-- Placeholder shown while loading -->
+      <div id="repo-loading-placeholder" class="bg-surface-container rounded-xl p-6 flex flex-col items-center justify-center min-h-[300px] ring-1 ring-outline-variant/10">
+        <span class="material-symbols-outlined text-4xl text-outline/20 mb-3 animate-pulse">inventory_2</span>
+        <p class="text-sm text-outline font-body" data-i18n="repositories.loading">로딩 중...</p>
+      </div>
+
+    </div>
+
+    <!-- Storage Management Section -->
+    <div class="relative overflow-hidden rounded-xl bg-surface-container ring-1 ring-outline-variant/10 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+      <!-- Left: description -->
+      <div class="flex-1 space-y-3">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-primary/10 rounded-lg">
+            <span class="material-symbols-outlined text-primary">auto_delete</span>
+          </div>
+          <h3 class="text-base font-headline font-bold" data-i18n="repositories.storageMgmt">스토리지 관리</h3>
+        </div>
+        <p class="text-outline text-sm leading-relaxed max-w-xl font-body" data-i18n="repositories.storageDesc">
+          AQM은 기본적으로 텔레메트리 데이터를 30일간 보관합니다. 오래된 데이터를 정리하여 디스크 공간을 확보할 수 있습니다.
+        </p>
+      </div>
+      <!-- Right: retention bar + action -->
+      <div class="flex items-center gap-8">
+        <div>
+          <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-2" data-i18n="repositories.retention">데이터 보관율</p>
+          <div class="h-2 w-48 bg-surface-container-highest rounded-full overflow-hidden">
+            <div id="repo-retention-bar" class="h-full bg-gradient-to-r from-primary to-primary-container rounded-full transition-all duration-500" style="width: 0%;"></div>
+          </div>
+          <p id="repo-retention-label" class="text-xs font-mono mt-2 text-primary-container">—</p>
+        </div>
+        <button onclick="cleanOldData()" class="flex items-center gap-2 px-5 py-2.5 bg-surface-container-highest border border-outline-variant/20 text-on-surface font-headline font-bold text-xs tracking-widest uppercase rounded-lg hover:bg-surface-bright hover:border-primary/30 active:scale-95 transition-all">
+          <span class="material-symbols-outlined text-sm">cleaning_services</span>
+          <span data-i18n="repositories.cleanData">오래된 데이터 정리</span>
+        </button>
+      </div>
+      <!-- Decorative bottom line -->
+      <div class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-primary/20 to-transparent"></div>
+    </div>
+
   </div>
+
+  <!-- ============ Coming Soon Views ============ -->
   <div id="view-automations" class="view-panel">
     <div class="flex flex-col items-center justify-center py-32 text-center">
       <span class="material-symbols-outlined text-6xl text-outline/20 mb-4">precision_manufacturing</span>

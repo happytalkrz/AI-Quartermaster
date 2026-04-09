@@ -50,6 +50,30 @@ describe("createWorktree", () => {
     expect(info.branch).toBe("ax/42-fix-bug");
   });
 
+  it("should strip {{repoSlug}}- prefix when repoSlug is not provided (double-brace template)", async () => {
+    const configWithDoublebraceTemplate = {
+      ...worktreeConfig,
+      dirTemplate: "{{repoSlug}}-{{issueNumber}}-{{slug}}",
+    };
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    // repoSlug 미전달 → {{repoSlug}}- 자동 제거되어 42-fix-bug 형태가 되어야 함
+    const info = await createWorktree(gitConfig, configWithDoublebraceTemplate, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" });
+    expect(info.path).toContain("42-fix-bug");
+    expect(info.path).not.toContain("repoSlug");
+    expect(info.branch).toBe("ax/42-fix-bug");
+  });
+
+  it("should include repoSlug when provided with double-brace dirTemplate", async () => {
+    const configWithDoublebraceTemplate = {
+      ...worktreeConfig,
+      dirTemplate: "{{repoSlug}}-{{issueNumber}}-{{slug}}",
+    };
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
+    const info = await createWorktree(gitConfig, configWithDoublebraceTemplate, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" }, "myorg-myrepo");
+    expect(info.path).toContain("myorg-myrepo-42-fix-bug");
+    expect(info.branch).toBe("ax/42-fix-bug");
+  });
+
   it("should set AI-Quartermaster as git author in worktree", async () => {
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     await createWorktree(gitConfig, worktreeConfig, "ax/42-fix-bug", 42, "fix-bug", { cwd: "/repo" });

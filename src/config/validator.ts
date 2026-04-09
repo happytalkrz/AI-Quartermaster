@@ -286,6 +286,7 @@ const safetyConfigSchema = z.object({
 
 const featuresConfigSchema = z.object({
   parallelPhases: z.boolean(),
+  multiAI: z.boolean().default(false),
 });
 
 const projectConfigSchema = z.object({

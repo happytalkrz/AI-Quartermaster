@@ -159,6 +159,7 @@ export const DEFAULT_CONFIG: AQConfig = {
   },
   features: {
     parallelPhases: false,  // 안정성을 위해 기본값은 false
+    multiAI: false,         // 멀티 AI 워커 태스크 분배 (기본값은 false)
   },
   executionMode: "standard",
 };

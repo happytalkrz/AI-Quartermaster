@@ -167,6 +167,8 @@ export interface SafetyConfig {
 export interface FeaturesConfig {
   /** 병렬 Phase 실행 활성화 여부 (안정성을 위해 기본값은 false) */
   parallelPhases: boolean;
+  /** 멀티 AI 워커를 활용한 태스크 분배 활성화 여부 (기본값은 false) */
+  multiAI: boolean;
 }
 
 export interface ExecutionModePreset {

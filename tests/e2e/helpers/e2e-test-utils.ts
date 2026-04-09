@@ -2,6 +2,7 @@ import { vi } from "vitest";
 import { DEFAULT_CONFIG } from "../../../src/config/defaults.js";
 import type { AQConfig } from "../../../src/types/config.js";
 import type { Plan, PhaseResult } from "../../../src/types/pipeline.js";
+import type { WorktreeInfo } from "../../../src/git/worktree-manager.js";
 
 // Test constants to avoid magic numbers
 const TEST_CONSTANTS = {
@@ -123,6 +124,10 @@ type MockSet = {
   validatePlan: any;
   validateBeforePush: any;
   closeIssue: ReturnType<typeof vi.mocked>;
+  // Rollback-manager mocks
+  createCheckpoint: any;
+  rollbackToCheckpoint: any;
+  ensureCleanState: any;
 };
 
 /**
@@ -197,6 +202,19 @@ export function setupSuccessMocks(phaseCount = 2, mocks: MockSet): void {
   mocks.validateIssue.mockReturnValue(undefined);
   mocks.validatePlan.mockReturnValue(undefined);
   mocks.validateBeforePush.mockResolvedValue(undefined);
+  // Rollback mocks are optional — only set if provided
+  if (mocks.createCheckpoint) {
+    mocks.createCheckpoint.mockResolvedValue("abc1234567890");
+  }
+  if (mocks.rollbackToCheckpoint) {
+    mocks.rollbackToCheckpoint.mockResolvedValue(undefined);
+  }
+  if (mocks.ensureCleanState) {
+    mocks.ensureCleanState.mockResolvedValue({
+      path: TEST_CONSTANTS.WORKTREE_PATH,
+      branch: TEST_CONSTANTS.WORK_BRANCH,
+    } satisfies WorktreeInfo);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +248,45 @@ export function createDefaultMocks(): MockSet {
     validatePlan: vi.fn(),
     validateBeforePush: vi.fn(),
     closeIssue: vi.fn() as ReturnType<typeof vi.mocked>,
+    createCheckpoint: vi.fn(),
+    rollbackToCheckpoint: vi.fn(),
+    ensureCleanState: vi.fn(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Rollback Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Default checkpoint hash used in rollback mock helpers
+ */
+export const DEFAULT_CHECKPOINT_HASH = "abc1234567890abcdef";
+
+/**
+ * Setup rollback mocks with success behavior.
+ * Call this when you need to verify rollback interactions in tests.
+ */
+export function setupRollbackMocks(mocks: Pick<MockSet, "createCheckpoint" | "rollbackToCheckpoint" | "ensureCleanState">): void {
+  mocks.createCheckpoint.mockResolvedValue(DEFAULT_CHECKPOINT_HASH);
+  mocks.rollbackToCheckpoint.mockResolvedValue(undefined);
+  mocks.ensureCleanState.mockResolvedValue({
+    path: "/tmp/wt/42-fix-bug",
+    branch: "aq/42-fix-bug",
+  } satisfies WorktreeInfo);
+}
+
+/**
+ * Setup rollback mocks to simulate a rollback failure.
+ * ensureCleanState rejects with the given error (or a default message).
+ */
+export function setupRollbackFailureMocks(
+  mocks: Pick<MockSet, "createCheckpoint" | "rollbackToCheckpoint" | "ensureCleanState">,
+  errorMessage = "Rollback failed: git reset --hard failed"
+): void {
+  mocks.createCheckpoint.mockResolvedValue(DEFAULT_CHECKPOINT_HASH);
+  mocks.rollbackToCheckpoint.mockRejectedValue(new Error(errorMessage));
+  mocks.ensureCleanState.mockRejectedValue(new Error(errorMessage));
 }
 
 /**

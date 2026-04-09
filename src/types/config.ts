@@ -167,6 +167,8 @@ export interface SafetyConfig {
 export interface FeaturesConfig {
   /** 병렬 Phase 실행 활성화 여부 (안정성을 위해 기본값은 false) */
   parallelPhases: boolean;
+  /** Claude 다중 AI 워커 풀 활성화 여부 */
+  multiAI: boolean;
 }
 
 export interface ExecutionModePreset {

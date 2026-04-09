@@ -123,6 +123,7 @@ describe("validateConfig", () => {
     },
     features: {
       parallelPhases: false,
+      multiAI: false,
     },
     executionMode: "standard",
   };

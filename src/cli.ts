@@ -48,7 +48,7 @@ interface CliArgs {
   configOverrides?: Record<string, unknown>;
 }
 
-async function runCommand(args: CliArgs): Promise<void> {
+export async function runCommand(args: CliArgs): Promise<void> {
   if (!args.issue || !args.repo) {
     console.error("Usage: aqm run --issue <number> --repo <owner/repo>");
     process.exit(1);
@@ -77,7 +77,7 @@ async function runCommand(args: CliArgs): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function checkForUpdates(aqRoot: string): Promise<void> {
+export async function checkForUpdates(aqRoot: string): Promise<void> {
   try {
     const { runCli } = await import("./utils/cli-runner.js");
     await runCli("git", ["fetch", "--quiet"], { cwd: aqRoot, timeout: 10000 });
@@ -445,7 +445,7 @@ async function initCommand(args: CliArgs, rawArgs: string[]): Promise<void> {
   await runInitCommand(aqRoot, initOptions);
 }
 
-async function statusCommand(args: CliArgs): Promise<void> {
+export async function statusCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
   const store = new JobStore(dataDir);
@@ -478,7 +478,7 @@ async function statusCommand(args: CliArgs): Promise<void> {
   console.log();
 }
 
-async function doctorCommand(args: CliArgs): Promise<void> {
+export async function doctorCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const result = tryLoadConfig(aqRoot);
   await runDoctor(result.config, aqRoot, result.error);
@@ -647,7 +647,7 @@ async function cleanupCommand(args: CliArgs): Promise<void> {
   logger.info(`Cleanup complete. Removed ${removed.length} worktree(s).`);
 }
 
-async function versionCommand(): Promise<void> {
+export async function versionCommand(): Promise<void> {
   try {
     // Read package.json from the AQM installation root
     const packagePath = resolve(process.cwd(), "package.json");

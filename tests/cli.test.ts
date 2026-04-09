@@ -1,5 +1,31 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildProjectConcurrency, parseArgs, printHelp } from "../src/cli.js";
+import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand } from "../src/cli.js";
+import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
+import { runPipeline } from "../src/pipeline/orchestrator.js";
+import { JobStore } from "../src/queue/job-store.js";
+import { runDoctor } from "../src/setup/doctor.js";
+import { runCli } from "../src/utils/cli-runner.js";
+
+vi.mock("../src/config/loader.js", () => ({
+  loadConfig: vi.fn(),
+  tryLoadConfig: vi.fn(),
+}));
+vi.mock("../src/pipeline/orchestrator.js", () => ({
+  runPipeline: vi.fn(),
+}));
+vi.mock("../src/queue/job-store.js", () => ({
+  JobStore: vi.fn(),
+}));
+vi.mock("../src/utils/logger.js", () => ({
+  getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+  setGlobalLogLevel: vi.fn(),
+}));
+vi.mock("../src/setup/doctor.js", () => ({
+  runDoctor: vi.fn(),
+}));
+vi.mock("../src/utils/cli-runner.js", () => ({
+  runCli: vi.fn(),
+}));
 
 describe("buildProjectConcurrency", () => {
   it("빈 배열이면 빈 객체 반환", () => {
@@ -198,5 +224,171 @@ describe("printHelp", () => {
     printHelp();
     const output = consoleLogs.join("\n");
     expect(output).toContain("GITHUB_WEBHOOK_SECRET");
+  });
+});
+
+const mockBaseConfig = {
+  general: { logLevel: "info" as const, dryRun: false, concurrency: 2, stuckTimeoutMs: 30000, maxJobs: 100, pollingIntervalMs: 60000 },
+  projects: [],
+  commands: { ghCli: { path: "gh" }, claudeCli: { path: "claude", model: "claude-3-5-sonnet-20241022", maxTurns: 50, timeout: 3600000 } },
+  safety: { allowedLabels: ["ai-task"] },
+  git: { baseBranch: "main", worktreeBase: "/tmp" },
+  worktree: { maxAge: 7, maxCount: 10 },
+} as unknown as ReturnType<typeof loadConfig>;
+
+describe("runCommand", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("issue 없으면 process.exit(1) 호출", async () => {
+    await expect(runCommand({ repo: "owner/repo" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("repo 없으면 process.exit(1) 호출", async () => {
+    await expect(runCommand({ issue: 42 })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("pipeline 성공 시 process.exit(0)", async () => {
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+    await expect(runCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(0)");
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("pipeline 실패 시 process.exit(1)", async () => {
+    vi.mocked(runPipeline).mockResolvedValue({ success: false });
+    await expect(runCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("dryRun=true이면 config에 dryRun 적용되어 runPipeline 호출", async () => {
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+    await expect(runCommand({ issue: 42, repo: "owner/repo", dryRun: true })).rejects.toThrow();
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ general: expect.objectContaining({ dryRun: true }) }),
+      })
+    );
+  });
+});
+
+describe("checkForUpdates", () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("업데이트 없으면 아무것도 출력하지 않음", async () => {
+    vi.mocked(runCli)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: "0\n", stderr: "", exitCode: 0 });
+    await checkForUpdates("/some/aq/root");
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
+
+  it("업데이트가 있으면 개수 포함 메시지 출력", async () => {
+    vi.mocked(runCli)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })
+      .mockResolvedValueOnce({ stdout: "3\n", stderr: "", exitCode: 0 });
+    await checkForUpdates("/some/aq/root");
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("3"));
+  });
+
+  it("네트워크 에러 시 조용히 무시하고 resolve", async () => {
+    vi.mocked(runCli).mockRejectedValue(new Error("network error"));
+    await expect(checkForUpdates("/some/aq/root")).resolves.toBeUndefined();
+    expect(consoleSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("statusCommand", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("잡이 없으면 'No jobs found.' 출력", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(JobStore).mockImplementation(() => ({ list: vi.fn().mockReturnValue([]) } as unknown as JobStore));
+    await statusCommand({});
+    expect(consoleSpy).toHaveBeenCalledWith("No jobs found.");
+  });
+
+  it("잡이 있으면 상태별 요약 출력", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const mockJobs = [
+      { id: "job-1", status: "completed", issueNumber: 42, repo: "owner/repo", startedAt: "2024-01-01T00:00:00Z", completedAt: "2024-01-01T00:01:00Z" },
+      { id: "job-2", status: "failed", issueNumber: 43, repo: "owner/repo" },
+    ];
+    vi.mocked(JobStore).mockImplementation(() => ({ list: vi.fn().mockReturnValue(mockJobs) } as unknown as JobStore));
+    await statusCommand({});
+    const output = consoleSpy.mock.calls.map((args) => String(args[0])).join("\n");
+    expect(output).toContain("completed");
+    expect(output).toContain("failed");
+  });
+
+  it("prUrl 있는 잡은 PR URL도 출력", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const mockJobs = [
+      { id: "job-1", status: "completed", issueNumber: 42, repo: "owner/repo", prUrl: "https://github.com/owner/repo/pull/1" },
+    ];
+    vi.mocked(JobStore).mockImplementation(() => ({ list: vi.fn().mockReturnValue(mockJobs) } as unknown as JobStore));
+    await statusCommand({});
+    const output = consoleSpy.mock.calls.map((args) => String(args[0])).join("\n");
+    expect(output).toContain("https://github.com/owner/repo/pull/1");
+  });
+
+  it("error 있는 잡은 에러 메시지도 출력", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const mockJobs = [
+      { id: "job-1", status: "failed", issueNumber: 42, repo: "owner/repo", error: "Something went wrong" },
+    ];
+    vi.mocked(JobStore).mockImplementation(() => ({ list: vi.fn().mockReturnValue(mockJobs) } as unknown as JobStore));
+    await statusCommand({});
+    const output = consoleSpy.mock.calls.map((args) => String(args[0])).join("\n");
+    expect(output).toContain("Something went wrong");
+  });
+});
+
+describe("versionCommand", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("버전 정보 출력 (AI Quartermaster v...)", async () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await versionCommand();
+    const output = consoleSpy.mock.calls.map((args) => String(args[0])).join("\n");
+    expect(output).toMatch(/AI Quartermaster v\d+\.\d+/);
+  });
+});
+
+describe("doctorCommand", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("tryLoadConfig와 runDoctor를 호출함", async () => {
+    vi.mocked(tryLoadConfig).mockReturnValue({ config: mockBaseConfig, error: undefined });
+    vi.mocked(runDoctor).mockResolvedValue(undefined);
+    await doctorCommand({});
+    expect(tryLoadConfig).toHaveBeenCalled();
+    expect(runDoctor).toHaveBeenCalled();
   });
 });

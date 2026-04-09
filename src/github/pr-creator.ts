@@ -250,7 +250,7 @@ export async function closeIssue(
 export async function checkPrConflict(
   prNumber: number,
   repo: string,
-  options: { ghPath?: string; dryRun?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; timeout?: number }
 ): Promise<PrConflictInfo | null> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -259,12 +259,14 @@ export async function checkPrConflict(
     return null;
   }
 
+  const timeout = options.timeout;
+
   try {
     // Check PR merge status using gh pr view
     const viewResult = await runCli(
       ghPath,
       ["pr", "view", String(prNumber), "--repo", repo, "--json", "mergeStateStatus,mergeable"],
-      {}
+      timeout !== undefined ? { timeout } : {}
     );
 
     if (viewResult.exitCode !== 0) {
@@ -284,7 +286,7 @@ export async function checkPrConflict(
         const diffResult = await runCli(
           ghPath,
           ["pr", "diff", String(prNumber), "--repo", repo],
-          {}
+          timeout !== undefined ? { timeout } : {}
         );
 
         if (diffResult.exitCode === 0) {
@@ -364,7 +366,7 @@ export async function commentOnIssue(
  */
 export async function listOpenPrs(
   repo: string,
-  options: { ghPath?: string; dryRun?: boolean }
+  options: { ghPath?: string; dryRun?: boolean; timeout?: number }
 ): Promise<Array<{ number: number; title: string }> | null> {
   const ghPath = options.ghPath ?? "gh";
 
@@ -373,11 +375,13 @@ export async function listOpenPrs(
     return [];
   }
 
+  const timeout = options.timeout;
+
   try {
     const result = await runCli(
       ghPath,
       ["pr", "list", "--repo", repo, "--state", "open", "--json", "number,title", "--limit", "100"],
-      {}
+      timeout !== undefined ? { timeout } : {}
     );
 
     if (result.exitCode !== 0) {

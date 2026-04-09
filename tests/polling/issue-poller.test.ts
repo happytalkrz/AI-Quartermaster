@@ -65,9 +65,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
     it("should skip when no open PRs exist", async () => {
       mockListOpenPrs.mockResolvedValue([]);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
-      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh" });
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCheckPrConflict).not.toHaveBeenCalled();
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
@@ -75,9 +75,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
     it("should skip when listOpenPrs returns null", async () => {
       mockListOpenPrs.mockResolvedValue(null);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
-      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh" });
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCheckPrConflict).not.toHaveBeenCalled();
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
@@ -90,11 +90,11 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockListOpenPrs.mockResolvedValue(openPrs);
       mockCheckPrConflict.mockResolvedValue(null); // no conflicts
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
       expect(mockCheckPrConflict).toHaveBeenCalledTimes(2);
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh" });
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(124, "test/repo", { ghPath: "gh" });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh", timeout: 30000 });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(124, "test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
 
@@ -112,9 +112,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCheckPrConflict.mockResolvedValue(conflictInfo);
       mockCommentOnIssue.mockResolvedValue(true);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh" });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCommentOnIssue).toHaveBeenCalledWith(
         456,
         "test/repo",
@@ -145,9 +145,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockListOpenPrs.mockResolvedValue(openPrs);
       mockCheckPrConflict.mockResolvedValue(conflictInfo);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh" });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
 
@@ -165,9 +165,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCheckPrConflict.mockResolvedValue(conflictInfo);
       mockCommentOnIssue.mockResolvedValue(false); // comment failure
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh" });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCommentOnIssue).toHaveBeenCalledWith(
         456,
         "test/repo",
@@ -191,7 +191,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCommentOnIssue.mockResolvedValue(true);
 
       // First call - should notify
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
       expect(mockCommentOnIssue).toHaveBeenCalledTimes(1);
 
       // Reset mock calls
@@ -199,7 +199,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCommentOnIssue.mockClear();
 
       // Second call - should skip notification (already notified)
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
       expect(mockCheckPrConflict).not.toHaveBeenCalled(); // skipped due to notification cache
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
@@ -211,9 +211,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCheckPrConflict.mockRejectedValue(new Error("gh command failed"));
 
       // Should not throw
-      await expect((poller as any).checkProjectPrConflicts("test/repo", "gh")).resolves.toBeUndefined();
+      await expect((poller as any).checkProjectPrConflicts("test/repo", "gh", 30000)).resolves.toBeUndefined();
 
-      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh" });
+      expect(mockCheckPrConflict).toHaveBeenCalledWith(123, "test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
 
@@ -221,9 +221,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockListOpenPrs.mockRejectedValue(new Error("Network error"));
 
       // Should not throw
-      await expect((poller as any).checkProjectPrConflicts("test/repo", "gh")).resolves.toBeUndefined();
+      await expect((poller as any).checkProjectPrConflicts("test/repo", "gh", 30000)).resolves.toBeUndefined();
 
-      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh" });
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo", { ghPath: "gh", timeout: 30000 });
       expect(mockCheckPrConflict).not.toHaveBeenCalled();
       expect(mockCommentOnIssue).not.toHaveBeenCalled();
     });
@@ -242,7 +242,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCheckPrConflict.mockResolvedValue(conflictInfo);
       mockCommentOnIssue.mockResolvedValue(true);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
       expect(mockCommentOnIssue).toHaveBeenCalledWith(
         999,
@@ -272,7 +272,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       mockCheckPrConflict.mockResolvedValue(conflictInfo);
       mockCommentOnIssue.mockResolvedValue(true);
 
-      await (poller as any).checkProjectPrConflicts("test/repo", "gh");
+      await (poller as any).checkProjectPrConflicts("test/repo", "gh", 30000);
 
       expect(mockCommentOnIssue).toHaveBeenCalledWith(
         789,
@@ -307,8 +307,8 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       await (poller as any).poll();
 
       expect(mockListOpenPrs).toHaveBeenCalledTimes(2);
-      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-a", { ghPath: "gh" });
-      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-b", { ghPath: "gh" });
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-a", { ghPath: "gh", timeout: 30000 });
+      expect(mockListOpenPrs).toHaveBeenCalledWith("test/repo-b", { ghPath: "gh", timeout: 30000 });
     });
 
     it("should handle mixed success and failure in PR conflict checks", async () => {

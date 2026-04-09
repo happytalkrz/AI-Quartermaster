@@ -10,3 +10,5 @@ export {
   deepMerge,
   parseYamlSafely,
 } from "./types.js";
+
+export { ProjectSource } from "./project-source.js";

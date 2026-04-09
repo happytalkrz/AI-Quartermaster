@@ -18,6 +18,7 @@ export class ConfigWatcher extends EventEmitter {
   private debounceTimer: NodeJS.Timeout | null = null;
   private pendingChanges: Set<string> = new Set();
   private errorCounts: Map<string, number> = new Map();
+  private restartTimers: Set<NodeJS.Timeout> = new Set();
   private readonly maxErrorRetries = 3;
   private readonly errorRetryDelay = 1000; // 1 second
 
@@ -63,6 +64,12 @@ export class ConfigWatcher extends EventEmitter {
         logger.warn(`Error closing watcher for ${path}: ${err}`);
       }
     }
+
+    // Clear all pending restart timers
+    for (const timer of this.restartTimers) {
+      clearTimeout(timer);
+    }
+    this.restartTimers.clear();
 
     // Clear all maps and sets
     this.watchers.clear();
@@ -215,9 +222,11 @@ export class ConfigWatcher extends EventEmitter {
     // Attempt to restart the watcher if we haven't exceeded retry limit
     if (errorCount <= this.maxErrorRetries) {
       logger.info(`Attempting to restart watcher for ${filePath} in ${this.errorRetryDelay}ms`);
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.restartTimers.delete(timer);
         this.restartWatcher(filePath, type);
       }, this.errorRetryDelay);
+      this.restartTimers.add(timer);
     } else {
       logger.error(`Maximum retry attempts exceeded for ${filePath}. Disabling watcher for this file.`);
       this.errorCounts.delete(filePath); // Clean up error count

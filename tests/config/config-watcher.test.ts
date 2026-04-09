@@ -288,6 +288,21 @@ general:
     expect((watcher as any).errorCounts.size).toBe(0);
   });
 
+  it("should clear pending restart timers on stopWatching", () => {
+    watcher.startWatching();
+
+    // Trigger an error that schedules a restart timer
+    (watcher as any).handleWatcherError(configPath, 'base', new Error('Test error'));
+
+    // Verify a restart timer was scheduled
+    expect((watcher as any).restartTimers.size).toBeGreaterThan(0);
+
+    // Stop watching — should clear all restart timers
+    watcher.stopWatching();
+
+    expect((watcher as any).restartTimers.size).toBe(0);
+  });
+
   it("should attempt to restart watcher after error", () => {
     return new Promise<void>((done) => {
       let errorHandled = false;

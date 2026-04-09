@@ -62,7 +62,7 @@ function renderTimelineModal(job) {
 
     // Gantt body
     '<div class="p-6">' +
-      renderGanttChart(phases, totalDurationMs) +
+      renderGanttChart(phases, totalDurationMs, job.startedAt) +
     '</div>' +
 
     '</div>' +
@@ -73,7 +73,7 @@ function renderTimelineModal(job) {
    Gantt Chart
    ══════════════════════════════════════════════════════════════ */
 
-function renderGanttChart(phases, totalDurationMs) {
+function renderGanttChart(phases, totalDurationMs, jobStartedAt) {
   if (!phases || phases.length === 0) {
     return '<div class="flex items-center justify-center py-16 text-outline text-sm">' +
       '<span class="material-symbols-outlined text-lg mr-2">hourglass_empty</span>No phase data available</div>';
@@ -97,9 +97,10 @@ function renderGanttChart(phases, totalDurationMs) {
     'background-image:linear-gradient(to right,rgba(65,71,82,0.4) 1px,transparent 1px);background-size:16.66% 100%"></div>';
 
   html += '<div class="space-y-4">';
+  // cumulativeMs is kept for legacy fallback (phases without timestamps)
   var cumulativeMs = 0;
   phases.forEach(function(phase) {
-    html += renderGanttPhaseRow(phase, cumulativeMs, totalDurationMs);
+    html += renderGanttPhaseRow(phase, cumulativeMs, totalDurationMs, jobStartedAt);
     cumulativeMs += (phase.durationMs || 0);
   });
   html += '</div>';
@@ -133,7 +134,7 @@ function buildXAxis(totalDurationMs) {
    Phase Row
    ══════════════════════════════════════════════════════════════ */
 
-function renderGanttPhaseRow(phase, startMs, totalDurationMs) {
+function renderGanttPhaseRow(phase, cumulativeFallbackMs, totalDurationMs, jobStartedAt) {
   var phaseName = phase.name || 'Phase';
   var isSuccess = phase.success === true;
   var isFailed = phase.success === false;
@@ -143,8 +144,21 @@ function renderGanttPhaseRow(phase, startMs, totalDurationMs) {
   var cost = fmtCost(phase.costUsd);
 
   // Bar position (percentage of total)
-  var leftPct = (totalDurationMs > 0 && startMs > 0) ? (startMs / totalDurationMs * 100) : 0;
-  var widthPct = (totalDurationMs > 0 && hasDuration) ? (durationMs / totalDurationMs * 100) : 0;
+  // Prefer timestamp-based calculation; fall back to cumulative durationMs for legacy data
+  var leftPct, widthPct;
+  if (jobStartedAt && phase.startedAt) {
+    var jobStartMs = new Date(jobStartedAt).getTime();
+    var phaseStartMs = new Date(phase.startedAt).getTime();
+    var phaseOffsetMs = phaseStartMs - jobStartMs;
+    var phaseDurationMs = phase.completedAt
+      ? new Date(phase.completedAt).getTime() - phaseStartMs
+      : durationMs;
+    leftPct = totalDurationMs > 0 ? (phaseOffsetMs / totalDurationMs * 100) : 0;
+    widthPct = totalDurationMs > 0 && phaseDurationMs > 0 ? (phaseDurationMs / totalDurationMs * 100) : 0;
+  } else {
+    leftPct = (totalDurationMs > 0 && cumulativeFallbackMs > 0) ? (cumulativeFallbackMs / totalDurationMs * 100) : 0;
+    widthPct = (totalDurationMs > 0 && hasDuration) ? (durationMs / totalDurationMs * 100) : 0;
+  }
 
   // Clamp: always show at least 0.5% width for visible phases
   leftPct = Math.min(Math.max(leftPct, 0), 100);

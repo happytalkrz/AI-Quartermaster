@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
+vi.mock("../../src/safety/rollback-manager.js", () => ({
+  createCheckpoint: vi.fn(),
+  rollbackToCheckpoint: vi.fn(),
+  ensureCleanState: vi.fn(),
+}));
 vi.mock("../../src/pipeline/checkpoint.js", () => ({
   saveCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
@@ -70,6 +75,7 @@ import { runSimplify } from "../../src/review/simplify-runner.js";
 import { runFinalValidation } from "../../src/pipeline/final-validator.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
 import { transitionState, initializePipelineState } from "../../src/pipeline/pipeline-context.js";
+import { rollbackToCheckpoint } from "../../src/safety/rollback-manager.js";
 import type { PipelineState } from "../../src/types/pipeline.js";
 import type { PipelineRuntime } from "../../src/pipeline/pipeline-context.js";
 
@@ -87,6 +93,7 @@ const mockValidatePlan = vi.mocked(validatePlan);
 const mockValidateBeforePush = vi.mocked(validateBeforePush);
 const mockTransitionState = vi.mocked(transitionState);
 const mockInitializePipelineState = vi.mocked(initializePipelineState);
+const mockRollbackToCheckpoint = vi.mocked(rollbackToCheckpoint);
 
 // Capture state transitions for verification
 const capturedStateTransitions: Array<{ from: PipelineState; to: PipelineState }> = [];
@@ -297,6 +304,93 @@ describe("E2E: Pipeline Failure Cases", () => {
 
       expect(result.success).toBe(false);
       expect(result.state).toBe("FAILED");
+    });
+
+    it("should trigger rollback when review is rejected and rollback strategy is configured", async () => {
+      const CHECKPOINT_HASH = "abc1234567890abcdef";
+
+      setupSuccessMocks(2, {
+        fetchIssue: mockFetchIssue,
+        syncBaseBranch: vi.fn(),
+        createWorkBranch: vi.fn().mockResolvedValue({
+          baseBranch: "master",
+          workBranch: "aq/42-fix-bug",
+        }),
+        createWorktree: vi.fn(),
+        installDependencies: vi.fn(),
+        runCli: vi.fn(),
+        runCoreLoop: mockCoreLoop,
+        pushBranch: vi.fn(),
+        checkConflicts: vi.fn(),
+        attemptRebase: vi.fn(),
+        enableAutoMerge: vi.fn(),
+        addIssueComment: vi.fn(),
+        closeIssue: mockCloseIssue,
+        createDraftPR: vi.fn(),
+        removeWorktree: vi.fn(),
+        getDiffContent: vi.fn(),
+        runReviews: mockRunReviews,
+        runSimplify: mockRunSimplify,
+        runFinalValidation: mockFinalValidation,
+        validateIssue: mockValidateIssue,
+        validatePlan: mockValidatePlan,
+        validateBeforePush: mockValidateBeforePush,
+      });
+
+      // Configure runtime with rollback strategy and hash so rollback triggers on failure
+      mockInitializePipelineState.mockResolvedValue({
+        state: "RECEIVED",
+        projectRoot: "/tmp/project",
+        gitConfig: {},
+        promptsDir: "/tmp/project/prompts",
+        rollbackStrategy: "all",
+        rollbackHash: CHECKPOINT_HASH,
+        worktreePath: "/tmp/wt/42-fix-bug",
+      } as PipelineRuntime);
+
+      mockRollbackToCheckpoint.mockResolvedValue(undefined);
+
+      // Mock failed review with failAction: block
+      mockRunReviews.mockResolvedValue({
+        rounds: [
+          {
+            roundName: "security",
+            verdict: "FAIL",
+            findings: [{ severity: "high", description: "Security vulnerability detected" }],
+            summary: "Critical security issue found",
+            durationMs: 1500,
+          },
+        ],
+        allPassed: false,
+      });
+
+      const result = await runPipeline({
+        issueNumber: 42,
+        repo: "test/repo",
+        config: makeConfig({
+          review: {
+            enabled: true,
+            rounds: [
+              {
+                name: "security",
+                promptTemplate: "security-review.md",
+                failAction: "block",
+              },
+            ],
+          },
+        }),
+        projectRoot: "/tmp/project",
+      });
+
+      // Pipeline should fail
+      expect(result.success).toBe(false);
+      expect(result.state).toBe("FAILED");
+
+      // Rollback should have been triggered with the checkpoint hash
+      expect(mockRollbackToCheckpoint).toHaveBeenCalledWith(
+        CHECKPOINT_HASH,
+        expect.objectContaining({ cwd: "/tmp/wt/42-fix-bug" })
+      );
     });
   });
 

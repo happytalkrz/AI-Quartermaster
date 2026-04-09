@@ -91,6 +91,7 @@ export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
   success: boolean;
+  /** 일부 파일만 성공했을 때 true. phase-retry에서 failedFiles만 재시도하는 데 사용. */
   partial?: boolean;
   warnings?: string[];
   errors?: string[];
@@ -101,8 +102,6 @@ export interface PhaseResult {
   durationMs: number;
   costUsd?: number;
   usage?: UsageInfo;
-  /** 일부 파일만 성공했을 때 true. phase-retry에서 failedFiles만 재시도하는 데 사용. */
-  partial?: boolean;
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
   failedFiles?: string[];
   /** 성공적으로 처리된 파일 목록 (partial=true일 때 유효) */

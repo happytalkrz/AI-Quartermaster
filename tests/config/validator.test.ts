@@ -23,6 +23,8 @@ describe("validateConfig", () => {
       concurrency: 2,
       stuckTimeoutMs: 600000,
       pollingIntervalMs: 60000,
+      idlePollingIntervalMs: 300000,
+      idleThresholdCycles: 3,
       maxJobs: 100,
       autoUpdate: false,
     },

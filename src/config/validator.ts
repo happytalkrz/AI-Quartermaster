@@ -151,8 +151,8 @@ const generalConfigSchema = z.object({
   targetRoot: z.string().optional(),
   stuckTimeoutMs: z.number().int().min(60000),
   pollingIntervalMs: z.number().int().min(10000),
-  idlePollingIntervalMs: z.number().int().min(10000),
-  idleThresholdCycles: z.number().int().min(1),
+  idlePollingIntervalMs: z.number().int().min(10000).default(300000),
+  idleThresholdCycles: z.number().int().min(1).default(3),
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean(),
 });

@@ -6,6 +6,9 @@ import { SOURCE_PRIORITY_ORDER } from "./types.js";
 
 export type { ConfigSource, ConfigSources, MergeResult, SourceName };
 export { SOURCE_PRIORITY_ORDER };
+export { ManagedSource } from "./managed-source.js";
+export { UserSource } from "./user-source.js";
+export { ProjectSource } from "./project-source.js";
 
 /**
  * 5단계 소스를 우선순위 순서로 병합하여 최종 config를 반환

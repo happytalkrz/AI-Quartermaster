@@ -253,6 +253,9 @@ export class IssuePoller {
           logger.debug(`PR #${pr.number} (${repo}) — 충돌 없음`);
         }
       }
+
+      // PR 충돌 체크 성공 시 에러 카운트 리셋
+      this.resetPollingErrors(repo);
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);
       logger.warn(`${repo} PR 충돌 체크 중 오류: ${errorMsg}`);

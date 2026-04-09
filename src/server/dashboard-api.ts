@@ -1020,6 +1020,104 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
+  // Repositories API - project-level aggregated information with health and stats
+  api.get("/api/repositories", async (c) => {
+    try {
+      const config = loadConfig(process.cwd());
+      const projects = config.projects ?? [];
+
+      if (projects.length === 0) {
+        return c.json({
+          repositories: [],
+          summary: { total: 0, healthy: 0, warning: 0, error: 0, totalJobs: 0, checkedAt: new Date().toISOString() },
+        });
+      }
+
+      const gitPath = config.git?.gitPath ?? "git";
+
+      // Get health checks for all projects in parallel
+      const healthResults = await Promise.all(
+        projects.map(async (projectConfig) => {
+          const projectPath = resolve(process.cwd(), projectConfig.path);
+          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
+            checkGitRemoteAccess(projectPath, gitPath),
+            checkLocalPath(projectPath),
+            checkDiskSpace(projectPath),
+            checkDependencies(projectPath),
+          ]);
+
+          let overallStatus: "healthy" | "warning" | "error" = "healthy";
+          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
+            overallStatus = "error";
+          } else if (
+            diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
+            dependenciesCheck.status === "warning" || dependenciesCheck.status === "error"
+          ) {
+            overallStatus = "warning";
+          }
+
+          return {
+            repository: projectConfig.repo,
+            name: projectConfig.repo,
+            path: projectConfig.path,
+            status: overallStatus,
+            health: {
+              gitRemoteAccess: gitRemoteCheck,
+              localPath: localPathCheck,
+              diskSpace: diskSpaceCheck,
+              dependencies: dependenciesCheck,
+            },
+            lastChecked: new Date().toISOString(),
+          };
+        })
+      );
+
+      // Get project statistics
+      const projectStats = getProjectSummary(store.getAqDb());
+      const statsMap = new Map(projectStats.map(s => [s.repo, s]));
+
+      // Combine health results with statistics
+      const repositories = healthResults.map(result => {
+        const stats = statsMap.get(result.repository) ?? {
+          repo: result.repository,
+          total: 0,
+          successCount: 0,
+          failureCount: 0,
+          totalCostUsd: 0,
+          successRate: 0,
+          lastActivity: null,
+        };
+
+        return {
+          ...result,
+          stats: {
+            totalJobs: stats.total,
+            successJobs: stats.successCount,
+            failedJobs: stats.failureCount,
+            successRate: stats.successRate,
+            totalCostUsd: stats.totalCostUsd,
+            lastActivity: stats.lastActivity,
+          },
+        };
+      });
+
+      const summary = {
+        total: repositories.length,
+        healthy: repositories.filter(r => r.status === "healthy").length,
+        warning: repositories.filter(r => r.status === "warning").length,
+        error: repositories.filter(r => r.status === "error").length,
+        totalJobs: repositories.reduce((sum, r) => sum + r.stats.totalJobs, 0),
+        checkedAt: new Date().toISOString(),
+      };
+
+      return c.json({ repositories, summary });
+    } catch (error: unknown) {
+      const logger = getLogger();
+      logger.error(`Failed to fetch repositories: ${getErrorMessage(error)}`);
+      return c.json({ error: "Failed to fetch repositories" }, 500);
+    }
+  });
+
   // Projects health check endpoint — all configured projects
   api.get("/api/projects/health", async (c) => {
     try {

@@ -59,6 +59,12 @@ vi.mock("../../src/store/queries.js", () => ({
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
+  existsSync: vi.fn(),
+  statSync: vi.fn(),
+}));
+
+vi.mock("../../src/utils/cli-runner.js", () => ({
+  runCli: vi.fn(),
 }));
 
 // Mock imports
@@ -71,6 +77,9 @@ const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-m
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
 const mockSelfUpdater = vi.mocked(await import("../../src/update/self-updater.js")).SelfUpdater;
 const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
+const mockExistsSync = vi.mocked(await import("fs")).existsSync;
+const mockStatSync = vi.mocked(await import("fs")).statSync;
+const mockRunCli = vi.mocked(await import("../../src/utils/cli-runner.js")).runCli;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -1727,5 +1736,310 @@ describe("Dashboard API - Version Management", () => {
         }).not.toThrow();
       });
     });
+  });
+});
+
+describe("Dashboard API - GET /api/health (detailed)", () => {
+  let app: Hono;
+
+  const mockConfig = {
+    projects: [{ repo: "test/repo", path: "./test-project" }],
+    git: { gitPath: "git" },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    mockLoadConfig.mockReturnValue(mockConfig as any);
+
+    // Default: git remote accessible
+    mockRunCli.mockResolvedValue({ exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" });
+
+    // Default: path exists and is a directory, package.json and node_modules exist
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+  });
+
+  it("should return 400 when project parameter is missing", async () => {
+    const response = await app.request("/api/health");
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("project parameter is required");
+  });
+
+  it("should return 404 when project not found in config", async () => {
+    const response = await app.request("/api/health?project=unknown/repo");
+    expect(response.status).toBe(404);
+    const result = await response.json();
+    expect(result.error).toContain("unknown/repo");
+  });
+
+  it("should return healthy when git remote and local path are ok", async () => {
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.project).toBe("test/repo");
+    expect(result.status).toBe("healthy");
+    expect(result.checks.gitRemoteAccess.status).toBe("ok");
+    expect(result.checks.localPath.status).toBe("ok");
+    expect(result.lastChecked).toBeDefined();
+  });
+
+  it("should return error status when git remote is not accessible", async () => {
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      return { exitCode: 128, stdout: "", stderr: "fatal: repository not found" };
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("error");
+    expect(result.checks.gitRemoteAccess.status).toBe("error");
+    expect(result.checks.gitRemoteAccess.message).toContain("Git remote not accessible");
+  });
+
+  it("should return error status when git remote check throws", async () => {
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      throw new Error("Network unreachable");
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("error");
+    expect(result.checks.gitRemoteAccess.status).toBe("error");
+    expect(result.checks.gitRemoteAccess.message).toContain("Network unreachable");
+  });
+
+  it("should return error status when local path does not exist", async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("error");
+    expect(result.checks.localPath.status).toBe("error");
+    expect(result.checks.localPath.message).toBe("Project path does not exist");
+  });
+
+  it("should return error status when local path is not a directory", async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => false } as any);
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("error");
+    expect(result.checks.localPath.status).toBe("error");
+    expect(result.checks.localPath.message).toBe("Project path is not a directory");
+  });
+
+  it("should return warning when disk space is below 1GB", async () => {
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 199500000000 500000000 99% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("warning");
+    expect(result.checks.diskSpace.status).toBe("warning");
+    expect(result.checks.diskSpace.message).toContain("Low disk space");
+  });
+
+  it("should return warning when dependencies are not installed", async () => {
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    mockExistsSync.mockImplementation((p: unknown) => {
+      const path = p as string;
+      if (path.endsWith("node_modules")) return false;
+      return true;
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("warning");
+    expect(result.checks.dependencies.status).toBe("warning");
+    expect(result.checks.dependencies.message).toContain("Dependencies not installed");
+  });
+
+  it("should return 500 when loadConfig throws", async () => {
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Config read error");
+    });
+
+    const response = await app.request("/api/health?project=test/repo");
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toContain("Health check failed");
+  });
+});
+
+describe("Dashboard API - GET /api/projects/health", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+  });
+
+  it("should return empty list when no projects configured", async () => {
+    mockLoadConfig.mockReturnValue({ projects: [], git: {} } as any);
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(0);
+    expect(result.summary.total).toBe(0);
+    expect(result.summary.healthy).toBe(0);
+  });
+
+  it("should return empty list when projects field is undefined", async () => {
+    mockLoadConfig.mockReturnValue({ git: {} } as any);
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(0);
+  });
+
+  it("should return healthy status for all passing projects", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [
+        { repo: "org/repo1", path: "./repo1" },
+        { repo: "org/repo2", path: "./repo2" },
+      ],
+      git: { gitPath: "git" },
+    } as any);
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(2);
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.healthy).toBe(2);
+    expect(result.summary.error).toBe(0);
+    expect(result.summary.checkedAt).toBeDefined();
+
+    const p1 = result.projects.find((p: { project: string }) => p.project === "org/repo1");
+    expect(p1).toBeDefined();
+    expect(p1.status).toBe("healthy");
+    expect(p1.checks.gitRemoteAccess.status).toBe("ok");
+    expect(p1.checks.localPath.status).toBe("ok");
+  });
+
+  it("should report error in summary when git remote fails for a project", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [
+        { repo: "org/repo1", path: "./repo1" },
+        { repo: "org/repo2", path: "./repo2" },
+      ],
+      git: { gitPath: "git" },
+    } as any);
+
+    let gitCallCount = 0;
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      gitCallCount++;
+      if (gitCallCount === 1) {
+        return { exitCode: 128, stdout: "", stderr: "fatal: repository not found" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.error).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should merge stats from getProjectSummary into results", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    const mockGetProjectSummary = vi.mocked(await import("../../src/store/queries.js")).getProjectSummary;
+    mockGetProjectSummary.mockReturnValue([
+      {
+        repo: "org/repo1",
+        total: 10,
+        successCount: 8,
+        failureCount: 2,
+        successRate: 80,
+        avgDurationMs: 5000,
+        totalCostUsd: 1.5,
+      } as any,
+    ]);
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0].stats).not.toBeNull();
+    expect(result.projects[0].stats.repo).toBe("org/repo1");
+    expect(result.projects[0].stats.successRate).toBe(80);
+  });
+
+  it("should set stats to null for projects not in getProjectSummary", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    const mockGetProjectSummary = vi.mocked(await import("../../src/store/queries.js")).getProjectSummary;
+    mockGetProjectSummary.mockReturnValue([]);
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects[0].stats).toBeNull();
+  });
+
+  it("should return 500 when loadConfig throws", async () => {
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Config error");
+    });
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toContain("Projects health check failed");
   });
 });

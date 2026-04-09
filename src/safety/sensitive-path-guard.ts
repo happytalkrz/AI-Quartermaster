@@ -1,4 +1,4 @@
-import { minimatch } from "minimatch";
+import { checkPathsAgainstRules } from "./rule-engine.js";
 import { SafetyViolationError } from "../types/errors.js";
 
 /**
@@ -9,21 +9,26 @@ export function checkSensitivePaths(
   changedFiles: string[],
   sensitivePaths: string[]
 ): void {
-  const violations: string[] = [];
+  try {
+    checkPathsAgainstRules(changedFiles, {
+      allow: [],
+      deny: sensitivePaths,
+      strategy: "deny-first"
+    });
+  } catch (err: unknown) {
+    if (err instanceof SafetyViolationError) {
+      // Re-wrap RuleEngine errors as SensitivePathGuard errors to maintain API compatibility
+      const violations = err.details?.violations;
+      const violationsText = Array.isArray(violations) && violations.length > 0
+        ? violations.join("\n")
+        : err.message;
 
-  for (const file of changedFiles) {
-    for (const pattern of sensitivePaths) {
-      if (minimatch(file, pattern, { dot: true })) {
-        violations.push(`${file} matches sensitive pattern "${pattern}"`);
-      }
+      throw new SafetyViolationError(
+        "SensitivePathGuard",
+        `Sensitive files modified:\n${violationsText}`,
+        err.details
+      );
     }
-  }
-
-  if (violations.length > 0) {
-    throw new SafetyViolationError(
-      "SensitivePathGuard",
-      `Sensitive files modified:\n${violations.join("\n")}`,
-      { violations }
-    );
+    throw err;
   }
 }

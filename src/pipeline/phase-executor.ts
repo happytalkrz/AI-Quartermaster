@@ -39,6 +39,7 @@ export interface PhaseExecutorContext {
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
   const startTime = Date.now();
+  const startedAt = new Date().toISOString();
   const jl = ctx.jobLogger;
   let claudeResult: ClaudeRunResult | undefined;
 
@@ -192,6 +193,8 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
             warnings,
             commitHash,
             durationMs: Date.now() - startTime,
+            startedAt,
+            completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
           };
@@ -215,6 +218,8 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
             errors,
             commitHash,
             durationMs: Date.now() - startTime,
+            startedAt,
+            completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
           };
@@ -233,6 +238,8 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       success: true,
       commitHash,
       durationMs: Date.now() - startTime,
+      startedAt,
+      completedAt: new Date().toISOString(),
       costUsd: claudeResult.costUsd,
       usage: claudeResult.usage,
     };
@@ -246,6 +253,8 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
       errorCategory: classifyError(errMsg),
       lastOutput: errMsg.slice(-2000),
       durationMs: Date.now() - startTime,
+      startedAt,
+      completedAt: new Date().toISOString(),
       costUsd: claudeResult?.costUsd,
       usage: claudeResult?.usage,
     };

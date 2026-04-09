@@ -100,6 +100,8 @@ export interface PhaseResult {
   errorCategory?: ErrorCategory;
   lastOutput?: string;
   durationMs: number;
+  startedAt?: string;
+  completedAt?: string;
   costUsd?: number;
   usage?: UsageInfo;
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */

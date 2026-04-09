@@ -98,6 +98,9 @@ export interface PhaseResult {
   durationMs: number;
   costUsd?: number;
   usage?: UsageInfo;
+  warnings?: string[];
+  errors?: string[];
+  partial?: boolean;
 }
 
 export interface PipelineResult {

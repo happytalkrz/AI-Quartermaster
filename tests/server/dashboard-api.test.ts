@@ -28,6 +28,21 @@ vi.mock("../../src/update/self-updater.js", () => ({
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
+  existsSync: vi.fn(),
+  statSync: vi.fn(),
+}));
+
+vi.mock("../../src/config/project-resolver.js", () => ({
+  listConfiguredRepos: vi.fn(),
+  resolveProject: vi.fn(),
+}));
+
+vi.mock("../../src/git/worktree-manager.js", () => ({
+  listWorktrees: vi.fn(),
+}));
+
+vi.mock("../../src/utils/cli-runner.js", () => ({
+  runCli: vi.fn(),
 }));
 
 // Mock imports
@@ -40,6 +55,12 @@ const mockMaskSensitiveConfig = vi.mocked(await import("../../src/utils/config-m
 const mockValidateConfig = vi.mocked(await import("../../src/config/validator.js")).validateConfig;
 const mockSelfUpdater = vi.mocked(await import("../../src/update/self-updater.js")).SelfUpdater;
 const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
+const mockExistsSync = vi.mocked(await import("fs")).existsSync;
+const mockStatSync = vi.mocked(await import("fs")).statSync;
+const mockListConfiguredRepos = vi.mocked(await import("../../src/config/project-resolver.js")).listConfiguredRepos;
+const mockResolveProject = vi.mocked(await import("../../src/config/project-resolver.js")).resolveProject;
+const mockListWorktrees = vi.mocked(await import("../../src/git/worktree-manager.js")).listWorktrees;
+const mockRunCli = vi.mocked(await import("../../src/utils/cli-runner.js")).runCli;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -1694,6 +1715,236 @@ describe("Dashboard API - Version Management", () => {
           cleanupDashboardResources();
         }).not.toThrow();
       });
+    });
+  });
+});
+
+describe("Dashboard API - GET /api/repositories", () => {
+  let app: Hono;
+
+  const healthyRunCli = async (cmd: string) => {
+    if (cmd === "git") return { exitCode: 0, stdout: "git@github.com:owner/repo", stderr: "" };
+    if (cmd === "df") return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 100000000000 10000000000 5000000000 10% /", stderr: "" };
+    return { exitCode: 0, stdout: "", stderr: "" };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    mockLoadConfig.mockReturnValue({
+      git: { gitPath: "git", allowedRepos: [], defaultBaseBranch: "main" },
+      projects: [],
+    } as any);
+    mockListConfiguredRepos.mockReturnValue([]);
+    mockListWorktrees.mockResolvedValue([]);
+    mockRunCli.mockImplementation(healthyRunCli as any);
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+    mockJobStore.list.mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should return empty list when no repos configured", async () => {
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toEqual([]);
+    expect(result.totalCount).toBe(0);
+    expect(typeof result.lastUpdated).toBe("string");
+  });
+
+  it("should return repository info with healthy status", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockListWorktrees.mockResolvedValue([{}, {}] as any); // 2 worktrees → 1 active
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(1);
+    const repoInfo = result.repositories[0];
+    expect(repoInfo.repo).toBe(repo);
+    expect(repoInfo.path).toBe("/path/to/repo");
+    expect(repoInfo.health.status).toBe("healthy");
+    expect(repoInfo.health.checks.gitRemoteAccess.status).toBe("ok");
+    expect(repoInfo.health.checks.localPath.status).toBe("ok");
+    expect(repoInfo.activeWorktrees).toBe(1);
+    expect(repoInfo.stats.totalJobs).toBe(0);
+    expect(repoInfo.stats.successRate).toBe(0);
+    expect(repoInfo.stats.totalCostUsd).toBe(0);
+    expect(result.totalCount).toBe(1);
+    expect(typeof result.lastUpdated).toBe("string");
+  });
+
+  it("should return error status when repo has no configured path", async () => {
+    const repo = "owner/no-path-repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockImplementation(() => {
+      throw new Error("No targetRoot configured");
+    });
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(1);
+    const repoInfo = result.repositories[0];
+    expect(repoInfo.repo).toBe(repo);
+    expect(repoInfo.path).toBe("");
+    expect(repoInfo.health.status).toBe("error");
+    expect(repoInfo.health.checks.gitRemoteAccess.status).toBe("error");
+    expect(repoInfo.health.checks.localPath.status).toBe("error");
+    expect(repoInfo.activeWorktrees).toBe(0);
+  });
+
+  it("should return error status when git remote check fails", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "git") return { exitCode: 1, stdout: "", stderr: "fatal: No such remote 'origin'" };
+      if (cmd === "df") return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 100000000000 10000000000 5000000000 10% /", stderr: "" };
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].health.status).toBe("error");
+    expect(result.repositories[0].health.checks.gitRemoteAccess.status).toBe("error");
+  });
+
+  it("should return error status when local path does not exist", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockExistsSync.mockReturnValue(false);
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].health.status).toBe("error");
+    expect(result.repositories[0].health.checks.localPath.status).toBe("error");
+  });
+
+  it("should return warning status when disk space is low", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    // df returns ~500MB available (< 1GB threshold)
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "git") return { exitCode: 0, stdout: "git@github.com:owner/repo", stderr: "" };
+      if (cmd === "df") return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 1000000000 500000000 500000000 50% /", stderr: "" };
+      return { exitCode: 0, stdout: "", stderr: "" };
+    });
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].health.status).toBe("warning");
+    expect(result.repositories[0].health.checks.diskSpace.status).toBe("warning");
+  });
+
+  it("should return warning status when dependencies not installed", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockExistsSync.mockImplementation((p: unknown) => {
+      const path = p as string;
+      // package.json exists, but node_modules does not
+      return !path.includes("node_modules");
+    });
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].health.status).toBe("warning");
+    expect(result.repositories[0].health.checks.dependencies.status).toBe("warning");
+  });
+
+  it("should calculate job stats correctly", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockJobStore.list.mockReturnValue([
+      { repo, status: "success", totalCostUsd: 0.05 },
+      { repo, status: "success", totalCostUsd: 0.10 },
+      { repo, status: "failed", totalCostUsd: 0.02 },
+      { repo: "other/repo", status: "success", totalCostUsd: 99.0 }, // different repo, excluded
+    ] as any);
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    const stats = result.repositories[0].stats;
+    expect(stats.totalJobs).toBe(3);
+    expect(stats.successRate).toBeCloseTo(2 / 3);
+    expect(stats.totalCostUsd).toBeCloseTo(0.17);
+  });
+
+  it("should count active worktrees excluding main worktree", async () => {
+    const repo = "owner/repo";
+    mockListConfiguredRepos.mockReturnValue([repo]);
+    mockResolveProject.mockReturnValue({ path: "/path/to/repo", repo });
+    mockListWorktrees.mockResolvedValue([{}, {}, {}] as any); // 3 worktrees → 2 active
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].activeWorktrees).toBe(2);
+  });
+
+  it("should return 500 when config loading fails", async () => {
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Config not found");
+    });
+
+    const response = await app.request("/api/repositories");
+
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toBe("Failed to fetch repositories: Config not found");
+  });
+
+  describe("with API key", () => {
+    const apiKey = "test-api-key-123";
+
+    beforeEach(() => {
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+    });
+
+    it("should return 401 without Bearer token", async () => {
+      const response = await app.request("/api/repositories");
+
+      expect(response.status).toBe(401);
+      const result = await response.json();
+      expect(result.error).toBe("Unauthorized");
+    });
+
+    it("should return repositories with valid Bearer token", async () => {
+      mockListConfiguredRepos.mockReturnValue([]);
+
+      const response = await app.request("/api/repositories", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.repositories).toEqual([]);
+      expect(result.totalCount).toBe(0);
     });
   });
 });

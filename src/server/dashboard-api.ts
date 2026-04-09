@@ -195,11 +195,11 @@ function validateAndNormalizePath(path: string, paramName: string): string {
  */
 async function checkGitRemoteAccess(projectPath: string, gitPath: string): Promise<{ status: "ok" | "error"; message?: string }> {
   try {
-    const result = await runCli(gitPath, ["remote", "get-url", "origin"], { cwd: projectPath, timeout: 10000 });
+    const result = await runCli(gitPath, ["ls-remote", "--heads", "origin"], { cwd: projectPath, timeout: 10000 });
     if (result.exitCode !== 0) {
       return {
         status: "error",
-        message: `Git remote not accessible: ${result.stderr || "No origin remote found"}`
+        message: `Git remote not accessible: ${result.stderr || "Cannot connect to remote"}`
       };
     }
     return { status: "ok" };

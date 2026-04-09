@@ -47,6 +47,11 @@ function navigateTo(view) {
   if (view === 'repositories') {
     renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
   }
+
+  // If navigating to automations view, render it
+  if (view === 'automations') {
+    renderAutomationsPanel();
+  }
 }
 
 // Bind navigation clicks
@@ -685,6 +690,20 @@ applyTranslations();
     themeBtn.textContent = document.documentElement.classList.contains('dark') ? 'dark_mode' : 'light_mode';
   }
   initArchivedToggle();
+
+  // Restore automations view toggle state (kanban button/panel visibility)
+  if (currentAutomationsView === 'kanban') {
+    var btnList    = document.getElementById('btn-automations-list');
+    var btnKanban  = document.getElementById('btn-automations-kanban');
+    var listView   = document.getElementById('automations-list-view');
+    var kanbanView = document.getElementById('automations-kanban-view');
+    var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
+    var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
+    if (btnList)   btnList.className   = inactiveClass;
+    if (btnKanban) btnKanban.className = activeClass;
+    if (listView)   listView.classList.add('hidden');
+    if (kanbanView) kanbanView.classList.remove('hidden');
+  }
 })();
 
 // Bind project form submit event
@@ -782,6 +801,92 @@ function initProjectSelection() {
   });
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Automations View Toggle
+   ══════════════════════════════════════════════════════════════ */
+function setAutomationsView(view) {
+  currentAutomationsView = view;
+  localStorage.setItem('aqm-automations-view', view);
+
+  var listView   = document.getElementById('automations-list-view');
+  var kanbanView = document.getElementById('automations-kanban-view');
+  var btnList    = document.getElementById('btn-automations-list');
+  var btnKanban  = document.getElementById('btn-automations-kanban');
+
+  var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
+  var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
+
+  if (view === 'kanban') {
+    if (listView)   listView.classList.add('hidden');
+    if (kanbanView) kanbanView.classList.remove('hidden');
+    if (btnList)   btnList.className   = inactiveClass;
+    if (btnKanban) btnKanban.className = activeClass;
+    renderAutomationsKanban();
+  } else {
+    if (listView)   listView.classList.remove('hidden');
+    if (kanbanView) kanbanView.classList.add('hidden');
+    if (btnList)   btnList.className   = activeClass;
+    if (btnKanban) btnKanban.className = inactiveClass;
+    renderAutomationsList();
+  }
+}
+
+function renderAutomationsList() {
+  var listEl   = document.getElementById('automations-job-list');
+  var detailEl = document.getElementById('automations-job-detail');
+  var emptyEl  = document.getElementById('automations-empty-state');
+  if (!listEl) return;
+
+  var filtered = filterJobs(currentJobs);
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '';
+    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    if (detailEl) detailEl.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
+    return;
+  }
+
+  if (emptyEl) { emptyEl.classList.add('hidden'); emptyEl.classList.remove('flex'); }
+
+  if (!selectedJobId || !filtered.find(function(j) { return j.id === selectedJobId; })) {
+    var firstActive = filtered.find(function(j) { return j.status === 'running' || j.status === 'queued'; });
+    selectedJobId = (firstActive || filtered[0]).id;
+  }
+
+  listEl.innerHTML = filtered.map(function(j) {
+    return renderJobListItem(j, j.id === selectedJobId);
+  }).join('');
+
+  if (detailEl) {
+    var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
+    detailEl.innerHTML = renderJobDetail(selectedJob);
+  }
+}
+
+function renderAutomationsKanban() {
+  var boardEl = document.getElementById('kanban-board');
+  if (!boardEl) return;
+  boardEl.innerHTML = renderKanban(filterJobs(currentJobs));
+}
+
+function renderAutomationsPanel() {
+  if (currentView !== 'automations') return;
+  if (currentAutomationsView === 'kanban') {
+    renderAutomationsKanban();
+  } else {
+    renderAutomationsList();
+  }
+}
+
+// SSE/data 업데이트 시 automations 패널도 갱신
+(function() {
+  var orig = renderFromState;
+  renderFromState = function() {
+    orig();
+    renderAutomationsPanel();
+  };
+})();
+
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
@@ -790,3 +895,4 @@ window.performUpdate = performUpdate;
 window.dismissUpdate = dismissUpdate;
 window.toggleProjectDropdown = toggleProjectDropdown;
 window.setProject = setProject;
+window.setAutomationsView = setAutomationsView;

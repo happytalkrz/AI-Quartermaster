@@ -213,3 +213,54 @@ export const HealthCheckResponseSchema = z.object({
 }).strict();
 
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
+
+// RepositoryHealth 스키마 (GET /api/repositories 응답 내 health 필드)
+export const RepositoryHealthSchema = z.object({
+  status: z.enum(["healthy", "warning", "error"]),
+  checks: z.object({
+    gitRemoteAccess: z.object({
+      status: z.enum(["ok", "error"]),
+      message: z.string().optional(),
+    }),
+    localPath: z.object({
+      status: z.enum(["ok", "error"]),
+      message: z.string().optional(),
+    }),
+    diskSpace: z.object({
+      status: z.enum(["ok", "warning", "error"]),
+      message: z.string().optional(),
+      freeBytes: z.number().optional(),
+    }),
+    dependencies: z.object({
+      status: z.enum(["ok", "warning", "error"]),
+      message: z.string().optional(),
+    }),
+  }),
+  lastChecked: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type RepositoryHealth = z.infer<typeof RepositoryHealthSchema>;
+
+// RepositoryInfo 스키마 — 리포지토리별 상태/비용/health 정보
+export const RepositoryInfoSchema = z.object({
+  repo: z.string(),
+  path: z.string(),
+  health: RepositoryHealthSchema,
+  activeWorktrees: z.number().int().nonnegative(),
+  stats: z.object({
+    totalJobs: z.number().int().nonnegative(),
+    successRate: z.number().min(0).max(1),
+    totalCostUsd: z.number().nonnegative(),
+  }),
+}).strict();
+
+export type RepositoryInfo = z.infer<typeof RepositoryInfoSchema>;
+
+// RepositoriesResponse 스키마 (GET /api/repositories)
+export const RepositoriesResponseSchema = z.object({
+  repositories: z.array(RepositoryInfoSchema),
+  totalCount: z.number().int().nonnegative(),
+  lastUpdated: z.string(), // ISO 8601 timestamp
+}).strict();
+
+export type RepositoriesResponse = z.infer<typeof RepositoriesResponseSchema>;

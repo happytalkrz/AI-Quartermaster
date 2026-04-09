@@ -682,6 +682,11 @@ export class JobStore extends EventEmitter {
           : b.completedAt
             ? new Date(b.completedAt).getTime()
             : new Date(b.createdAt).getTime();
+
+        // 동일한 timestamp인 경우 createdAt로 tie-break (더 오래된 것 먼저)
+        if (ta === tb) {
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        }
         return ta - tb; // LRU: 가장 오래전에 사용된 것 먼저
       });
 

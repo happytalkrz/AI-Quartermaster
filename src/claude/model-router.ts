@@ -124,3 +124,27 @@ export function configForTaskWithMode(
     maxTurns: resolveMaxTurnsForMode(config, executionMode),
   };
 }
+
+/**
+ * Extended config that includes tool access restrictions for a specific worker type.
+ */
+export interface WorkerConfig extends ClaudeCliConfig {
+  disallowedTools: string[];
+}
+
+/**
+ * Creates a WorkerConfig with model, maxTurns, and disallowedTools set for the given worker.
+ * Extends configForTaskWithMode with WorkerType-based tool restrictions.
+ * configForTaskWithMode is kept for backwards compatibility.
+ */
+export function configForWorker(
+  config: ClaudeCliConfig,
+  taskType: TaskType,
+  executionMode: ExecutionMode,
+  workerType: WorkerType
+): WorkerConfig {
+  return {
+    ...configForTaskWithMode(config, taskType, executionMode),
+    disallowedTools: WORKER_DISALLOWED_TOOLS[workerType],
+  };
+}

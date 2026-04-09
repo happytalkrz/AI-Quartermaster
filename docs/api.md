@@ -56,6 +56,10 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 
 **쿼리 파라미터:**
 - `include=archived` - 보관된 작업 포함 (기본값: 제외)
+- `project` - 특정 repo로 필터링 (예: `owner/repo`)
+- `status` - 상태로 필터링: `pending`, `running`, `completed`, `failed`
+- `limit` - 반환할 최대 항목 수 (페이지네이션)
+- `offset` - 건너뛸 항목 수 (페이지네이션)
 
 **응답:**
 ```json
@@ -79,6 +83,12 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
     "active": 1,
     "waiting": 2,
     "concurrency": 3
+  },
+  "pagination": {
+    "total": 42,
+    "offset": 0,
+    "limit": 20,
+    "hasMore": true
   }
 }
 ```
@@ -226,6 +236,23 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 
 ## Projects API
 
+### GET /api/projects
+설정된 프로젝트 목록을 조회합니다.
+
+**응답:**
+```json
+{
+  "projects": [
+    {
+      "repo": "owner/repo",
+      "path": "/path/to/repo",
+      "baseBranch": "main",
+      "mode": "code"
+    }
+  ]
+}
+```
+
 ### POST /api/projects
 새 프로젝트를 추가합니다.
 
@@ -302,6 +329,10 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 ### GET /api/stats
 대시보드 통계를 조회합니다.
 
+**쿼리 파라미터:**
+- `project` - 특정 repo로 필터링 (예: `owner/repo`)
+- `timeRange` - 기간 필터: `1d`, `7d`, `30d`, `90d` (기본값: `7d`)
+
 **응답:**
 ```json
 {
@@ -313,6 +344,29 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
   "cancelledCount": 0,
   "avgDurationMs": 120000,
   "successRate": 83
+}
+```
+
+### GET /api/stats/costs
+비용 통계를 조회합니다.
+
+**쿼리 파라미터:**
+- `project` - 특정 repo로 필터링 (예: `owner/repo`)
+- `timeRange` - 기간 필터: `1d`, `7d`, `30d`, `90d` (기본값: `30d`)
+- `groupBy` - 그룹화 기준: `project`, `day` (기본값: `project`)
+
+**응답:**
+```json
+{
+  "costs": [
+    {
+      "group": "owner/repo",
+      "totalCostUsd": 1.23,
+      "jobCount": 10
+    }
+  ],
+  "totalCostUsd": 1.23,
+  "timeRange": "30d"
 }
 ```
 
@@ -400,6 +454,115 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 
 ---
 
+## Repositories API
+
+### GET /api/repositories
+설정된 모든 프로젝트의 상태, 헬스체크, 통계를 집계하여 반환합니다.
+
+**응답:**
+```json
+{
+  "repositories": [
+    {
+      "repository": "owner/repo",
+      "name": "owner/repo",
+      "path": "/path/to/repo",
+      "status": "healthy",
+      "worktreeCount": 2,
+      "health": {
+        "gitRemoteAccess": { "status": "ok" },
+        "localPath": { "status": "ok" },
+        "diskSpace": { "status": "ok", "freeBytes": 10737418240 },
+        "dependencies": { "status": "ok" }
+      },
+      "stats": {
+        "totalJobs": 42,
+        "successJobs": 35,
+        "failedJobs": 5,
+        "successRate": 83,
+        "totalCostUsd": 1.23,
+        "lastActivity": "2026-04-04T10:00:00Z"
+      },
+      "lastChecked": "2026-04-04T10:00:00Z"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "healthy": 1,
+    "warning": 0,
+    "error": 0,
+    "totalJobs": 42,
+    "checkedAt": "2026-04-04T10:00:00Z"
+  }
+}
+```
+
+**헬스 상태:**
+- `healthy` - 모든 체크 통과
+- `warning` - 디스크 공간 부족 또는 의존성 미설치
+- `error` - Git 원격 접근 불가 또는 로컬 경로 없음
+
+---
+
+## Health API
+
+### GET /api/health
+특정 프로젝트의 헬스 상태를 확인합니다.
+
+**쿼리 파라미터:**
+- `project` (필수) - 확인할 repo (예: `owner/repo`)
+
+**응답:**
+```json
+{
+  "project": "owner/repo",
+  "status": "healthy",
+  "checks": {
+    "gitRemoteAccess": { "status": "ok" },
+    "localPath": { "status": "ok" },
+    "diskSpace": { "status": "warning", "message": "Low disk space (< 1GB)", "freeBytes": 500000000 },
+    "dependencies": { "status": "ok" }
+  },
+  "lastChecked": "2026-04-04T10:00:00Z"
+}
+```
+
+**에러:**
+- `400` - `project` 파라미터 누락
+- `404` - 설정에 등록되지 않은 프로젝트
+
+### GET /api/projects/health
+설정된 모든 프로젝트의 헬스 상태를 일괄 확인합니다.
+
+**응답:**
+```json
+{
+  "projects": [
+    {
+      "project": "owner/repo",
+      "status": "healthy",
+      "checks": {
+        "gitRemoteAccess": { "status": "ok" },
+        "localPath": { "status": "ok" },
+        "diskSpace": { "status": "ok", "freeBytes": 10737418240 },
+        "dependencies": { "status": "ok" }
+      },
+      "stats": null,
+      "lastChecked": "2026-04-04T10:00:00Z"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "healthy": 1,
+    "warning": 0,
+    "error": 0,
+    "checkedAt": "2026-04-04T10:00:00Z"
+  }
+}
+```
+
+---
+
 ## Server-Sent Events (SSE)
 
 ### GET /api/events
@@ -408,11 +571,14 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 **인증:** 쿼리 파라미터 `?token=session-token` 사용
 
 **이벤트 타입:**
-- `data` - 초기 상태 및 주기적 업데이트
+- `data` - 초기 상태 및 주기적 업데이트 (10초 주기)
+- `heartbeat` - 연결 유지 신호 (30초 주기)
 - `jobCreated` - 새 작업 생성
 - `jobUpdated` - 작업 상태 변경
 - `jobDeleted` - 작업 삭제
 - `configChanged` - 설정 변경
+- `updateCompleted` - 시스템 업데이트 완료
+- `updateFailed` - 시스템 업데이트 실패
 
 **예시:**
 ```javascript

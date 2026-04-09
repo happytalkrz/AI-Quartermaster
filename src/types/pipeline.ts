@@ -91,6 +91,8 @@ export interface PhaseResult {
   phaseIndex: number;
   phaseName: string;
   success: boolean;
+  /** 부분 성공 여부 - true인 경우 일부 파일만 처리됨 */
+  partial?: boolean;
   warnings?: string[];
   errors?: string[];
   commitHash?: string;

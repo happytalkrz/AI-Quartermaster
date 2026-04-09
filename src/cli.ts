@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
+import { fileURLToPath } from "url";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
@@ -21,7 +22,7 @@ import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 
-function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
+export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
   const result: Record<string, number> = {};
   for (const p of projects) {
     if (p.concurrency !== undefined) {
@@ -702,7 +703,7 @@ async function main() {
   }
 }
 
-function printHelp(): void {
+export function printHelp(): void {
   console.log(`
 AI Quartermaster
 
@@ -757,7 +758,7 @@ Environment:
 `);
 }
 
-function parseArgs(argv: string[]): CliArgs {
+export function parseArgs(argv: string[]): CliArgs {
   const result: CliArgs = {};
 
   // Check if first arg is a subcommand (doesn't start with --)
@@ -804,7 +805,11 @@ function parseArgs(argv: string[]): CliArgs {
   return result;
 }
 
-main().catch((err: unknown) => {
-  console.error("Fatal error:", getErrorMessage(err));
-  process.exit(1);
-});
+// Only execute main() when this file is run directly (not when imported in tests)
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename) {
+  main().catch((err: unknown) => {
+    console.error("Fatal error:", getErrorMessage(err));
+    process.exit(1);
+  });
+}

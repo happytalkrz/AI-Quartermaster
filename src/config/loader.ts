@@ -1,9 +1,14 @@
 import { readFileSync, existsSync, writeFileSync } from "fs";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
-import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
-import { parseEnvVars } from "./env-parser.js";
+import { ManagedSource } from "./sources/managed-source.js";
+import { UserSource } from "./sources/user-source.js";
+import { ProjectSource } from "./sources/project-source.js";
+import { CliSource } from "./sources/cli-source.js";
+import { EnvSource } from "./sources/env-source.js";
+import type { ConfigSources } from "./sources/types.js";
+import { SOURCE_PRIORITY_ORDER } from "./sources/types.js";
 
 export interface TryLoadConfigResult {
   config: AQConfig | null;
@@ -57,7 +62,7 @@ function formatYamlTabError(error: unknown, filePath: string): Error {
 /**
  * YAML 파싱을 수행하되 탭 문자 에러를 친절하게 처리
  */
-function parseYamlSafely(content: string, filePath: string): unknown {
+export function parseYamlSafely(content: string, filePath: string): unknown {
   try {
     return parseYaml(content);
   } catch (error: unknown) {
@@ -104,37 +109,28 @@ export interface LoadConfigOptions {
 export function loadConfig(projectRoot: string): AQConfig;
 export function loadConfig(projectRoot: string, options: LoadConfigOptions): AQConfig;
 export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQConfig {
-  const baseConfigPath = `${projectRoot}/config.yml`;
-  const localConfigPath = `${projectRoot}/config.local.yml`;
+  const sources: ConfigSources = {
+    managed: new ManagedSource(),
+    user: new UserSource(),
+    project: new ProjectSource(projectRoot),
+  };
 
-  let config = structuredClone(DEFAULT_CONFIG);
-
-  if (!existsSync(baseConfigPath)) {
-    throw new Error(`config.yml not found at ${baseConfigPath}`);
-  }
-
-  // 1. Load and merge base config.yml
-  const baseRaw = parseYamlSafely(readFileSync(baseConfigPath, "utf-8"), baseConfigPath);
-  config = deepMerge(config, baseRaw);
-
-  // 2. Load and merge config.local.yml if exists
-  if (existsSync(localConfigPath)) {
-    const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
-    config = deepMerge(config, localRaw);
-  }
-
-  // 3. Apply environment variables (AQM_*)
-  if (options?.envVars !== undefined) {
-    const envConfig = parseEnvVars(options.envVars);
-    config = deepMerge(config, envConfig);
-  }
-
-  // 4. Apply CLI config overrides
   if (options?.configOverrides) {
-    config = deepMerge(config, options.configOverrides);
+    sources.cli = new CliSource(options.configOverrides);
   }
 
-  return validateConfig(config);
+  if (options?.envVars !== undefined) {
+    sources.env = new EnvSource(options.envVars);
+  }
+
+  let merged: Record<string, unknown> = {};
+  for (const name of SOURCE_PRIORITY_ORDER) {
+    const source = sources[name];
+    if (!source) continue;
+    merged = deepMerge(merged, source.load() as Record<string, unknown>);
+  }
+
+  return validateConfig(merged);
 }
 
 // Overloaded function signatures for tryLoadConfig
@@ -142,7 +138,6 @@ export function tryLoadConfig(projectRoot: string): TryLoadConfigResult;
 export function tryLoadConfig(projectRoot: string, options: LoadConfigOptions): TryLoadConfigResult;
 export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions): TryLoadConfigResult {
   const baseConfigPath = `${projectRoot}/config.yml`;
-  const localConfigPath = `${projectRoot}/config.local.yml`;
 
   // Check if base config exists
   if (!existsSync(baseConfigPath)) {
@@ -155,65 +150,34 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
     };
   }
 
-  let config = structuredClone(DEFAULT_CONFIG);
+  const sources: ConfigSources = {
+    managed: new ManagedSource(),
+    user: new UserSource(),
+    project: new ProjectSource(projectRoot),
+  };
 
-  // Try to parse base config
-  try {
-    const baseRaw = parseYamlSafely(readFileSync(baseConfigPath, "utf-8"), baseConfigPath);
-    config = deepMerge(config, baseRaw);
-  } catch (err: unknown) {
-    return {
-      config: null,
-      error: {
-        type: 'yaml_syntax',
-        message: `Failed to parse config.yml: ${err instanceof Error ? err.message : 'Unknown error'}`
-      }
-    };
-  }
-
-  // Try to merge local config if exists
-  try {
-    const localRaw = parseYamlSafely(readFileSync(localConfigPath, "utf-8"), localConfigPath);
-    config = deepMerge(config, localRaw);
-  } catch (err: unknown) {
-    // Only fail on non-ENOENT errors (file exists but can't parse)
-    if (err instanceof Error && "code" in err && (err as NodeJS.ErrnoException).code !== "ENOENT") {
-      return {
-        config: null,
-        error: {
-          type: 'yaml_syntax',
-          message: `Failed to parse config.local.yml: ${err.message}`
-        }
-      };
-    }
-  }
-
-  // Apply environment variables (AQM_*)
-  if (options?.envVars !== undefined) {
-    try {
-      const envConfig = parseEnvVars(options.envVars);
-      config = deepMerge(config, envConfig);
-    } catch (err: unknown) {
-      return {
-        config: null,
-        error: {
-          type: 'validation',
-          message: `Failed to parse environment variables: ${err instanceof Error ? err.message : 'Unknown error'}`
-        }
-      };
-    }
-  }
-
-  // Apply CLI config overrides
   if (options?.configOverrides) {
+    sources.cli = new CliSource(options.configOverrides);
+  }
+
+  if (options?.envVars !== undefined) {
+    sources.env = new EnvSource(options.envVars);
+  }
+
+  let merged: Record<string, unknown> = {};
+
+  for (const name of SOURCE_PRIORITY_ORDER) {
+    const source = sources[name];
+    if (!source) continue;
     try {
-      config = deepMerge(config, options.configOverrides);
+      merged = deepMerge(merged, source.load() as Record<string, unknown>);
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
       return {
         config: null,
         error: {
-          type: 'validation',
-          message: `Failed to apply config overrides: ${err instanceof Error ? err.message : 'Unknown error'}`
+          type: name === 'project' ? 'yaml_syntax' : 'validation',
+          message
         }
       };
     }
@@ -221,7 +185,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
 
   // Try to validate config
   try {
-    const validatedConfig = validateConfig(config);
+    const validatedConfig = validateConfig(merged);
     return { config: validatedConfig };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown validation error';

@@ -1402,7 +1402,7 @@ git:
     expect(config.general.concurrency).toBe(5);              // From env var (converted to number)
   });
 
-  it("should apply CLI overrides over env vars and config files", () => {
+  it("should apply env vars over CLI overrides (env has highest priority)", () => {
     writeFileSync(join(testDir, "config.yml"), `
 general:
   projectName: "test-project"
@@ -1428,9 +1428,9 @@ git:
     const config = loadConfig(testDir, { envVars, configOverrides });
 
     expect(config.general.projectName).toBe("test-project");  // From config file
-    expect(config.general.logLevel).toBe("warn");            // From CLI override
+    expect(config.general.logLevel).toBe("debug");            // From env var (env > CLI)
     expect(config.general.concurrency).toBe(5);              // From env var
-    expect(config.general.dryRun).toBe(true);                // From CLI override
+    expect(config.general.dryRun).toBe(true);                // From CLI override (env doesn't set this)
   });
 
   it("should handle nested CLI overrides", () => {

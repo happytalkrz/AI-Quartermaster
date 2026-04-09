@@ -365,11 +365,11 @@ export function addProjectToConfig(configPath: string, project: ProjectConfig): 
 
   for (let i = projectsIndex + 1; i < lines.length; i++) {
     const line = lines[i];
-    const isBlanK = line.trim() === '';
+    const isBlank = line.trim() === '';
     const isProjectItem = line.startsWith(itemIndent);
     const isNewSection = !isProjectItem && line.match(/^\s*\w+\s*:/);
 
-    if (isBlanK) continue;
+    if (isBlank) continue;
     if (isNewSection) break;
     insertIndex = i + 1;
   }

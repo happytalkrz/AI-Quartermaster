@@ -7,7 +7,8 @@ import {
   addProjectToConfig,
   removeProjectFromConfig,
   updateProjectInConfig,
-  initProject
+  initProject,
+  deepMerge
 } from "../../src/config/loader.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -1550,5 +1551,101 @@ git:
     expect(config.general.dryRun).toBe(false);
     expect(config.safety.allowedLabels).toEqual(["bug", "feature"]);
     expect(config.commands.test).toBe("yarn test");
+  });
+});
+
+describe("deepMerge", () => {
+  it("should merge flat objects", () => {
+    const target = { a: 1, b: 2 };
+    const source = { b: 3, c: 4 };
+    const result = deepMerge(target, source);
+    expect(result).toEqual({ a: 1, b: 3, c: 4 });
+  });
+
+  it("should recursively merge nested objects", () => {
+    const target = { outer: { a: 1, b: 2 } };
+    const source = { outer: { b: 99, c: 3 } };
+    const result = deepMerge(target, source);
+    expect(result).toEqual({ outer: { a: 1, b: 99, c: 3 } });
+  });
+
+  it("should replace arrays instead of concatenating", () => {
+    const target = { list: [1, 2, 3] };
+    const source = { list: [4, 5] };
+    const result = deepMerge(target, source);
+    expect((result as { list: number[] }).list).toEqual([4, 5]);
+  });
+
+  it("should return target when source is null", () => {
+    const target = { a: 1 };
+    const result = deepMerge(target, null);
+    expect(result).toEqual({ a: 1 });
+  });
+
+  it("should return target when source is undefined", () => {
+    const target = { a: 1 };
+    const result = deepMerge(target, undefined);
+    expect(result).toEqual({ a: 1 });
+  });
+
+  it("should return source when target is not a plain object", () => {
+    const source = { a: 1 };
+    const result = deepMerge("not-an-object", source);
+    expect(result).toEqual({ a: 1 });
+  });
+
+  it("should return source primitive when source is not a plain object", () => {
+    const result = deepMerge({ a: 1 }, 42);
+    expect(result).toBe(42);
+  });
+
+  it("should handle deeply nested merges", () => {
+    const target = { a: { b: { c: 1, d: 2 } } };
+    const source = { a: { b: { d: 99, e: 3 } } };
+    const result = deepMerge(target, source);
+    expect(result).toEqual({ a: { b: { c: 1, d: 99, e: 3 } } });
+  });
+
+  it("should not mutate the original target", () => {
+    const target = { a: 1, b: { x: 10 } };
+    const source = { b: { x: 99 } };
+    deepMerge(target, source);
+    expect(target.b.x).toBe(10);
+  });
+
+  it("should prevent prototype pollution via __proto__", () => {
+    const malicious = JSON.parse('{"__proto__": {"polluted": true}}') as Record<string, unknown>;
+    deepMerge({}, malicious);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
+  it("should prevent prototype pollution via constructor", () => {
+    const malicious = JSON.parse('{"constructor": {"prototype": {"polluted": true}}}') as Record<string, unknown>;
+    deepMerge({}, malicious);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
+  it("should prevent prototype pollution via prototype key", () => {
+    const malicious = { prototype: { polluted: true } } as Record<string, unknown>;
+    deepMerge({}, malicious);
+    const obj = {} as Record<string, unknown>;
+    expect(obj["polluted"]).toBeUndefined();
+  });
+
+  it("should preserve target field when source field is null", () => {
+    const target = { a: { nested: 1 }, b: 2 };
+    const source = { a: null };
+    const result = deepMerge(target, source) as Record<string, unknown>;
+    // deepMerge(target.a, null) returns target.a because source is null
+    expect(result["a"]).toEqual({ nested: 1 });
+    expect(result["b"]).toBe(2);
+  });
+
+  it("should merge source fields that do not exist in target", () => {
+    const target = { a: 1 };
+    const source = { b: { nested: true } };
+    const result = deepMerge(target, source) as Record<string, unknown>;
+    expect(result["a"]).toBe(1);
+    expect(result["b"]).toEqual({ nested: true });
   });
 });

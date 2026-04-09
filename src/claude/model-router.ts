@@ -3,6 +3,26 @@ import type { ClaudeCliConfig, ExecutionMode } from "../types/config.js";
 export type TaskType = "plan" | "phase" | "review" | "fallback";
 
 /**
+ * Worker type for tool access control.
+ * - implementation: focused on code writing (Read/Glob/Grep disallowed)
+ * - review: read-only review (Write/Edit/Bash disallowed)
+ * - readonly: all write tools disallowed
+ * - unrestricted: no tool restrictions
+ */
+export type WorkerType = "implementation" | "review" | "readonly" | "unrestricted";
+
+/**
+ * Disallowed tools per worker type.
+ * These tool names correspond to Claude CLI --disallowedTools flag values.
+ */
+export const WORKER_DISALLOWED_TOOLS: Record<WorkerType, string[]> = {
+  implementation: ["Read", "Glob", "Grep"],
+  review: ["Write", "Edit", "Bash"],
+  readonly: ["Write", "Edit", "MultiEdit", "Bash", "NotebookEdit"],
+  unrestricted: [],
+};
+
+/**
  * Resolves the model to use for a given task type.
  * Priority: models[taskType] → model (global default)
  */

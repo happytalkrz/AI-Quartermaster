@@ -300,6 +300,26 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
     setGlobalLogLevel(newConfig.general.logLevel);
     logger.info(`Log level updated: ${oldConfig.general.logLevel} → ${newConfig.general.logLevel}`);
   }
+
+  // Update per-project concurrency limits
+  const oldProjects = new Map((oldConfig.projects ?? []).map(p => [p.repo, p.concurrency ?? null]));
+  const newProjects = new Map((newConfig.projects ?? []).map(p => [p.repo, p.concurrency ?? null]));
+
+  for (const [repo, newLimit] of newProjects) {
+    const oldLimit = oldProjects.get(repo) ?? null;
+    if (newLimit !== oldLimit) {
+      queue.setProjectConcurrency(repo, newLimit);
+      logger.info(`Project concurrency updated for ${repo}: ${oldLimit ?? "unlimited"} → ${newLimit ?? "unlimited"}`);
+    }
+  }
+
+  // Remove limits for projects that were removed from config
+  for (const [repo] of oldProjects) {
+    if (!newProjects.has(repo)) {
+      queue.setProjectConcurrency(repo, null);
+      logger.info(`Project concurrency limit removed for ${repo} (project removed from config)`);
+    }
+  }
 }
 
 /**

@@ -257,7 +257,7 @@ async function startCommand(args: CliArgs): Promise<void> {
       });
       return { error: errorMsg };
     }
-  }, effectiveConfig.general.stuckTimeoutMs);
+  }, effectiveConfig.general.stuckTimeoutMs, Object.fromEntries((effectiveConfig.projects ?? []).filter(p => p.concurrency !== undefined).map(p => [p.repo, p.concurrency!])));
 
   // Recover jobs from previous session
   queue.recover();
@@ -506,7 +506,7 @@ async function planCommand(args: CliArgs): Promise<void> {
     const { JobStore } = await import("./queue/job-store.js");
     const { JobQueue } = await import("./queue/job-queue.js");
     const store = new JobStore(dataDir);
-    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs);
+    const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs, Object.fromEntries((config.projects ?? []).filter(p => p.concurrency !== undefined).map(p => [p.repo, p.concurrency!])));
 
     let enqueued = 0;
     for (const batch of plan.executionOrder) {

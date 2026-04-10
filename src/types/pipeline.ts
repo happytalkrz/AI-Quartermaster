@@ -373,6 +373,69 @@ export interface AssembledPrompt {
   assemblyTimeMs: number;
 }
 
+// Pipeline Event Types
+
+export type PipelineEventType =
+  | "pr-merged"
+  | "phase-failed"
+  | "pipeline-complete"
+  | "pipeline-failed";
+
+export interface PrMergedPayload {
+  issueNumber: number;
+  repo: string;
+  prNumber: number;
+  prUrl: string;
+  mergedAt: string;
+}
+
+export interface PhaseFailedPayload {
+  issueNumber: number;
+  repo: string;
+  phaseIndex: number;
+  phaseName: string;
+  errorCategory?: ErrorCategory;
+  errorMessage: string;
+  attempt: number;
+}
+
+export interface PipelineCompletePayload {
+  issueNumber: number;
+  repo: string;
+  prUrl: string;
+  totalCostUsd?: number;
+  durationMs: number;
+}
+
+export interface PipelineFailedPayload {
+  issueNumber: number;
+  repo: string;
+  state: PipelineState;
+  errorCategory?: ErrorCategory;
+  errorMessage: string;
+  durationMs: number;
+}
+
+export type PipelineEventPayload =
+  | PrMergedPayload
+  | PhaseFailedPayload
+  | PipelineCompletePayload
+  | PipelineFailedPayload;
+
+export interface PipelineEvent<T extends PipelineEventType = PipelineEventType> {
+  type: T;
+  payload: T extends "pr-merged"
+    ? PrMergedPayload
+    : T extends "phase-failed"
+      ? PhaseFailedPayload
+      : T extends "pipeline-complete"
+        ? PipelineCompletePayload
+        : T extends "pipeline-failed"
+          ? PipelineFailedPayload
+          : never;
+  triggeredAt: string;
+}
+
 // Job Discriminated Union Types
 
 export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";

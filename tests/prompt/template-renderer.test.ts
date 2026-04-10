@@ -428,6 +428,204 @@ describe("assembleLayeredPrompt", () => {
   });
 });
 
+describe("buildStaticContent", () => {
+  it("should include role and rules from base layer", () => {
+    const base = buildBaseLayer({ role: "시니어 개발자" });
+    const project = buildProjectLayer({
+      conventions: "TypeScript + ESM",
+      testCommand: "npx vitest run",
+      lintCommand: "npx eslint src/",
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).toContain("시니어 개발자");
+    expect(result).toContain("Phase의 대상 파일만");
+    expect(result).toContain("git add + git commit");
+    expect(result).toContain("any 금지");
+  });
+
+  it("should include project conventions and commands", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Custom conventions here",
+      testCommand: "npm test",
+      lintCommand: "npm run lint",
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).toContain("Custom conventions here");
+    expect(result).toContain("npm test");
+    expect(result).toContain("npm run lint");
+  });
+
+  it("should include safety rules", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Test",
+      testCommand: "test",
+      lintCommand: "lint",
+      safetyRules: ["custom safety rule A", "custom safety rule B"],
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).toContain("custom safety rule A");
+    expect(result).toContain("custom safety rule B");
+  });
+
+  it("should include optional skillsContext when provided", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Test",
+      testCommand: "test",
+      lintCommand: "lint",
+      skillsContext: "Skills context content",
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).toContain("Skills context content");
+  });
+
+  it("should include optional pastFailures when provided", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Test",
+      testCommand: "test",
+      lintCommand: "lint",
+      pastFailures: "Past failure details",
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).toContain("Past failure details");
+  });
+
+  it("should not include skillsContext/pastFailures sections when absent", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Test",
+      testCommand: "test",
+      lintCommand: "lint",
+    });
+
+    const result = buildStaticContent(base, project);
+
+    expect(result).not.toContain("스킬 컨텍스트");
+    expect(result).not.toContain("과거 실패 사례");
+  });
+
+  it("should return deterministic output for same inputs", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "Conventions",
+      testCommand: "test",
+      lintCommand: "lint",
+    });
+
+    const result1 = buildStaticContent(base, project);
+    const result2 = buildStaticContent(base, project);
+
+    expect(result1).toBe(result2);
+  });
+});
+
+describe("cache reuse verification", () => {
+  it("should produce identical staticContent for same base+project layers", () => {
+    const base1 = buildBaseLayer({ role: "시니어 개발자" });
+    const project1 = buildProjectLayer({
+      conventions: "TypeScript + ESM",
+      testCommand: "npx vitest run",
+      lintCommand: "npx eslint src/",
+    });
+
+    const base2 = buildBaseLayer({ role: "시니어 개발자" });
+    const project2 = buildProjectLayer({
+      conventions: "TypeScript + ESM",
+      testCommand: "npx vitest run",
+      lintCommand: "npx eslint src/",
+    });
+
+    const staticContent1 = buildStaticContent(base1, project1);
+    const staticContent2 = buildStaticContent(base2, project2);
+
+    expect(staticContent1).toBe(staticContent2);
+  });
+
+  it("assembleLayeredPrompt should reuse staticContent across different phaseLayer calls", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+    const project = buildProjectLayer({
+      conventions: "TypeScript",
+      testCommand: "npm test",
+      lintCommand: "npm run lint",
+    });
+    const staticContent = buildStaticContent(base, project);
+    const cachedLayer: import("../../src/types/pipeline.js").CachedPromptLayer = {
+      staticContent,
+      cacheKey: "fixed-cache-key-123",
+      createdAt: new Date().toISOString(),
+      phaseTemplate: "Phase {{phase.index}}/{{phase.totalCount}}: {{phase.name}}",
+    };
+
+    const makePhaseLayer = (index: number, name: string) =>
+      buildPhaseLayer({
+        issue: { number: 1, title: "Test", body: "Body", labels: [] },
+        planSummary: "Plan",
+        currentPhase: { index, totalCount: 3, name, description: "Desc", targetFiles: [] },
+        previousResults: "",
+        repository: { owner: "org", name: "repo", baseBranch: "main", workBranch: "feat" },
+      });
+
+    const result1 = assembleLayeredPrompt(cachedLayer, makePhaseLayer(1, "Setup"));
+    const result2 = assembleLayeredPrompt(cachedLayer, makePhaseLayer(2, "Implementation"));
+    const result3 = assembleLayeredPrompt(cachedLayer, makePhaseLayer(3, "Verification"));
+
+    // staticContent가 세 결과 모두에 그대로 포함되어야 함 (재사용)
+    expect(result1.content).toContain(staticContent);
+    expect(result2.content).toContain(staticContent);
+    expect(result3.content).toContain(staticContent);
+
+    // 동적 부분만 다르게 렌더링
+    expect(result1.content).toContain("Phase 1/3: Setup");
+    expect(result2.content).toContain("Phase 2/3: Implementation");
+    expect(result3.content).toContain("Phase 3/3: Verification");
+
+    // 캐시 키는 동일하게 유지
+    expect(result1.cacheKey).toBe("fixed-cache-key-123");
+    expect(result2.cacheKey).toBe("fixed-cache-key-123");
+    expect(result3.cacheKey).toBe("fixed-cache-key-123");
+
+    // 모두 cacheHit=true
+    expect(result1.cacheHit).toBe(true);
+    expect(result2.cacheHit).toBe(true);
+    expect(result3.cacheHit).toBe(true);
+  });
+
+  it("different project conventions should produce different staticContent", () => {
+    const base = buildBaseLayer({ role: "Developer" });
+
+    const project1 = buildProjectLayer({
+      conventions: "Convention A",
+      testCommand: "test",
+      lintCommand: "lint",
+    });
+    const project2 = buildProjectLayer({
+      conventions: "Convention B",
+      testCommand: "test",
+      lintCommand: "lint",
+    });
+
+    const static1 = buildStaticContent(base, project1);
+    const static2 = buildStaticContent(base, project2);
+
+    expect(static1).not.toBe(static2);
+    expect(static1).toContain("Convention A");
+    expect(static2).toContain("Convention B");
+  });
+});
+
 describe("loadLayerTemplates", () => {
   const promptsDir = join(process.cwd(), "prompts");
 

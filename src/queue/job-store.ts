@@ -37,6 +37,8 @@ export class JobStore extends EventEmitter {
   private maxJobs: number;
   // 메모리 캐시: running/queued 상태의 job만 캐싱
   private cache: Map<string, Job> = new Map();
+  // 우선순위 맵: jobId → priority (낮을수록 먼저). in-memory only.
+  private priorityMap: Map<string, number> = new Map();
 
   constructor(dataDir: string, maxJobs: number = 1000) {
     super();
@@ -584,7 +586,19 @@ export class JobStore extends EventEmitter {
     }
 
     return Array.from(jobMap.values())
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .map(job => {
+        const p = this.priorityMap.get(job.id);
+        return p !== undefined ? { ...job, priority: p } : job;
+      })
+      .sort((a, b) => {
+        // queued 잡: priority 오름차순 (낮을수록 먼저), 그 다음 createdAt 내림차순
+        if (a.status === "queued" && b.status === "queued") {
+          const pa = a.priority ?? Infinity;
+          const pb = b.priority ?? Infinity;
+          if (pa !== pb) return pa - pb;
+        }
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
   }
 
   findByIssue(issueNumber: number, repo: string): Job | undefined {
@@ -770,6 +784,22 @@ export class JobStore extends EventEmitter {
     // SQLite 기반으로 전환하면서 파일시스템 감시는 불필요
     // 호환성을 위해 메서드는 유지하지만 실제 동작은 하지 않음
     logger.debug("stopWatching called but no-op in SQLite mode");
+  }
+
+  /**
+   * queued 잡의 우선순위를 변경한다. (낮을수록 먼저 실행)
+   * running 이상의 잡에는 적용되지 않는다.
+   */
+  updateJobPriority(id: string, priority: number): boolean {
+    const job = this.get(id);
+    if (!job) return false;
+    if (job.status !== "queued") return false;
+
+    this.priorityMap.set(id, priority);
+    const updatedJob = { ...job, priority };
+    this.updateCache(updatedJob);
+    this.emit('jobUpdated', updatedJob, job);
+    return true;
   }
 
   /**

@@ -412,6 +412,8 @@ export interface JobBase {
   costUsd?: number;
   totalCostUsd?: number;
   totalUsage?: UsageStats;
+  /** 큐 내 우선순위 (낮을수록 먼저 처리). queued 상태에서만 유효 */
+  priority?: number;
 }
 
 /**

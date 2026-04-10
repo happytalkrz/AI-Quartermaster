@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedLabel } from "../../src/safety/label-filter.js";
+import { isAllowedLabel, getTriggerLabels } from "../../src/safety/label-filter.js";
 
 describe("isAllowedLabel", () => {
   it("should return true when allowedLabels is empty", () => {
@@ -26,5 +26,22 @@ describe("isAllowedLabel", () => {
     expect(isAllowedLabel(["feature-request"], ["feature"])).toBe(false);
     expect(isAllowedLabel(["bug-fix"], ["bug"])).toBe(false);
     expect(isAllowedLabel(["feature"], ["feature"])).toBe(true);
+  });
+});
+
+describe("getTriggerLabels", () => {
+  it("should return [instanceLabel] when instanceLabel is set", () => {
+    expect(getTriggerLabels("aqm", ["bug", "feature"])).toEqual(["aqm"]);
+    expect(getTriggerLabels("my-bot", [])).toEqual(["my-bot"]);
+  });
+
+  it("should return allowedLabels when instanceLabel is undefined", () => {
+    expect(getTriggerLabels(undefined, ["bug", "feature"])).toEqual(["bug", "feature"]);
+    expect(getTriggerLabels(undefined, [])).toEqual([]);
+  });
+
+  it("should return allowedLabels when instanceLabel is empty string", () => {
+    expect(getTriggerLabels("", ["bug", "feature"])).toEqual(["bug", "feature"]);
+    expect(getTriggerLabels("", [])).toEqual([]);
   });
 });

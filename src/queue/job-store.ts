@@ -7,6 +7,7 @@ import { JsonMigrator } from "./json-migrator.js";
 import type {
   Job,
   JobStatus,
+  JobPriority,
   QueuedJob,
   RunningJob,
   SuccessJob,
@@ -159,6 +160,7 @@ export class JobStore extends EventEmitter {
       id: dbJob.id,
       issueNumber: dbJob.issueNumber,
       repo: dbJob.repo,
+      priority: dbJob.priority,
       createdAt: dbJob.createdAt,
       lastUpdatedAt: dbJob.lastUpdatedAt,
       currentStep: dbJob.currentStep,
@@ -274,6 +276,7 @@ export class JobStore extends EventEmitter {
       issueNumber: job.issueNumber,
       repo: job.repo,
       status: job.status,
+      priority: job.priority,
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       completedAt: job.completedAt,
@@ -290,7 +293,7 @@ export class JobStore extends EventEmitter {
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[]): QueuedJob {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[], priority?: JobPriority): QueuedJob {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: QueuedJob = {
       id,
@@ -298,6 +301,7 @@ export class JobStore extends EventEmitter {
       repo,
       status: "queued",
       createdAt: new Date().toISOString(),
+      ...(priority ? { priority } : {}),
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       ...(isRetry ? { isRetry } : {}),
       ...(initialPhaseResults && initialPhaseResults.length > 0 ? { phaseResults: initialPhaseResults } : {}),
@@ -382,6 +386,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "queued",
+          priority: baseFields.priority,
           createdAt: baseFields.createdAt,
           lastUpdatedAt: baseFields.lastUpdatedAt,
           logs: baseFields.logs,
@@ -402,6 +407,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "running",
+          priority: baseFields.priority,
           startedAt: baseFields.startedAt || new Date().toISOString(),
           createdAt: baseFields.createdAt,
           lastUpdatedAt: baseFields.lastUpdatedAt,
@@ -424,6 +430,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "success",
+          priority: baseFields.priority,
           startedAt: baseFields.startedAt!,
           completedAt: baseFields.completedAt || new Date().toISOString(),
           prUrl: baseFields.prUrl!,
@@ -447,6 +454,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "failure",
+          priority: baseFields.priority,
           startedAt: baseFields.startedAt!,
           completedAt: baseFields.completedAt || new Date().toISOString(),
           error: baseFields.error!,
@@ -471,6 +479,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "cancelled",
+          priority: baseFields.priority,
           completedAt: baseFields.completedAt || new Date().toISOString(),
           startedAt: baseFields.startedAt,
           error: baseFields.error,
@@ -494,6 +503,7 @@ export class JobStore extends EventEmitter {
           issueNumber: baseFields.issueNumber,
           repo: baseFields.repo,
           status: "archived",
+          priority: baseFields.priority,
           startedAt: baseFields.startedAt,
           completedAt: baseFields.completedAt,
           prUrl: baseFields.prUrl,

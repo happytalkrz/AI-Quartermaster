@@ -159,6 +159,7 @@ export interface SafetyConfig {
   timeouts: TimeoutsConfig;
   stopConditions: string[];
   allowedLabels: string[];
+  instanceLabel?: string;
   rollbackStrategy: "none" | "all" | "failed-only";
   feasibilityCheck: FeasibilityCheckConfig;
   strict: boolean;

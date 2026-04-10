@@ -132,6 +132,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     },
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
     allowedLabels: [],
+    instanceLabel: "ai-quartermaster",
     rollbackStrategy: "failed-only",
     feasibilityCheck: {
       enabled: true,

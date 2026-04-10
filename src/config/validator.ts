@@ -279,6 +279,7 @@ const safetyConfigSchema = z.object({
   timeouts: timeoutsConfigSchema,
   stopConditions: z.array(z.string()),
   allowedLabels: z.array(z.string()),
+  instanceLabel: z.string().optional(),
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
   strict: z.boolean().default(true),
   rules: safetyRulesSchema.default({ allow: [], deny: [] }),

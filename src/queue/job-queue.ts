@@ -10,10 +10,86 @@ import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 import { ProjectErrorState } from "../types/config.js";
+import {
+  AQMTask,
+  ClaudeTask, ClaudeTaskOptions,
+  ValidationTask, ValidationTaskOptions,
+  GitTask, GitTaskOptions,
+  TaskStatus
+} from "../tasks/index.js";
 
 const logger = getLogger();
 
 export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string }>;
+
+/**
+ * Job 타입에 따라 적절한 Task를 생성하는 팩토리
+ */
+class JobTaskFactory {
+  /**
+   * Job을 기반으로 해당하는 Task 인스턴스를 생성
+   */
+  static createTask(job: Job): AQMTask {
+    const config = loadConfig(process.cwd());
+
+    switch (job.type) {
+      case "claude":
+        return new ClaudeTask({
+          id: `job-${job.id}-claude`,
+          prompt: `Issue #${job.issueNumber} 처리 - Claude 실행`,
+          config: config.commands.claudeCli,
+          metadata: {
+            jobId: job.id,
+            issueNumber: job.issueNumber,
+            repo: job.repo,
+          },
+        } as ClaudeTaskOptions);
+
+      case "validation":
+        return new ValidationTask({
+          id: `job-${job.id}-validation`,
+          validationType: "typecheck", // 기본값, 실제로는 job에서 결정
+          command: "npx",
+          args: ["tsc", "--noEmit"],
+          metadata: {
+            jobId: job.id,
+            issueNumber: job.issueNumber,
+            repo: job.repo,
+          },
+        } as ValidationTaskOptions);
+
+      case "git":
+        return new GitTask({
+          id: `job-${job.id}-git`,
+          config: config.git,
+          worktreeConfig: config.worktree,
+          operation: {
+            type: "cleanup", // 기본값, 실제로는 job에서 결정
+            issueNumber: job.issueNumber,
+            issueTitle: `Issue #${job.issueNumber}`, // 기본값, 실제로는 job에서 결정
+          },
+          metadata: {
+            jobId: job.id,
+            issueNumber: job.issueNumber,
+            repo: job.repo,
+          },
+        } as GitTaskOptions);
+
+      default:
+        // 기본값으로 Claude 태스크 생성 (하위 호환성)
+        return new ClaudeTask({
+          id: `job-${job.id}-default`,
+          prompt: `Issue #${job.issueNumber} 처리 - 기본 파이프라인 실행`,
+          config: config.commands.claudeCli,
+          metadata: {
+            jobId: job.id,
+            issueNumber: job.issueNumber,
+            repo: job.repo,
+          },
+        } as ClaudeTaskOptions);
+    }
+  }
+}
 
 /**
  * StoreJob을 새로운 discriminated union Job 타입으로 변환
@@ -94,7 +170,7 @@ export class JobQueue {
   private running: Set<string> = new Set();
   private store: JobStore;
   private concurrency: number;
-  private handler: JobHandler;
+  private handler?: JobHandler; // Optional - for backward compatibility with legacy JobHandler approach
   private cancelled: Set<string> = new Set();
   private stuckChecker: ReturnType<typeof setInterval> | undefined;
   private stuckTimeoutMs: number;
@@ -109,7 +185,7 @@ export class JobQueue {
   constructor(
     store: JobStore,
     concurrency: number,
-    handler: JobHandler,
+    handler?: JobHandler, // Optional for backward compatibility
     stuckTimeoutMs: number = 600000,
     projectConcurrency?: Record<string, number>
   ) {
@@ -727,7 +803,74 @@ export class JobQueue {
         return;
       }
 
-      const result = await this.handler(job);
+      // Task 팩토리 패턴으로 Job 타입에 따라 Task 생성
+      const task = JobTaskFactory.createTask(job);
+
+      // Task lifecycle 이벤트를 Job 상태 업데이트와 연결
+      task.on?.("started", () => {
+        logger.info(`Task started for job ${job.id}: ${task.id}`);
+        this.store.update(job.id, {
+          lastUpdatedAt: new Date().toISOString(),
+          currentStep: `Running ${task.type} task`,
+        });
+      });
+
+      task.on?.("completed", () => {
+        logger.info(`Task completed for job ${job.id}: ${task.id}`);
+        // Task 완료 시 Job을 성공으로 마킹 (결과 처리는 아래에서)
+      });
+
+      task.on?.("failed", () => {
+        logger.error(`Task failed for job ${job.id}: ${task.id}`);
+        // Task 실패 시 Job을 실패로 마킹 (결과 처리는 아래에서)
+      });
+
+      task.on?.("killed", () => {
+        logger.warn(`Task killed for job ${job.id}: ${task.id}`);
+        this.store.update(job.id, {
+          status: "cancelled",
+          completedAt: new Date().toISOString(),
+          error: "Task was killed during execution",
+        });
+      });
+
+      // 기존 handler가 있으면 사용 (하위 호환성), 없으면 Task 실행
+      let result: { prUrl?: string; error?: string };
+
+      if (this.handler) {
+        // 기존 JobHandler 방식 (하위 호환성 유지)
+        result = await this.handler(job);
+      } else {
+        // 새로운 Task 기반 실행
+        try {
+          const taskResult = await task.run();
+
+          // Task 결과를 Job 결과 형태로 변환
+          if (task.type === "claude") {
+            const claudeResult = (task as ClaudeTask).getResult();
+            result = {
+              prUrl: claudeResult?.success ? "https://github.com/example/pr" : undefined, // 실제로는 PR 생성 로직 필요
+              error: claudeResult?.success ? undefined : claudeResult?.output,
+            };
+          } else if (task.type === "validation") {
+            const validationResult = (task as ValidationTask).getResult();
+            result = {
+              error: validationResult?.success ? undefined : validationResult?.stderr || "Validation failed",
+            };
+          } else if (task.type === "git") {
+            const gitResult = (task as GitTask).getResult();
+            result = {
+              error: gitResult?.success ? undefined : gitResult?.error,
+            };
+          } else {
+            result = { error: "Unknown task type" };
+          }
+        } catch (taskError) {
+          result = {
+            error: getErrorMessage(taskError),
+          };
+        }
+      }
 
       // Re-check after handler completes — stuck checker may have fired during execution
       const wasStuckAborted = this.stuckAborted.has(job.id);

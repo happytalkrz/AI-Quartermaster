@@ -23,7 +23,7 @@ export enum TaskStatus {
  * 지원하는 태스크 타입
  * 향후 CodexTask, GeminiTask 등 확장 가능
  */
-export type AQMTaskType = "claude" | "codex" | "gemini" | "validation";
+export type AQMTaskType = "claude" | "codex" | "gemini" | "validation" | "git";
 
 /**
  * 태스크 라이프사이클 이벤트 타입
@@ -84,6 +84,12 @@ export interface AQMTask {
 
   /** 현재 태스크 실행 상태 */
   get status(): TaskStatus;
+
+  /**
+   * 태스크를 실행합니다
+   * @returns Promise that resolves when the task completes
+   */
+  run(): Promise<unknown>;
 
   /**
    * 실행 중인 태스크를 강제 종료

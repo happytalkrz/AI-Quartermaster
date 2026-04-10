@@ -469,6 +469,7 @@ export interface JobBase {
   id: string;
   issueNumber: number;
   repo: string;
+  type?: "claude" | "validation" | "git"; // Task 팩토리를 위한 잡 타입
   createdAt: string;
   lastUpdatedAt?: string;
   logs?: string[];

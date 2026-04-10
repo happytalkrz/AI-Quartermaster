@@ -12,6 +12,7 @@ interface JobRow {
   issue_number: number;
   repo: string;
   status: string;
+  priority: string;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -58,6 +59,7 @@ export interface DatabaseJob {
   issueNumber: number;
   repo: string;
   status: "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
+  priority?: "high" | "normal" | "low";
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -126,6 +128,7 @@ export class AQDatabase {
         issue_number INTEGER NOT NULL,
         repo TEXT NOT NULL,
         status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'success', 'failure', 'cancelled', 'archived')),
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high', 'normal', 'low')),
         created_at TEXT NOT NULL,
         started_at TEXT,
         completed_at TEXT,
@@ -191,7 +194,19 @@ export class AQDatabase {
     // Foreign key 제약조건 활성화
     this.db.exec("PRAGMA foreign_keys = ON;");
 
+    // priority 컬럼 마이그레이션 (기존 DB에 컬럼이 없을 경우 추가)
+    this.migrateAddPriorityColumn();
+
     logger.info("Database schema initialized successfully");
+  }
+
+  private migrateAddPriorityColumn(): void {
+    const tableInfo = this.db.prepare("PRAGMA table_info(jobs)").all() as Array<{ name: string }>;
+    const hasPriority = tableInfo.some(col => col.name === "priority");
+    if (!hasPriority) {
+      logger.info("Migrating: adding priority column to jobs table");
+      this.db.exec("ALTER TABLE jobs ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('high', 'normal', 'low'))");
+    }
   }
 
   // === Job CRUD ===
@@ -199,19 +214,15 @@ export class AQDatabase {
   createJob(job: DatabaseJob): void {
     const stmt = this.db.prepare(`
       INSERT INTO jobs (
-        id, issue_number, repo, status, created_at, started_at, completed_at,
+        id, issue_number, repo, status, priority, created_at, started_at, completed_at,
         pr_url, error, last_updated_at, current_step, dependencies, progress,
         is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
         total_cache_creation_input_tokens, total_cache_read_input_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
-    stmt.run(
-      params[0], params[1], params[2], params[3], params[4], params[5], params[6],
-      params[7], params[8], params[9], params[10], params[11], params[12], params[13],
-      params[14], params[15], params[16], params[17], params[18], params[19]
-    );
+    stmt.run(...params);
 
     logger.debug(`Job created: ${job.id}`);
   }
@@ -230,7 +241,7 @@ export class AQDatabase {
 
     const stmt = this.db.prepare(`
       UPDATE jobs SET
-        issue_number = ?, repo = ?, status = ?, created_at = ?,
+        issue_number = ?, repo = ?, status = ?, priority = ?, created_at = ?,
         started_at = ?, completed_at = ?, pr_url = ?, error = ?,
         last_updated_at = ?, current_step = ?, dependencies = ?,
         progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
@@ -240,11 +251,8 @@ export class AQDatabase {
     `);
 
     const params = this.jobToParams(merged);
-    const changes = stmt.run(
-      params[1], params[2], params[3], params[4], params[5], params[6], params[7],
-      params[8], params[9], params[10], params[11], params[12], params[13], params[14],
-      params[15], params[16], params[17], params[18], params[19], id
-    ).changes;
+    // params[0] = id, params[1..] = fields; skip id (params[0]), append id at end
+    const changes = stmt.run(...params.slice(1), id).changes;
 
     if (changes > 0) {
       logger.debug(`Job updated: ${id}`);
@@ -388,6 +396,7 @@ export class AQDatabase {
       job.issueNumber,
       job.repo,
       job.status,
+      job.priority ?? "normal",
       job.createdAt,
       job.startedAt || null,
       job.completedAt || null,
@@ -413,6 +422,7 @@ export class AQDatabase {
       issueNumber: row.issue_number,
       repo: row.repo,
       status: row.status as DatabaseJob["status"],
+      priority: (row.priority ?? "normal") as DatabaseJob["priority"],
       createdAt: row.created_at,
       startedAt: row.started_at ?? undefined,
       completedAt: row.completed_at ?? undefined,

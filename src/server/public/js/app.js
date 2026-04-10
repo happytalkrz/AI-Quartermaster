@@ -612,6 +612,9 @@ function adjustPagePadding() {
     totalBannerHeight += updateBanner.offsetHeight;
   }
 
+  // 헤더 top을 배너 높이만큼 동적으로 조정 (sticky header가 배너 아래로 밀리도록)
+  header.style.top = totalBannerHeight > 0 ? totalBannerHeight + 'px' : '';
+
   // 헤더 아래 여백을 동적으로 조정
   var main = document.querySelector('main');
   if (main) {

@@ -151,6 +151,9 @@ export interface PublishPhaseContext {
     commands: {
       ghCli: import("./config.js").GhCliConfig;
     };
+    general?: {
+      instanceLabel?: string;
+    };
   };
   promptsDir: string;
   dryRun: boolean;
@@ -452,6 +455,8 @@ export interface PhaseResultInfo {
   success: boolean;
   commit?: string;
   durationMs: number;
+  startedAt?: string;
+  completedAt?: string;
   error?: string;
   costUsd?: number;
   usage?: UsageStats;

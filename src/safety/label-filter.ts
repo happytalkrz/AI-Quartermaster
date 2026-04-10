@@ -11,3 +11,18 @@ export function isAllowedLabel(
   }
   return issueLabels.some(label => allowedLabels.includes(label));
 }
+
+/**
+ * Determines effective trigger labels.
+ * If instanceLabel is set, uses only that label (single-label mode).
+ * Otherwise falls back to allowedLabels.
+ */
+export function getTriggerLabels(
+  instanceLabel: string | undefined,
+  allowedLabels: string[]
+): string[] {
+  if (instanceLabel !== undefined && instanceLabel !== "") {
+    return [instanceLabel];
+  }
+  return allowedLabels;
+}

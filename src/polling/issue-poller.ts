@@ -7,6 +7,7 @@ import { checkPrConflict, commentOnIssue, listOpenPrs } from "../github/pr-creat
 import type { PrConflictInfo } from "../types/pipeline.js";
 import { SelfUpdater, UpdateInfo } from "../update/self-updater.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { getTriggerLabels } from "../safety/label-filter.js";
 
 const logger = getLogger();
 
@@ -85,7 +86,7 @@ export class IssuePoller {
 
   private async poll(): Promise<void> {
     const projects = this.config.projects ?? [];
-    const triggerLabels = this.config.safety.allowedLabels;
+    const triggerLabels = getTriggerLabels(this.config.general.instanceLabel, this.config.safety.allowedLabels);
     const ghPath = this.config.commands.ghCli.path;
     const ghTimeout = this.config.commands.ghCli.timeout;
 

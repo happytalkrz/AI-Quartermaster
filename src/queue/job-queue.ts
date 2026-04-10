@@ -297,7 +297,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -326,7 +326,7 @@ export class JobQueue {
       }
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies, isRetry);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry, undefined, priority);
     // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
@@ -583,6 +583,45 @@ export class JobQueue {
     }
   }
 
+  /**
+   * Gets the highest priority job from the pending queue and removes it.
+   * Priority order: high (0) > normal (1) > low (2)
+   * Within same priority: FIFO (earliest createdAt first)
+   * Missing priority defaults to 'normal'
+   */
+  private getNextPriorityJob(): string | null {
+    if (this.pending.length === 0) return null;
+
+    let bestIndex = -1;
+    let bestPriorityValue = 3; // Lower than 'low' (2)
+    let bestCreatedAt = '';
+
+    // Find the job with highest priority (lowest numeric value)
+    for (let i = 0; i < this.pending.length; i++) {
+      const jobId = this.pending[i];
+      const job = this.store.get(jobId);
+      if (!job) continue;
+
+      // Map priority to numeric value for comparison: high=0, normal=1, low=2
+      const priority = job.priority ?? 'normal';
+      const priorityValue = priority === 'high' ? 0 : priority === 'normal' ? 1 : 2;
+
+      // Select if higher priority, or same priority but earlier created, or first job
+      if (bestIndex === -1 ||
+          priorityValue < bestPriorityValue ||
+          (priorityValue === bestPriorityValue && job.createdAt < bestCreatedAt)) {
+        bestIndex = i;
+        bestPriorityValue = priorityValue;
+        bestCreatedAt = job.createdAt;
+      }
+    }
+
+    if (bestIndex >= 0) {
+      return this.pending.splice(bestIndex, 1)[0];
+    }
+    return null;
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -598,7 +637,8 @@ export class JobQueue {
       const deferred: string[] = [];
 
       while (this.running.size < this.concurrency && this.pending.length > 0) {
-        const jobId = this.pending.shift()!;
+        const jobId = this.getNextPriorityJob();
+        if (!jobId) break; // No valid jobs available
 
         if (this.cancelled.has(jobId)) {
           this.cancelled.delete(jobId);

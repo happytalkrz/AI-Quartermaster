@@ -95,12 +95,27 @@ function renderKanbanCard(job) {
       '</div>';
 
   } else {
-    // queued
-    cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group';
+    // queued - add priority-based visual styling
+    var priority = job.priority || 'normal';
+    var priorityBadge = '';
+    var priorityBorder = 'border-[#414752]/15';
+
+    if (priority === 'high') {
+      priorityBadge = '<span class="text-[10px] font-mono bg-error text-on-error px-1.5 py-0.5 rounded font-bold">HIGH</span>';
+      priorityBorder = 'border-error/30';
+    } else if (priority === 'low') {
+      priorityBadge = '<span class="text-[10px] font-mono bg-outline-variant text-on-outline-variant px-1.5 py-0.5 rounded font-bold">LOW</span>';
+      priorityBorder = 'border-outline-variant/30';
+    }
+
+    cardClass = 'bg-[#262a31] p-4 rounded-md border ' + priorityBorder + ' hover:border-primary/40 transition-all cursor-move group';
     headerHtml =
       '<div class="flex justify-between items-start mb-3">' +
         '<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">' + esc(issueRef) + '</span>' +
-        '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>' +
+        '<div class="flex items-center gap-2">' +
+          priorityBadge +
+          '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">drag_indicator</span>' +
+        '</div>' +
       '</div>';
     var elapsed = fmtDuration(job) || relativeTime(job.createdAt);
     bodyHtml =
@@ -116,7 +131,11 @@ function renderKanbanCard(job) {
       '</div>';
   }
 
-  return '<div class="' + cardClass + '" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
+  var isQueued = job.status === 'queued';
+  var draggableAttr = isQueued ? ' draggable="true"' : '';
+  var onClickAttr = isQueued ? '' : ' onclick="selectJob(\'' + esc(job.id) + '\')"';
+
+  return '<div class="' + cardClass + '" data-job-id="' + esc(job.id) + '"' + draggableAttr + onClickAttr + '>' +
     headerHtml + bodyHtml +
   '</div>';
 }
@@ -159,4 +178,116 @@ function renderKanban(jobs) {
   return KANBAN_COLUMNS.map(function(col) {
     return renderKanbanColumn(col, columnJobs[col.id]);
   }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Drag & Drop Priority Management
+   ══════════════════════════════════════════════════════════════ */
+var draggedJobId = null;
+
+function updateJobPriority(jobId, priority) {
+  var url = '/api/jobs/' + encodeURIComponent(jobId) + '/priority';
+  return apiFetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ priority: priority })
+  }).then(function(response) {
+    if (!response.ok) {
+      throw new Error('Failed to update priority: ' + response.status);
+    }
+    return response.json();
+  });
+}
+
+function optimisticUpdatePriority(jobId, newPriority) {
+  // Find job in current jobs array and update priority locally
+  if (typeof window.currentJobs !== 'undefined' && window.currentJobs) {
+    var job = window.currentJobs.find(function(j) { return j.id === jobId; });
+    if (job) {
+      var oldPriority = job.priority;
+      job.priority = newPriority;
+
+      // Re-render kanban with updated data
+      var container = document.getElementById('kanban-container');
+      if (container) {
+        container.innerHTML = renderKanban(window.currentJobs);
+        setupDragAndDrop(); // Re-attach event listeners
+      }
+
+      // Make API call and rollback on failure
+      updateJobPriority(jobId, newPriority).catch(function(error) {
+        console.error('Failed to update job priority:', error);
+        // Rollback
+        job.priority = oldPriority;
+        if (container) {
+          container.innerHTML = renderKanban(window.currentJobs);
+          setupDragAndDrop();
+        }
+      });
+    }
+  }
+}
+
+function setupDragAndDrop() {
+  // Remove existing listeners to avoid duplicates
+  document.removeEventListener('dragstart', handleDragStart);
+  document.removeEventListener('dragover', handleDragOver);
+  document.removeEventListener('drop', handleDrop);
+
+  // Add event listeners
+  document.addEventListener('dragstart', handleDragStart);
+  document.addEventListener('dragover', handleDragOver);
+  document.addEventListener('drop', handleDrop);
+}
+
+function handleDragStart(e) {
+  var card = e.target.closest('[data-job-id]');
+  if (card && card.draggable) {
+    draggedJobId = card.dataset.jobId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', card.outerHTML);
+    card.style.opacity = '0.5';
+  }
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  var dropZone = e.target.closest('[data-job-id]');
+  if (dropZone && draggedJobId && dropZone.dataset.jobId !== draggedJobId) {
+    var draggedJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === draggedJobId; });
+    var targetJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === dropZone.dataset.jobId; });
+
+    // Only allow drops on queued jobs
+    if (draggedJob && targetJob && draggedJob.status === 'queued' && targetJob.status === 'queued') {
+      e.dataTransfer.dropEffect = 'move';
+      dropZone.style.borderColor = '#3b82f6';
+    }
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  var dropZone = e.target.closest('[data-job-id]');
+
+  // Reset opacity and border styles
+  var draggedCard = document.querySelector('[data-job-id="' + draggedJobId + '"]');
+  if (draggedCard) {
+    draggedCard.style.opacity = '';
+  }
+  if (dropZone) {
+    dropZone.style.borderColor = '';
+  }
+
+  if (dropZone && draggedJobId && dropZone.dataset.jobId !== draggedJobId) {
+    var draggedJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === draggedJobId; });
+    var targetJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === dropZone.dataset.jobId; });
+
+    // Only allow drops between queued jobs
+    if (draggedJob && targetJob && draggedJob.status === 'queued' && targetJob.status === 'queued') {
+      var targetPriority = targetJob.priority || 'normal';
+      optimisticUpdatePriority(draggedJobId, targetPriority);
+    }
+  }
+
+  draggedJobId = null;
 }

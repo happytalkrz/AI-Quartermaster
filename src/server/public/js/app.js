@@ -81,6 +81,32 @@ function toggleTheme() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Instance Label
+   ══════════════════════════════════════════════════════════════ */
+function updateInstanceLabel(label) {
+  var el = document.getElementById('instance-label');
+  if (!el) return;
+  if (label) {
+    el.textContent = label;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+function loadInstanceLabel() {
+  apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.config && data.config.general) {
+        var label = data.config.general.instanceLabel || data.config.general.projectName || '';
+        updateInstanceLabel(label);
+      }
+    })
+    .catch(function() {});
+}
+
+/* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
 var currentConfig = null; // 현재 설정 데이터 저장
@@ -527,6 +553,18 @@ function connectSSE() {
   es.onmessage = function(e) {
     try { handleData(JSON.parse(e.data)); } catch (_) {}
   };
+  es.addEventListener('configChanged', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      if (data.changes && data.changes.general) {
+        var label = data.changes.general.instanceLabel || data.changes.general.projectName || '';
+        updateInstanceLabel(label);
+      }
+      if (currentView === 'settings') {
+        loadSettings();
+      }
+    } catch (_) {}
+  });
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
@@ -612,6 +650,9 @@ function adjustPagePadding() {
     totalBannerHeight += updateBanner.offsetHeight;
   }
 
+  // 헤더 top을 배너 높이만큼 동적으로 조정 (sticky header가 배너 아래로 밀리도록)
+  header.style.top = totalBannerHeight > 0 ? totalBannerHeight + 'px' : '';
+
   // 헤더 아래 여백을 동적으로 조정
   var main = document.querySelector('main');
   if (main) {
@@ -644,9 +685,17 @@ function performUpdate() {
   var updateBtn = document.getElementById('update-btn');
   if (!updateBtn || updateBtn.disabled) return;
 
-  setUpdateButtonState('sync', '업데이트 중...', true);
+  var activeCount = currentJobs.filter(function(j) { return j.status === 'running' || j.status === 'queued'; }).length;
+  var confirmPromise = activeCount > 0
+    ? showConfirm('업데이트', activeCount + '개의 진행 중인 잡이 취소됩니다. 계속하시겠습니까?')
+    : Promise.resolve(true);
 
-  apiFetch('/api/update', { method: 'POST' })
+  confirmPromise.then(function(ok) {
+    if (!ok) return;
+
+    setUpdateButtonState('sync', '업데이트 중...', true);
+
+    apiFetch('/api/update', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.updated) {
@@ -672,6 +721,7 @@ function performUpdate() {
         setUpdateButtonState('download', '업데이트', false);
       }, 3000);
     });
+  });
 }
 
 function dismissUpdate() {
@@ -697,18 +747,29 @@ applyTranslations();
   }
   initArchivedToggle();
 
-  // Restore automations view toggle state (kanban button/panel visibility)
-  if (currentAutomationsView === 'kanban') {
+  // Restore automations view toggle state
+  if (currentAutomationsView === 'kanban' || currentAutomationsView === 'rules') {
     var btnList    = document.getElementById('btn-automations-list');
     var btnKanban  = document.getElementById('btn-automations-kanban');
+    var btnRules   = document.getElementById('btn-automations-rules');
     var listView   = document.getElementById('automations-list-view');
     var kanbanView = document.getElementById('automations-kanban-view');
+    var rulesView  = document.getElementById('automations-rules-view');
     var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
     var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
     if (btnList)   btnList.className   = inactiveClass;
-    if (btnKanban) btnKanban.className = activeClass;
+    if (btnKanban) btnKanban.className = inactiveClass;
+    if (btnRules)  btnRules.className  = inactiveClass;
     if (listView)   listView.classList.add('hidden');
-    if (kanbanView) kanbanView.classList.remove('hidden');
+    if (kanbanView) kanbanView.classList.add('hidden');
+    if (rulesView)  rulesView.classList.add('hidden');
+    if (currentAutomationsView === 'kanban') {
+      if (btnKanban)  btnKanban.className = activeClass;
+      if (kanbanView) kanbanView.classList.remove('hidden');
+    } else {
+      if (btnRules)  btnRules.className  = activeClass;
+      if (rulesView) rulesView.classList.remove('hidden');
+    }
   }
 })();
 
@@ -731,6 +792,9 @@ loadVersionInfo();
 
 // Initialize project selection
 initProjectSelection();
+
+// Load instance label for header
+loadInstanceLabel();
 
 connectSSE();
 
@@ -825,23 +889,35 @@ function setAutomationsView(view) {
 
   var listView   = document.getElementById('automations-list-view');
   var kanbanView = document.getElementById('automations-kanban-view');
+  var rulesView  = document.getElementById('automations-rules-view');
   var btnList    = document.getElementById('btn-automations-list');
   var btnKanban  = document.getElementById('btn-automations-kanban');
+  var btnRules   = document.getElementById('btn-automations-rules');
 
   var activeClass   = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary';
   var inactiveClass = 'flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface';
 
+  // Hide all views
+  if (listView)   listView.classList.add('hidden');
+  if (kanbanView) kanbanView.classList.add('hidden');
+  if (rulesView)  rulesView.classList.add('hidden');
+
+  // Reset all buttons
+  if (btnList)   btnList.className   = inactiveClass;
+  if (btnKanban) btnKanban.className = inactiveClass;
+  if (btnRules)  btnRules.className  = inactiveClass;
+
   if (view === 'kanban') {
-    if (listView)   listView.classList.add('hidden');
     if (kanbanView) kanbanView.classList.remove('hidden');
-    if (btnList)   btnList.className   = inactiveClass;
-    if (btnKanban) btnKanban.className = activeClass;
+    if (btnKanban)  btnKanban.className = activeClass;
     renderAutomationsKanban();
+  } else if (view === 'rules') {
+    if (rulesView) rulesView.classList.remove('hidden');
+    if (btnRules)  btnRules.className = activeClass;
+    loadAutomationRules();
   } else {
-    if (listView)   listView.classList.remove('hidden');
-    if (kanbanView) kanbanView.classList.add('hidden');
-    if (btnList)   btnList.className   = activeClass;
-    if (btnKanban) btnKanban.className = inactiveClass;
+    if (listView) listView.classList.remove('hidden');
+    if (btnList)  btnList.className = activeClass;
     renderAutomationsList();
   }
 }
@@ -882,12 +958,19 @@ function renderAutomationsKanban() {
   var boardEl = document.getElementById('kanban-board');
   if (!boardEl) return;
   boardEl.innerHTML = renderKanban(filterJobs(currentJobs));
+
+  // Set up drag and drop for priority management
+  if (typeof setupDragAndDrop === 'function') {
+    setupDragAndDrop();
+  }
 }
 
 function renderAutomationsPanel() {
   if (currentView !== 'automations') return;
   if (currentAutomationsView === 'kanban') {
     renderAutomationsKanban();
+  } else if (currentAutomationsView === 'rules') {
+    // rules view는 loadAutomationRules()로 직접 갱신 — SSE 업데이트 시 재로드 불필요
   } else {
     renderAutomationsList();
   }

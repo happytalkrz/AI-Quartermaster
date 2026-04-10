@@ -132,6 +132,21 @@ describe("notifier", () => {
         { timeout: 30000 }
       );
     });
+
+    it("should include instanceLabel in message header when provided", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifySuccess("owner/repo", 123, "https://github.com/owner/repo/pull/456", {
+        instanceLabel: "prod-1"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("## AI Quartermaster [prod-1] - PR 생성 완료");
+    });
   });
 
   describe("notifyFailure", () => {
@@ -205,6 +220,21 @@ describe("notifier", () => {
 
       const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
       expect(body).toContain("**롤백**: Rolled back to commit abc123");
+    });
+
+    it("should include instanceLabel in message header when provided", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyFailure("owner/repo", 123, "Build failed", {
+        instanceLabel: "staging-2"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("## AI Quartermaster [staging-2] - 파이프라인 실패");
     });
 
     it("should truncate long error messages", async () => {
@@ -355,6 +385,21 @@ describe("notifier", () => {
 
       const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
       expect(body).not.toContain("마지막 실패 시점:");
+    });
+
+    it("should include instanceLabel in message header when provided", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyPlanRetryContext("owner/repo", 123, mockRetryContext, undefined, {
+        instanceLabel: "dev-box"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("## AI Quartermaster [dev-box] - Plan 재시도 및 구체화");
     });
 
     it("should work with empty generation history", async () => {

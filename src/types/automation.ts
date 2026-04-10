@@ -18,10 +18,17 @@ export interface PipelineFailedTrigger {
   repo?: string;
 }
 
+export interface CronTrigger {
+  type: "cron";
+  /** cron 스케줄 */
+  schedule: "daily" | "weekly";
+}
+
 export type Trigger =
   | IssueLabeledTrigger
   | IssueCreatedTrigger
-  | PipelineFailedTrigger;
+  | PipelineFailedTrigger
+  | CronTrigger;
 
 export type TriggerType = Trigger["type"];
 

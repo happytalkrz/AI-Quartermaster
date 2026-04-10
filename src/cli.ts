@@ -23,6 +23,7 @@ import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 import { AutomationScheduler } from "./automation/scheduler.js";
 import { initDispatcher } from "./pipeline/automation-dispatcher.js";
+import type { RuleEngineHandlers, AutomationRule } from "./types/automation.js";
 
 export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
   const result: Record<string, number> = {};
@@ -347,7 +348,23 @@ export async function startCommand(args: CliArgs): Promise<void> {
   };
 
   // === Automation rule scheduler ===
-  const scheduler = new AutomationScheduler(effectiveConfig);
+  const automationHandlers: RuleEngineHandlers = {
+    addLabel: async (repo: string, issueNumber: number, labels: string[]) => {
+      logger.info(`[AutomationScheduler] 라벨 추가: ${repo}#${issueNumber} <- ${labels.join(', ')}`);
+      // TODO: GitHub API 연동으로 실제 라벨 추가
+    },
+    startJob: async (repo: string, issueNumber: number) => {
+      logger.info(`[AutomationScheduler] 잡 시작: ${repo}#${issueNumber}`);
+      queue.enqueue(issueNumber, repo, []);
+    },
+    pauseProject: async (repo: string, reason?: string) => {
+      logger.info(`[AutomationScheduler] 프로젝트 일시정지: ${repo} ${reason ? `(${reason})` : ''}`);
+      // TODO: 프로젝트 일시정지 로직
+    }
+  };
+
+  const automationRules: AutomationRule[] = []; // TODO: config.automations에서 변환하여 가져오기
+  const scheduler = new AutomationScheduler(effectiveConfig, automationRules, automationHandlers);
 
   // === Poller: always start (webhook mode uses it as fallback for missed events) ===
   const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);

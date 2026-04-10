@@ -345,4 +345,22 @@ describe("validateConfig", () => {
 
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
+
+  it("should accept config with instanceLabel set", () => {
+    const configWithInstanceLabel = updateNested(validConfig, "general", {
+      instanceLabel: "aqm",
+    });
+
+    const result = validateConfig(configWithInstanceLabel);
+    expect(result.general.instanceLabel).toBe("aqm");
+  });
+
+  it("should accept config without instanceLabel (optional field)", () => {
+    const configWithoutInstanceLabel = updateNested(validConfig, "general", {
+      instanceLabel: undefined,
+    });
+
+    const result = validateConfig(configWithoutInstanceLabel);
+    expect(result.general.instanceLabel).toBeUndefined();
+  });
 });

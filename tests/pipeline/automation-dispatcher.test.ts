@@ -23,7 +23,13 @@ import type {
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 
 function makeScheduler(running: boolean): AutomationScheduler {
-  const scheduler = new AutomationScheduler(DEFAULT_CONFIG);
+  const mockHandlers = {
+    addLabel: vi.fn().mockResolvedValue(undefined),
+    startJob: vi.fn().mockResolvedValue(undefined),
+    pauseProject: vi.fn().mockResolvedValue(undefined)
+  };
+
+  const scheduler = new AutomationScheduler(DEFAULT_CONFIG, [], mockHandlers);
   if (running) scheduler.start();
   return scheduler;
 }

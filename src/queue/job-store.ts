@@ -179,6 +179,8 @@ export class JobStore extends EventEmitter {
         success: phase.success,
         commit: phase.commitHash,
         durationMs: phase.durationMs,
+        startedAt: phase.startedAt,
+        completedAt: phase.completedAt,
         error: phase.error,
         costUsd: phase.costUsd,
         usage: phase.inputTokens !== undefined ? {
@@ -290,7 +292,7 @@ export class JobStore extends EventEmitter {
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[]): QueuedJob {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[], priority?: import("../types/pipeline.js").JobPriority): QueuedJob {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: QueuedJob = {
       id,
@@ -301,6 +303,7 @@ export class JobStore extends EventEmitter {
       ...(dependencies && dependencies.length > 0 ? { dependencies } : {}),
       ...(isRetry ? { isRetry } : {}),
       ...(initialPhaseResults && initialPhaseResults.length > 0 ? { phaseResults: initialPhaseResults } : {}),
+      ...(priority ? { priority } : {}),
     };
 
     // SQLite에 저장

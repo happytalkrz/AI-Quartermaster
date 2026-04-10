@@ -89,6 +89,9 @@ function matchesTrigger(trigger: Trigger, context: RuleContext): boolean {
       if (trigger.repo !== undefined && context.repo !== trigger.repo) return false;
       return true;
     }
+    case "cron": {
+      return context.triggerType === "cron";
+    }
   }
 }
 

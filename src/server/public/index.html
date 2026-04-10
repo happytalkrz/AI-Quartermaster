@@ -282,7 +282,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 </div>
 
 <!-- Update Banner -->
-<div id="update-banner" style="display:none;" class="fixed left-0 right-0 z-[998] bg-gradient-to-r from-primary/10 to-primary-container/10 border-b border-primary/30 px-6 py-3 flex items-center gap-4 flex-wrap" style="top: var(--api-banner-height, 0);">
+<div id="update-banner" style="display:none;" class="fixed left-0 right-0 z-[998] bg-gradient-to-r from-primary/10 to-primary-container/10 border-b border-primary/30 px-6 py-3 flex items-center gap-4 flex-wrap">
   <div class="flex items-center gap-2 text-primary">
     <span class="material-symbols-outlined text-lg animate-pulse" style="font-variation-settings: 'FILL' 1;">update</span>
     <span class="text-sm font-bold">새 업데이트 사용 가능</span>
@@ -301,6 +301,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <header class="sticky top-0 z-50 flex justify-between items-center px-6 h-16 w-full bg-[#0d1117] dark:bg-[#0d1117] border-b border-[#30363d]">
   <div class="flex items-center gap-8">
     <span class="font-headline font-bold text-primary-container text-lg uppercase tracking-wider">AI Quartermaster</span>
+    <span id="instance-label" class="hidden font-mono text-xs text-outline uppercase tracking-widest opacity-70 border border-outline-variant/30 px-2 py-0.5 rounded"></span>
     <nav class="hidden md:flex gap-6">
       <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer" data-nav="dashboard" data-i18n="dashboard">Dashboard</a>
       <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer" data-nav="logs" data-i18n="logs">Logs</a>
@@ -592,6 +593,10 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           <span class="material-symbols-outlined text-sm">view_kanban</span>
           <span>Kanban</span>
         </button>
+        <button id="btn-automations-rules" onclick="setAutomationsView('rules')" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface">
+          <span class="material-symbols-outlined text-sm">smart_toy</span>
+          <span>Rules</span>
+        </button>
       </div>
     </div>
 
@@ -622,6 +627,20 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     <div id="automations-kanban-view" class="hidden">
       <div id="kanban-board" class="flex gap-6 overflow-x-auto custom-scrollbar pb-4" style="min-height: 60vh;">
         <!-- Columns populated by renderKanban() -->
+      </div>
+    </div>
+
+    <!-- Rules View -->
+    <div id="automations-rules-view" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <p class="text-xs text-outline">이벤트 발생 시 자동으로 실행되는 규칙을 관리합니다.</p>
+        <button onclick="showAddRuleModal()" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors">
+          <span class="material-symbols-outlined text-sm">add</span>
+          <span>규칙 추가</span>
+        </button>
+      </div>
+      <div id="rules-container">
+        <!-- Rules rendered by loadAutomationRules() -->
       </div>
     </div>
 
@@ -736,6 +755,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <script src="js/render.js"></script>
 <script src="js/kanban.js"></script>
 <script src="js/timeline.js"></script>
+<script src="js/automations.js"></script>
 <script src="js/app.js"></script>
 
 <!-- Confirm Modal -->

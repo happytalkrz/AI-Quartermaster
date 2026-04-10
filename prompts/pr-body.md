@@ -18,6 +18,7 @@ Resolves #{{issue.number}} — {{issue.title}}
 
 ## Pipeline Stats
 
+- **Instance**: `{{instanceLabel}}`
 - **Total Cost**: ${{stats.totalCostUsd}}
 - **Phases**: {{stats.successCount}}/{{stats.phaseCount}} completed
 - **Branch**: `{{branch.work}}` → `{{branch.base}}`

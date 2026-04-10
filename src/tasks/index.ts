@@ -18,5 +18,5 @@ export {
 } from "./claude-task.js";
 
 // 팩토리 패턴
-export { TaskFactory } from "./task-factory.js";
+export { TaskFactory, DefaultTaskFactory, DefaultTaskFactoryOptions } from "./task-factory.js";
 export { TaskRegistry } from "./task-registry.js";

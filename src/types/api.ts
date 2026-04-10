@@ -143,6 +143,26 @@ const safetyConfigUpdateSchema = z.object({
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
 }).partial().strict();
 
+const automationTriggerSchema = z.enum(["issue_labeled", "issue_opened", "issue_assigned", "scheduled"]);
+const automationActionSchema = z.enum(["start_pipeline", "skip_pipeline", "notify", "set_label"]);
+
+const automationRuleUpdateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  enabled: z.boolean(),
+  trigger: automationTriggerSchema,
+  conditions: z.record(z.string()),
+  action: automationActionSchema,
+  actionParams: z.record(z.string()),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+}).partial().strict();
+
+const automationsConfigUpdateSchema = z.object({
+  enabled: z.boolean(),
+  rules: z.array(automationRuleUpdateSchema),
+}).partial().strict();
+
 const projectConfigUpdateSchema = z.object({
   repo: z.string().min(1),
   path: z.string().min(1),
@@ -164,6 +184,7 @@ export const UpdateConfigRequestSchema = z.object({
   pr: prConfigUpdateSchema,
   safety: safetyConfigUpdateSchema,
   projects: z.array(projectConfigUpdateSchema),
+  automations: automationsConfigUpdateSchema,
 }).partial().strict();
 
 export type UpdateConfigRequest = z.infer<typeof UpdateConfigRequestSchema>;

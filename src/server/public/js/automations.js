@@ -36,10 +36,12 @@ function loadRules() {
       '규칙을 불러오는 중...' +
     '</div>';
 
-  apiFetch('/api/automations/rules')
+  apiFetch('/api/config')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      currentRules = Array.isArray(data.rules) ? data.rules : [];
+      var config = data.config || {};
+      var automations = config.automations || {};
+      currentRules = Array.isArray(automations.rules) ? automations.rules : [];
       renderRulesView();
     })
     .catch(function() {
@@ -50,34 +52,92 @@ function loadRules() {
 
 function saveRule(rule) {
   var isNew = !rule.id;
-  var url = isNew ? '/api/automations/rules' : '/api/automations/rules/' + encodeURIComponent(rule.id);
-  return apiFetch(url, {
-    method: isNew ? 'POST' : 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(rule)
-  }).then(function(r) {
-    if (!r.ok) return Promise.reject(new Error('Save failed: ' + r.status));
-    return r.json();
-  });
+
+  // Generate ID for new rules
+  if (isNew) {
+    rule.id = 'rule_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    rule.createdAt = Date.now();
+  }
+  rule.updatedAt = Date.now();
+
+  // Get current config, update automations.rules, then save entire config
+  return apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var config = data.config || {};
+      var automations = config.automations || { enabled: false, rules: [] };
+
+      if (isNew) {
+        automations.rules.push(rule);
+      } else {
+        var idx = automations.rules.findIndex(function(r) { return r.id === rule.id; });
+        if (idx >= 0) {
+          automations.rules[idx] = rule;
+        } else {
+          automations.rules.push(rule);
+        }
+      }
+
+      return apiFetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automations: automations })
+      });
+    })
+    .then(function(r) {
+      if (!r.ok) return Promise.reject(new Error('Save failed: ' + r.status));
+      return r.json().then(function() { return { rule: rule }; });
+    });
 }
 
 function deleteRule(id) {
-  return apiFetch('/api/automations/rules/' + encodeURIComponent(id), {
-    method: 'DELETE'
-  }).then(function(r) {
-    if (!r.ok) return Promise.reject(new Error('Delete failed: ' + r.status));
-  });
+  // Get current config, remove rule from automations.rules, then save entire config
+  return apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var config = data.config || {};
+      var automations = config.automations || { enabled: false, rules: [] };
+
+      automations.rules = automations.rules.filter(function(r) { return r.id !== id; });
+
+      return apiFetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automations: automations })
+      });
+    })
+    .then(function(r) {
+      if (!r.ok) return Promise.reject(new Error('Delete failed: ' + r.status));
+    });
 }
 
 function patchRuleToggle(id, enabled) {
-  return apiFetch('/api/automations/rules/' + encodeURIComponent(id) + '/toggle', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled: enabled })
-  }).then(function(r) {
-    if (!r.ok) return Promise.reject(new Error('Toggle failed: ' + r.status));
-    return r.json();
-  });
+  // Get current config, update rule enabled state, then save entire config
+  return apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var config = data.config || {};
+      var automations = config.automations || { enabled: false, rules: [] };
+
+      var rule = automations.rules.find(function(r) { return r.id === id; });
+      if (!rule) return Promise.reject(new Error('Rule not found'));
+
+      rule.enabled = enabled;
+      rule.updatedAt = Date.now();
+
+      return apiFetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ automations: automations })
+      });
+    })
+    .then(function(r) {
+      if (!r.ok) return Promise.reject(new Error('Toggle failed: ' + r.status));
+      return r.json().then(function() {
+        var rule = currentRules.find(function(r) { return r.id === id; });
+        return { rule: Object.assign({}, rule, { enabled: enabled }) };
+      });
+    });
 }
 
 /* ══════════════════════════════════════════════════════════════

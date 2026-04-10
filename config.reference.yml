@@ -296,79 +296,81 @@ hooks:                                   # [선택] 파이프라인 훅 설정
 #   rate-limit — 처리량 기반 실행 (threshold: 최대 허용 건수)
 #
 # conditions (선택):
-#   field      — 검사할 필드명 (예: "repo", "label", "errorCount")
-#   operator   — 비교 연산자: eq | neq | gt | lt | contains
-#   value      — 비교 값
+#   expression — 조건 표현식 (예: "failureCount > 3", "repo == 'owner/repo'", "label == 'urgent'")
 #
 # actions:
-#   notify     — 알림 전송 (message: 알림 메시지)
-#   pause      — 파이프라인 일시 중지 (duration: 중지 시간 ms)
-#   retry      — 실패한 Phase 재시도 (maxRetries: 최대 재시도 횟수)
-#   label      — GitHub 이슈에 라벨 추가 (label: 라벨 이름)
+#   notify     — 알림 전송 (params.message: 알림 메시지)
+#   pause      — 파이프라인 일시 중지 (params.duration: 중지 시간 ms)
+#   retry      — 실패한 Phase 재시도 (params.maxRetries: 최대 재시도 횟수)
+#   label      — GitHub 이슈에 라벨 추가 (params.label: 라벨 이름)
 #   close      — GitHub 이슈 닫기
 
 automations:                             # [선택] 자동화 규칙 목록 (기본값: [])
 
   # --- cron 타입 예시: 매일 실행 ---
-  - name: "daily-report"                 # [필수] 규칙 이름 (고유)
+  - id: "daily-report"                   # [필수] 규칙 식별자 (고유)
     enabled: true                        # [선택] 활성화 여부 (기본값: true)
     trigger:
       type: "cron"                       # [필수] 트리거 타입: cron | event | rate-limit
       schedule: "daily"                  # [cron 필수] 실행 주기: daily | weekly
     conditions:                          # [선택] 실행 조건 (모두 만족 시 액션 실행)
-      - field: "repo"                    # [필수] 검사 필드
-        operator: "eq"                   # [필수] 비교 연산자: eq | neq | gt | lt | contains
-        value: "owner/repo-name"         # [필수] 비교 값
+      - expression: "repo == 'owner/repo-name'"  # [필수] 조건 표현식 (예: "failureCount > 3", "label == 'urgent'")
     actions:                             # [필수] 실행할 액션 목록
       - type: "notify"                   # [필수] 액션 타입: notify | pause | retry | label | close
-        message: "일일 처리 현황 리포트" # [notify 선택] 알림 메시지
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          message: "일일 처리 현황 리포트"
 
   # --- cron 타입 예시: 매주 실행 ---
-  - name: "weekly-cleanup"
+  - id: "weekly-cleanup"
     enabled: true
     trigger:
       type: "cron"
       schedule: "weekly"                 # [cron 필수] weekly: 매주 실행
     actions:
       - type: "label"
-        label: "needs-review"            # [label 필수] 추가할 라벨 이름
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          label: "needs-review"          # [label 필수] 추가할 라벨 이름
 
   # --- event 타입 예시: PR 머지 시 ---
-  - name: "on-pr-merged"
+  - id: "on-pr-merged"
     enabled: true
     trigger:
       type: "event"
       event: "pr-merged"                 # [event 필수] 트리거 이벤트: pr-merged | phase-failed
     actions:
       - type: "notify"
-        message: "PR이 머지되었습니다."
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          message: "PR이 머지되었습니다."
       - type: "label"
-        label: "merged"
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          label: "merged"
 
   # --- event 타입 예시: Phase 실패 시 ---
-  - name: "on-phase-failed"
+  - id: "on-phase-failed"
     enabled: true
     trigger:
       type: "event"
       event: "phase-failed"              # [event 필수] phase-failed: Phase 구현 실패 시 트리거
     conditions:
-      - field: "errorCount"
-        operator: "gt"                   # gt: 초과, lt: 미만, eq: 같음, neq: 다름, contains: 포함
-        value: "3"
+      - expression: "errorCount > 3"     # [필수] 조건 표현식 (예: "failureCount > 3", "label == 'urgent'")
     actions:
       - type: "retry"
-        maxRetries: 2                    # [retry 선택] 최대 재시도 횟수 (기본값: 1)
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          maxRetries: 2                  # [retry 선택] 최대 재시도 횟수 (기본값: 1)
       - type: "notify"
-        message: "Phase 실패: 재시도 중 (최대 2회)"
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          message: "Phase 실패: 재시도 중 (최대 2회)"
 
   # --- rate-limit 타입 예시: 처리량 제한 ---
-  - name: "rate-limit-guard"
+  - id: "rate-limit-guard"
     enabled: true
     trigger:
       type: "rate-limit"
       threshold: 10                      # [rate-limit 필수] 최대 허용 처리 건수
     actions:
       - type: "pause"
-        duration: 3600000                # [pause 선택] 일시 중지 시간 ms (기본값: 60000, 여기서는 1시간)
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          duration: 3600000              # [pause 선택] 일시 중지 시간 ms (기본값: 60000, 여기서는 1시간)
       - type: "notify"
-        message: "처리량 한도 초과: 1시간 대기"
+        params:                          # [선택] 액션에 전달할 추가 파라미터
+          message: "처리량 한도 초과: 1시간 대기"

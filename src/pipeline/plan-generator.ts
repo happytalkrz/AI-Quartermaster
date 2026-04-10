@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
 import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
+import { detectCircularDependencies, validatePhaseDependencies } from "./phase-scheduler.js";
 import { runClaude, extractJson } from "../claude/claude-runner.js";
 import { configForTask, configForTaskWithMode } from "../claude/model-router.js";
 import type { ClaudeCliConfig } from "../types/config.js";
@@ -413,6 +414,18 @@ function validatePlan(plan: Plan): void {
     phase.verificationCriteria = phase.verificationCriteria ?? [];
     phase.dependsOn = phase.dependsOn ?? [];
   });
+
+  // Validate phase dependencies (self-dependency, non-existent refs)
+  const depValidation = validatePhaseDependencies(plan.phases);
+  if (!depValidation.valid) {
+    throw new Error(`Invalid phase dependencies: ${depValidation.errors.join("; ")}`);
+  }
+
+  // Detect circular dependencies (A→B→A etc.)
+  const cycle = detectCircularDependencies(plan.phases);
+  if (cycle.length > 0) {
+    throw new Error(`Circular dependency detected in plan phases: ${cycle.join(" → ")}`);
+  }
 }
 
 /**

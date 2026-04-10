@@ -30,6 +30,20 @@ function getJobKanbanColumn(job) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Priority Visual Helpers
+   ══════════════════════════════════════════════════════════════ */
+/**
+ * 숫자 priority → 'high' | 'normal' | 'low'
+ * 낮을수록 먼저 처리: 0=high, 1=normal, ≥2=low, undefined=normal
+ */
+function getPriorityLevel(priority) {
+  if (typeof priority !== 'number') return 'normal';
+  if (priority === 0) return 'high';
+  if (priority === 1) return 'normal';
+  return 'low';
+}
+
+/* ══════════════════════════════════════════════════════════════
    Card Rendering
    ══════════════════════════════════════════════════════════════ */
 function renderKanbanCard(job) {
@@ -41,6 +55,7 @@ function renderKanbanCard(job) {
   var issueRef   = '#' + job.issueNumber;
 
   var cardClass, headerHtml, bodyHtml;
+  var priorityBarHtml = '';
 
   if (isRunning) {
     cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/30 bg-gradient-to-br from-[#262a31] to-[#1c2026] relative overflow-hidden group cursor-pointer';
@@ -95,32 +110,84 @@ function renderKanbanCard(job) {
       '</div>';
 
   } else {
-    // queued
-    cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-grab group';
-    headerHtml =
-      '<div class="flex justify-between items-start mb-3">' +
-        '<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">' + esc(issueRef) + '</span>' +
-        '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors select-none">drag_indicator</span>' +
-      '</div>';
+    // queued — priority에 따라 시각적 처리 분기
+    var pLevel = getPriorityLevel(job.priority);
     var elapsed = fmtDuration(job) || relativeTime(job.createdAt);
-    bodyHtml =
-      '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + esc(title) + '</h4>' +
-      '<div class="space-y-3">' +
-        '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
-          '<span>ELAPSED</span>' +
-          '<span class="text-on-surface-variant">' + elapsed + '</span>' +
-        '</div>' +
-        '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
-          '<div class="h-full bg-outline-variant rounded-full" style="width:0%"></div>' +
-        '</div>' +
-      '</div>';
+
+    if (pLevel === 'high') {
+      // high: 빨강 좌측 바 + 빨강 우선순위 아이콘
+      cardClass = 'bg-[#262a31] p-4 pl-5 rounded-md border border-error/25 hover:border-error/50 transition-all cursor-grab group relative overflow-hidden';
+      priorityBarHtml = '<div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-md" style="background:rgba(255,180,171,0.7)"></div>';
+      headerHtml =
+        '<div class="flex justify-between items-start mb-3">' +
+          '<span class="text-[10px] font-mono text-error/80 font-bold tracking-wider">' + esc(issueRef) + '</span>' +
+          '<div class="flex items-center gap-1">' +
+            '<span class="material-symbols-outlined text-[14px] text-error/80" style="font-variation-settings:\'FILL\' 1,\'wght\' 600">keyboard_double_arrow_up</span>' +
+            '<span class="material-symbols-outlined text-[16px] text-outline-variant/60 group-hover:text-primary transition-colors select-none">drag_indicator</span>' +
+          '</div>' +
+        '</div>';
+      bodyHtml =
+        '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + esc(title) + '</h4>' +
+        '<div class="space-y-3">' +
+          '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
+            '<span>ELAPSED</span>' +
+            '<span class="text-on-surface-variant">' + elapsed + '</span>' +
+          '</div>' +
+          '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
+            '<div class="h-full bg-error/40 rounded-full" style="width:0%"></div>' +
+          '</div>' +
+        '</div>';
+
+    } else if (pLevel === 'low') {
+      // low: 회색 처리 (opacity 낮춤) + 하향 아이콘
+      cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/10 hover:border-primary/30 transition-all cursor-grab group opacity-55 hover:opacity-90';
+      headerHtml =
+        '<div class="flex justify-between items-start mb-3">' +
+          '<span class="text-[10px] font-mono text-outline-variant/60 font-bold tracking-wider">' + esc(issueRef) + '</span>' +
+          '<div class="flex items-center gap-1">' +
+            '<span class="material-symbols-outlined text-[14px] text-outline-variant/50">keyboard_double_arrow_down</span>' +
+            '<span class="material-symbols-outlined text-[16px] text-outline-variant/50 group-hover:text-primary transition-colors select-none">drag_indicator</span>' +
+          '</div>' +
+        '</div>';
+      bodyHtml =
+        '<h4 class="text-sm font-medium text-on-surface/60 mb-4 leading-snug">' + esc(title) + '</h4>' +
+        '<div class="space-y-3">' +
+          '<div class="flex items-center justify-between text-[10px] font-mono text-outline/60">' +
+            '<span>ELAPSED</span>' +
+            '<span class="text-on-surface-variant/60">' + elapsed + '</span>' +
+          '</div>' +
+          '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
+            '<div class="h-full bg-outline-variant/40 rounded-full" style="width:0%"></div>' +
+          '</div>' +
+        '</div>';
+
+    } else {
+      // normal: 기본 스타일
+      cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-grab group';
+      headerHtml =
+        '<div class="flex justify-between items-start mb-3">' +
+          '<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">' + esc(issueRef) + '</span>' +
+          '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors select-none">drag_indicator</span>' +
+        '</div>';
+      bodyHtml =
+        '<h4 class="text-sm font-medium text-on-surface mb-4 leading-snug">' + esc(title) + '</h4>' +
+        '<div class="space-y-3">' +
+          '<div class="flex items-center justify-between text-[10px] font-mono text-outline">' +
+            '<span>ELAPSED</span>' +
+            '<span class="text-on-surface-variant">' + elapsed + '</span>' +
+          '</div>' +
+          '<div class="w-full h-1 bg-surface-container-low rounded-full overflow-hidden">' +
+            '<div class="h-full bg-outline-variant rounded-full" style="width:0%"></div>' +
+          '</div>' +
+        '</div>';
+    }
 
     return '<div class="' + cardClass + '" data-job-id="' + esc(job.id) + '"' +
       ' draggable="true"' +
       ' ondragstart="kanbanDragStart(event)"' +
       ' ondragend="kanbanDragEnd(event)"' +
       ' onclick="selectJob(\'' + esc(job.id) + '\')">' +
-      headerHtml + bodyHtml +
+      priorityBarHtml + headerHtml + bodyHtml +
     '</div>';
   }
 

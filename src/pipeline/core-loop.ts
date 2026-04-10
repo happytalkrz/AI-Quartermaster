@@ -107,9 +107,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       .digest("hex")
       .substring(0, 16);
 
-    // Load static template parts for caching
-    const planTemplatePath = resolve(ctx.promptsDir, "plan-generation.md");
-    const phaseTemplatePath = resolve(ctx.promptsDir, "phase-implementation.md");
+    // Load dynamic phase layer template (phase-dynamic.md = dynamic part only, without base/project)
+    // staticContent (Base+Project) is cached separately and combined at render time
+    const phaseTemplatePath = resolve(ctx.promptsDir, "layers", "phase-dynamic.md");
 
     try {
       const phaseTemplate = loadTemplate(phaseTemplatePath);

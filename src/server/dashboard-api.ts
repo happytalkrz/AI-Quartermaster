@@ -10,7 +10,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, UpdateJobPriorityRequestSchema, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
@@ -771,6 +771,32 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     const cancelled = queue.cancel(id);
     if (!cancelled) return c.json({ error: "Job not found or not cancellable" }, 404);
     return c.json({ status: "cancelled", id });
+  });
+
+  // Update job priority
+  api.put("/api/jobs/:id/priority", async (c) => {
+    const id = c.req.param("id");
+    const job = store.get(id);
+    if (!job) return c.json({ error: "Job not found" }, 404);
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const parseResult = UpdateJobPriorityRequestSchema.safeParse(body);
+    if (!parseResult.success) {
+      return c.json({ error: "Invalid request body", details: parseResult.error }, 400);
+    }
+
+    const { priority } = parseResult.data;
+    const updatedJob = store.update(id, { priority });
+    if (!updatedJob) return c.json({ error: "Failed to update priority" }, 500);
+
+    broadcastToAllClients("job-updated", updatedJob);
+    return c.json(updatedJob);
   });
 
   // Delete a completed/failed job

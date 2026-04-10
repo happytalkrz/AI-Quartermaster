@@ -33,7 +33,6 @@ export interface GeneralConfig {
   pollingIntervalMs: number;
   maxJobs: number;
   autoUpdate: boolean;
-  instanceLabel?: string;
 }
 
 export interface GitConfig {

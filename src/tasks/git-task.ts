@@ -5,6 +5,7 @@ import type { Plan, PhaseResult } from "../types/pipeline.js";
 import { syncBaseBranch, createWorkBranch, pushBranch } from "../git/branch-manager.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
 import { createDraftPR } from "../github/pr-creator.js";
+import { createCheckpoint, rollbackToCheckpoint } from "../safety/rollback-manager.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 
@@ -42,6 +43,8 @@ export interface GitTaskOptions extends BaseTaskOptions {
   cwd: string;
   /** PR 생성 옵션 (제공 시 PR 생성 수행) */
   prOptions?: GitTaskPrOptions;
+  /** 실패 시 자동 롤백 여부 (기본값: false) */
+  autoRollback?: boolean;
 }
 
 /**
@@ -58,6 +61,8 @@ export interface GitTaskResult {
   prUrl?: string;
   /** 에러 메시지 */
   error?: string;
+  /** 롤백된 체크포인트 해시 */
+  rolledBackTo?: string;
   /** 실행 소요 시간 (밀리초) */
   durationMs: number;
 }
@@ -92,7 +97,16 @@ export class GitTask implements AQMTask {
 
     this.setRunning();
     const logger = getLogger();
-    const { gitConfig, issueNumber, issueTitle, cwd } = this._options;
+    const { gitConfig, issueNumber, issueTitle, cwd, autoRollback } = this._options;
+
+    // Create checkpoint before any git operations
+    let checkpointHash: string | undefined;
+    try {
+      checkpointHash = await createCheckpoint({ cwd, gitPath: gitConfig.gitPath });
+      logger.info(`[GitTask] Checkpoint created: ${checkpointHash.slice(0, 8)} for issue #${issueNumber}`);
+    } catch (err: unknown) {
+      logger.warn(`[GitTask] Could not create checkpoint: ${getErrorMessage(err)}`);
+    }
 
     try {
       // Step 1: Sync base branch
@@ -177,7 +191,19 @@ export class GitTask implements AQMTask {
     } catch (err: unknown) {
       const error = getErrorMessage(err);
       logger.error(`[GitTask] Failed for issue #${issueNumber}: ${error}`);
-      this.setFailed(error);
+
+      let rolledBackTo: string | undefined;
+      if (autoRollback && checkpointHash) {
+        try {
+          await rollbackToCheckpoint(checkpointHash, { cwd, gitPath: gitConfig.gitPath });
+          rolledBackTo = checkpointHash;
+          logger.info(`[GitTask] Rolled back to checkpoint ${checkpointHash.slice(0, 8)}`);
+        } catch (rollbackErr: unknown) {
+          logger.error(`[GitTask] Rollback failed: ${getErrorMessage(rollbackErr)}`);
+        }
+      }
+
+      this.setFailed(error, rolledBackTo);
       return this._result!;
     }
   }
@@ -231,11 +257,11 @@ export class GitTask implements AQMTask {
     this._status = result.success ? TaskStatus.SUCCESS : TaskStatus.FAILED;
   }
 
-  protected setFailed(error: string): void {
+  protected setFailed(error: string, rolledBackTo?: string): void {
     const durationMs = this._startedAt
       ? Date.now() - this._startedAt.getTime()
       : 0;
-    this._result = { success: false, error, durationMs };
+    this._result = { success: false, error, rolledBackTo, durationMs };
     this._completedAt = new Date();
     this._status = TaskStatus.FAILED;
   }

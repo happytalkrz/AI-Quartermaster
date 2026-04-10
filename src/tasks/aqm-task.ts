@@ -23,7 +23,7 @@ export enum TaskStatus {
  * 지원하는 태스크 타입
  * 향후 CodexTask, GeminiTask 등 확장 가능
  */
-export type AQMTaskType = "claude" | "codex" | "gemini";
+export type AQMTaskType = "claude" | "codex" | "gemini" | "validation";
 
 /**
  * 태스크 JSON 직렬화를 위한 요약 정보

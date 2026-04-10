@@ -1,6 +1,10 @@
 import { randomUUID } from "crypto";
 import { AQMTask, TaskStatus, AQMTaskSummary, BaseTaskOptions } from "./aqm-task.js";
 import type { GitConfig } from "../types/config.js";
+import { syncBaseBranch, createWorkBranch, pushBranch } from "../git/branch-manager.js";
+import { autoCommitIfDirty } from "../git/commit-helper.js";
+import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 /**
  * Git 작업 실행을 위한 옵션
@@ -55,6 +59,67 @@ export class GitTask implements AQMTask {
 
   get status(): TaskStatus {
     return this._status;
+  }
+
+  async run(): Promise<GitTaskResult> {
+    if (this._status !== TaskStatus.PENDING) {
+      throw new Error(`Task ${this.id} is already in ${this._status} state`);
+    }
+
+    this.setRunning();
+    const logger = getLogger();
+    const { gitConfig, issueNumber, issueTitle, cwd } = this._options;
+
+    try {
+      // Step 1: Sync base branch
+      if (this._abortController.signal.aborted) {
+        this.setFailed("Task was killed before sync");
+        return this._result!;
+      }
+      logger.info(`[GitTask] Syncing base branch for issue #${issueNumber}`);
+      await syncBaseBranch(gitConfig, { cwd });
+
+      // Step 2: Create work branch
+      if (this._abortController.signal.aborted) {
+        this.setFailed("Task was killed before branch creation");
+        return this._result!;
+      }
+      logger.info(`[GitTask] Creating work branch for issue #${issueNumber}`);
+      const { workBranch } = await createWorkBranch(gitConfig, issueNumber, issueTitle, { cwd });
+
+      // Step 3: Auto-commit if dirty
+      if (this._abortController.signal.aborted) {
+        this.setFailed("Task was killed before commit");
+        return this._result!;
+      }
+      logger.info(`[GitTask] Auto-committing changes for issue #${issueNumber}`);
+      const commitMsg = `[#${issueNumber}] ${issueTitle}`;
+      const commitHash = await autoCommitIfDirty(gitConfig.gitPath, cwd, commitMsg);
+
+      // Step 4: Push branch
+      if (this._abortController.signal.aborted) {
+        this.setFailed("Task was killed before push");
+        return this._result!;
+      }
+      logger.info(`[GitTask] Pushing branch ${workBranch}`);
+      await pushBranch(gitConfig, workBranch, { cwd });
+
+      const durationMs = Date.now() - this._startedAt!.getTime();
+      const result: GitTaskResult = {
+        success: true,
+        branchName: workBranch,
+        commitHash,
+        durationMs,
+      };
+      this.setCompleted(result);
+      logger.info(`[GitTask] Completed for issue #${issueNumber}: branch=${workBranch}`);
+      return result;
+    } catch (err: unknown) {
+      const error = getErrorMessage(err);
+      logger.error(`[GitTask] Failed for issue #${issueNumber}: ${error}`);
+      this.setFailed(error);
+      return this._result!;
+    }
   }
 
   async kill(): Promise<void> {

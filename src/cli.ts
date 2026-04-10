@@ -18,6 +18,7 @@ import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
 import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
+import { AutomationScheduler } from "./automation/scheduler.js";
 import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
@@ -310,8 +311,9 @@ export async function startCommand(args: CliArgs): Promise<void> {
     logger.info("업데이트 감지됨 — graceful restart 시작...");
 
     try {
-      // Stop poller to prevent new issues from being picked up
+      // Stop poller and scheduler to prevent new issues from being picked up
       poller?.stop();
+      scheduler.stop();
 
       // Wait for running jobs to complete
       logger.info("실행 중인 job 완료 대기...");
@@ -340,12 +342,19 @@ export async function startCommand(args: CliArgs): Promise<void> {
       if (poller && !poller.isRunning()) {
         poller.start();
       }
+      if (!scheduler.isRunning()) {
+        scheduler.start();
+      }
     }
   };
 
   // === Poller: always start (webhook mode uses it as fallback for missed events) ===
   const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
   poller.start();
+
+  // === Automation Scheduler: cron-based automation rules ===
+  const scheduler = new AutomationScheduler();
+  scheduler.start();
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
@@ -406,6 +415,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
     poller?.stop();
+    scheduler.stop();
     configWatcher.stopWatching();
     await queue.shutdown(30000);
     cleanup();

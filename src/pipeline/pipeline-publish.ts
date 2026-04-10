@@ -36,6 +36,8 @@ export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ s
     jl,
   } = context;
 
+  const instanceLabelStr = projectConfig.general?.instanceLabel ? ` [${projectConfig.general.instanceLabel}]` : "";
+
   try {
     // === Safety: validate before push (sensitive paths, change limits, base branch) ===
     await validateBeforePush({
@@ -73,7 +75,7 @@ export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ s
               ? conflictCheck.conflictFiles.map(f => `- \`${f}\``).join("\n")
               : "- (unknown files)";
 
-            const commentBody = `## 🔄 자동 Rebase 실패
+            const commentBody = `## 🔄 자동 Rebase 실패${instanceLabelStr}
 
 브랜치를 \`${baseBranch}\`에 자동으로 rebase하는데 실패했습니다. 다음 파일들에서 충돌이 감지되었습니다:
 
@@ -179,7 +181,7 @@ PR이 생성되었지만 충돌이 해결될 때까지 머지할 수 없습니�
               parts.push(`**PR을 찾을 수 없는 의존성:**\n${dependencyCheck.notFound.map(n => `- #${n} (PR을 찾을 수 없음)`).join("\n")}`);
             }
 
-            const commentBody = `## ⏳ Auto-merge 대기 중
+            const commentBody = `## ⏳ Auto-merge 대기 중${instanceLabelStr}
 
 의존성 이슈들의 PR이 아직 머지되지 않아 auto-merge를 활성화하지 않았습니다.
 

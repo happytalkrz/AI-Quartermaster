@@ -28,3 +28,11 @@ export {
   ValidationTaskType,
   ValidationResult,
 } from "./validation-task.js";
+
+// Git 태스크 구현체 (branch/commit/push/PR)
+export {
+  GitTask,
+  GitTaskOptions,
+  GitTaskStep,
+  GitTaskResult,
+} from "./git-task.js";

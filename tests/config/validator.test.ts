@@ -347,20 +347,20 @@ describe("validateConfig", () => {
   });
 
   it("should accept config with instanceLabel set", () => {
-    const configWithInstanceLabel = updateNested(validConfig, "safety", {
+    const configWithInstanceLabel = updateNested(validConfig, "general", {
       instanceLabel: "aqm",
     });
 
     const result = validateConfig(configWithInstanceLabel);
-    expect(result.safety.instanceLabel).toBe("aqm");
+    expect(result.general.instanceLabel).toBe("aqm");
   });
 
   it("should accept config without instanceLabel (optional field)", () => {
-    const configWithoutInstanceLabel = updateNested(validConfig, "safety", {
+    const configWithoutInstanceLabel = updateNested(validConfig, "general", {
       instanceLabel: undefined,
     });
 
     const result = validateConfig(configWithoutInstanceLabel);
-    expect(result.safety.instanceLabel).toBeUndefined();
+    expect(result.general.instanceLabel).toBeUndefined();
   });
 });

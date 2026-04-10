@@ -858,8 +858,10 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
   describe("instanceLabel 설정 기반 라벨 필터링", () => {
     it("instanceLabel 설정 시 해당 라벨만으로 폴링해야 한다", async () => {
       const config = makeConfig({
-        safety: {
+        general: {
           instanceLabel: "aqm",
+        },
+        safety: {
           allowedLabels: ["bug", "feature"],
         },
       });
@@ -880,10 +882,13 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
     it("instanceLabel 미설정 시 allowedLabels로 폴링해야 한다", async () => {
       const config = makeConfig({
+        general: {
+          instanceLabel: undefined,
+        },
         safety: {
           allowedLabels: ["bug", "feature"],
         },
-      });
+      } as any);
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
       mockStore.shouldBlockRepickup.mockReturnValue(false);
       mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });

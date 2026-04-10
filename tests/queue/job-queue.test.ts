@@ -1573,6 +1573,91 @@ describe("JobQueue", () => {
     });
   });
 
+  describe("recover", () => {
+    it("should clear projectErrorState on recover (paused project is resumed)", () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const queue = new JobQueue(store, 1, handler);
+
+      // Pause a project
+      queue.pauseProject("test/repo", 60000); // 1분 pause
+      expect(queue.isProjectPaused("test/repo")).toBe(true);
+      expect(queue.getProjectStatus("test/repo")?.pausedUntil).toBeGreaterThan(Date.now());
+
+      // recover() 호출 시 projectErrorState 초기화
+      queue.recover();
+
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+      expect(queue.getProjectStatus("test/repo")).toBeNull();
+    });
+
+    it("should clear consecutiveFailures on recover", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("failure 1"))
+        .mockRejectedValueOnce(new Error("failure 2"));
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // 두 번 실패하여 consecutiveFailures = 2
+      const job1 = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job1!.id)?.status).toBe("failure");
+
+      const job2 = queue.enqueue(2, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(job2!.id)?.status).toBe("failure");
+
+      expect(queue.getProjectStatus("test/repo")?.consecutiveFailures).toBe(2);
+
+      // recover() 호출 후 projectErrorState 초기화
+      queue.recover();
+
+      expect(queue.getProjectStatus("test/repo")).toBeNull();
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+    });
+
+    it("should clear projectErrorState for multiple repos on recover", () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const queue = new JobQueue(store, 1, handler);
+
+      // 두 repo 모두 pause
+      queue.pauseProject("test/repo1", 60000);
+      queue.pauseProject("test/repo2", 60000);
+
+      expect(queue.isProjectPaused("test/repo1")).toBe(true);
+      expect(queue.isProjectPaused("test/repo2")).toBe(true);
+
+      queue.recover();
+
+      expect(queue.isProjectPaused("test/repo1")).toBe(false);
+      expect(queue.isProjectPaused("test/repo2")).toBe(false);
+      expect(queue.getProjectStatus("test/repo1")).toBeNull();
+      expect(queue.getProjectStatus("test/repo2")).toBeNull();
+    });
+
+    it("should still recover queued and running jobs after clearing projectErrorState", () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const queue = new JobQueue(store, 0, handler); // concurrency=0: 잡이 즉시 실행되지 않도록
+
+      // 스토어에 queued/running 잡 직접 생성
+      const queuedJob = store.create(10, "test/repo");
+      const runningJob = store.create(20, "test/repo2");
+      store.update(runningJob.id, { status: "running", startedAt: new Date().toISOString() });
+
+      // project pause 설정
+      queue.pauseProject("test/repo", 60000);
+
+      const recovered = queue.recover();
+
+      // projectErrorState 초기화됨
+      expect(queue.isProjectPaused("test/repo")).toBe(false);
+
+      // queued/running 잡 복구
+      expect(recovered).toBe(2);
+      expect(store.get(queuedJob.id)?.status).toBe("queued");
+      expect(store.get(runningJob.id)?.status).toBe("queued"); // running → queued로 리셋
+    });
+  });
+
   describe("Priority Queue", () => {
     it("should execute jobs in priority order: high -> normal -> low", async () => {
       const executionOrder: number[] = [];

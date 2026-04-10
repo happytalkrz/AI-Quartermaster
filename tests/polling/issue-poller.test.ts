@@ -854,4 +854,49 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(400, "test/repo");
     });
   });
+
+  describe("instanceLabel 설정 기반 라벨 필터링", () => {
+    it("instanceLabel 설정 시 해당 라벨만으로 폴링해야 한다", async () => {
+      const config = makeConfig({
+        safety: {
+          instanceLabel: "aqm",
+          allowedLabels: ["bug", "feature"],
+        },
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });
+      mockListOpenPrs.mockResolvedValue([]);
+
+      await (poller as any).poll();
+
+      const labelArgs = mockRunCli.mock.calls.map(
+        (call) => call[1][call[1].indexOf("--label") + 1]
+      );
+      expect(labelArgs).toContain("aqm");
+      expect(labelArgs).not.toContain("bug");
+      expect(labelArgs).not.toContain("feature");
+    });
+
+    it("instanceLabel 미설정 시 allowedLabels로 폴링해야 한다", async () => {
+      const config = makeConfig({
+        safety: {
+          allowedLabels: ["bug", "feature"],
+        },
+      });
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });
+      mockListOpenPrs.mockResolvedValue([]);
+
+      await (poller as any).poll();
+
+      const labelArgs = mockRunCli.mock.calls.map(
+        (call) => call[1][call[1].indexOf("--label") + 1]
+      );
+      expect(labelArgs).toContain("bug");
+      expect(labelArgs).toContain("feature");
+      expect(labelArgs).not.toContain("aqm");
+    });
+  });
 });

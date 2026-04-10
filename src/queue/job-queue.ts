@@ -10,6 +10,8 @@ import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 import { ProjectErrorState } from "../types/config.js";
+import type { TaskFactory } from "../tasks/task-factory.js";
+import type { AQMTask } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
@@ -105,18 +107,22 @@ export class JobQueue {
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
+  private taskFactory?: TaskFactory;
+  private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
 
   constructor(
     store: JobStore,
     concurrency: number,
     handler: JobHandler,
     stuckTimeoutMs: number = 600000,
-    projectConcurrency?: Record<string, number>
+    projectConcurrency?: Record<string, number>,
+    taskFactory?: TaskFactory
   ) {
     this.store = store;
     this.concurrency = concurrency;
     this.handler = handler;
     this.stuckTimeoutMs = stuckTimeoutMs;
+    this.taskFactory = taskFactory;
 
     if (projectConcurrency) {
       Object.entries(projectConcurrency).forEach(([repo, limit]) => {
@@ -391,11 +397,25 @@ export class JobQueue {
     if (this.running.has(jobId)) {
       this.cancelled.add(jobId);
       this.store.update(jobId, { status: "cancelled", completedAt: new Date().toISOString() });
+      // Kill active task if tracked
+      const activeTask = this.activeTasks.get(jobId);
+      if (activeTask) {
+        activeTask.kill().catch((err: unknown) => {
+          logger.warn(`Failed to kill task for job ${jobId}: ${getErrorMessage(err)}`);
+        });
+      }
       logger.info(`Job cancelled (was running): ${jobId}`);
       return true;
     }
 
     return false;
+  }
+
+  /**
+   * Returns the active AQMTask for the given job ID, if taskFactory is in use.
+   */
+  getActiveTask(jobId: string): AQMTask | undefined {
+    return this.activeTasks.get(jobId);
   }
 
   /**
@@ -727,7 +747,20 @@ export class JobQueue {
         return;
       }
 
-      const result = await this.handler(job);
+      let result: { prUrl?: string; error?: string };
+
+      if (this.taskFactory) {
+        // TaskFactory 경로: AQMTask 생성 후 run() 호출
+        const task = this.taskFactory.createTask(job);
+        this.activeTasks.set(job.id, task);
+        try {
+          result = await (task as unknown as { run(): Promise<{ prUrl?: string; error?: string }> }).run();
+        } finally {
+          this.activeTasks.delete(job.id);
+        }
+      } else {
+        result = await this.handler(job);
+      }
 
       // Re-check after handler completes — stuck checker may have fired during execution
       const wasStuckAborted = this.stuckAborted.has(job.id);

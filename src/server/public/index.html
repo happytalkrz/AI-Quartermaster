@@ -592,6 +592,10 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           <span class="material-symbols-outlined text-sm">view_kanban</span>
           <span>Kanban</span>
         </button>
+        <button id="btn-automations-rules" onclick="setAutomationsView('rules')" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface">
+          <span class="material-symbols-outlined text-sm">rule</span>
+          <span>Rules</span>
+        </button>
       </div>
     </div>
 
@@ -623,6 +627,11 @@ if (localStorage.getItem('aqm-theme') === 'light') {
       <div id="kanban-board" class="flex gap-6 overflow-x-auto custom-scrollbar pb-4" style="min-height: 60vh;">
         <!-- Columns populated by renderKanban() -->
       </div>
+    </div>
+
+    <!-- Rules View -->
+    <div id="automations-rules-view" class="hidden">
+      <!-- Populated by automations.js renderRulesView() -->
     </div>
 
   </div>

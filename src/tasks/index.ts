@@ -8,7 +8,11 @@ export {
   TaskStatus,
   AQMTaskType,
   AQMTaskSummary,
-  BaseTaskOptions
+  BaseTaskOptions,
+  SerializedTask,
+  TaskLifecycleEvent,
+  TaskEventListener,
+  TaskEventEmitter
 } from "./aqm-task.js";
 
 // Claude 태스크 구현체

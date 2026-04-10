@@ -242,6 +242,48 @@ export interface ProjectConfig {
   pauseDurationMs?: number;
 }
 
+export type AutomationTriggerType = "cron" | "event" | "rate-limit";
+export type AutomationEventType = "pr-merged" | "phase-failed";
+export type AutomationCronSchedule = "daily" | "weekly";
+
+export interface AutomationTrigger {
+  type: AutomationTriggerType;
+  /** cron 트리거 스케줄 (type이 "cron"일 때) */
+  schedule?: AutomationCronSchedule;
+  /** event 트리거 이벤트명 (type이 "event"일 때) */
+  event?: AutomationEventType;
+  /** rate-limit 트리거 임계값 (type이 "rate-limit"일 때) */
+  threshold?: number;
+}
+
+export interface AutomationCondition {
+  /** 조건 표현식 (예: "failureCount > 3", "label == 'urgent'") */
+  expression: string;
+}
+
+export type AutomationActionType = "notify" | "pause" | "retry" | "label" | "close";
+
+export interface AutomationAction {
+  type: AutomationActionType;
+  /** 액션에 전달할 추가 파라미터 */
+  params?: Record<string, string | number | boolean>;
+}
+
+export interface AutomationRule {
+  /** 규칙 식별자 */
+  id: string;
+  /** 규칙 설명 */
+  description?: string;
+  /** 트리거 조건 */
+  trigger: AutomationTrigger;
+  /** 선택적 조건 (모두 충족해야 액션 실행) */
+  conditions?: AutomationCondition[];
+  /** 실행할 액션 목록 */
+  actions: AutomationAction[];
+  /** 규칙 활성화 여부 (기본값: true) */
+  enabled?: boolean;
+}
+
 export interface AQConfig {
   general: GeneralConfig;
   git: GitConfig;
@@ -254,4 +296,5 @@ export interface AQConfig {
   executionMode: ExecutionMode;
   hooks?: HooksConfig;        // pipeline hooks configuration
   projects?: ProjectConfig[];  // per-project overrides
+  automations?: AutomationRule[];  // automation rules
 }

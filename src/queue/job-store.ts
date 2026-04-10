@@ -179,6 +179,8 @@ export class JobStore extends EventEmitter {
         success: phase.success,
         commit: phase.commitHash,
         durationMs: phase.durationMs,
+        startedAt: phase.startedAt,
+        completedAt: phase.completedAt,
         error: phase.error,
         costUsd: phase.costUsd,
         usage: phase.inputTokens !== undefined ? {

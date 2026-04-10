@@ -452,6 +452,8 @@ export interface PhaseResultInfo {
   success: boolean;
   commit?: string;
   durationMs: number;
+  startedAt?: string;
+  completedAt?: string;
   error?: string;
   costUsd?: number;
   usage?: UsageStats;

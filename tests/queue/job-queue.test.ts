@@ -1572,4 +1572,115 @@ describe("JobQueue", () => {
       expect(handler).toHaveBeenCalledTimes(5);
     });
   });
+
+  describe("Priority Queue", () => {
+    it("should execute jobs in priority order: high -> normal -> low", async () => {
+      const executionOrder: number[] = [];
+      let firstJobStarted = false;
+      let resolveFirst: (() => void) | null = null;
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+
+        if (!firstJobStarted) {
+          firstJobStarted = true;
+          // Block first job until all jobs are enqueued
+          return new Promise<{ prUrl: string }>((resolve) => {
+            resolveFirst = () => resolve({ prUrl: "https://test-pr" });
+          });
+        } else {
+          // Other jobs complete quickly
+          await new Promise(r => setTimeout(r, 10));
+          return { prUrl: "https://test-pr" };
+        }
+      });
+
+      const queue = new JobQueue(store, 1, handler); // concurrency=1 for sequential execution
+
+      // Enqueue jobs in mixed order
+      queue.enqueue(1, "test/repo", undefined, false, "low");
+      await new Promise(r => setTimeout(r, 20)); // Let first job start
+
+      queue.enqueue(2, "test/repo", undefined, false, "high");
+      queue.enqueue(3, "test/repo", undefined, false, "normal");
+      queue.enqueue(4, "test/repo", undefined, false, "high");
+      queue.enqueue(5, "test/repo", undefined, false, "low");
+
+      // Wait a moment for all jobs to be queued
+      await new Promise(r => setTimeout(r, 50));
+
+      // Now release the first job
+      if (resolveFirst) resolveFirst();
+
+      // Wait for all jobs to complete
+      await new Promise(r => setTimeout(r, 200));
+
+      expect(handler).toHaveBeenCalledTimes(5);
+      // Should execute in order: low(1) first, then high(2,4), normal(3), low(5)
+      expect(executionOrder).toEqual([1, 2, 4, 3, 5]);
+    });
+
+    it("should treat jobs without priority as normal priority", async () => {
+      const executionOrder: number[] = [];
+      let firstJobStarted = false;
+      let resolveFirst: (() => void) | null = null;
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+
+        if (!firstJobStarted) {
+          firstJobStarted = true;
+          return new Promise<{ prUrl: string }>((resolve) => {
+            resolveFirst = () => resolve({ prUrl: "https://test-pr" });
+          });
+        } else {
+          await new Promise(r => setTimeout(r, 10));
+          return { prUrl: "https://test-pr" };
+        }
+      });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      // Mix jobs with and without priority
+      queue.enqueue(1, "test/repo", undefined, false, "low");
+      await new Promise(r => setTimeout(r, 20));
+
+      queue.enqueue(2, "test/repo"); // no priority (should be normal)
+      queue.enqueue(3, "test/repo", undefined, false, "high");
+      queue.enqueue(4, "test/repo"); // no priority (should be normal)
+
+      await new Promise(r => setTimeout(r, 50));
+
+      // Release first job
+      if (resolveFirst) resolveFirst();
+
+      await new Promise(r => setTimeout(r, 150));
+
+      expect(handler).toHaveBeenCalledTimes(4);
+      // low(1) first, then high(3), normal(2,4),
+      expect(executionOrder).toEqual([1, 3, 2, 4]);
+    });
+
+    it("should maintain FIFO order within same priority level", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        await new Promise(r => setTimeout(r, 20));
+        return { prUrl: "https://test-pr" };
+      });
+
+      const queue = new JobQueue(store, 1, handler); // concurrency=1 ensures sequential execution
+
+      // Enqueue multiple jobs with same priority
+      queue.enqueue(1, "test/repo", undefined, false, "normal");
+      queue.enqueue(2, "test/repo", undefined, false, "normal");
+      queue.enqueue(3, "test/repo", undefined, false, "normal");
+
+      await new Promise(r => setTimeout(r, 150));
+
+      expect(handler).toHaveBeenCalledTimes(3);
+      // Should maintain FIFO order for same priority
+      expect(executionOrder).toEqual([1, 2, 3]);
+    });
+  });
 });

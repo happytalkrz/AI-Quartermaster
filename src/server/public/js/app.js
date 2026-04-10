@@ -644,9 +644,17 @@ function performUpdate() {
   var updateBtn = document.getElementById('update-btn');
   if (!updateBtn || updateBtn.disabled) return;
 
-  setUpdateButtonState('sync', '업데이트 중...', true);
+  var activeCount = currentJobs.filter(function(j) { return j.status === 'running' || j.status === 'queued'; }).length;
+  var confirmPromise = activeCount > 0
+    ? showConfirm('업데이트', activeCount + '개의 진행 중인 잡이 취소됩니다. 계속하시겠습니까?')
+    : Promise.resolve(true);
 
-  apiFetch('/api/update', { method: 'POST' })
+  confirmPromise.then(function(ok) {
+    if (!ok) return;
+
+    setUpdateButtonState('sync', '업데이트 중...', true);
+
+    apiFetch('/api/update', { method: 'POST' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.updated) {
@@ -672,6 +680,7 @@ function performUpdate() {
         setUpdateButtonState('download', '업데이트', false);
       }, 3000);
     });
+  });
 }
 
 function dismissUpdate() {

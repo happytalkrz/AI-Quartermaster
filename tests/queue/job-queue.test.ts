@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { JobQueue, JobHandler } from "../../src/queue/job-queue.js";
+import { JobQueue, JobHandler, TaskHandler, JobTaskHandle } from "../../src/queue/job-queue.js";
+import { TaskStatus, type AQMTaskSummary } from "../../src/tasks/aqm-task.js";
 import { JobStore } from "../../src/queue/job-store.js";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
@@ -1570,6 +1571,213 @@ describe("JobQueue", () => {
 
       await new Promise(r => setTimeout(r, 400));
       expect(handler).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe("Phase 4: 직렬화/역직렬화 — Task 스냅샷 추적 및 Resume 지원", () => {
+    /** 테스트용 최소 AQMTask mock 생성 헬퍼 */
+    function makeMockTask(id: string, initialStatus: TaskStatus = TaskStatus.PENDING) {
+      const listeners: Record<string, Array<() => void>> = {};
+      const task = {
+        id,
+        type: "claude" as const,
+        get status() { return initialStatus; },
+        kill: vi.fn().mockResolvedValue(undefined),
+        toJSON: vi.fn((): AQMTaskSummary => ({
+          id,
+          type: "claude",
+          status: initialStatus,
+          startedAt: undefined,
+          completedAt: undefined,
+          durationMs: undefined,
+          metadata: { prompt: "test prompt" },
+        })),
+        on: vi.fn((event: string, listener: () => void) => {
+          if (!listeners[event]) listeners[event] = [];
+          listeners[event].push(listener);
+        }),
+        off: vi.fn(),
+        once: vi.fn(),
+        emit: (event: string) => {
+          (listeners[event] ?? []).forEach(fn => fn());
+        },
+      };
+      return task;
+    }
+
+    it("getTaskSnapshot: TaskHandler 미사용 시 undefined 반환", () => {
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 1, handler);
+
+      expect(queue.getTaskSnapshot("nonexistent-job-id")).toBeUndefined();
+    });
+
+    it("getTaskSnapshot: TaskHandler 사용 시 스냅샷 저장 및 조회", async () => {
+      const mockTask = makeMockTask("task-1");
+
+      const taskHandler: TaskHandler = vi.fn().mockReturnValue({
+        task: mockTask,
+        run: vi.fn().mockResolvedValue({ prUrl: "https://pr/1" }),
+      } as JobTaskHandle);
+
+      const queue = new JobQueue(store, 1, taskHandler);
+      const job = queue.enqueue(10, "test/repo");
+
+      // 잡이 실행될 때까지 대기
+      await new Promise(r => setTimeout(r, 50));
+
+      // 스냅샷이 저장되어 있어야 함
+      const snapshot = queue.getTaskSnapshot(job!.id);
+      expect(snapshot).toBeDefined();
+      expect(snapshot?.id).toBe("task-1");
+      expect(snapshot?.type).toBe("claude");
+    });
+
+    it("getTaskSnapshot: lifecycle 이벤트 발생 시 스냅샷 업데이트", async () => {
+      let capturedStatus: TaskStatus = TaskStatus.PENDING;
+      const mockTask = makeMockTask("task-lifecycle");
+      // toJSON이 호출될 때마다 현재 capturedStatus 반환
+      mockTask.toJSON.mockImplementation((): AQMTaskSummary => ({
+        id: "task-lifecycle",
+        type: "claude",
+        status: capturedStatus,
+        metadata: {},
+      }));
+
+      let resolveRun!: (v: { prUrl: string }) => void;
+      const runPromise = new Promise<{ prUrl: string }>(r => { resolveRun = r; });
+
+      const taskHandler: TaskHandler = vi.fn().mockReturnValue({
+        task: mockTask,
+        run: vi.fn().mockImplementation(async () => {
+          // started 이벤트 발생
+          capturedStatus = TaskStatus.RUNNING;
+          mockTask.emit("started");
+          await new Promise(r => setTimeout(r, 10));
+          // completed 이벤트 발생
+          capturedStatus = TaskStatus.SUCCESS;
+          mockTask.emit("completed");
+          return runPromise;
+        }),
+      } as JobTaskHandle);
+
+      resolveRun({ prUrl: "https://pr/lifecycle" });
+
+      const queue = new JobQueue(store, 1, taskHandler);
+      const job = queue.enqueue(20, "test/repo");
+
+      await new Promise(r => setTimeout(r, 80));
+
+      // completed 이벤트 후 스냅샷이 SUCCESS 상태여야 함
+      const snapshot = queue.getTaskSnapshot(job!.id);
+      expect(snapshot).toBeDefined();
+      expect(snapshot?.status).toBe(TaskStatus.SUCCESS);
+    });
+
+    it("serializeActiveTasks: 실행 중인 Task 스냅샷 직렬화", async () => {
+      let holdRunning!: () => void;
+      const runHeld = new Promise<void>(r => { holdRunning = r; });
+
+      const mockTask = makeMockTask("task-active");
+
+      const taskHandler: TaskHandler = vi.fn().mockReturnValue({
+        task: mockTask,
+        run: vi.fn().mockImplementation(async () => {
+          await runHeld;
+          return { prUrl: "https://pr/active" };
+        }),
+      } as JobTaskHandle);
+
+      const queue = new JobQueue(store, 1, taskHandler);
+      queue.enqueue(30, "test/repo");
+
+      // 잡이 실행 중인 동안 직렬화
+      await new Promise(r => setTimeout(r, 30));
+      const snapshots = queue.serializeActiveTasks();
+
+      expect(Object.keys(snapshots).length).toBe(1);
+      const snapshot = Object.values(snapshots)[0];
+      expect(snapshot.id).toBe("task-active");
+
+      // 정리
+      holdRunning();
+    });
+
+    it("serializeActiveTasks: 실행 중인 Task 없을 때 빈 객체 반환", () => {
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 1, handler);
+
+      expect(queue.serializeActiveTasks()).toEqual({});
+    });
+
+    it("loadTaskSnapshots: 스냅샷 주입 후 getTaskSnapshot으로 조회 가능", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      const snapshot: AQMTaskSummary = {
+        id: "restored-task-id",
+        type: "claude",
+        status: TaskStatus.PENDING,
+        metadata: { prompt: "restored prompt" },
+      };
+
+      queue.loadTaskSnapshots({ "job-abc": snapshot });
+
+      const retrieved = queue.getTaskSnapshot("job-abc");
+      expect(retrieved).toBeDefined();
+      expect(retrieved?.id).toBe("restored-task-id");
+      expect(retrieved?.type).toBe("claude");
+      expect(retrieved?.metadata?.prompt).toBe("restored prompt");
+    });
+
+    it("loadTaskSnapshots: 복수 스냅샷 주입 및 개별 조회", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      const snapshots: Record<string, AQMTaskSummary> = {
+        "job-1": { id: "task-1", type: "claude", status: TaskStatus.FAILED, metadata: {} },
+        "job-2": { id: "task-2", type: "validation", status: TaskStatus.KILLED, metadata: {} },
+      };
+
+      queue.loadTaskSnapshots(snapshots);
+
+      expect(queue.getTaskSnapshot("job-1")?.id).toBe("task-1");
+      expect(queue.getTaskSnapshot("job-2")?.id).toBe("task-2");
+      expect(queue.getTaskSnapshot("job-3")).toBeUndefined();
+    });
+
+    it("직렬화/역직렬화 Round-trip: serializeActiveTasks → loadTaskSnapshots → getTaskSnapshot", async () => {
+      let holdRunning!: () => void;
+      const runHeld = new Promise<void>(r => { holdRunning = r; });
+
+      const mockTask = makeMockTask("task-roundtrip");
+
+      const taskHandler: TaskHandler = vi.fn().mockReturnValue({
+        task: mockTask,
+        run: vi.fn().mockImplementation(async () => {
+          await runHeld;
+          return { prUrl: "https://pr/roundtrip" };
+        }),
+      } as JobTaskHandle);
+
+      // 서버 A: 잡 실행 중 직렬화
+      const queueA = new JobQueue(store, 1, taskHandler);
+      const jobA = queueA.enqueue(50, "test/repo");
+      await new Promise(r => setTimeout(r, 30));
+
+      const serialized = queueA.serializeActiveTasks();
+      holdRunning();
+
+      // 서버 B: 직렬화된 스냅샷 복원
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queueB = new JobQueue(store, 1, handler);
+      queueB.loadTaskSnapshots(serialized);
+
+      // 복원된 스냅샷 조회
+      const restored = queueB.getTaskSnapshot(jobA!.id);
+      expect(restored).toBeDefined();
+      expect(restored?.id).toBe("task-roundtrip");
+      expect(restored?.type).toBe("claude");
     });
   });
 });

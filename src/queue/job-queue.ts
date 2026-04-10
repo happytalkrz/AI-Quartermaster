@@ -10,7 +10,7 @@ import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 import { ProjectErrorState } from "../types/config.js";
-import type { AQMTask } from "../tasks/aqm-task.js";
+import type { AQMTask, AQMTaskSummary } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
@@ -145,6 +145,7 @@ export class JobQueue {
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
   private runningTasks: Map<string, AQMTask> = new Map(); // jobId -> 실행 중인 AQMTask
+  private taskSnapshots: Map<string, AQMTaskSummary> = new Map(); // jobId -> 마지막 Task 스냅샷
 
   constructor(
     store: JobStore,
@@ -821,18 +822,66 @@ export class JobQueue {
       const handle = handlerResult;
       this.runningTasks.set(job.id, handle.task);
 
+      // 초기 스냅샷 저장 (PENDING 상태)
+      this.taskSnapshots.set(job.id, handle.task.toJSON());
+
+      // lifecycle 이벤트: 스냅샷 최신 상태로 업데이트
+      const updateSnapshot = () => {
+        this.taskSnapshots.set(job.id, handle.task.toJSON());
+      };
+      handle.task.on?.("started", updateSnapshot);
+      handle.task.on?.("completed", updateSnapshot);
+      handle.task.on?.("failed", updateSnapshot);
+
       // killed 이벤트: stuck 감지 외부에서 kill된 경우 stuckAborted로 표시
       handle.task.on?.("killed", () => {
         logger.info(`Task killed for job ${job.id}`);
         if (!this.stuckAborted.has(job.id)) {
           this.stuckAborted.add(job.id);
         }
+        updateSnapshot();
       });
 
-      return handle.run();
+      const result = await handle.run();
+      // 실행 완료 후 최종 스냅샷 저장 (완료 상태 반영)
+      this.taskSnapshots.set(job.id, handle.task.toJSON());
+      return result;
     }
 
     // 레거시 JobHandler — 직접 결과 반환
     return handlerResult;
+  }
+
+  /**
+   * 특정 잡의 마지막으로 저장된 Task 스냅샷을 반환한다.
+   * 직렬화된 스냅샷은 ClaudeTask.fromJSON() 등으로 복원할 수 있다.
+   * @returns AQMTaskSummary 또는 Task가 없는 경우 undefined
+   */
+  getTaskSnapshot(jobId: string): AQMTaskSummary | undefined {
+    return this.taskSnapshots.get(jobId);
+  }
+
+  /**
+   * 현재 실행 중인 모든 Task의 최신 스냅샷을 직렬화하여 반환한다.
+   * 서버 종료 전 상태 저장에 사용된다.
+   * 반환된 Record는 loadTaskSnapshots()로 재주입 가능하다.
+   */
+  serializeActiveTasks(): Record<string, AQMTaskSummary> {
+    const result: Record<string, AQMTaskSummary> = {};
+    for (const [jobId, task] of this.runningTasks) {
+      result[jobId] = task.toJSON();
+    }
+    return result;
+  }
+
+  /**
+   * 외부에서 직렬화된 Task 스냅샷을 주입한다.
+   * 서버 재시작 후 recover() 호출 전에 이전 세션의 스냅샷을 복원하는데 사용된다.
+   * 핸들러는 getTaskSnapshot(jobId)로 스냅샷을 조회하고 fromJSON()으로 Task를 재구성한다.
+   */
+  loadTaskSnapshots(snapshots: Record<string, AQMTaskSummary>): void {
+    for (const [jobId, snapshot] of Object.entries(snapshots)) {
+      this.taskSnapshots.set(jobId, snapshot);
+    }
   }
 }

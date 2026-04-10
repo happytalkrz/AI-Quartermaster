@@ -654,13 +654,18 @@ function renderTabForm(tabName, data) {
   container.innerHTML = html;
 }
 
+var FIELD_DISPLAY_LABELS = {
+  'general.instanceLabel': 'Instance Label',
+};
+
 function renderFormField(key, value, configPath) {
   var fieldId = 'field-' + configPath.replace(/\./g, '-');
   var isMasked = typeof value === 'string' && value.includes('********');
   var isReadonly = isMasked;
+  var displayLabel = FIELD_DISPLAY_LABELS[configPath] || key;
 
   var html = '<label class="block">';
-  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">' + esc(key) + '</span>';
+  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">' + esc(displayLabel) + '</span>';
 
   if (typeof value === 'boolean') {
     html += renderCheckboxInput(fieldId, value, configPath, isReadonly);

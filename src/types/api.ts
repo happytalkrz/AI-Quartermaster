@@ -270,3 +270,10 @@ export const HealthCheckResponseSchema = z.object({
 }).strict();
 
 export type HealthCheckResponse = z.infer<typeof HealthCheckResponseSchema>;
+
+// UpdateJobPriority 요청 스키마 (PUT /api/jobs/:id/priority)
+export const UpdateJobPriorityRequestSchema = z.object({
+  priority: z.enum(["high", "normal", "low"]),
+}).strict();
+
+export type UpdateJobPriorityRequest = z.infer<typeof UpdateJobPriorityRequestSchema>;

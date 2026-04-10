@@ -276,6 +276,99 @@ describe("ClaudeTask", () => {
     });
   });
 
+  describe("라이프사이클 이벤트", () => {
+    it("should emit started event when run begins", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const startedFn = vi.fn();
+      task.on("started", startedFn);
+
+      await task.run();
+
+      expect(startedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should emit completed event on success", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const completedFn = vi.fn();
+      const failedFn = vi.fn();
+      task.on("completed", completedFn);
+      task.on("failed", failedFn);
+
+      await task.run();
+
+      expect(completedFn).toHaveBeenCalledTimes(1);
+      expect(failedFn).not.toHaveBeenCalled();
+    });
+
+    it("should emit failed event on unsuccessful result", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: false, output: "err", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const completedFn = vi.fn();
+      const failedFn = vi.fn();
+      task.on("completed", completedFn);
+      task.on("failed", failedFn);
+
+      await task.run();
+
+      expect(failedFn).toHaveBeenCalledTimes(1);
+      expect(completedFn).not.toHaveBeenCalled();
+    });
+
+    it("should emit failed event on thrown error", async () => {
+      mockRunClaude.mockRejectedValueOnce(new Error("crash"));
+
+      const task = new ClaudeTask(testOptions);
+      const failedFn = vi.fn();
+      task.on("failed", failedFn);
+
+      await expect(task.run()).rejects.toThrow("crash");
+
+      expect(failedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should emit killed event when kill is called", async () => {
+      const task = new ClaudeTask(testOptions);
+      const killedFn = vi.fn();
+      task.on("killed", killedFn);
+
+      (task as any)._status = TaskStatus.RUNNING;
+      await task.kill();
+
+      expect(killedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support once listener (fires only once)", async () => {
+      mockRunClaude
+        .mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const onceFn = vi.fn();
+      task.once("started", onceFn);
+
+      await task.run();
+
+      expect(onceFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support off (remove listener)", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const startedFn = vi.fn();
+      task.on("started", startedFn);
+      task.off("started", startedFn);
+
+      await task.run();
+
+      expect(startedFn).not.toHaveBeenCalled();
+    });
+  });
+
   describe("직렬화", () => {
     it("should serialize task to JSON summary", () => {
       const task = new ClaudeTask({
@@ -347,6 +440,98 @@ describe("ClaudeTask", () => {
       expect(json.durationMs).toBeDefined();
       expect(typeof json.durationMs).toBe("number");
       expect(json.durationMs).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe("fromJSON", () => {
+    const baseConfig: ClaudeTaskOptions["config"] = {
+      path: "claude",
+      model: "sonnet",
+      maxTurns: 10,
+      timeout: 30000,
+      additionalArgs: []
+    };
+
+    it("should restore task from SerializedTask in PENDING state", () => {
+      const serialized = {
+        id: "restored-id",
+        type: "claude" as const,
+        status: TaskStatus.SUCCESS,
+        metadata: { prompt: "Restored prompt" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+
+      expect(task.id).toBe("restored-id");
+      expect(task.type).toBe("claude");
+      expect(task.status).toBe(TaskStatus.PENDING);
+    });
+
+    it("should restore prompt from metadata", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.FAILED,
+        metadata: { prompt: "Hello world" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const json = task.toJSON();
+
+      expect(json.metadata?.prompt).toBe("Hello world");
+    });
+
+    it("should restore optional fields from metadata", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.SUCCESS,
+        metadata: {
+          prompt: "Test",
+          systemPrompt: "Be helpful",
+          maxTurns: 5,
+          enableAgents: true
+        }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const json = task.toJSON();
+
+      expect(json.metadata?.systemPrompt).toBe("Be helpful");
+      expect(json.metadata?.maxTurns).toBe(5);
+      expect(json.metadata?.enableAgents).toBe(true);
+    });
+
+    it("should handle missing metadata gracefully", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.PENDING,
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+
+      expect(task.id).toBe("test-id");
+      expect(task.status).toBe(TaskStatus.PENDING);
+      const json = task.toJSON();
+      expect(json.metadata?.prompt).toBe("");
+    });
+
+    it("should be runnable after restoration", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const serialized = {
+        id: "runnable-id",
+        type: "claude" as const,
+        status: TaskStatus.FAILED,
+        metadata: { prompt: "Run me again" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const result = await task.run();
+
+      expect(result.success).toBe(true);
+      expect(task.status).toBe(TaskStatus.SUCCESS);
     });
   });
 });

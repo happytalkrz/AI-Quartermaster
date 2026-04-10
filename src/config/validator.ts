@@ -318,6 +318,31 @@ const projectConfigSchema = z.object({
   pauseDurationMs: z.number().int().min(60000).optional(), // 최소 1분
 }).strict();
 
+const automationTriggerSchema = z.object({
+  type: z.enum(["cron", "event", "rate-limit"]),
+  schedule: z.enum(["daily", "weekly"]).optional(),
+  event: z.enum(["pr-merged", "phase-failed"]).optional(),
+  threshold: z.number().optional(),
+});
+
+const automationConditionSchema = z.object({
+  expression: z.string().min(1),
+});
+
+const automationActionSchema = z.object({
+  type: z.enum(["notify", "pause", "retry", "label", "close"]),
+  params: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+
+const automationRuleSchema = z.object({
+  id: z.string().min(1),
+  description: z.string().optional(),
+  trigger: automationTriggerSchema,
+  conditions: z.array(automationConditionSchema).optional(),
+  actions: z.array(automationActionSchema).min(1),
+  enabled: z.boolean().optional(),
+});
+
 const hooksConfigSchema = z.record(
   z.enum([
     "pre-plan",
@@ -347,6 +372,7 @@ const aqConfigSchema = z.object({
   executionMode: z.enum(["economy", "standard", "thorough"]),
   hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
+  automations: z.array(automationRuleSchema).optional(),
 }).superRefine((data, ctx) => {
   const hasAllowedRepos = data.git.allowedRepos.length > 0;
   const hasProjects = data.projects && data.projects.length > 0;

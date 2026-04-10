@@ -21,6 +21,8 @@ import { IssuePoller } from "./polling/issue-poller.js";
 import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
+import { AutomationScheduler } from "./automation/scheduler.js";
+import { initDispatcher } from "./pipeline/automation-dispatcher.js";
 
 export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
   const result: Record<string, number> = {};
@@ -312,6 +314,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     try {
       // Stop poller to prevent new issues from being picked up
       poller?.stop();
+      scheduler?.stop();
 
       // Wait for running jobs to complete
       logger.info("실행 중인 job 완료 대기...");
@@ -342,6 +345,9 @@ export async function startCommand(args: CliArgs): Promise<void> {
       }
     }
   };
+
+  // === Automation rule scheduler ===
+  const scheduler = new AutomationScheduler(effectiveConfig);
 
   // === Poller: always start (webhook mode uses it as fallback for missed events) ===
   const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
@@ -398,6 +404,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   startServer(app, port);
+  initDispatcher(scheduler);
+  scheduler.start();
   writePidFile(pidPath);
 
   const cleanup = () => removePidFile(pidPath);
@@ -406,6 +414,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const gracefulShutdown = async (signal: string) => {
     logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
     poller?.stop();
+    scheduler.stop();
     configWatcher.stopWatching();
     await queue.shutdown(30000);
     cleanup();

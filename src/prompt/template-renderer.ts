@@ -7,6 +7,11 @@ import type {
   PromptLayer,
   AssembledPrompt
 } from "../types/pipeline.js";
+import type {
+  IssueLayer,
+  LearningLayer,
+  PromptLayers,
+} from "./layer-types.js";
 
 export interface TemplateVariables {
   [key: string]: string | number | boolean | string[] | TemplateVariables;
@@ -216,6 +221,67 @@ export function buildPhaseLayer(config: {
 }
 
 /**
+ * 이슈 레이어를 구축합니다. GitHub 이슈 정보와 저장소 메타데이터를 포함합니다.
+ */
+export function buildIssueLayer(config: {
+  number: number;
+  title: string;
+  body: string;
+  labels: string[];
+  repository: {
+    owner: string;
+    name: string;
+    baseBranch: string;
+    workBranch: string;
+  };
+  planSummary: string;
+}): IssueLayer {
+  return {
+    number: config.number,
+    title: config.title,
+    body: config.body,
+    labels: config.labels,
+    repository: config.repository,
+    planSummary: config.planSummary,
+  };
+}
+
+/**
+ * 학습 레이어를 구축합니다. 과거 실패 사례, 에러 패턴, 베스트 프랙티스를 포함합니다.
+ */
+export function buildLearningLayer(config?: {
+  pastFailures?: Array<{
+    context: string;
+    message: string;
+    resolution?: string;
+  }>;
+  errorPatterns?: string[];
+  learnedPatterns?: string[];
+  updatedAt?: string;
+}): LearningLayer {
+  return {
+    pastFailures: config?.pastFailures ?? [],
+    errorPatterns: config?.errorPatterns ?? [],
+    learnedPatterns: config?.learnedPatterns ?? [],
+    updatedAt: config?.updatedAt ?? new Date().toISOString(),
+  };
+}
+
+/**
+ * 레이어별 캐시 키를 계산합니다.
+ * 전달한 필드를 키 기준 정렬 후 SHA-256 해시의 앞 16자리를 반환합니다.
+ */
+export function computeLayerCacheKey(
+  fields: Record<string, string | number>
+): string {
+  const material = Object.keys(fields)
+    .sort()
+    .map(k => `${k}=${String(fields[k])}`)
+    .join("&");
+  return createHash("sha256").update(material).digest("hex").substring(0, 16);
+}
+
+/**
  * 동적 섹션(이슈, 저장소, 설정)을 구성합니다.
  */
 export function buildDynamicSection(data: {
@@ -287,21 +353,102 @@ ${projectLayer.pastFailures ? `## 과거 실패 사례\n\n${projectLayer.pastFai
 }
 
 /**
+ * PromptLayers(5계층) 여부를 판별하는 타입 가드
+ */
+function isPromptLayers(
+  layers: PromptLayer | PromptLayers
+): layers is PromptLayers {
+  return "issue" in layers && "learning" in layers;
+}
+
+/**
  * 전체 프롬프트 레이어를 조립합니다.
+ * 3계층(PromptLayer)과 5계층(PromptLayers) 모두 지원합니다.
  */
 export function assemblePrompt(
-  layers: PromptLayer,
+  layers: PromptLayer | PromptLayers,
   templateContent: string
 ): AssembledPrompt {
   const startTime = Date.now();
 
-  // 정적 레이어 캐시 키 생성
+  if (isPromptLayers(layers)) {
+    // 5계층 경로
+    const cacheKey = computeLayerCacheKey({
+      role: layers.base.role,
+      conventions: layers.project.conventions,
+      issueNumber: layers.issue.number,
+      repo: `${layers.issue.repository.owner}/${layers.issue.repository.name}`,
+      learningUpdatedAt: layers.learning.updatedAt,
+    });
+
+    const pastFailuresText = layers.learning.pastFailures
+      .map(f => `- ${f.context}: ${f.message}${f.resolution ? ` (해결: ${f.resolution})` : ""}`)
+      .join("\n");
+
+    const variables: TemplateVariables = {
+      // Base Layer
+      role: layers.base.role,
+      rules: layers.base.rules,
+      outputFormat: layers.base.outputFormat,
+      progressReporting: layers.base.progressReporting,
+      parallelWorkGuide: layers.base.parallelWorkGuide,
+
+      // Project Layer
+      projectConventions: layers.project.conventions,
+      projectStructure: layers.project.structure,
+      skillsContext: layers.project.skillsContext || "",
+      config: {
+        testCommand: layers.project.testCommand,
+        lintCommand: layers.project.lintCommand,
+      },
+      safetyRules: layers.project.safetyRules,
+
+      // Issue Layer
+      issue: {
+        number: String(layers.issue.number),
+        title: layers.issue.title,
+        body: layers.issue.body,
+        labels: layers.issue.labels,
+      },
+      plan: {
+        summary: layers.issue.planSummary,
+      },
+      repository: layers.issue.repository,
+
+      // Phase Layer
+      phase: {
+        index: String(layers.phase.currentPhase.index),
+        totalCount: String(layers.phase.currentPhase.totalCount),
+        name: layers.phase.currentPhase.name,
+        description: layers.phase.currentPhase.description,
+        files: layers.phase.currentPhase.targetFiles,
+      },
+      previousPhases: {
+        summary: layers.phase.previousResults,
+      },
+
+      // Learning Layer
+      pastFailures: pastFailuresText,
+      errorPatterns: layers.learning.errorPatterns,
+      learnedPatterns: layers.learning.learnedPatterns,
+    };
+
+    const assembledContent = renderTemplate(templateContent, variables);
+
+    return {
+      content: assembledContent,
+      cacheKey,
+      cacheHit: false,
+      assemblyTimeMs: Date.now() - startTime,
+    };
+  }
+
+  // 3계층 경로 (하위호환)
   const cacheKey = createHash("sha256")
     .update(layers.base.role + JSON.stringify(layers.base.rules) + layers.project.conventions)
     .digest("hex")
     .substring(0, 16);
 
-  // 템플릿 변수 준비
   const variables: TemplateVariables = {
     // Base Layer
     role: layers.base.role,
@@ -345,12 +492,11 @@ export function assemblePrompt(
   };
 
   const assembledContent = renderTemplate(templateContent, variables);
-  const assemblyTime = Date.now() - startTime;
 
   return {
     content: assembledContent,
     cacheKey,
     cacheHit: false,
-    assemblyTimeMs: assemblyTime,
+    assemblyTimeMs: Date.now() - startTime,
   };
 }

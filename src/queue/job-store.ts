@@ -392,7 +392,8 @@ export class JobStore extends EventEmitter {
           isRetry: baseFields.isRetry,
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
-          totalUsage: baseFields.totalUsage
+          totalUsage: baseFields.totalUsage,
+          priority: baseFields.priority
         } as QueuedJob;
         break;
 
@@ -414,7 +415,8 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
-          error: baseFields.error
+          error: baseFields.error,
+          priority: baseFields.priority
         } as RunningJob;
         break;
 
@@ -437,7 +439,8 @@ export class JobStore extends EventEmitter {
           isRetry: baseFields.isRetry,
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
-          totalUsage: baseFields.totalUsage
+          totalUsage: baseFields.totalUsage,
+          priority: baseFields.priority
         } as SuccessJob;
         break;
 
@@ -461,7 +464,8 @@ export class JobStore extends EventEmitter {
           isRetry: baseFields.isRetry,
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
-          totalUsage: baseFields.totalUsage
+          totalUsage: baseFields.totalUsage,
+          priority: baseFields.priority
         } as FailureJob;
         break;
 
@@ -484,7 +488,8 @@ export class JobStore extends EventEmitter {
           isRetry: baseFields.isRetry,
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
-          totalUsage: baseFields.totalUsage
+          totalUsage: baseFields.totalUsage,
+          priority: baseFields.priority
         } as CancelledJob;
         break;
 
@@ -508,7 +513,8 @@ export class JobStore extends EventEmitter {
           isRetry: baseFields.isRetry,
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
-          totalUsage: baseFields.totalUsage
+          totalUsage: baseFields.totalUsage,
+          priority: baseFields.priority
         } as ArchivedJob;
         break;
 

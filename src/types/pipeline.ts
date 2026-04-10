@@ -263,24 +263,22 @@ export interface PlanRetryContext {
 
 // 프롬프트 레이어 분리를 위한 타입 정의
 
-/**
- * 기본 레이어 - 역할과 규칙 등 정적 내용
- */
-export interface BaseLayer {
-  /** AI 역할 정의 (예: "시니어 개발자", "소프트웨어 아키텍트") */
-  role: string;
-  /** 기본 규칙과 지침 */
-  rules: string[];
-  /** 출력 포맷 지침 */
-  outputFormat: string;
-  /** 진행 보고 규칙 */
-  progressReporting: string;
-  /** 병렬 작업 가이드 */
-  parallelWorkGuide: string;
-}
+// BaseLayer는 layer-types.ts와 동일 — import 후 re-export로 중복 제거
+import type { BaseLayer } from "../prompt/layer-types.js";
+export type { BaseLayer };
+
+// IssueLayer, LearningLayer, CacheKeyConfig, PromptLayers는 새 5계층 타입 — 호환성을 위해 re-export
+export type {
+  IssueLayer,
+  LearningLayer,
+  CacheKeyConfig,
+  PromptLayers,
+} from "../prompt/layer-types.js";
 
 /**
  * 프로젝트 레이어 - 프로젝트 수준 설정 (정적)
+ * @note layer-types.ts의 ProjectLayer보다 pastFailures? 필드가 추가됨.
+ *       template-renderer.ts에서 사용 중이므로 별도 유지.
  */
 export interface ProjectLayer {
   /** 프로젝트 컨벤션 (CLAUDE.md 내용) */
@@ -373,9 +371,74 @@ export interface AssembledPrompt {
   assemblyTimeMs: number;
 }
 
+// Pipeline Event Types
+
+export type PipelineEventType =
+  | "pr-merged"
+  | "phase-failed"
+  | "pipeline-complete"
+  | "pipeline-failed";
+
+export interface PrMergedPayload {
+  issueNumber: number;
+  repo: string;
+  prNumber: number;
+  prUrl: string;
+  mergedAt: string;
+}
+
+export interface PhaseFailedPayload {
+  issueNumber: number;
+  repo: string;
+  phaseIndex: number;
+  phaseName: string;
+  errorCategory?: ErrorCategory;
+  errorMessage: string;
+  attempt: number;
+}
+
+export interface PipelineCompletePayload {
+  issueNumber: number;
+  repo: string;
+  prUrl: string;
+  totalCostUsd?: number;
+  durationMs: number;
+}
+
+export interface PipelineFailedPayload {
+  issueNumber: number;
+  repo: string;
+  state: PipelineState;
+  errorCategory?: ErrorCategory;
+  errorMessage: string;
+  durationMs: number;
+}
+
+export type PipelineEventPayload =
+  | PrMergedPayload
+  | PhaseFailedPayload
+  | PipelineCompletePayload
+  | PipelineFailedPayload;
+
+export interface PipelineEvent<T extends PipelineEventType = PipelineEventType> {
+  type: T;
+  payload: T extends "pr-merged"
+    ? PrMergedPayload
+    : T extends "phase-failed"
+      ? PhaseFailedPayload
+      : T extends "pipeline-complete"
+        ? PipelineCompletePayload
+        : T extends "pipeline-failed"
+          ? PipelineFailedPayload
+          : never;
+  triggeredAt: string;
+}
+
 // Job Discriminated Union Types
 
 export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
+
+export type JobPriority = "high" | "normal" | "low";
 
 export interface UsageStats {
   input_tokens: number;
@@ -409,6 +472,7 @@ export interface JobBase {
   phaseResults?: PhaseResultInfo[];
   progress?: number;
   isRetry?: boolean;
+  priority?: JobPriority;
   costUsd?: number;
   totalCostUsd?: number;
   totalUsage?: UsageStats;

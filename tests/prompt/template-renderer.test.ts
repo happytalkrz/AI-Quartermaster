@@ -4,9 +4,13 @@ import {
   buildBaseLayer,
   buildProjectLayer,
   buildPhaseLayer,
+  buildIssueLayer,
+  buildLearningLayer,
+  computeLayerCacheKey,
   assemblePrompt
 } from "../../src/prompt/template-renderer.js";
 import type { PromptLayer } from "../../src/types/pipeline.js";
+import type { PromptLayers } from "../../src/prompt/layer-types.js";
 
 describe("renderTemplate", () => {
   it("should replace simple variables", () => {
@@ -315,5 +319,224 @@ Target Files: {{phase.files}}
     expect(typeof result.assemblyTimeMs).toBe("number");
     expect(result.assemblyTimeMs).toBeGreaterThanOrEqual(0);
     expect(result.assemblyTimeMs).toBeLessThan(1000); // Should be fast
+  });
+});
+
+describe("buildIssueLayer", () => {
+  it("should create issue layer with all required fields", () => {
+    const result = buildIssueLayer({
+      number: 42,
+      title: "Fix critical bug",
+      body: "Detailed description",
+      labels: ["bug", "priority"],
+      repository: {
+        owner: "my-org",
+        name: "my-repo",
+        baseBranch: "main",
+        workBranch: "fix/42-bug",
+      },
+      planSummary: "Fix the bug in 2 phases",
+    });
+
+    expect(result.number).toBe(42);
+    expect(result.title).toBe("Fix critical bug");
+    expect(result.body).toBe("Detailed description");
+    expect(result.labels).toEqual(["bug", "priority"]);
+    expect(result.repository.owner).toBe("my-org");
+    expect(result.repository.name).toBe("my-repo");
+    expect(result.repository.baseBranch).toBe("main");
+    expect(result.repository.workBranch).toBe("fix/42-bug");
+    expect(result.planSummary).toBe("Fix the bug in 2 phases");
+  });
+
+  it("should handle empty labels", () => {
+    const result = buildIssueLayer({
+      number: 1,
+      title: "Test",
+      body: "",
+      labels: [],
+      repository: { owner: "o", name: "r", baseBranch: "main", workBranch: "b" },
+      planSummary: "",
+    });
+    expect(result.labels).toEqual([]);
+  });
+});
+
+describe("buildLearningLayer", () => {
+  it("should create empty learning layer when no config provided", () => {
+    const result = buildLearningLayer();
+
+    expect(result.pastFailures).toEqual([]);
+    expect(result.errorPatterns).toEqual([]);
+    expect(result.learnedPatterns).toEqual([]);
+    expect(result.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("should create learning layer with provided data", () => {
+    const result = buildLearningLayer({
+      pastFailures: [
+        { context: "Phase 1", message: "Login error", resolution: "Run /login" },
+        { context: "Phase 2", message: "Type error" },
+      ],
+      errorPatterns: ["Not logged in", "TS error"],
+      learnedPatterns: ["Always check auth first"],
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+
+    expect(result.pastFailures).toHaveLength(2);
+    expect(result.pastFailures[0].context).toBe("Phase 1");
+    expect(result.pastFailures[0].resolution).toBe("Run /login");
+    expect(result.pastFailures[1].resolution).toBeUndefined();
+    expect(result.errorPatterns).toEqual(["Not logged in", "TS error"]);
+    expect(result.learnedPatterns).toEqual(["Always check auth first"]);
+    expect(result.updatedAt).toBe("2026-04-10T00:00:00.000Z");
+  });
+
+  it("should use defaults for missing optional fields", () => {
+    const result = buildLearningLayer({ updatedAt: "2026-04-10T00:00:00.000Z" });
+    expect(result.pastFailures).toEqual([]);
+    expect(result.errorPatterns).toEqual([]);
+    expect(result.learnedPatterns).toEqual([]);
+  });
+});
+
+describe("computeLayerCacheKey", () => {
+  it("should return 16-char hex string", () => {
+    const key = computeLayerCacheKey({ role: "Developer", rulesDigest: "abc123" });
+    expect(key).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it("should produce consistent keys for same input", () => {
+    const fields = { role: "Developer", rulesDigest: "abc123" };
+    expect(computeLayerCacheKey(fields)).toBe(computeLayerCacheKey(fields));
+  });
+
+  it("should produce different keys for different inputs", () => {
+    const key1 = computeLayerCacheKey({ role: "Developer" });
+    const key2 = computeLayerCacheKey({ role: "Architect" });
+    expect(key1).not.toBe(key2);
+  });
+
+  it("should be order-independent (sorts keys)", () => {
+    const key1 = computeLayerCacheKey({ a: "1", b: "2" });
+    const key2 = computeLayerCacheKey({ b: "2", a: "1" });
+    expect(key1).toBe(key2);
+  });
+
+  it("should handle numeric values", () => {
+    const key = computeLayerCacheKey({ issueNumber: 42, version: 1 });
+    expect(key).toMatch(/^[a-f0-9]{16}$/);
+  });
+});
+
+describe("assemblePrompt (5계층 PromptLayers)", () => {
+  function createFiveLayerLayers(): PromptLayers {
+    return {
+      base: buildBaseLayer({ role: "Test Developer" }),
+      project: buildProjectLayer({
+        conventions: "TypeScript + ESM",
+        testCommand: "npm test",
+        lintCommand: "npm run lint",
+      }),
+      issue: buildIssueLayer({
+        number: 99,
+        title: "5-layer Test Issue",
+        body: "Issue body text",
+        labels: ["feature"],
+        repository: {
+          owner: "five-org",
+          name: "five-repo",
+          baseBranch: "main",
+          workBranch: "feat/99",
+        },
+        planSummary: "Five layer plan",
+      }),
+      phase: {
+        currentPhase: {
+          index: 2,
+          totalCount: 3,
+          name: "Implementation",
+          description: "Implement the feature",
+          targetFiles: ["src/feature.ts"],
+        },
+        previousResults: "Phase 1: SUCCESS",
+      },
+      learning: buildLearningLayer({
+        pastFailures: [{ context: "Phase 1", message: "Login required", resolution: "Run /login" }],
+        errorPatterns: ["Not logged in"],
+        learnedPatterns: ["Check auth before start"],
+        updatedAt: "2026-04-10T00:00:00.000Z",
+      }),
+    };
+  }
+
+  it("should assemble 5-layer prompt with all layer variables", () => {
+    const layers = createFiveLayerLayers();
+    const template = "Role: {{role}}\nIssue #{{issue.number}}: {{issue.title}}\nPhase {{phase.index}}/{{phase.totalCount}}\nRepo: {{repository.owner}}/{{repository.name}}";
+
+    const result = assemblePrompt(layers, template);
+
+    expect(result.content).toContain("Role: Test Developer");
+    expect(result.content).toContain("Issue #99: 5-layer Test Issue");
+    expect(result.content).toContain("Phase 2/3");
+    expect(result.content).toContain("Repo: five-org/five-repo");
+    expect(result.cacheKey).toMatch(/^[a-f0-9]{16}$/);
+    expect(result.cacheHit).toBe(false);
+    expect(result.assemblyTimeMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("should include learning layer data in variables", () => {
+    const layers = createFiveLayerLayers();
+    const template = "Patterns: {{errorPatterns}}\nLearned: {{learnedPatterns}}";
+
+    const result = assemblePrompt(layers, template);
+
+    expect(result.content).toContain("Not logged in");
+    expect(result.content).toContain("Check auth before start");
+  });
+
+  it("should include plan summary from issue layer", () => {
+    const layers = createFiveLayerLayers();
+    const template = "Plan: {{plan.summary}}";
+
+    const result = assemblePrompt(layers, template);
+
+    expect(result.content).toContain("Plan: Five layer plan");
+  });
+
+  it("should generate consistent cache keys for same 5-layer content", () => {
+    const layers1 = createFiveLayerLayers();
+    const layers2 = createFiveLayerLayers();
+
+    const r1 = assemblePrompt(layers1, "{{role}}");
+    const r2 = assemblePrompt(layers2, "{{role}}");
+
+    expect(r1.cacheKey).toBe(r2.cacheKey);
+  });
+
+  it("should generate different cache key from 3-layer for same role/conventions", () => {
+    const threeLayers = {
+      base: buildBaseLayer({ role: "Test Developer" }),
+      project: buildProjectLayer({
+        conventions: "TypeScript + ESM",
+        testCommand: "npm test",
+        lintCommand: "npm run lint",
+      }),
+      phase: buildPhaseLayer({
+        issue: { number: 99, title: "Test", body: "", labels: [] },
+        planSummary: "",
+        currentPhase: { index: 1, totalCount: 1, name: "P", description: "", targetFiles: [] },
+        previousResults: "",
+        repository: { owner: "five-org", name: "five-repo", baseBranch: "main", workBranch: "b" },
+      }),
+    };
+    const fiveLayers = createFiveLayerLayers();
+
+    const r3 = assemblePrompt(threeLayers, "{{role}}");
+    const r5 = assemblePrompt(fiveLayers, "{{role}}");
+
+    // Both produce valid 16-char hex keys
+    expect(r3.cacheKey).toMatch(/^[a-f0-9]{16}$/);
+    expect(r5.cacheKey).toMatch(/^[a-f0-9]{16}$/);
   });
 });

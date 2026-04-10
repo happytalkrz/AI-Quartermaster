@@ -2204,3 +2204,234 @@ describe("Dashboard API - SSE Connection Management", () => {
     });
   });
 });
+
+describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
+  let app: Hono;
+  let localStore: JobStore;
+
+  const mockJob = {
+    id: "job-123",
+    issueNumber: 42,
+    repo: "owner/repo",
+    status: "queued" as const,
+    priority: "normal" as const,
+    createdAt: "2026-04-10T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const emitter = new EventEmitter();
+    localStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      update: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+    } as any;
+
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    } as any;
+
+    app = createDashboardRoutes(localStore, localQueue);
+  });
+
+  it("should update job priority to high", async () => {
+    const updatedJob = { ...mockJob, priority: "high" as const };
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+    vi.mocked(localStore.update).mockReturnValue(updatedJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "high" }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.priority).toBe("high");
+    expect(localStore.update).toHaveBeenCalledWith("job-123", { priority: "high" });
+  });
+
+  it("should update job priority to normal", async () => {
+    const updatedJob = { ...mockJob, priority: "normal" as const };
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+    vi.mocked(localStore.update).mockReturnValue(updatedJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "normal" }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.priority).toBe("normal");
+    expect(localStore.update).toHaveBeenCalledWith("job-123", { priority: "normal" });
+  });
+
+  it("should update job priority to low", async () => {
+    const updatedJob = { ...mockJob, priority: "low" as const };
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+    vi.mocked(localStore.update).mockReturnValue(updatedJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "low" }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.priority).toBe("low");
+    expect(localStore.update).toHaveBeenCalledWith("job-123", { priority: "low" });
+  });
+
+  it("should return 404 when job not found", async () => {
+    vi.mocked(localStore.get).mockReturnValue(undefined);
+
+    const response = await app.request("/api/jobs/nonexistent/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "high" }),
+    });
+
+    expect(response.status).toBe(404);
+    const result = await response.json();
+    expect(result.error).toBe("Job not found");
+  });
+
+  it("should return 400 for invalid JSON body", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "not-valid-json",
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid JSON body");
+  });
+
+  it("should return 400 for invalid priority value", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "urgent" }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid request body");
+    expect(result.details).toBeDefined();
+  });
+
+  it("should return 400 for missing priority field", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid request body");
+    expect(result.details).toBeDefined();
+  });
+
+  it("should return 400 for extra fields in request body", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "high", extra: "field" }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid request body");
+    expect(result.details).toBeDefined();
+  });
+
+  it("should return 500 when store.update fails", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+    vi.mocked(localStore.update).mockReturnValue(undefined);
+
+    const response = await app.request("/api/jobs/job-123/priority", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: "high" }),
+    });
+
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toBe("Failed to update priority");
+  });
+
+  describe("with API key", () => {
+    beforeEach(() => {
+      const apiKey = "test-api-key-123";
+      const emitter = new EventEmitter();
+      localStore = {
+        list: vi.fn().mockReturnValue([]),
+        get: vi.fn(),
+        set: vi.fn(),
+        remove: vi.fn(),
+        update: vi.fn(),
+        on: emitter.on.bind(emitter),
+        emit: emitter.emit.bind(emitter),
+      } as any;
+
+      const localQueue = {
+        getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+        cancel: vi.fn(),
+        retryJob: vi.fn(),
+      } as any;
+
+      app = createDashboardRoutes(localStore, localQueue, undefined, apiKey);
+    });
+
+    it("should return 401 without authentication", async () => {
+      const response = await app.request("/api/jobs/job-123/priority", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: "high" }),
+      });
+
+      expect(response.status).toBe(401);
+      const result = await response.json();
+      expect(result.error).toBe("Unauthorized");
+    });
+
+    it("should update priority with valid Bearer token", async () => {
+      const updatedJob = { ...mockJob, priority: "high" as const };
+      vi.mocked(localStore.get).mockReturnValue(mockJob as any);
+      vi.mocked(localStore.update).mockReturnValue(updatedJob as any);
+
+      const response = await app.request("/api/jobs/job-123/priority", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer test-api-key-123",
+        },
+        body: JSON.stringify({ priority: "high" }),
+      });
+
+      expect(response.status).toBe(200);
+      const result = await response.json();
+      expect(result.priority).toBe("high");
+    });
+  });
+});

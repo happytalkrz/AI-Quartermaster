@@ -22,6 +22,7 @@ import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 import { AutomationScheduler } from "./automation/scheduler.js";
+import { initDispatcher } from "./pipeline/automation-dispatcher.js";
 
 export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
   const result: Record<string, number> = {};
@@ -403,6 +404,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   startServer(app, port);
+  initDispatcher(scheduler);
   scheduler.start();
   writePidFile(pidPath);
 

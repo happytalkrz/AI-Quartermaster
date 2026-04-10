@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { JobQueue, JobHandler } from "../../src/queue/job-queue.js";
 import { JobStore } from "../../src/queue/job-store.js";
+import type { TaskFactory } from "../../src/tasks/task-factory.js";
+import { TaskStatus } from "../../src/tasks/aqm-task.js";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -1570,6 +1572,131 @@ describe("JobQueue", () => {
 
       await new Promise(r => setTimeout(r, 400));
       expect(handler).toHaveBeenCalledTimes(5);
+    });
+  });
+
+  describe("TaskFactory 통합", () => {
+    function makeMockTask(id = "mock-task") {
+      return {
+        id,
+        type: "claude" as const,
+        get status() { return TaskStatus.PENDING; },
+        kill: vi.fn().mockResolvedValue(undefined),
+        toJSON: () => ({ id, type: "claude" as const, status: TaskStatus.PENDING }),
+      };
+    }
+
+    it("taskFactory가 제공되면 잡 실행 시 태스크를 생성해야 한다", async () => {
+      const mockTask = makeMockTask("task-create-test");
+      const mockFactory: TaskFactory = { create: vi.fn().mockReturnValue(mockTask) };
+
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 1, handler, 600000, undefined, mockFactory);
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(mockFactory.create).toHaveBeenCalledOnce();
+      expect(mockFactory.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: job!.id, issueNumber: 1, repo: "test/repo" })
+      );
+    });
+
+    it("getActiveTask()는 실행 중인 잡의 태스크를 반환해야 한다", async () => {
+      let resolveHandler!: (val: { prUrl: string }) => void;
+      const handlerBlocker = new Promise<{ prUrl: string }>(resolve => { resolveHandler = resolve; });
+
+      const mockTask = makeMockTask("task-active-test");
+      const mockFactory: TaskFactory = { create: vi.fn().mockReturnValue(mockTask) };
+
+      const handler: JobHandler = vi.fn().mockReturnValue(handlerBlocker);
+      const queue = new JobQueue(store, 1, handler, 600000, undefined, mockFactory);
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 20)); // executeJob 시작 대기
+
+      expect(queue.getActiveTask(job!.id)).toBe(mockTask);
+
+      resolveHandler({ prUrl: "https://pr/1" });
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(queue.getActiveTask(job!.id)).toBeUndefined();
+    });
+
+    it("잡 완료 후 activeTasks에서 태스크가 제거되어야 한다", async () => {
+      const mockTask = makeMockTask("task-cleanup-test");
+      const mockFactory: TaskFactory = { create: vi.fn().mockReturnValue(mockTask) };
+
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 1, handler, 600000, undefined, mockFactory);
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(store.get(job!.id)?.status).toBe("success");
+      expect(queue.getActiveTask(job!.id)).toBeUndefined();
+    });
+
+    it("잡 실패 후에도 activeTasks에서 태스크가 제거되어야 한다", async () => {
+      const mockTask = makeMockTask("task-failure-cleanup");
+      const mockFactory: TaskFactory = { create: vi.fn().mockReturnValue(mockTask) };
+
+      const handler: JobHandler = vi.fn().mockRejectedValue(new Error("task failure"));
+      const queue = new JobQueue(store, 1, handler, 600000, undefined, mockFactory);
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(store.get(job!.id)?.status).toBe("failure");
+      expect(queue.getActiveTask(job!.id)).toBeUndefined();
+    });
+
+    it("abortJob()은 활성 태스크를 kill해야 한다", async () => {
+      let resolveHandler!: (val: { prUrl: string }) => void;
+      const handlerBlocker = new Promise<{ prUrl: string }>(resolve => { resolveHandler = resolve; });
+
+      const mockTask = makeMockTask("task-abort-test");
+      const mockFactory: TaskFactory = { create: vi.fn().mockReturnValue(mockTask) };
+
+      const handler: JobHandler = vi.fn().mockReturnValue(handlerBlocker);
+      const queue = new JobQueue(store, 1, handler, 600000, undefined, mockFactory);
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 20)); // executeJob 시작 대기
+
+      const aborted = queue.abortJob(job!.id);
+      expect(aborted).toBe(true);
+      expect(mockTask.kill).toHaveBeenCalledOnce();
+      expect(queue.getActiveTask(job!.id)).toBeUndefined();
+
+      resolveHandler({ prUrl: "https://pr/1" });
+      await new Promise(r => setTimeout(r, 50));
+    });
+
+    it("TaskFactory 없이도 핸들러가 정상 동작해야 한다", async () => {
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 1, handler); // taskFactory 미제공
+
+      const job = queue.enqueue(1, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+
+      expect(store.get(job!.id)?.status).toBe("success");
+      expect(queue.getActiveTask(job!.id)).toBeUndefined();
+    });
+
+    it("여러 잡 실행 시 각 잡마다 태스크를 생성해야 한다", async () => {
+      const mockFactory: TaskFactory = {
+        create: vi.fn().mockImplementation(() => makeMockTask(`task-${Date.now()}-${Math.random()}`)),
+      };
+
+      const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
+      const queue = new JobQueue(store, 2, handler, 600000, undefined, mockFactory);
+
+      queue.enqueue(1, "test/repo");
+      queue.enqueue(2, "test/repo2");
+      await new Promise(r => setTimeout(r, 150));
+
+      expect(mockFactory.create).toHaveBeenCalledTimes(2);
     });
   });
 });

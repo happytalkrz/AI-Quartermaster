@@ -298,6 +298,10 @@ function kanbanDrop(e) {
 
   var fromIdx = ids.indexOf(dragId);
   if (fromIdx === -1) return;
+
+  // 롤백용 원본 순서 스냅샷
+  var originalNodes = cards.slice();
+
   ids.splice(fromIdx, 1);
 
   var insertIdx = ids.length; // default: end
@@ -309,12 +313,25 @@ function kanbanDrop(e) {
   }
   ids.splice(insertIdx, 0, dragId);
 
-  ids.forEach(function(id, idx) {
-    apiFetch('/api/jobs/' + encodeURIComponent(id) + '/priority', {
+  // 낙관적 UI: DOM 즉시 재정렬
+  ids.forEach(function(id) {
+    var card = list.querySelector('[data-job-id="' + id + '"]');
+    if (card) list.appendChild(card);
+  });
+
+  // API 호출 — 실패 시 원본 순서로 롤백
+  var promises = ids.map(function(id, idx) {
+    return apiFetch('/api/jobs/' + encodeURIComponent(id) + '/priority', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priority: idx })
-    }).catch(function() {});
+    }).then(function(r) {
+      if (!r.ok) return Promise.reject(new Error('HTTP ' + r.status));
+    });
+  });
+
+  Promise.all(promises).catch(function() {
+    originalNodes.forEach(function(card) { list.appendChild(card); });
   });
 }
 

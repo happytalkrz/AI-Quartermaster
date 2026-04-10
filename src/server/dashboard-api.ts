@@ -1036,12 +1036,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Perform self-update
   api.post("/api/update", async (c) => {
     try {
-      const runningJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
-      if (runningJobs.length > 0) {
-        return c.json({
-          error: "진행 중인 작업이 있어 업데이트를 수행할 수 없습니다",
-          runningJobs: runningJobs.map(job => ({ id: job.id, issueNumber: job.issueNumber, repo: job.repo, status: job.status })),
-        }, 409);
+      const activeJobs = store.list().filter(job => job.status === "running" || job.status === "queued");
+      if (activeJobs.length > 0) {
+        getLogger().info(`업데이트 전 진행 중인 잡 ${activeJobs.length}개 취소 중`);
+        for (const job of activeJobs) {
+          queue.cancel(job.id);
+          getLogger().info(`잡 취소: ${job.id} (이슈 #${job.issueNumber}, 상태: ${job.status})`);
+        }
       }
 
       const config = loadConfig(process.cwd());

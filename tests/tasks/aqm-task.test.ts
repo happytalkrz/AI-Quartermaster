@@ -1,10 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   TaskStatus,
   AQMTaskType,
   AQMTaskSummary,
   AQMTask,
-  BaseTaskOptions
+  BaseTaskOptions,
+  SerializedTask,
+  TaskLifecycleEvent,
+  TaskEventEmitter,
+  TaskEventListener,
 } from "../../src/tasks/aqm-task.js";
 
 describe("AQMTask 인터페이스 및 타입 정의", () => {
@@ -155,6 +159,273 @@ describe("AQMTask 인터페이스 및 타입 정의", () => {
         type: "claude",
         status: TaskStatus.PENDING
       });
+    });
+
+    it("should support optional on/off/once event methods", () => {
+      // AQMTask interface defines on/off/once as optional
+      // A task without event support is valid
+      const task = new TestTask();
+      expect(task.on).toBeUndefined();
+      expect(task.off).toBeUndefined();
+      expect(task.once).toBeUndefined();
+    });
+
+    it("should support implementation with event methods", () => {
+      class EventedTask implements AQMTask {
+        readonly id = "evented-task";
+        readonly type: AQMTaskType = "claude";
+        private _listeners: Map<TaskLifecycleEvent, TaskEventListener[]> = new Map();
+
+        get status() { return TaskStatus.PENDING; }
+        async kill() {}
+        toJSON(): AQMTaskSummary {
+          return { id: this.id, type: this.type, status: this.status };
+        }
+
+        on(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = this._listeners.get(event) ?? [];
+          list.push(listener);
+          this._listeners.set(event, list);
+        }
+
+        off(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = (this._listeners.get(event) ?? []).filter(l => l !== listener);
+          this._listeners.set(event, list);
+        }
+
+        once(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const wrapper: TaskEventListener = () => {
+            listener();
+            this.off(event, wrapper);
+          };
+          this.on(event, wrapper);
+        }
+
+        emit(event: TaskLifecycleEvent): void {
+          (this._listeners.get(event) ?? []).forEach(l => l());
+        }
+      }
+
+      const task = new EventedTask();
+      const fn = vi.fn();
+      task.on("started", fn);
+      task.emit("started");
+      expect(fn).toHaveBeenCalledTimes(1);
+
+      task.off("started", fn);
+      task.emit("started");
+      expect(fn).toHaveBeenCalledTimes(1); // not called again
+    });
+  });
+
+  describe("SerializedTask 타입", () => {
+    it("should be structurally identical to AQMTaskSummary", () => {
+      // SerializedTask = AQMTaskSummary (type alias)
+      const serialized: SerializedTask = {
+        id: "task-123",
+        type: "claude",
+        status: TaskStatus.SUCCESS
+      };
+
+      expect(serialized.id).toBe("task-123");
+      expect(serialized.type).toBe("claude");
+      expect(serialized.status).toBe(TaskStatus.SUCCESS);
+    });
+
+    it("should accept all optional fields", () => {
+      const serialized: SerializedTask = {
+        id: "task-456",
+        type: "codex",
+        status: TaskStatus.FAILED,
+        startedAt: "2026-04-10T10:00:00.000Z",
+        completedAt: "2026-04-10T10:01:00.000Z",
+        durationMs: 60000,
+        metadata: { prompt: "test", retryCount: 2 }
+      };
+
+      expect(serialized.startedAt).toBe("2026-04-10T10:00:00.000Z");
+      expect(serialized.completedAt).toBe("2026-04-10T10:01:00.000Z");
+      expect(serialized.durationMs).toBe(60000);
+      expect(serialized.metadata?.retryCount).toBe(2);
+    });
+
+    it("should be usable as AQMTaskSummary and vice versa", () => {
+      // SerializedTask and AQMTaskSummary are interchangeable
+      const summary: AQMTaskSummary = {
+        id: "task-789",
+        type: "gemini",
+        status: TaskStatus.PENDING
+      };
+
+      const serialized: SerializedTask = summary;
+      const backToSummary: AQMTaskSummary = serialized;
+
+      expect(backToSummary.id).toBe("task-789");
+    });
+  });
+
+  describe("TaskLifecycleEvent 타입", () => {
+    it("should accept all valid lifecycle event values", () => {
+      const events: TaskLifecycleEvent[] = ["started", "completed", "failed", "killed"];
+
+      expect(events).toHaveLength(4);
+      expect(events).toContain("started");
+      expect(events).toContain("completed");
+      expect(events).toContain("failed");
+      expect(events).toContain("killed");
+    });
+
+    it("should be usable as event key in a map", () => {
+      const callCounts = new Map<TaskLifecycleEvent, number>();
+      const allEvents: TaskLifecycleEvent[] = ["started", "completed", "failed", "killed"];
+
+      for (const event of allEvents) {
+        callCounts.set(event, 0);
+      }
+
+      callCounts.set("started", 1);
+      expect(callCounts.get("started")).toBe(1);
+    });
+  });
+
+  describe("TaskEventListener 타입", () => {
+    it("should be a callable with no parameters", () => {
+      const listener: TaskEventListener = vi.fn();
+      listener();
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support multiple listener instances", () => {
+      const listeners: TaskEventListener[] = [vi.fn(), vi.fn(), vi.fn()];
+      listeners.forEach(l => l());
+
+      listeners.forEach(l => expect(l).toHaveBeenCalledTimes(1));
+    });
+  });
+
+  describe("TaskEventEmitter 인터페이스", () => {
+    it("should be implementable with on/off/once methods", () => {
+      class SimpleEmitter implements TaskEventEmitter {
+        private _listeners: Map<TaskLifecycleEvent, TaskEventListener[]> = new Map();
+
+        on(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = this._listeners.get(event) ?? [];
+          list.push(listener);
+          this._listeners.set(event, list);
+        }
+
+        off(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = (this._listeners.get(event) ?? []).filter(l => l !== listener);
+          this._listeners.set(event, list);
+        }
+
+        once(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const wrapper: TaskEventListener = () => {
+            listener();
+            this.off(event, wrapper);
+          };
+          this.on(event, wrapper);
+        }
+
+        emit(event: TaskLifecycleEvent): void {
+          (this._listeners.get(event) ?? []).forEach(l => l());
+        }
+      }
+
+      const emitter = new SimpleEmitter();
+      const fn = vi.fn();
+
+      emitter.on("started", fn);
+      emitter.emit("started");
+      emitter.emit("started");
+      expect(fn).toHaveBeenCalledTimes(2);
+
+      emitter.off("started", fn);
+      emitter.emit("started");
+      expect(fn).toHaveBeenCalledTimes(2); // not called again
+    });
+
+    it("should support once semantics — fires only once", () => {
+      class SimpleEmitter implements TaskEventEmitter {
+        private _listeners: Map<TaskLifecycleEvent, TaskEventListener[]> = new Map();
+
+        on(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = this._listeners.get(event) ?? [];
+          list.push(listener);
+          this._listeners.set(event, list);
+        }
+
+        off(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = (this._listeners.get(event) ?? []).filter(l => l !== listener);
+          this._listeners.set(event, list);
+        }
+
+        once(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const wrapper: TaskEventListener = () => {
+            listener();
+            this.off(event, wrapper);
+          };
+          this.on(event, wrapper);
+        }
+
+        emit(event: TaskLifecycleEvent): void {
+          [...(this._listeners.get(event) ?? [])].forEach(l => l());
+        }
+      }
+
+      const emitter = new SimpleEmitter();
+      const fn = vi.fn();
+
+      emitter.once("completed", fn);
+      emitter.emit("completed");
+      emitter.emit("completed");
+
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should handle all four lifecycle events independently", () => {
+      const calls: TaskLifecycleEvent[] = [];
+
+      class TrackingEmitter implements TaskEventEmitter {
+        private _listeners: Map<TaskLifecycleEvent, TaskEventListener[]> = new Map();
+
+        on(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = this._listeners.get(event) ?? [];
+          list.push(listener);
+          this._listeners.set(event, list);
+        }
+
+        off(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const list = (this._listeners.get(event) ?? []).filter(l => l !== listener);
+          this._listeners.set(event, list);
+        }
+
+        once(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+          const wrapper: TaskEventListener = () => {
+            listener();
+            this.off(event, wrapper);
+          };
+          this.on(event, wrapper);
+        }
+
+        emit(event: TaskLifecycleEvent): void {
+          (this._listeners.get(event) ?? []).forEach(l => l());
+        }
+      }
+
+      const emitter = new TrackingEmitter();
+      const allEvents: TaskLifecycleEvent[] = ["started", "completed", "failed", "killed"];
+
+      for (const event of allEvents) {
+        emitter.on(event, () => calls.push(event));
+      }
+
+      emitter.emit("started");
+      emitter.emit("failed");
+      emitter.emit("killed");
+
+      expect(calls).toEqual(["started", "failed", "killed"]);
+      expect(calls).not.toContain("completed");
     });
   });
 });

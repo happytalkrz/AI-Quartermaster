@@ -377,6 +377,8 @@ export interface AssembledPrompt {
 
 export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
 
+export type JobPriority = "high" | "normal" | "low";
+
 export interface UsageStats {
   input_tokens: number;
   output_tokens: number;
@@ -409,6 +411,7 @@ export interface JobBase {
   phaseResults?: PhaseResultInfo[];
   progress?: number;
   isRetry?: boolean;
+  priority?: JobPriority;
   costUsd?: number;
   totalCostUsd?: number;
   totalUsage?: UsageStats;

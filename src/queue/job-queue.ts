@@ -803,44 +803,45 @@ export class JobQueue {
         return;
       }
 
-      // Task 팩토리 패턴으로 Job 타입에 따라 Task 생성
-      const task = JobTaskFactory.createTask(job);
-
-      // Task lifecycle 이벤트를 Job 상태 업데이트와 연결
-      task.on?.("started", () => {
-        logger.info(`Task started for job ${job.id}: ${task.id}`);
-        this.store.update(job.id, {
-          lastUpdatedAt: new Date().toISOString(),
-          currentStep: `Running ${task.type} task`,
-        });
-      });
-
-      task.on?.("completed", () => {
-        logger.info(`Task completed for job ${job.id}: ${task.id}`);
-        // Task 완료 시 Job을 성공으로 마킹 (결과 처리는 아래에서)
-      });
-
-      task.on?.("failed", () => {
-        logger.error(`Task failed for job ${job.id}: ${task.id}`);
-        // Task 실패 시 Job을 실패로 마킹 (결과 처리는 아래에서)
-      });
-
-      task.on?.("killed", () => {
-        logger.warn(`Task killed for job ${job.id}: ${task.id}`);
-        this.store.update(job.id, {
-          status: "cancelled",
-          completedAt: new Date().toISOString(),
-          error: "Task was killed during execution",
-        });
-      });
-
       // 기존 handler가 있으면 사용 (하위 호환성), 없으면 Task 실행
       let result: { prUrl?: string; error?: string };
 
       if (this.handler) {
-        // 기존 JobHandler 방식 (하위 호환성 유지)
+        // 기존 JobHandler 방식 (하위 호환성 유지) - Task 생성을 건너뜀
         result = await this.handler(job);
       } else {
+        // 새로운 Task 기반 실행
+        // Task 팩토리 패턴으로 Job 타입에 따라 Task 생성
+        const task = JobTaskFactory.createTask(job);
+
+        // Task lifecycle 이벤트를 Job 상태 업데이트와 연결
+        task.on?.("started", () => {
+          logger.info(`Task started for job ${job.id}: ${task.id}`);
+          this.store.update(job.id, {
+            lastUpdatedAt: new Date().toISOString(),
+            currentStep: `Running ${task.type} task`,
+          });
+        });
+
+        task.on?.("completed", () => {
+          logger.info(`Task completed for job ${job.id}: ${task.id}`);
+          // Task 완료 시 Job을 성공으로 마킹 (결과 처리는 아래에서)
+        });
+
+        task.on?.("failed", () => {
+          logger.error(`Task failed for job ${job.id}: ${task.id}`);
+          // Task 실패 시 Job을 실패로 마킹 (결과 처리는 아래에서)
+        });
+
+        task.on?.("killed", () => {
+          logger.warn(`Task killed for job ${job.id}: ${task.id}`);
+          this.store.update(job.id, {
+            status: "cancelled",
+            completedAt: new Date().toISOString(),
+            error: "Task was killed during execution",
+          });
+        });
+
         // 새로운 Task 기반 실행
         try {
           const taskResult = await task.run();

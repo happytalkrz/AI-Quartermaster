@@ -154,7 +154,6 @@ const generalConfigSchema = z.object({
   pollingIntervalMs: z.number().int().min(10000),
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean(),
-  instanceLabel: z.string().optional(),
 });
 
 const gitConfigSchema = z.object({

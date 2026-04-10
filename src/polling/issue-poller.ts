@@ -86,7 +86,7 @@ export class IssuePoller {
 
   private async poll(): Promise<void> {
     const projects = this.config.projects ?? [];
-    const triggerLabels = getTriggerLabels(this.config.safety.instanceLabel, this.config.safety.allowedLabels);
+    const triggerLabels = getTriggerLabels(this.config.general.instanceLabel, this.config.safety.allowedLabels);
     const ghPath = this.config.commands.ghCli.path;
     const ghTimeout = this.config.commands.ghCli.timeout;
 

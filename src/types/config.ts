@@ -33,7 +33,6 @@ export interface GeneralConfig {
   pollingIntervalMs: number;
   maxJobs: number;
   autoUpdate: boolean;
-  instanceLabel?: string;
 }
 
 export interface GitConfig {
@@ -161,7 +160,6 @@ export interface SafetyConfig {
   timeouts: TimeoutsConfig;
   stopConditions: string[];
   allowedLabels: string[];
-  instanceLabel?: string;
   rollbackStrategy: "none" | "all" | "failed-only";
   feasibilityCheck: FeasibilityCheckConfig;
   strict: boolean;

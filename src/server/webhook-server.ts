@@ -43,7 +43,7 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
 
     // Dispatch
     const triggerLabels = getTriggerLabels(
-      options.config.safety.instanceLabel,
+      options.config.general.instanceLabel,
       options.config.safety.allowedLabels
     );
     const result = dispatchEvent(

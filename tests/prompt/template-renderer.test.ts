@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { join } from "path";
 import {
   renderTemplate,
   buildBaseLayer,
   buildProjectLayer,
   buildPhaseLayer,
-  assemblePrompt
+  buildStaticContent,
+  assemblePrompt,
+  assembleLayeredPrompt,
+  loadLayerTemplates,
 } from "../../src/prompt/template-renderer.js";
-import type { PromptLayer } from "../../src/types/pipeline.js";
+import type { PromptLayer, CachedPromptLayer, PhaseLayer } from "../../src/types/pipeline.js";
 
 describe("renderTemplate", () => {
   it("should replace simple variables", () => {
@@ -315,5 +319,141 @@ Target Files: {{phase.files}}
     expect(typeof result.assemblyTimeMs).toBe("number");
     expect(result.assemblyTimeMs).toBeGreaterThanOrEqual(0);
     expect(result.assemblyTimeMs).toBeLessThan(1000); // Should be fast
+  });
+});
+
+describe("assembleLayeredPrompt", () => {
+  function createTestCachedLayer(phaseTemplate?: string): CachedPromptLayer {
+    const base = buildBaseLayer({ role: "Test Developer" });
+    const project = buildProjectLayer({
+      conventions: "TypeScript + ESM",
+      testCommand: "npm test",
+      lintCommand: "npm run lint",
+    });
+    return {
+      staticContent: buildStaticContent(base, project),
+      cacheKey: "abc123def456789",
+      createdAt: new Date().toISOString(),
+      phaseTemplate: phaseTemplate ?? "Issue #{{issue.number}}: {{issue.title}}\nPhase {{phase.index}}/{{phase.totalCount}}",
+    };
+  }
+
+  function createTestPhaseLayer(): PhaseLayer {
+    return buildPhaseLayer({
+      issue: {
+        number: 42,
+        title: "Test Issue",
+        body: "Test body",
+        labels: ["bug"],
+      },
+      planSummary: "Test plan summary",
+      currentPhase: {
+        index: 2,
+        totalCount: 3,
+        name: "Implementation",
+        description: "Implement the feature",
+        targetFiles: ["src/foo.ts"],
+      },
+      previousResults: "Phase 1: SUCCESS",
+      repository: {
+        owner: "test-org",
+        name: "test-repo",
+        baseBranch: "main",
+        workBranch: "feature/42",
+      },
+    });
+  }
+
+  it("should combine static content and rendered phase template", () => {
+    const cachedLayer = createTestCachedLayer();
+    const phaseLayer = createTestPhaseLayer();
+
+    const result = assembleLayeredPrompt(cachedLayer, phaseLayer);
+
+    expect(result.content).toContain(cachedLayer.staticContent);
+    expect(result.content).toContain("Issue #42: Test Issue");
+    expect(result.content).toContain("Phase 2/3");
+  });
+
+  it("should mark cacheHit as true", () => {
+    const result = assembleLayeredPrompt(createTestCachedLayer(), createTestPhaseLayer());
+    expect(result.cacheHit).toBe(true);
+  });
+
+  it("should preserve the cache key from cached layer", () => {
+    const cachedLayer = createTestCachedLayer();
+    const result = assembleLayeredPrompt(cachedLayer, createTestPhaseLayer());
+    expect(result.cacheKey).toBe("abc123def456789");
+  });
+
+  it("should render all phase variables correctly", () => {
+    const template = "{{issue.title}} | {{plan.summary}} | {{phase.name}} | {{previousPhases.summary}} | {{repository.owner}}/{{repository.name}}";
+    const cachedLayer = createTestCachedLayer(template);
+    const phaseLayer = createTestPhaseLayer();
+
+    const result = assembleLayeredPrompt(cachedLayer, phaseLayer);
+
+    expect(result.content).toContain("Test Issue");
+    expect(result.content).toContain("Test plan summary");
+    expect(result.content).toContain("Implementation");
+    expect(result.content).toContain("Phase 1: SUCCESS");
+    expect(result.content).toContain("test-org/test-repo");
+  });
+
+  it("should render phase.files as comma-separated list", () => {
+    const template = "Files: {{phase.files}}";
+    const phaseLayer = buildPhaseLayer({
+      issue: { number: 1, title: "T", body: "B", labels: [] },
+      planSummary: "",
+      currentPhase: {
+        index: 1,
+        totalCount: 1,
+        name: "N",
+        description: "D",
+        targetFiles: ["a.ts", "b.ts", "c.ts"],
+      },
+      previousResults: "",
+      repository: { owner: "o", name: "r", baseBranch: "main", workBranch: "w" },
+    });
+
+    const result = assembleLayeredPrompt(createTestCachedLayer(template), phaseLayer);
+    expect(result.content).toContain("Files: a.ts, b.ts, c.ts");
+  });
+
+  it("should measure assembly time", () => {
+    const result = assembleLayeredPrompt(createTestCachedLayer(), createTestPhaseLayer());
+    expect(typeof result.assemblyTimeMs).toBe("number");
+    expect(result.assemblyTimeMs).toBeGreaterThanOrEqual(0);
+    expect(result.assemblyTimeMs).toBeLessThan(1000);
+  });
+});
+
+describe("loadLayerTemplates", () => {
+  const promptsDir = join(process.cwd(), "prompts");
+
+  it("should load all three layer templates", () => {
+    const templates = loadLayerTemplates(promptsDir);
+
+    expect(typeof templates.baseTemplate).toBe("string");
+    expect(typeof templates.projectTemplate).toBe("string");
+    expect(typeof templates.phaseTemplate).toBe("string");
+    expect(templates.baseTemplate.length).toBeGreaterThan(0);
+    expect(templates.projectTemplate.length).toBeGreaterThan(0);
+    expect(templates.phaseTemplate.length).toBeGreaterThan(0);
+  });
+
+  it("should load phase template with expected variables", () => {
+    const templates = loadLayerTemplates(promptsDir);
+    expect(templates.phaseTemplate).toContain("{{issue.number}}");
+    expect(templates.phaseTemplate).toContain("{{phase.index}}");
+  });
+
+  it("should load project template with expected variables", () => {
+    const templates = loadLayerTemplates(promptsDir);
+    expect(templates.projectTemplate).toContain("{{projectConventions}}");
+  });
+
+  it("should throw when directory does not exist", () => {
+    expect(() => loadLayerTemplates("/nonexistent/path")).toThrow();
   });
 });

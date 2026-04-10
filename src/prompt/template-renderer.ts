@@ -1,10 +1,12 @@
 import { readFileSync } from "fs";
+import { join } from "path";
 import { createHash } from "crypto";
 import type {
   BaseLayer,
   ProjectLayer,
   PhaseLayer,
   PromptLayer,
+  CachedPromptLayer,
   AssembledPrompt
 } from "../types/pipeline.js";
 
@@ -284,6 +286,68 @@ ${projectLayer.safetyRules.map(rule => `- ${rule}`).join('\n')}
 ${projectLayer.skillsContext ? `## 스킬 컨텍스트\n\n${projectLayer.skillsContext}` : ''}
 
 ${projectLayer.pastFailures ? `## 과거 실패 사례\n\n${projectLayer.pastFailures}` : ''}`;
+}
+
+/**
+ * 레이어별 템플릿 파일을 로드합니다.
+ */
+export interface LayerTemplates {
+  baseTemplate: string;
+  projectTemplate: string;
+  phaseTemplate: string;
+}
+
+export function loadLayerTemplates(promptsDir: string): LayerTemplates {
+  return {
+    baseTemplate: loadTemplate(join(promptsDir, "layers", "base-layer.md")),
+    projectTemplate: loadTemplate(join(promptsDir, "layers", "project-layer.md")),
+    phaseTemplate: loadTemplate(join(promptsDir, "layers", "phase-dynamic.md")),
+  };
+}
+
+/**
+ * 캐시된 정적 레이어와 동적 Phase 레이어를 조합하여 최종 프롬프트를 생성합니다.
+ * cachedStaticContent(Base+Project)는 재사용하고, phaseTemplate만 렌더링합니다.
+ */
+export function assembleLayeredPrompt(
+  cachedLayer: CachedPromptLayer,
+  phaseLayer: PhaseLayer
+): AssembledPrompt {
+  const startTime = Date.now();
+
+  const phaseVariables: TemplateVariables = {
+    issue: {
+      number: String(phaseLayer.issue.number),
+      title: phaseLayer.issue.title,
+      body: phaseLayer.issue.body,
+      labels: phaseLayer.issue.labels,
+    },
+    plan: {
+      summary: phaseLayer.planSummary,
+    },
+    phase: {
+      index: String(phaseLayer.currentPhase.index),
+      totalCount: String(phaseLayer.currentPhase.totalCount),
+      name: phaseLayer.currentPhase.name,
+      description: phaseLayer.currentPhase.description,
+      files: phaseLayer.currentPhase.targetFiles,
+    },
+    previousPhases: {
+      summary: phaseLayer.previousResults,
+    },
+    repository: phaseLayer.repository,
+  };
+
+  const dynamicContent = renderTemplate(cachedLayer.phaseTemplate, phaseVariables);
+  const content = `${cachedLayer.staticContent}\n\n${dynamicContent}`;
+  const assemblyTime = Date.now() - startTime;
+
+  return {
+    content,
+    cacheKey: cachedLayer.cacheKey,
+    cacheHit: true,
+    assemblyTimeMs: assemblyTime,
+  };
 }
 
 /**

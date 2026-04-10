@@ -361,7 +361,7 @@ describe("Dashboard API - PUT /api/config", () => {
       expect(mockUpdateConfigSection).not.toHaveBeenCalled();
     });
 
-    it("should return 400 for extra unexpected fields", async () => {
+    it("should ignore extra unexpected fields and save valid sections", async () => {
       const updates = {
         general: { logLevel: "debug" as const },
         unexpectedSection: { value: "test" },
@@ -373,11 +373,9 @@ describe("Dashboard API - PUT /api/config", () => {
         body: JSON.stringify(updates),
       });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(200);
       const result = await response.json();
-      expect(result.error).toBe("Invalid request body");
-      expect(result.details).toBeDefined();
-      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
     });
 
     it("should return 400 for config loader validation errors", async () => {

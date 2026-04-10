@@ -41,3 +41,9 @@ export {
   PushOperationOptions,
   PrOperationOptions,
 } from "./git-task.js";
+
+// TaskFactory — JobHandler 위에 얹히는 선택적 통합 레이어
+export {
+  TaskFactory,
+  DefaultTaskFactory,
+} from "./task-factory.js";

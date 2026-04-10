@@ -40,6 +40,8 @@ interface PhaseRow {
   success: number;
   commit_hash: string | null;
   duration_ms: number | null;
+  started_at: string | null;
+  completed_at: string | null;
   error: string | null;
   cost_usd: number | null;
   input_tokens: number | null;
@@ -89,6 +91,8 @@ export interface DatabasePhase {
   success: boolean;
   commitHash?: string;
   durationMs: number;
+  startedAt?: string;
+  completedAt?: string;
   error?: string;
   costUsd?: number;
   inputTokens?: number;
@@ -159,6 +163,8 @@ export class AQDatabase {
         success INTEGER NOT NULL CHECK (success IN (0, 1)),
         commit_hash TEXT,
         duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0),
+        started_at TEXT,
+        completed_at TEXT,
         error TEXT,
         cost_usd REAL CHECK (cost_usd >= 0),
         input_tokens INTEGER CHECK (input_tokens >= 0),
@@ -202,11 +208,24 @@ export class AQDatabase {
 
   private migrateSchema(): void {
     // jobs 테이블에 priority 컬럼 추가 (기존 DB 마이그레이션)
-    const columns = this.db.pragma("table_info(jobs)") as Array<{ name: string }>;
-    const hasPriority = columns.some(col => col.name === "priority");
+    const jobColumns = this.db.pragma("table_info(jobs)") as Array<{ name: string }>;
+    const hasPriority = jobColumns.some(col => col.name === "priority");
     if (!hasPriority) {
       this.db.exec(`ALTER TABLE jobs ADD COLUMN priority TEXT CHECK (priority IN ('high', 'normal', 'low'))`);
       logger.info("Migration: added priority column to jobs table");
+    }
+
+    // phases 테이블에 started_at, completed_at 컬럼 추가 (기존 DB 마이그레이션)
+    const phaseColumns = this.db.pragma("table_info(phases)") as Array<{ name: string }>;
+    const hasStartedAt = phaseColumns.some(col => col.name === "started_at");
+    if (!hasStartedAt) {
+      this.db.exec(`ALTER TABLE phases ADD COLUMN started_at TEXT`);
+      logger.info("Migration: added started_at column to phases table");
+    }
+    const hasCompletedAt = phaseColumns.some(col => col.name === "completed_at");
+    if (!hasCompletedAt) {
+      this.db.exec(`ALTER TABLE phases ADD COLUMN completed_at TEXT`);
+      logger.info("Migration: added completed_at column to phases table");
     }
   }
 
@@ -314,8 +333,8 @@ export class AQDatabase {
     this.db.prepare("DELETE FROM phases WHERE job_id = ? AND phase_index = ?").run(phase.jobId, phase.phaseIndex);
 
     const stmt = this.db.prepare(`
-      INSERT INTO phases (job_id, phase_index, phase_name, success, commit_hash, duration_ms, error, cost_usd, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO phases (job_id, phase_index, phase_name, success, commit_hash, duration_ms, started_at, completed_at, error, cost_usd, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -325,6 +344,8 @@ export class AQDatabase {
       phase.success ? 1 : 0,
       phase.commitHash || null,
       phase.durationMs,
+      phase.startedAt || null,
+      phase.completedAt || null,
       phase.error || null,
       phase.costUsd || null,
       phase.inputTokens || null,
@@ -349,6 +370,8 @@ export class AQDatabase {
       success: row.success === 1,
       commitHash: row.commit_hash ?? undefined,
       durationMs: row.duration_ms ?? 0,
+      startedAt: row.started_at ?? undefined,
+      completedAt: row.completed_at ?? undefined,
       error: row.error ?? undefined,
       costUsd: row.cost_usd ?? undefined,
       inputTokens: row.input_tokens ?? undefined,

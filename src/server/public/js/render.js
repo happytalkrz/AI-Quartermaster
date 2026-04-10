@@ -435,6 +435,11 @@ function render(data) {
   document.getElementById('stat-failed').textContent = failedCount;
 
   renderFromState();
+
+  // Set up drag and drop for kanban priority management
+  if (typeof setupDragAndDrop === 'function') {
+    setupDragAndDrop();
+  }
 }
 
 function renderFromState() {

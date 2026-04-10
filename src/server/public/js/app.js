@@ -958,6 +958,11 @@ function renderAutomationsKanban() {
   var boardEl = document.getElementById('kanban-board');
   if (!boardEl) return;
   boardEl.innerHTML = renderKanban(filterJobs(currentJobs));
+
+  // Set up drag and drop for priority management
+  if (typeof setupDragAndDrop === 'function') {
+    setupDragAndDrop();
+  }
 }
 
 function renderAutomationsPanel() {

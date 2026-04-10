@@ -96,11 +96,11 @@ function renderKanbanCard(job) {
 
   } else {
     // queued
-    cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-pointer group';
+    cardClass = 'bg-[#262a31] p-4 rounded-md border border-[#414752]/15 hover:border-primary/40 transition-all cursor-grab group';
     headerHtml =
       '<div class="flex justify-between items-start mb-3">' +
         '<span class="text-[10px] font-mono text-outline-variant font-bold tracking-wider">' + esc(issueRef) + '</span>' +
-        '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors">more_horiz</span>' +
+        '<span class="material-symbols-outlined text-[16px] text-outline-variant group-hover:text-primary transition-colors select-none">drag_indicator</span>' +
       '</div>';
     var elapsed = fmtDuration(job) || relativeTime(job.createdAt);
     bodyHtml =
@@ -114,6 +114,14 @@ function renderKanbanCard(job) {
           '<div class="h-full bg-outline-variant rounded-full" style="width:0%"></div>' +
         '</div>' +
       '</div>';
+
+    return '<div class="' + cardClass + '" data-job-id="' + esc(job.id) + '"' +
+      ' draggable="true"' +
+      ' ondragstart="kanbanDragStart(event)"' +
+      ' ondragend="kanbanDragEnd(event)"' +
+      ' onclick="selectJob(\'' + esc(job.id) + '\')">' +
+      headerHtml + bodyHtml +
+    '</div>';
   }
 
   return '<div class="' + cardClass + '" data-job-id="' + esc(job.id) + '" onclick="selectJob(\'' + esc(job.id) + '\')">' +
@@ -132,6 +140,10 @@ function renderKanbanColumn(col, jobs) {
   var listClass = 'flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar' +
     (col.id === 'done' ? ' opacity-70 hover:opacity-100 transition-opacity' : '');
 
+  var listAttrs = col.id === 'queued'
+    ? ' ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event)"'
+    : '';
+
   return '<div class="w-[280px] flex-shrink-0 flex flex-col h-full bg-[#181c22] rounded-lg">' +
     '<div class="p-4 flex items-center justify-between border-b border-outline-variant/10">' +
       '<div class="flex items-center gap-2">' +
@@ -140,7 +152,7 @@ function renderKanbanColumn(col, jobs) {
       '</div>' +
       '<span class="text-xs font-mono text-outline-variant">' + jobs.length + '</span>' +
     '</div>' +
-    '<div class="' + listClass + '">' + cardsHtml + '</div>' +
+    '<div class="' + listClass + '"' + listAttrs + '>' + cardsHtml + '</div>' +
   '</div>';
 }
 
@@ -159,4 +171,103 @@ function renderKanban(jobs) {
   return KANBAN_COLUMNS.map(function(col) {
     return renderKanbanColumn(col, columnJobs[col.id]);
   }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Drag & Drop — Queued Column Only
+   ══════════════════════════════════════════════════════════════ */
+var _dnd = { draggingId: null };
+
+function kanbanDragStart(e) {
+  var card = e.currentTarget;
+  _dnd.draggingId = card.dataset.jobId;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', _dnd.draggingId);
+  setTimeout(function() { card.style.opacity = '0.4'; }, 0);
+}
+
+function kanbanDragEnd(e) {
+  e.currentTarget.style.opacity = '';
+  _dnd.draggingId = null;
+  _kanbanRemoveIndicator();
+}
+
+function kanbanDragOver(e) {
+  if (!_dnd.draggingId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+
+  var target = _kanbanFindCardTarget(e);
+  _kanbanRemoveIndicator();
+
+  var list = e.currentTarget;
+  var indicator = document.createElement('div');
+  indicator.id = 'dnd-indicator';
+  indicator.style.cssText = 'height:2px;background:#6750a4;border-radius:1px;margin:2px 0;pointer-events:none;';
+
+  if (target) {
+    var before = (e.clientY - target.getBoundingClientRect().top) < target.offsetHeight / 2;
+    if (before) {
+      list.insertBefore(indicator, target);
+    } else {
+      list.insertBefore(indicator, target.nextSibling);
+    }
+  } else {
+    list.appendChild(indicator);
+  }
+}
+
+function kanbanDrop(e) {
+  e.preventDefault();
+  _kanbanRemoveIndicator();
+
+  var dragId = _dnd.draggingId;
+  if (!dragId) return;
+
+  var target = _kanbanFindCardTarget(e);
+  var list = e.currentTarget;
+  var cards = Array.from(list.querySelectorAll('[data-job-id]'));
+  var ids = cards.map(function(c) { return c.dataset.jobId; });
+
+  var fromIdx = ids.indexOf(dragId);
+  if (fromIdx === -1) return;
+  ids.splice(fromIdx, 1);
+
+  var insertIdx = ids.length; // default: end
+  if (target) {
+    var targetId = target.dataset.jobId;
+    var targetIdx = ids.indexOf(targetId);
+    var dropBefore = (e.clientY - target.getBoundingClientRect().top) < target.offsetHeight / 2;
+    insertIdx = dropBefore ? targetIdx : targetIdx + 1;
+  }
+  ids.splice(insertIdx, 0, dragId);
+
+  ids.forEach(function(id, idx) {
+    apiFetch('/api/jobs/' + encodeURIComponent(id) + '/priority', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priority: idx })
+    }).catch(function() {});
+  });
+}
+
+function _kanbanFindCardTarget(e) {
+  var list = e.currentTarget;
+  var cards = Array.from(list.querySelectorAll('[data-job-id]'));
+  if (cards.length === 0) return null;
+  var best = null;
+  var bestDist = Infinity;
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    var rect = card.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    var dist = Math.abs(e.clientY - midY);
+    if (dist < bestDist) { bestDist = dist; best = card; }
+  }
+  return best;
+}
+
+function _kanbanRemoveIndicator() {
+  var el = document.getElementById('dnd-indicator');
+  if (el) el.parentNode.removeChild(el);
 }

@@ -172,6 +172,26 @@ export interface FeaturesConfig {
   multiAI: boolean;
 }
 
+export type AutomationTrigger = "issue_labeled" | "issue_opened" | "issue_assigned" | "scheduled";
+export type AutomationAction = "start_pipeline" | "skip_pipeline" | "notify" | "set_label";
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  conditions?: Record<string, string>;
+  action: AutomationAction;
+  actionParams?: Record<string, string>;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface AutomationsConfig {
+  enabled: boolean;
+  rules: AutomationRule[];
+}
+
 export interface ExecutionModePreset {
   reviewRounds: number;
   enableAdvancedReview: boolean;
@@ -252,6 +272,7 @@ export interface AQConfig {
   safety: SafetyConfig;
   features: FeaturesConfig;
   executionMode: ExecutionMode;
-  hooks?: HooksConfig;        // pipeline hooks configuration
-  projects?: ProjectConfig[];  // per-project overrides
+  hooks?: HooksConfig;              // pipeline hooks configuration
+  projects?: ProjectConfig[];        // per-project overrides
+  automations?: AutomationsConfig;  // automation rules
 }

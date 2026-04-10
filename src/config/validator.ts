@@ -289,6 +289,23 @@ const featuresConfigSchema = z.object({
   multiAI: z.boolean(),
 });
 
+const automationRuleSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  enabled: z.boolean(),
+  trigger: z.enum(["issue_labeled", "issue_opened", "issue_assigned", "scheduled"]),
+  conditions: z.record(z.string()).optional(),
+  action: z.enum(["start_pipeline", "skip_pipeline", "notify", "set_label"]),
+  actionParams: z.record(z.string()).optional(),
+  createdAt: z.number().int().nonnegative().optional(),
+  updatedAt: z.number().int().nonnegative().optional(),
+});
+
+const automationsConfigSchema = z.object({
+  enabled: z.boolean(),
+  rules: z.array(automationRuleSchema),
+});
+
 const projectConfigSchema = z.object({
   repo: z.string().min(1),
   path: z.string().min(1),
@@ -347,6 +364,7 @@ const aqConfigSchema = z.object({
   executionMode: z.enum(["economy", "standard", "thorough"]),
   hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
+  automations: automationsConfigSchema.optional(),
 }).superRefine((data, ctx) => {
   const hasAllowedRepos = data.git.allowedRepos.length > 0;
   const hasProjects = data.projects && data.projects.length > 0;

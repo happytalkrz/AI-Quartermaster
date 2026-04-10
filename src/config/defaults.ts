@@ -162,4 +162,8 @@ export const DEFAULT_CONFIG: AQConfig = {
     multiAI: false,        // 기본값은 false
   },
   executionMode: "standard",
+  automations: {
+    enabled: false,
+    rules: [],
+  },
 };

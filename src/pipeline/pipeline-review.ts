@@ -234,9 +234,14 @@ export async function runReviewPhase(
           },
 
           revalidateFn: async () => {
-            // Re-run reviews
+            // Re-run reviews with fresh diff (code may have changed after fix)
             if (!reviewVariables) {
               reviewVariables = await buildReviewVars(ctx);
+            } else {
+              reviewVariables = {
+                ...reviewVariables,
+                diff: { full: await getDiffContent(ctx.gitConfig, ctx.project.baseBranch!, { cwd: ctx.worktreePath }) }
+              };
             }
 
             const retryReviewResult = await runReviews({

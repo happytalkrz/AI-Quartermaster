@@ -1572,4 +1572,151 @@ describe("JobQueue", () => {
       expect(handler).toHaveBeenCalledTimes(5);
     });
   });
+
+  describe("Priority-based sorting", () => {
+    it("should process high priority jobs before normal and low", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // concurrency=0 holds all jobs until setConcurrency is called
+      const queue = new JobQueue(store, 0, handler);
+
+      queue.enqueue(1, "test/repo", undefined, undefined, "low");
+      queue.enqueue(2, "test/repo", undefined, undefined, "normal");
+      queue.enqueue(3, "test/repo", undefined, undefined, "high");
+
+      // Release all at once
+      queue.setConcurrency(3);
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(handler).toHaveBeenCalledTimes(3);
+      expect(executionOrder[0]).toBe(3); // high first
+    });
+
+    it("should process normal priority before low", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      const queue = new JobQueue(store, 0, handler);
+
+      queue.enqueue(1, "test/repo", undefined, undefined, "low");
+      queue.enqueue(2, "test/repo", undefined, undefined, "normal");
+
+      queue.setConcurrency(2);
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(executionOrder[0]).toBe(2); // normal before low
+    });
+
+    it("should treat missing priority as normal", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      const queue = new JobQueue(store, 0, handler);
+
+      queue.enqueue(1, "test/repo"); // no priority → treated as normal
+      queue.enqueue(2, "test/repo", undefined, undefined, "high");
+
+      queue.setConcurrency(2);
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(handler).toHaveBeenCalledTimes(2);
+      expect(executionOrder[0]).toBe(2); // high before no-priority (normal)
+      expect(executionOrder[1]).toBe(1);
+    });
+
+    it("should maintain FIFO order within the same priority", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      const queue = new JobQueue(store, 0, handler);
+
+      // Add delays to ensure distinct createdAt timestamps
+      queue.enqueue(10, "test/repo", undefined, undefined, "normal");
+      await new Promise(r => setTimeout(r, 5));
+      queue.enqueue(20, "test/repo", undefined, undefined, "normal");
+      await new Promise(r => setTimeout(r, 5));
+      queue.enqueue(30, "test/repo", undefined, undefined, "normal");
+
+      queue.setConcurrency(3);
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(handler).toHaveBeenCalledTimes(3);
+      expect(executionOrder).toEqual([10, 20, 30]); // FIFO within same priority
+    });
+
+    it("should sort all priority levels correctly: high > normal > low", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      const queue = new JobQueue(store, 0, handler);
+
+      queue.enqueue(1, "test/repo", undefined, undefined, "low");
+      queue.enqueue(2, "test/repo", undefined, undefined, "normal");
+      queue.enqueue(3, "test/repo", undefined, undefined, "high");
+      queue.enqueue(4, "test/repo", undefined, undefined, "low");
+      queue.enqueue(5, "test/repo", undefined, undefined, "normal");
+      queue.enqueue(6, "test/repo", undefined, undefined, "high");
+
+      queue.setConcurrency(6);
+      await new Promise(r => setTimeout(r, 100));
+
+      expect(handler).toHaveBeenCalledTimes(6);
+      // high jobs (3, 6) come before normal and low
+      expect(executionOrder.slice(0, 2)).toContain(3);
+      expect(executionOrder.slice(0, 2)).toContain(6);
+      // normal jobs (2, 5) come before low
+      expect(executionOrder.slice(2, 4)).toContain(2);
+      expect(executionOrder.slice(2, 4)).toContain(5);
+      // low jobs (1, 4) come last
+      expect(executionOrder.slice(4, 6)).toContain(1);
+      expect(executionOrder.slice(4, 6)).toContain(4);
+    });
+
+    it("should re-sort when a high priority job is enqueued after lower priority jobs", async () => {
+      const executionOrder: number[] = [];
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        await new Promise(r => setTimeout(r, 30));
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // concurrency=1 so only one job runs at a time
+      const queue = new JobQueue(store, 1, handler);
+
+      // Enqueue low and normal jobs first; they go into pending while first job runs
+      queue.enqueue(1, "test/repo", undefined, undefined, "low");
+      queue.enqueue(2, "test/repo", undefined, undefined, "normal");
+
+      // Wait briefly so issue 1 starts running
+      await new Promise(r => setTimeout(r, 10));
+
+      // Enqueue a high priority job while issue 1 is running
+      queue.enqueue(3, "test/repo", undefined, undefined, "high");
+
+      // Wait for all to complete
+      await new Promise(r => setTimeout(r, 200));
+
+      expect(handler).toHaveBeenCalledTimes(3);
+      expect(executionOrder[0]).toBe(1); // already started
+      expect(executionOrder[1]).toBe(3); // high priority wins over pending normal
+      expect(executionOrder[2]).toBe(2);
+    });
+  });
 });

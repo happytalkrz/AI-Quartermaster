@@ -36,3 +36,9 @@ export {
   GitTaskParams,
   GitTaskResult,
 } from "./git-task.js";
+
+// 태스크 팩토리 (JobType → 태스크 인스턴스 생성)
+export {
+  createTask,
+  TaskCreationParams,
+} from "./task-factory.js";

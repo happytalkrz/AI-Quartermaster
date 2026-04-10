@@ -375,6 +375,8 @@ export interface AssembledPrompt {
 
 // Job Discriminated Union Types
 
+export type JobPriority = "high" | "normal" | "low";
+
 export type JobStatus = "queued" | "running" | "success" | "failure" | "cancelled" | "archived";
 
 export interface UsageStats {
@@ -401,6 +403,7 @@ export interface JobBase {
   id: string;
   issueNumber: number;
   repo: string;
+  priority?: JobPriority;
   createdAt: string;
   lastUpdatedAt?: string;
   logs?: string[];

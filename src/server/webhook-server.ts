@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { verifyWebhookSignature } from "./webhook-validator.js";
 import { dispatchEvent, GitHubIssueEvent } from "./event-dispatcher.js";
+import { getTriggerLabels } from "../safety/label-filter.js";
 import { getLogger } from "../utils/logger.js";
 import type { AQConfig } from "../types/config.js";
 import type { JobStore } from "../queue/job-store.js";
@@ -41,10 +42,14 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
     }
 
     // Dispatch
+    const triggerLabels = getTriggerLabels(
+      options.config.safety.instanceLabel,
+      options.config.safety.allowedLabels
+    );
     const result = dispatchEvent(
       eventType,
       payload,
-      options.config.safety.allowedLabels,
+      triggerLabels,
       options.config,
       options.store
     );

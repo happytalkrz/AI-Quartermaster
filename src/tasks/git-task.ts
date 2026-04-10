@@ -1,10 +1,32 @@
 import { randomUUID } from "crypto";
 import { AQMTask, TaskStatus, AQMTaskSummary, BaseTaskOptions } from "./aqm-task.js";
-import type { GitConfig } from "../types/config.js";
+import type { GitConfig, PrConfig, GhCliConfig } from "../types/config.js";
+import type { Plan, PhaseResult } from "../types/pipeline.js";
 import { syncBaseBranch, createWorkBranch, pushBranch } from "../git/branch-manager.js";
 import { autoCommitIfDirty } from "../git/commit-helper.js";
+import { createDraftPR } from "../github/pr-creator.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+
+/**
+ * PR 생성을 위한 옵션 (선택적)
+ */
+export interface GitTaskPrOptions {
+  /** PR 설정 */
+  prConfig: PrConfig;
+  /** gh CLI 설정 */
+  ghConfig: GhCliConfig;
+  /** GitHub 레포지토리 (owner/repo) */
+  repo: string;
+  /** 구현 계획 */
+  plan: Plan;
+  /** 페이즈별 실행 결과 */
+  phaseResults: PhaseResult[];
+  /** 프롬프트 디렉토리 경로 */
+  promptsDir: string;
+  /** 드라이런 여부 */
+  dryRun?: boolean;
+}
 
 /**
  * Git 작업 실행을 위한 옵션
@@ -18,6 +40,8 @@ export interface GitTaskOptions extends BaseTaskOptions {
   issueTitle: string;
   /** 작업 디렉토리 */
   cwd: string;
+  /** PR 생성 옵션 (제공 시 PR 생성 수행) */
+  prOptions?: GitTaskPrOptions;
 }
 
 /**
@@ -104,11 +128,47 @@ export class GitTask implements AQMTask {
       logger.info(`[GitTask] Pushing branch ${workBranch}`);
       await pushBranch(gitConfig, workBranch, { cwd });
 
+      // Step 5: Create PR (optional)
+      let prUrl: string | undefined;
+      const { prOptions } = this._options;
+      if (prOptions) {
+        if (this._abortController.signal.aborted) {
+          this.setFailed("Task was killed before PR creation");
+          return this._result!;
+        }
+        logger.info(`[GitTask] Creating PR for issue #${issueNumber}`);
+        const prResult = await createDraftPR(
+          prOptions.prConfig,
+          prOptions.ghConfig,
+          {
+            issueNumber,
+            issueTitle,
+            repo: prOptions.repo,
+            plan: prOptions.plan,
+            phaseResults: prOptions.phaseResults,
+            branchName: workBranch,
+            baseBranch: gitConfig.defaultBaseBranch,
+          },
+          {
+            cwd,
+            promptsDir: prOptions.promptsDir,
+            dryRun: prOptions.dryRun,
+          }
+        );
+        if (prResult) {
+          prUrl = prResult.url;
+          logger.info(`[GitTask] PR created: ${prUrl}`);
+        } else {
+          logger.warn(`[GitTask] PR creation returned null for issue #${issueNumber}`);
+        }
+      }
+
       const durationMs = Date.now() - this._startedAt!.getTime();
       const result: GitTaskResult = {
         success: true,
         branchName: workBranch,
         commitHash,
+        prUrl,
         durationMs,
       };
       this.setCompleted(result);

@@ -1476,22 +1476,26 @@ describe("Dashboard API - Version Management", () => {
         });
       });
 
-      it("should return 409 when jobs are running", async () => {
-        const runningJobs = [
+      it("should cancel running/queued jobs and proceed with update", async () => {
+        const mockConfig = { git: { gitPath: "git", remoteAlias: "origin", defaultBaseBranch: "main" } };
+        const activeJobs = [
           { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" as const },
           { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" as const },
         ];
-        mockJobStore.list.mockReturnValue(runningJobs);
+        mockJobStore.list.mockReturnValue(activeJobs);
+        mockLoadConfig.mockReturnValue(mockConfig as any);
+
+        const mockSelfUpdaterInstance = {
+          performSelfUpdate: vi.fn().mockResolvedValue({ updated: true, needsRestart: true }),
+        };
+        mockSelfUpdater.mockImplementation(() => mockSelfUpdaterInstance as any);
 
         const response = await app.request("/api/update", { method: "POST" });
 
-        expect(response.status).toBe(409);
-        const result = await response.json();
-        expect(result.error).toBe("진행 중인 작업이 있어 업데이트를 수행할 수 없습니다");
-        expect(result.runningJobs).toEqual([
-          { id: "job1", issueNumber: 123, repo: "test/repo", status: "running" },
-          { id: "job2", issueNumber: 456, repo: "test/repo", status: "queued" },
-        ]);
+        expect(response.status).toBe(200);
+        expect(mockJobQueue.cancel).toHaveBeenCalledWith("job1");
+        expect(mockJobQueue.cancel).toHaveBeenCalledWith("job2");
+        expect(mockSelfUpdaterInstance.performSelfUpdate).toHaveBeenCalled();
       });
 
       it("should return 500 when update fails", async () => {

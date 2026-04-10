@@ -22,6 +22,7 @@ export interface PrContext {
   baseBranch: string;
   totalCostUsd?: number;
   totalUsage?: UsageInfo;
+  instanceLabel?: string;
 }
 
 /**
@@ -61,6 +62,7 @@ export async function createDraftPR(
         base: ctx.baseBranch,
         work: ctx.branchName,
       },
+      instanceLabel: ctx.instanceLabel || 'default',
       stats: {
         totalCostUsd: ctx.totalCostUsd?.toFixed(4) || '0.0000',
         phaseCount: ctx.phaseResults.length,
@@ -104,6 +106,9 @@ export async function createDraftPR(
     args.push("--draft");
   }
 
+  if (ctx.instanceLabel) {
+    args.push("--label", ctx.instanceLabel);
+  }
   for (const label of prConfig.labels) {
     args.push("--label", label);
   }

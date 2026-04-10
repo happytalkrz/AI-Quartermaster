@@ -76,6 +76,27 @@ describe("createDraftPR", () => {
     const result = await createDraftPR(prConfig, ghConfig, ctx, { ...options, dryRun: true });
     expect(result).toEqual({ url: "https://github.com/dry-run", number: 0 });
   });
+
+  it("should add instanceLabel as --label when provided", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/5", stderr: "", exitCode: 0 });
+    const ctxWithLabel = { ...ctx, instanceLabel: "prod-1" };
+    await createDraftPR(prConfig, ghConfig, ctxWithLabel, options);
+    expect(mockRunCli).toHaveBeenCalledWith(
+      "gh",
+      expect.arrayContaining(["--label", "prod-1"]),
+      expect.anything()
+    );
+  });
+
+  it("should not add extra --label when instanceLabel is absent", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/6", stderr: "", exitCode: 0 });
+    const ctxWithoutLabel = { ...ctx, instanceLabel: undefined };
+    await createDraftPR(prConfig, ghConfig, ctxWithoutLabel, options);
+    const args = mockRunCli.mock.calls[0][1] as string[];
+    const labelArgs = args.filter((_, i) => args[i - 1] === "--label");
+    // Only prConfig.labels entries should appear (no extra instanceLabel entry)
+    expect(labelArgs).toEqual(prConfig.labels);
+  });
 });
 
 describe("closeIssue", () => {

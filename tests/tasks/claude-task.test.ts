@@ -442,4 +442,96 @@ describe("ClaudeTask", () => {
       expect(json.durationMs).toBeGreaterThanOrEqual(0);
     });
   });
+
+  describe("fromJSON", () => {
+    const baseConfig: ClaudeTaskOptions["config"] = {
+      path: "claude",
+      model: "sonnet",
+      maxTurns: 10,
+      timeout: 30000,
+      additionalArgs: []
+    };
+
+    it("should restore task from SerializedTask in PENDING state", () => {
+      const serialized = {
+        id: "restored-id",
+        type: "claude" as const,
+        status: TaskStatus.SUCCESS,
+        metadata: { prompt: "Restored prompt" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+
+      expect(task.id).toBe("restored-id");
+      expect(task.type).toBe("claude");
+      expect(task.status).toBe(TaskStatus.PENDING);
+    });
+
+    it("should restore prompt from metadata", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.FAILED,
+        metadata: { prompt: "Hello world" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const json = task.toJSON();
+
+      expect(json.metadata?.prompt).toBe("Hello world");
+    });
+
+    it("should restore optional fields from metadata", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.SUCCESS,
+        metadata: {
+          prompt: "Test",
+          systemPrompt: "Be helpful",
+          maxTurns: 5,
+          enableAgents: true
+        }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const json = task.toJSON();
+
+      expect(json.metadata?.systemPrompt).toBe("Be helpful");
+      expect(json.metadata?.maxTurns).toBe(5);
+      expect(json.metadata?.enableAgents).toBe(true);
+    });
+
+    it("should handle missing metadata gracefully", () => {
+      const serialized = {
+        id: "test-id",
+        type: "claude" as const,
+        status: TaskStatus.PENDING,
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+
+      expect(task.id).toBe("test-id");
+      expect(task.status).toBe(TaskStatus.PENDING);
+      const json = task.toJSON();
+      expect(json.metadata?.prompt).toBe("");
+    });
+
+    it("should be runnable after restoration", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const serialized = {
+        id: "runnable-id",
+        type: "claude" as const,
+        status: TaskStatus.FAILED,
+        metadata: { prompt: "Run me again" }
+      };
+
+      const task = ClaudeTask.fromJSON(serialized, baseConfig);
+      const result = await task.run();
+
+      expect(result.success).toBe(true);
+      expect(task.status).toBe(TaskStatus.SUCCESS);
+    });
+  });
 });

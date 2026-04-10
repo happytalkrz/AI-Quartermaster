@@ -153,7 +153,7 @@ const generalConfigSchema = z.object({
   stuckTimeoutMs: z.number().int().min(60000),
   pollingIntervalMs: z.number().int().min(10000),
   maxJobs: z.number().int().min(1),
-  autoUpdate: z.boolean(),
+  autoUpdate: z.boolean().default(false),
 });
 
 const gitConfigSchema = z.object({
@@ -286,8 +286,8 @@ const safetyConfigSchema = z.object({
 });
 
 const featuresConfigSchema = z.object({
-  parallelPhases: z.boolean(),
-  multiAI: z.boolean(),
+  parallelPhases: z.boolean().default(false),
+  multiAI: z.boolean().default(false),
 });
 
 const projectConfigSchema = z.object({
@@ -370,7 +370,7 @@ const aqConfigSchema = z.object({
   pr: prConfigSchema,
   safety: safetyConfigSchema,
   features: featuresConfigSchema,
-  executionMode: z.enum(["economy", "standard", "thorough"]),
+  executionMode: z.enum(["economy", "standard", "thorough"]).default("standard"),
   hooks: hooksConfigSchema,
   projects: z.array(projectConfigSchema).optional(),
   automations: z.array(automationRuleSchema).optional(),

@@ -276,6 +276,99 @@ describe("ClaudeTask", () => {
     });
   });
 
+  describe("라이프사이클 이벤트", () => {
+    it("should emit started event when run begins", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const startedFn = vi.fn();
+      task.on("started", startedFn);
+
+      await task.run();
+
+      expect(startedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should emit completed event on success", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const completedFn = vi.fn();
+      const failedFn = vi.fn();
+      task.on("completed", completedFn);
+      task.on("failed", failedFn);
+
+      await task.run();
+
+      expect(completedFn).toHaveBeenCalledTimes(1);
+      expect(failedFn).not.toHaveBeenCalled();
+    });
+
+    it("should emit failed event on unsuccessful result", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: false, output: "err", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const completedFn = vi.fn();
+      const failedFn = vi.fn();
+      task.on("completed", completedFn);
+      task.on("failed", failedFn);
+
+      await task.run();
+
+      expect(failedFn).toHaveBeenCalledTimes(1);
+      expect(completedFn).not.toHaveBeenCalled();
+    });
+
+    it("should emit failed event on thrown error", async () => {
+      mockRunClaude.mockRejectedValueOnce(new Error("crash"));
+
+      const task = new ClaudeTask(testOptions);
+      const failedFn = vi.fn();
+      task.on("failed", failedFn);
+
+      await expect(task.run()).rejects.toThrow("crash");
+
+      expect(failedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should emit killed event when kill is called", async () => {
+      const task = new ClaudeTask(testOptions);
+      const killedFn = vi.fn();
+      task.on("killed", killedFn);
+
+      (task as any)._status = TaskStatus.RUNNING;
+      await task.kill();
+
+      expect(killedFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support once listener (fires only once)", async () => {
+      mockRunClaude
+        .mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const onceFn = vi.fn();
+      task.once("started", onceFn);
+
+      await task.run();
+
+      expect(onceFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should support off (remove listener)", async () => {
+      mockRunClaude.mockResolvedValueOnce({ success: true, output: "ok", durationMs: 100 });
+
+      const task = new ClaudeTask(testOptions);
+      const startedFn = vi.fn();
+      task.on("started", startedFn);
+      task.off("started", startedFn);
+
+      await task.run();
+
+      expect(startedFn).not.toHaveBeenCalled();
+    });
+  });
+
   describe("직렬화", () => {
     it("should serialize task to JSON summary", () => {
       const task = new ClaudeTask({

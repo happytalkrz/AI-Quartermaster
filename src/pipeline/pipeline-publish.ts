@@ -19,7 +19,7 @@ const logger = getLogger();
 /**
  * Push branch, create PR, enable auto-merge, and close issue
  */
-export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ success: boolean; prUrl?: string; error?: string }> {
+export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ success: boolean; prUrl?: string; prNumber?: number; error?: string }> {
   const {
     issueNumber,
     repo,
@@ -240,7 +240,7 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
 
     jl?.setStep("완료");
 
-    return { success: true, prUrl };
+    return { success: true, prUrl, prNumber: prResult.number };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
     logger.error(`[pushAndCreatePR] Failed: ${errMsg}`);

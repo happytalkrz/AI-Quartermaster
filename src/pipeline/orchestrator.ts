@@ -19,6 +19,8 @@ import {
 } from "./orchestrator-helpers.js";
 import { HookRegistry } from "../hooks/hook-registry.js";
 import { HookExecutor } from "../hooks/hook-executor.js";
+import { dispatchPipelineEvent } from "./automation-dispatcher.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
@@ -108,6 +110,18 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       return validationError;
     }
 
+    await dispatchPipelineEvent({
+      type: "pipeline-complete",
+      payload: {
+        issueNumber: input.issueNumber,
+        repo: input.repo,
+        prUrl: finalResult.prUrl ?? "",
+        totalCostUsd: finalResult.totalCostUsd,
+        durationMs: Date.now() - startTime,
+      },
+      triggeredAt: new Date().toISOString(),
+    });
+
     return {
       success: true,
       state: runtime.state,
@@ -117,6 +131,17 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
 
   } catch (error: unknown) {
+    await dispatchPipelineEvent({
+      type: "pipeline-failed",
+      payload: {
+        issueNumber: input.issueNumber,
+        repo: input.repo,
+        state: runtime.state,
+        errorMessage: getErrorMessage(error),
+        durationMs: Date.now() - startTime,
+      },
+      triggeredAt: new Date().toISOString(),
+    });
     return await routeError(error, {
       runtime,
       input,

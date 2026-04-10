@@ -18,6 +18,7 @@ import { pollCiStatus, autoFixCiFailures, type CiPollingConfig } from "./ci-chec
 import { HookRegistry } from "../hooks/hook-registry.js";
 import { HookExecutor } from "../hooks/hook-executor.js";
 import type { HookTiming } from "../types/hooks.js";
+import { dispatchPipelineEvent } from "./automation-dispatcher.js";
 import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
@@ -354,6 +355,23 @@ export async function executeCoreLoopPhase(
   })));
 
   if (!coreResult.success) {
+    for (const phaseResult of coreResult.phaseResults) {
+      if (!phaseResult.success) {
+        await dispatchPipelineEvent({
+          type: "phase-failed",
+          payload: {
+            issueNumber: input.issueNumber,
+            repo,
+            phaseIndex: phaseResult.phaseIndex,
+            phaseName: phaseResult.phaseName,
+            errorCategory: phaseResult.errorCategory,
+            errorMessage: phaseResult.error ?? "Unknown error",
+            attempt: 1,
+          },
+          triggeredAt: new Date().toISOString(),
+        });
+      }
+    }
     const failureResult = await handleCoreLoopFailure({
       issueNumber: input.issueNumber,
       repo,
@@ -540,6 +558,19 @@ export async function executePostProcessingPhases(
   }
 
   const prUrl = publishResult.prUrl;
+
+  await dispatchPipelineEvent({
+    type: "pr-merged",
+    payload: {
+      issueNumber,
+      repo,
+      prNumber: publishResult.prNumber ?? 0,
+      prUrl: prUrl ?? "",
+      mergedAt: new Date().toISOString(),
+    },
+    triggeredAt: new Date().toISOString(),
+  });
+
   transitionState(runtime, "DRAFT_PR_CREATED");
 
   if (hookRegistry && hookExecutor) {

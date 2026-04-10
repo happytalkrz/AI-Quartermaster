@@ -848,8 +848,19 @@ export class JobQueue {
           // Task 결과를 Job 결과 형태로 변환
           if (task.type === "claude") {
             const claudeResult = (task as ClaudeTask).getResult();
+
+            // Claude 출력에서 PR URL 추출 (정규식으로 GitHub PR URL 패턴 찾기)
+            let prUrl: string | undefined;
+            if (claudeResult?.success && claudeResult.output) {
+              // GitHub PR URL 패턴 매칭: https://github.com/owner/repo/pull/123
+              const prUrlMatch = claudeResult.output.match(/https:\/\/github\.com\/[^\/\s]+\/[^\/\s]+\/pull\/\d+/);
+              if (prUrlMatch) {
+                prUrl = prUrlMatch[0];
+              }
+            }
+
             result = {
-              prUrl: claudeResult?.success ? "https://github.com/example/pr" : undefined, // 실제로는 PR 생성 로직 필요
+              prUrl,
               error: claudeResult?.success ? undefined : claudeResult?.output,
             };
           } else if (task.type === "validation") {

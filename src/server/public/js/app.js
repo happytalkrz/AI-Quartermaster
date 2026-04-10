@@ -560,6 +560,9 @@ function connectSSE() {
         var label = data.changes.general.instanceLabel || data.changes.general.projectName || '';
         updateInstanceLabel(label);
       }
+      if (currentView === 'settings') {
+        loadSettings();
+      }
     } catch (_) {}
   });
   es.onerror = function() {

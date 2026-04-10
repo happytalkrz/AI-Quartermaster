@@ -164,17 +164,26 @@ function setSettingsTab(tabName) {
   localStorage.setItem('aqm-selected-tab', tabName);
 }
 
+var _btnOriginal = null;
+var _btnTimer = null;
+
 function showButtonState(btn, icon, message, colorClass) {
-  var originalContent = btn.innerHTML;
+  if (_btnTimer) clearTimeout(_btnTimer);
+  if (!_btnOriginal) _btnOriginal = btn.innerHTML;
+
   btn.disabled = true;
   btn.innerHTML = '<span class="material-symbols-outlined text-base' + (icon === 'sync' ? ' animate-spin' : '') + '">' + icon + '</span><span>' + message + '</span>';
-  btn.classList.replace('bg-primary', colorClass);
+  btn.className = btn.className.replace(/bg-\S+/g, colorClass);
 
-  setTimeout(function() {
-    btn.disabled = false;
-    btn.innerHTML = originalContent;
-    btn.classList.replace(colorClass, 'bg-primary');
-  }, 2000);
+  if (icon !== 'sync') {
+    _btnTimer = setTimeout(function() {
+      btn.disabled = false;
+      btn.innerHTML = _btnOriginal;
+      btn.className = btn.className.replace(/bg-\S+/g, 'bg-primary');
+      _btnOriginal = null;
+      _btnTimer = null;
+    }, 2000);
+  }
 }
 
 function saveSettings() {
@@ -191,8 +200,9 @@ function saveSettings() {
     .then(function(r) {
       if (r.ok) {
         showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
-        // Reload settings to reflect changes immediately in UI
-        loadSettings();
+        // Update currentConfig without re-rendering UI
+        var newData = collectFormData();
+        if (newData) Object.assign(currentConfig, newData);
       } else {
         throw new Error('Save failed');
       }
@@ -205,24 +215,28 @@ function saveSettings() {
 function collectFormData() {
   if (!currentConfig) return null;
 
-  var updatedConfig = JSON.parse(JSON.stringify(currentConfig)); // deep copy
+  // 변경 가능한 섹션만 수집 (projects 등 복잡한 구조 제외)
+  var result = {};
 
-  // 각 폼에서 데이터 수집
   ['general', 'safety', 'review'].forEach(function(section) {
     var form = document.getElementById(section + '-settings-form');
     if (!form) return;
 
+    var sectionData = currentConfig[section] ? JSON.parse(JSON.stringify(currentConfig[section])) : {};
     var inputs = form.querySelectorAll('input, select, textarea');
     inputs.forEach(function(input) {
       var path = input.dataset.configPath;
       if (!path) return;
 
       var value = getInputValue(input);
-      setNestedValue(updatedConfig, path, value);
+      // path에서 섹션 prefix 제거 (예: "general.logLevel" → "logLevel")
+      var subPath = path.startsWith(section + '.') ? path.slice(section.length + 1) : path;
+      setNestedValue(sectionData, subPath, value);
     });
+    result[section] = sectionData;
   });
 
-  return updatedConfig;
+  return result;
 }
 
 function getInputValue(input) {

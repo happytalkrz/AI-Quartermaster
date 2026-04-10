@@ -448,12 +448,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       // Update configuration file
-      // Filter out undefined values to match Partial<AQConfig> type expectation
+      // Filter out undefined values and complex sections (projects, automations, hooks)
+      // that should not be updated via this endpoint
+      const { projects, automations, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
-        Object.entries(parseResult.data).map(([key, value]) => [
+        Object.entries(safeData).map(([key, value]) => [
           key,
           typeof value === 'object' && value !== null
-            ? Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined))
+            ? Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined))
             : value
         ]).filter(([, v]) => v !== undefined)
       ) as Partial<AQConfig>;

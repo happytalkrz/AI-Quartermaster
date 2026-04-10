@@ -30,7 +30,7 @@ const generalConfigUpdateSchema = z.object({
   pollingIntervalMs: z.number().int().min(10000),
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean(),
-}).partial().strict();
+}).partial();
 
 const gitConfigUpdateSchema = z.object({
   defaultBaseBranch: z.string(),
@@ -45,7 +45,7 @@ const gitConfigUpdateSchema = z.object({
   gitPath: z.string(),
   fetchDepth: z.number().int().nonnegative(),
   signCommits: z.boolean(),
-}).partial().strict();
+}).partial();
 
 const worktreeConfigUpdateSchema = z.object({
   rootPath: z.string(),
@@ -53,14 +53,14 @@ const worktreeConfigUpdateSchema = z.object({
   cleanupOnFailure: z.boolean(),
   maxAge: z.string(),
   dirTemplate: z.string(),
-}).partial().strict();
+}).partial();
 
 const modelRoutingUpdateSchema = z.object({
   plan: z.string(),
   phase: z.string(),
   review: z.string(),
   fallback: z.string(),
-}).partial().strict();
+}).partial();
 
 const claudeCliConfigUpdateSchema = z.object({
   path: z.string(),
@@ -69,12 +69,12 @@ const claudeCliConfigUpdateSchema = z.object({
   maxTurns: z.number().int().positive(),
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),
-}).partial().strict();
+}).partial();
 
 const ghCliConfigUpdateSchema = z.object({
   path: z.string(),
   timeout: z.number().positive(),
-}).partial().strict();
+}).partial();
 
 const commandsConfigUpdateSchema = z.object({
   claudeCli: claudeCliConfigUpdateSchema,
@@ -85,7 +85,7 @@ const commandsConfigUpdateSchema = z.object({
   typecheck: z.string(),
   preInstall: z.string(),
   claudeMdPath: z.string(),
-}).partial().strict();
+}).partial();
 
 const reviewRoundUpdateSchema = z.object({
   name: z.string(),
@@ -95,18 +95,18 @@ const reviewRoundUpdateSchema = z.object({
   model: z.string().nullable(),
   blind: z.boolean().optional(),
   adversarial: z.boolean().optional(),
-}).partial().strict();
+}).partial();
 
 const simplifyConfigUpdateSchema = z.object({
   enabled: z.boolean(),
   promptTemplate: z.string(),
-}).partial().strict();
+}).partial();
 
 const reviewConfigUpdateSchema = z.object({
   enabled: z.boolean(),
   rounds: z.array(reviewRoundUpdateSchema),
   simplify: simplifyConfigUpdateSchema,
-}).partial().strict();
+}).partial();
 
 const prConfigUpdateSchema = z.object({
   targetBranch: z.string(),
@@ -119,14 +119,14 @@ const prConfigUpdateSchema = z.object({
   linkIssue: z.boolean(),
   autoMerge: z.boolean(),
   mergeMethod: mergeMethodSchema,
-}).partial().strict();
+}).partial();
 
 const timeoutsConfigUpdateSchema = z.object({
   planGeneration: z.number().positive(),
   phaseImplementation: z.number().positive(),
   reviewRound: z.number().positive(),
   prCreation: z.number().positive(),
-}).partial().strict();
+}).partial();
 
 const safetyConfigUpdateSchema = z.object({
   sensitivePaths: z.array(z.string()),
@@ -142,7 +142,7 @@ const safetyConfigUpdateSchema = z.object({
   stopConditions: z.array(z.string()),
   allowedLabels: z.array(z.string()),
   rollbackStrategy: z.enum(["none", "all", "failed-only"]),
-}).partial().strict();
+}).partial();
 
 const projectConfigUpdateSchema = z.object({
   repo: z.string().min(1),
@@ -154,7 +154,7 @@ const projectConfigUpdateSchema = z.object({
   review: reviewConfigUpdateSchema,
   pr: prConfigUpdateSchema,
   safety: safetyConfigUpdateSchema,
-}).partial().strict();
+}).partial();
 
 export const UpdateConfigRequestSchema = z.object({
   general: generalConfigUpdateSchema,
@@ -165,7 +165,7 @@ export const UpdateConfigRequestSchema = z.object({
   pr: prConfigUpdateSchema,
   safety: safetyConfigUpdateSchema,
   projects: z.array(projectConfigUpdateSchema),
-}).partial().strict();
+}).partial();
 
 export type UpdateConfigRequest = z.infer<typeof UpdateConfigRequestSchema>;
 

@@ -81,6 +81,32 @@ function toggleTheme() {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Instance Label
+   ══════════════════════════════════════════════════════════════ */
+function updateInstanceLabel(label) {
+  var el = document.getElementById('instance-label');
+  if (!el) return;
+  if (label) {
+    el.textContent = label;
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
+function loadInstanceLabel() {
+  apiFetch('/api/config')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.config && data.config.general) {
+        var label = data.config.general.instanceLabel || data.config.general.projectName || '';
+        updateInstanceLabel(label);
+      }
+    })
+    .catch(function() {});
+}
+
+/* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
 var currentConfig = null; // 현재 설정 데이터 저장
@@ -527,6 +553,18 @@ function connectSSE() {
   es.onmessage = function(e) {
     try { handleData(JSON.parse(e.data)); } catch (_) {}
   };
+  es.addEventListener('configChanged', function(e) {
+    try {
+      var data = JSON.parse(e.data);
+      if (data.changes && data.changes.general) {
+        var label = data.changes.general.instanceLabel || data.changes.general.projectName || '';
+        updateInstanceLabel(label);
+      }
+      if (currentView === 'settings') {
+        loadSettings();
+      }
+    } catch (_) {}
+  });
   es.onerror = function() {
     setConnState('disconnected');
     es.close();
@@ -754,6 +792,9 @@ loadVersionInfo();
 
 // Initialize project selection
 initProjectSelection();
+
+// Load instance label for header
+loadInstanceLabel();
 
 connectSSE();
 

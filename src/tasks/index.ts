@@ -20,3 +20,11 @@ export {
   ClaudeTask,
   ClaudeTaskOptions
 } from "./claude-task.js";
+
+// Validation 태스크 구현체 (typecheck/lint/test)
+export {
+  ValidationTask,
+  ValidationTaskOptions,
+  ValidationTaskType,
+  ValidationResult,
+} from "./validation-task.js";

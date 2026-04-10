@@ -1,5 +1,5 @@
 /**
- * Parses tsc and vitest output to identify per-file success/failure.
+ * Parses tsc, vitest, and eslint output to identify per-file success/failure.
  */
 
 export interface TscParseResult {
@@ -82,4 +82,63 @@ export function parseVitestOutput(output: string): VitestParseResult {
     totalFiles: failedFiles.size + passedFiles.size,
     hasFailures: failedFiles.size > 0,
   };
+}
+
+export interface EslintParseResult {
+  /** Per-file error messages */
+  errorsByFile: Record<string, string[]>;
+  /** Per-file warning messages */
+  warningsByFile: Record<string, string[]>;
+  totalErrors: number;
+  totalWarnings: number;
+  hasErrors: boolean;
+}
+
+// ESLint default formatter: file path line (absolute or relative, no leading spaces)
+// Examples:
+//   /home/user/project/src/foo.ts
+//   src/foo.ts
+const ESLINT_FILE_RE = /^((?:\/|\.{0,2}\/|[A-Za-z]:\\)?\S+\.[jt]sx?)$/;
+
+// ESLint problem line: "  10:5  error  message  rule-name"
+// Severity is "error" or "warning"
+const ESLINT_PROBLEM_RE =
+  /^\s+\d+:\d+\s+(error|warning)\s+(.+?)\s{2,}\S+\s*$/;
+
+export function parseEslintOutput(output: string): EslintParseResult {
+  const errorsByFile: Record<string, string[]> = {};
+  const warningsByFile: Record<string, string[]> = {};
+  let totalErrors = 0;
+  let totalWarnings = 0;
+  let currentFile: string | null = null;
+
+  for (const raw of output.split("\n")) {
+    const line = raw.trimEnd();
+
+    const fileMatch = line.match(ESLINT_FILE_RE);
+    if (fileMatch) {
+      currentFile = fileMatch[1];
+      continue;
+    }
+
+    if (!currentFile) continue;
+
+    const problemMatch = line.match(ESLINT_PROBLEM_RE);
+    if (!problemMatch) continue;
+
+    const severity = problemMatch[1];
+    const message = problemMatch[2].trim();
+
+    if (severity === "error") {
+      if (!errorsByFile[currentFile]) errorsByFile[currentFile] = [];
+      errorsByFile[currentFile].push(message);
+      totalErrors++;
+    } else {
+      if (!warningsByFile[currentFile]) warningsByFile[currentFile] = [];
+      warningsByFile[currentFile].push(message);
+      totalWarnings++;
+    }
+  }
+
+  return { errorsByFile, warningsByFile, totalErrors, totalWarnings, hasErrors: totalErrors > 0 };
 }

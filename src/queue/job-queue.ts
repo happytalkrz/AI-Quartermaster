@@ -10,10 +10,35 @@ import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 import { ProjectErrorState } from "../types/config.js";
+import type { AQMTask } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
-export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string }>;
+/** 잡 실행 결과 */
+export interface JobResult {
+  prUrl?: string;
+  error?: string;
+}
+
+/**
+ * Task 기반 잡 핸들 — AQMTask 인스턴스와 실행 함수를 함께 제공한다.
+ * lifecycle 이벤트 구독 및 stuck 시 kill() 호출에 사용된다.
+ */
+export interface JobTaskHandle {
+  /** 이번 잡에서 실행되는 AQMTask 인스턴스 */
+  task: AQMTask;
+  /** 태스크를 실행하고 잡 결과를 반환하는 함수 */
+  run(): Promise<JobResult>;
+}
+
+/**
+ * Task 기반 핸들러 — JobTaskHandle을 반환한다.
+ * lifecycle 이벤트 연동과 task.kill() 지원을 위해 사용한다.
+ */
+export type TaskHandler = (job: Job) => JobTaskHandle | Promise<JobTaskHandle>;
+
+/** 레거시 JobHandler — 직접 결과를 반환하는 콜백 패턴 */
+export type JobHandler = (job: Job) => Promise<JobResult>;
 
 /**
  * StoreJob을 새로운 discriminated union Job 타입으로 변환
@@ -87,6 +112,20 @@ function convertStoreJobToJob(storeJob: StoreJob): Job {
   }
 }
 
+/**
+ * 핸들러 반환값이 JobTaskHandle인지 판별하는 타입 가드.
+ * TaskHandler는 { task, run } 을 반환하고, JobHandler는 { prUrl?, error? }를 반환한다.
+ */
+function isJobTaskHandle(value: unknown): value is JobTaskHandle {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "task" in value &&
+    "run" in value &&
+    typeof (value as Record<string, unknown>).run === "function"
+  );
+}
+
 const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // check every minute
 
 export class JobQueue {
@@ -94,7 +133,7 @@ export class JobQueue {
   private running: Set<string> = new Set();
   private store: JobStore;
   private concurrency: number;
-  private handler: JobHandler;
+  private handler: JobHandler | TaskHandler;
   private cancelled: Set<string> = new Set();
   private stuckChecker: ReturnType<typeof setInterval> | undefined;
   private stuckTimeoutMs: number;
@@ -105,11 +144,12 @@ export class JobQueue {
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
+  private runningTasks: Map<string, AQMTask> = new Map(); // jobId -> 실행 중인 AQMTask
 
   constructor(
     store: JobStore,
     concurrency: number,
-    handler: JobHandler,
+    handler: JobHandler | TaskHandler,
     stuckTimeoutMs: number = 600000,
     projectConcurrency?: Record<string, number>
   ) {
@@ -151,25 +191,29 @@ export class JobQueue {
           this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
         } else if (processAlive && (lastActivityMs < 0 || lastActivityMs >= ACTIVITY_THRESHOLD_MS)) {
           // Process alive but no recent activity — Claude stuck
-          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 무응답 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분 — 실패 처리`);
+          const inactiveMin = Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000);
+          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 무응답 ${inactiveMin}분 — 실패 처리`);
           this.store.update(jobId, {
             status: "failure",
             completedAt: new Date().toISOString(),
-            error: `Claude가 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분간 무응답 (프로세스는 살아있으나 활동 없음)`,
+            error: `Claude가 ${inactiveMin}분간 무응답 (프로세스는 살아있으나 활동 없음)`,
           });
           this.stuckAborted.add(jobId);
           this.running.delete(jobId);
+          this.killAndCleanupTask(jobId);
           setTimeout(() => this.processNext(), 0);
         } else {
           // No process, exceeded 2x timeout — genuinely stuck
-          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, 프로세스 없음 — 실패 처리`);
+          const elapsedMin = Math.round(elapsed / 60000);
+          logger.error(`Job ${jobId}: ${elapsedMin}분 경과, 프로세스 없음 — 실패 처리`);
           this.store.update(jobId, {
             status: "failure",
             completedAt: new Date().toISOString(),
-            error: `파이프라인이 ${Math.round(elapsed / 60000)}분간 응답 없음`,
+            error: `파이프라인이 ${elapsedMin}분간 응답 없음`,
           });
           this.stuckAborted.add(jobId);
           this.running.delete(jobId);
+          this.killAndCleanupTask(jobId);
           setTimeout(() => this.processNext(), 0);
         }
       }
@@ -177,11 +221,27 @@ export class JobQueue {
   }
 
   /**
+   * 실행 중인 태스크를 kill하고 runningTasks에서 제거한다.
+   * 이미 task가 없으면 아무 작업도 하지 않는다.
+   */
+  private killAndCleanupTask(jobId: string): void {
+    const task = this.runningTasks.get(jobId);
+    if (task) {
+      this.runningTasks.delete(jobId);
+      task.kill().catch((err: unknown) => {
+        logger.warn(`Task kill failed for job ${jobId}: ${getErrorMessage(err)}`);
+      });
+    }
+  }
+
+  /**
    * Marks a job as stuck-aborted so executeJob can detect it after the handler returns.
+   * Task 기반 핸들러를 사용 중인 경우 task.kill()도 호출한다.
    */
   abortJob(jobId: string): boolean {
     if (this.running.has(jobId)) {
       this.stuckAborted.add(jobId);
+      this.killAndCleanupTask(jobId);
       return true;
     }
     return false;
@@ -687,7 +747,7 @@ export class JobQueue {
         return;
       }
 
-      const result = await this.handler(job);
+      const result = await this.runHandler(job);
 
       // Re-check after handler completes — stuck checker may have fired during execution
       const wasStuckAborted = this.stuckAborted.has(job.id);
@@ -705,7 +765,6 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: result.error,
         });
-        // Don't track project failure if it was stuck aborted
         if (!wasStuckAborted) {
           this.trackProjectFailure(job.repo);
         }
@@ -715,7 +774,6 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           prUrl: result.prUrl,
         });
-        // Don't track project success if it was stuck aborted
         if (!wasStuckAborted) {
           this.trackProjectSuccess(job.repo);
         }
@@ -725,12 +783,17 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: "Pipeline completed but no PR was created",
         });
-        // Don't track project failure if it was stuck aborted
         if (!wasStuckAborted) {
           this.trackProjectFailure(job.repo);
         }
       }
     } catch (error: unknown) {
+      // stuck-abort 후 task.kill()이 예외를 발생시키는 경우 — 이미 스토어 업데이트됨
+      if (this.stuckAborted.has(job.id)) {
+        this.stuckAborted.delete(job.id);
+        logger.warn(`Job ${job.id} threw after stuck-abort — ignoring`);
+        return;
+      }
       this.store.update(job.id, {
         status: "failure",
         completedAt: new Date().toISOString(),
@@ -738,10 +801,38 @@ export class JobQueue {
       });
       this.trackProjectFailure(job.repo);
     } finally {
+      this.runningTasks.delete(job.id);
       this.running.delete(job.id);
       this.removeJobFromRepo(job.id, job.repo);
       // Process next in queue (defer via setImmediate to avoid deep call stacks)
       setImmediate(() => this.processNext());
     }
+  }
+
+  /**
+   * handler 타입을 판별하여 실행하고 JobResult를 반환한다.
+   * TaskHandler인 경우 AQMTask를 runningTasks에 등록하고 lifecycle 이벤트를 구독한다.
+   */
+  private async runHandler(job: Job): Promise<JobResult> {
+    const handlerResult = await this.handler(job);
+
+    if (isJobTaskHandle(handlerResult)) {
+      // Task 기반 핸들러 — task 참조 저장 및 lifecycle 이벤트 연동
+      const handle = handlerResult;
+      this.runningTasks.set(job.id, handle.task);
+
+      // killed 이벤트: stuck 감지 외부에서 kill된 경우 stuckAborted로 표시
+      handle.task.on?.("killed", () => {
+        logger.info(`Task killed for job ${job.id}`);
+        if (!this.stuckAborted.has(job.id)) {
+          this.stuckAborted.add(job.id);
+        }
+      });
+
+      return handle.run();
+    }
+
+    // 레거시 JobHandler — 직접 결과 반환
+    return handlerResult;
   }
 }

@@ -151,6 +151,9 @@ export interface PublishPhaseContext {
     commands: {
       ghCli: import("./config.js").GhCliConfig;
     };
+    general?: {
+      instanceLabel?: string;
+    };
   };
   promptsDir: string;
   dryRun: boolean;

@@ -544,7 +544,7 @@ export async function executePostProcessingPhases(
     baseBranch: project.baseBranch,
     worktreePath,
     gitConfig,
-    projectConfig: project,
+    projectConfig: { ...project, general: { instanceLabel: config.general.instanceLabel } },
     promptsDir,
     dryRun: config.general.dryRun,
     jl,

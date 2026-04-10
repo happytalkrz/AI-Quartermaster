@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
+import { Job, JobPriority, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -297,7 +297,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: JobPriority): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -326,7 +326,7 @@ export class JobQueue {
       }
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies, isRetry);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry, undefined, priority);
     // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
@@ -583,6 +583,28 @@ export class JobQueue {
     }
   }
 
+  private static readonly PRIORITY_ORDER: Record<JobPriority, number> = { high: 0, normal: 1, low: 2 };
+
+  /**
+   * Sorts pending job IDs by priority (high > normal > low), then by createdAt ascending.
+   * Jobs without a priority are treated as normal.
+   */
+  private sortPendingByPriority(): void {
+    this.pending.sort((a, b) => {
+      const jobA = this.store.get(a);
+      const jobB = this.store.get(b);
+
+      const priorityA = JobQueue.PRIORITY_ORDER[jobA?.priority ?? "normal"] ?? 1;
+      const priorityB = JobQueue.PRIORITY_ORDER[jobB?.priority ?? "normal"] ?? 1;
+
+      if (priorityA !== priorityB) return priorityA - priorityB;
+
+      const createdAtA = jobA?.createdAt ? new Date(jobA.createdAt).getTime() : 0;
+      const createdAtB = jobB?.createdAt ? new Date(jobB.createdAt).getTime() : 0;
+      return createdAtA - createdAtB;
+    });
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -594,6 +616,9 @@ export class JobQueue {
     this.needsReprocess = false;
 
     try {
+      // Sort pending jobs by priority before processing
+      this.sortPendingByPriority();
+
       // Collect job IDs that are skipped due to unmet dependencies (put back at end)
       const deferred: string[] = [];
 

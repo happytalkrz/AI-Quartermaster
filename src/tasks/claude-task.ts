@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
-import { AQMTask, TaskStatus, AQMTaskSummary, BaseTaskOptions } from "./aqm-task.js";
+import { EventEmitter } from "events";
+import { AQMTask, TaskStatus, AQMTaskSummary, BaseTaskOptions, TaskLifecycleEvent, TaskEventListener, SerializedTask } from "./aqm-task.js";
 import { runClaude, getActiveProcessPids, type ClaudeRunResult, type ClaudeRunOptions } from "../claude/claude-runner.js";
 import type { ClaudeCliConfig } from "../types/config.js";
 
@@ -38,6 +39,7 @@ export class ClaudeTask implements AQMTask {
   private _result?: ClaudeRunResult;
   private _processId?: number;
   private readonly _options: ClaudeTaskOptions;
+  private readonly _emitter = new EventEmitter();
 
   constructor(options: ClaudeTaskOptions) {
     this.id = options.id || randomUUID();
@@ -56,6 +58,18 @@ export class ClaudeTask implements AQMTask {
     return this._status;
   }
 
+  on(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+    this._emitter.on(event, listener);
+  }
+
+  off(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+    this._emitter.off(event, listener);
+  }
+
+  once(event: TaskLifecycleEvent, listener: TaskEventListener): void {
+    this._emitter.once(event, listener);
+  }
+
   async run(): Promise<ClaudeRunResult> {
     if (this._status !== "PENDING") {
       throw new Error(`Task ${this.id} is already ${this._status} and cannot be run again`);
@@ -63,6 +77,7 @@ export class ClaudeTask implements AQMTask {
 
     this._status = TaskStatus.RUNNING;
     this._startedAt = new Date();
+    this._emitter.emit("started");
 
     try {
       // Claude 실행 옵션 구성
@@ -92,10 +107,17 @@ export class ClaudeTask implements AQMTask {
       this._completedAt = new Date();
       this._status = this._result.success ? TaskStatus.SUCCESS : TaskStatus.FAILED;
 
+      if (this._result.success) {
+        this._emitter.emit("completed");
+      } else {
+        this._emitter.emit("failed");
+      }
+
       return this._result;
     } catch (error) {
       this._completedAt = new Date();
       this._status = TaskStatus.FAILED;
+      this._emitter.emit("failed");
 
       // 에러를 ClaudeRunResult 형태로 변환
       this._result = {
@@ -135,6 +157,7 @@ export class ClaudeTask implements AQMTask {
     this._status = TaskStatus.KILLED;
     this._completedAt = new Date();
     this._processId = undefined;
+    this._emitter.emit("killed");
   }
 
   toJSON(): AQMTaskSummary {
@@ -168,5 +191,26 @@ export class ClaudeTask implements AQMTask {
 
   getResult(): ClaudeRunResult | undefined {
     return this._result;
+  }
+
+  /**
+   * SerializedTask로부터 ClaudeTask를 복원
+   * 복원된 태스크는 PENDING 상태로 시작
+   */
+  static fromJSON(data: SerializedTask, config: ClaudeCliConfig): ClaudeTask {
+    const metadata = data.metadata ?? {};
+    const prompt = typeof metadata.prompt === "string" ? metadata.prompt : "";
+    const systemPrompt = typeof metadata.systemPrompt === "string" ? metadata.systemPrompt : undefined;
+    const maxTurns = typeof metadata.maxTurns === "number" ? metadata.maxTurns : undefined;
+    const enableAgents = typeof metadata.enableAgents === "boolean" ? metadata.enableAgents : undefined;
+
+    return new ClaudeTask({
+      id: data.id,
+      prompt,
+      config,
+      systemPrompt,
+      maxTurns,
+      enableAgents,
+    });
   }
 }

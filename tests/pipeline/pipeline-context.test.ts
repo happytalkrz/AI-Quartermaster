@@ -3,6 +3,7 @@ import {
   initializePipelineState,
   transitionState,
   isPastState,
+  normalizeCheckpointState,
   STATE_ORDER,
   type PipelineRuntime,
   type OrchestratorInput,
@@ -132,6 +133,65 @@ describe("pipeline-context", () => {
 
     it("should return false for same states", () => {
       expect(isPastState("VALIDATED", "VALIDATED")).toBe(false);
+    });
+  });
+
+  describe("normalizeCheckpointState", () => {
+    it("should normalize CI_CHECKING to DONE", () => {
+      expect(normalizeCheckpointState("CI_CHECKING")).toBe("DONE");
+    });
+
+    it("should normalize CI_FIXING to DONE", () => {
+      expect(normalizeCheckpointState("CI_FIXING")).toBe("DONE");
+    });
+
+    it("should not modify other states", () => {
+      expect(normalizeCheckpointState("DONE")).toBe("DONE");
+      expect(normalizeCheckpointState("VALIDATED")).toBe("VALIDATED");
+      expect(normalizeCheckpointState("DRAFT_PR_CREATED")).toBe("DRAFT_PR_CREATED");
+      expect(normalizeCheckpointState("REVIEWING")).toBe("REVIEWING");
+    });
+  });
+
+  describe("initializePipelineState — checkpoint normalization", () => {
+    it("should normalize CI_CHECKING to DONE when resuming", async () => {
+      const input: OrchestratorInput = {
+        issueNumber: 123,
+        repo: "owner/repo",
+        config: mockConfig,
+        resumeFrom: {
+          state: "CI_CHECKING",
+          worktreePath: "/test/worktree",
+          branchName: "feature-branch",
+          projectRoot: "/test/project",
+          plan: undefined,
+          phaseResults: undefined,
+        },
+      };
+
+      const runtime = await initializePipelineState(input, mockConfig);
+
+      expect(runtime.state).toBe("DONE");
+    });
+
+    it("should normalize CI_FIXING to DONE when resuming", async () => {
+      const input: OrchestratorInput = {
+        issueNumber: 123,
+        repo: "owner/repo",
+        config: mockConfig,
+        resumeFrom: {
+          state: "CI_FIXING",
+          worktreePath: "/test/worktree",
+          branchName: "feature-branch",
+          projectRoot: "/test/project",
+          plan: undefined,
+          phaseResults: undefined,
+        },
+      };
+
+      const runtime = await initializePipelineState(input, mockConfig);
+
+      expect(runtime.state).toBe("DONE");
     });
   });
 

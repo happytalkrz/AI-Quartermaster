@@ -56,6 +56,17 @@ export const STATE_ORDER: PipelineState[] = [
   "DONE",
 ];
 
+/**
+ * 비활성화된 기능 상태를 정규화한다.
+ * CI_CHECKING/CI_FIXING은 현재 비활성화된 상태이므로 체크포인트 복원 시 DONE으로 전진한다.
+ */
+export function normalizeCheckpointState(state: PipelineState): PipelineState {
+  if (state === "CI_CHECKING" || state === "CI_FIXING") {
+    return "DONE";
+  }
+  return state;
+}
+
 export function isPastState(checkpointState: PipelineState, current: PipelineState): boolean {
   const checkpointIdx = STATE_ORDER.indexOf(checkpointState);
   const currentIdx = STATE_ORDER.indexOf(current);
@@ -84,8 +95,10 @@ export async function initializePipelineState(
   const resumeFrom = input.resumeFrom;
   const logger = getLogger();
 
+  const restoredState = resumeFrom ? normalizeCheckpointState(resumeFrom.state) : "RECEIVED";
+
   const runtime: PipelineRuntime = {
-    state: resumeFrom?.state ?? "RECEIVED",
+    state: restoredState,
     worktreePath: resumeFrom?.worktreePath,
     branchName: resumeFrom?.branchName,
     projectRoot: input.projectRoot ?? resumeFrom?.projectRoot ?? "",
@@ -96,8 +109,11 @@ export async function initializePipelineState(
   };
 
   if (resumeFrom) {
-    logger.info(`Resuming pipeline from state: ${resumeFrom.state}`);
-    input.jobLogger?.setProgress(progressForState(resumeFrom.state));
+    if (restoredState !== resumeFrom.state) {
+      logger.info(`Checkpoint state normalized: ${resumeFrom.state} → ${restoredState} (disabled feature state)`);
+    }
+    logger.info(`Resuming pipeline from state: ${restoredState}`);
+    input.jobLogger?.setProgress(progressForState(restoredState));
   }
 
   return runtime;

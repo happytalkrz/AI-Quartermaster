@@ -10,6 +10,8 @@ import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
 import { ProjectErrorState } from "../types/config.js";
+import type { TaskFactory } from "../tasks/task-factory.js";
+import type { AQMTask } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
@@ -105,13 +107,16 @@ export class JobQueue {
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
+  private taskFactory?: TaskFactory;
+  private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> active task
 
   constructor(
     store: JobStore,
     concurrency: number,
     handler: JobHandler,
     stuckTimeoutMs: number = 600000,
-    projectConcurrency?: Record<string, number>
+    projectConcurrency?: Record<string, number>,
+    taskFactory?: TaskFactory
   ) {
     this.store = store;
     this.concurrency = concurrency;
@@ -123,6 +128,8 @@ export class JobQueue {
         this.projectConcurrency.set(repo, limit);
       });
     }
+
+    this.taskFactory = taskFactory;
 
     // Periodically check for stuck jobs
     this.stuckChecker = setInterval(() => this.checkStuckJobs(), STUCK_CHECK_INTERVAL_MS);
@@ -158,6 +165,7 @@ export class JobQueue {
             error: `Claude가 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분간 무응답 (프로세스는 살아있으나 활동 없음)`,
           });
           this.stuckAborted.add(jobId);
+          this.killActiveTask(jobId);
           this.running.delete(jobId);
           setTimeout(() => this.processNext(), 0);
         } else {
@@ -169,6 +177,7 @@ export class JobQueue {
             error: `파이프라인이 ${Math.round(elapsed / 60000)}분간 응답 없음`,
           });
           this.stuckAborted.add(jobId);
+          this.killActiveTask(jobId);
           this.running.delete(jobId);
           setTimeout(() => this.processNext(), 0);
         }
@@ -178,13 +187,35 @@ export class JobQueue {
 
   /**
    * Marks a job as stuck-aborted so executeJob can detect it after the handler returns.
+   * If a task is active for this job, it is also killed.
    */
   abortJob(jobId: string): boolean {
     if (this.running.has(jobId)) {
       this.stuckAborted.add(jobId);
+      this.killActiveTask(jobId);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Returns the active AQMTask for a running job, if one exists.
+   */
+  getActiveTask(jobId: string): AQMTask | undefined {
+    return this.activeTasks.get(jobId);
+  }
+
+  /**
+   * Kills the active task for a job and removes it from the active tasks map.
+   */
+  private killActiveTask(jobId: string): void {
+    const task = this.activeTasks.get(jobId);
+    if (task) {
+      task.kill().catch((err: unknown) => {
+        logger.warn(`Failed to kill task for job ${jobId}: ${getErrorMessage(err)}`);
+      });
+      this.activeTasks.delete(jobId);
+    }
   }
 
   /**
@@ -680,10 +711,18 @@ export class JobQueue {
   }
 
   private async executeJob(job: Job): Promise<void> {
+    // Create task for lifecycle tracking if factory is available
+    if (this.taskFactory) {
+      const task = this.taskFactory.create(job);
+      this.activeTasks.set(job.id, task);
+      logger.debug(`Task created for job ${job.id}: ${task.id} (type: ${task.type})`);
+    }
+
     try {
       // Check if already aborted before running handler
       if (this.stuckAborted.has(job.id)) {
         this.stuckAborted.delete(job.id);
+        this.activeTasks.delete(job.id);
         return;
       }
 
@@ -738,6 +777,7 @@ export class JobQueue {
       });
       this.trackProjectFailure(job.repo);
     } finally {
+      this.activeTasks.delete(job.id);
       this.running.delete(job.id);
       this.removeJobFromRepo(job.id, job.repo);
       // Process next in queue (defer via setImmediate to avoid deep call stacks)

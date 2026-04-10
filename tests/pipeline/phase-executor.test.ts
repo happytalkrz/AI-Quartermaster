@@ -696,6 +696,50 @@ describe("executePhase", () => {
     expect(result.errors!.filter(e => e.startsWith("src/bar.ts:")).length).toBe(2);
   });
 
+  it("uses cachedLayers.phaseTemplate instead of loadTemplate when cachedLayers is provided", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    const cachedLayers = {
+      staticContent: "static base + project content",
+      cacheKey: "abc123def456",
+      createdAt: new Date().toISOString(),
+      phaseTemplate: "cached phase template content",
+    };
+
+    const result = await executePhase(makeCtx({ cachedLayers }));
+
+    expect(result.success).toBe(true);
+    // loadTemplate should NOT have been called when cachedLayers is provided
+    expect(mockLoadTemplate).not.toHaveBeenCalled();
+    // renderTemplate should have been called with the cached phaseTemplate
+    expect(mockRenderTemplate).toHaveBeenCalledWith(
+      "cached phase template content",
+      expect.any(Object)
+    );
+  });
+
+  it("falls back to loadTemplate when cachedLayers is not provided", async () => {
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+
+    // No cachedLayers — should use loadTemplate
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(true);
+    expect(mockLoadTemplate).toHaveBeenCalledOnce();
+    expect(mockRenderTemplate).toHaveBeenCalledWith(
+      "template content",
+      expect.any(Object)
+    );
+  });
+
   it("falls through to full failure when vitest output has no passed files", async () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     mockRunCli

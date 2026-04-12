@@ -4,6 +4,7 @@ export const DEFAULT_CONFIG: AQConfig = {
   general: {
     projectName: "ai-quartermaster",
     instanceLabel: "ai-quartermaster",
+    instanceOwners: [],
     logLevel: "info",
     logDir: "logs",
     dryRun: false,

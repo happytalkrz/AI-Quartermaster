@@ -20,6 +20,7 @@ const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
 const generalConfigUpdateSchema = z.object({
   projectName: z.string().min(1),
   instanceLabel: z.string(),
+  instanceOwners: z.array(z.string()),
   logLevel: logLevelSchema,
   logDir: z.string(),
   dryRun: z.boolean(),

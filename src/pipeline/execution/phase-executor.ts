@@ -10,7 +10,13 @@ import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig } from "../../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../../types/pipeline.js";
 import { classifyError } from "../errors/error-classifier.js";
-import { parseTscOutput, parseVitestOutput } from "../reporting/verification-parser.js";
+import {
+  parseTscOutput,
+  parseVitestOutput,
+  filterErrorsByTargetFiles,
+  diffTscErrors,
+  type BaselineErrors,
+} from "../reporting/verification-parser.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
 import type { JobLogger } from "../../queue/job-logger.js";
@@ -38,6 +44,7 @@ export interface PhaseExecutorContext {
   locale?: string;
   cachedLayers?: import("../../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
   gitConfig: import("../../types/config.js").GitConfig;  // commitMessageTemplate 접근용
+  baseline?: BaselineErrors;
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {
@@ -228,21 +235,51 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         }
 
         // Detect partial tsc success: errors only in specific files
-        const tscResult = parseTscOutput(output);
-        if (tscResult.hasErrors && Object.keys(tscResult.errorsByFile).length > 0 && vitestResult.totalFiles === 0) {
-          logger.warn(
-            `Phase ${ctx.phase.index} partial success: tsc errors in ${Object.keys(tscResult.errorsByFile).length} file(s)`
+        const tscRawResult = parseTscOutput(output);
+        if (tscRawResult.hasErrors && Object.keys(tscRawResult.errorsByFile).length > 0 && vitestResult.totalFiles === 0) {
+          // Filter to targetFiles only, then diff against baseline to extract new errors
+          const filteredErrors = filterErrorsByTargetFiles(tscRawResult.errorsByFile, ctx.phase.targetFiles);
+          const filteredTsc = {
+            errorsByFile: filteredErrors,
+            totalErrors: Object.values(filteredErrors).reduce((sum, errs) => sum + errs.length, 0),
+            hasErrors: Object.keys(filteredErrors).length > 0,
+          };
+          const effectiveTsc = ctx.baseline
+            ? diffTscErrors(ctx.baseline.tsc, filteredTsc)
+            : filteredTsc;
+
+          if (effectiveTsc.hasErrors) {
+            logger.warn(
+              `Phase ${ctx.phase.index} partial success: tsc errors in ${Object.keys(effectiveTsc.errorsByFile).length} file(s)`
+            );
+            const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
+            const errors = Object.entries(effectiveTsc.errorsByFile).flatMap(([file, msgs]) =>
+              msgs.map(msg => `${file}: ${msg}`)
+            );
+            return {
+              phaseIndex: ctx.phase.index,
+              phaseName: ctx.phase.name,
+              success: true,
+              partial: true,
+              errors,
+              commitHash,
+              durationMs: Date.now() - startTime,
+              startedAt,
+              completedAt: new Date().toISOString(),
+              costUsd: claudeResult?.costUsd,
+              usage: claudeResult?.usage,
+            };
+          }
+
+          // All tsc errors are pre-existing or out-of-scope — treat as success
+          logger.info(
+            `Phase ${ctx.phase.index}: ${tscRawResult.totalErrors} tsc error(s) all pre-existing/out-of-scope — treating as success`
           );
           const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
-          const errors = Object.entries(tscResult.errorsByFile).flatMap(([file, msgs]) =>
-            msgs.map(msg => `${file}: ${msg}`)
-          );
           return {
             phaseIndex: ctx.phase.index,
             phaseName: ctx.phase.name,
             success: true,
-            partial: true,
-            errors,
             commitHash,
             durationMs: Date.now() - startTime,
             startedAt,
@@ -252,7 +289,15 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           };
         }
 
-        throw new PipelineError("VERIFICATION_FAILED", `Tests failed:\n${testResult.stdout}\n${testResult.stderr}`);
+        // Build filtered error output for retry prompt — only targetFile errors exposed to Claude
+        const filteredErrLines = Object.entries(
+          filterErrorsByTargetFiles(tscRawResult.errorsByFile, ctx.phase.targetFiles)
+        ).flatMap(([file, msgs]) => msgs.map(msg => `${file}: ${msg}`));
+        const throwOutput = filteredErrLines.length > 0
+          ? filteredErrLines.join("\n")
+          : [testResult.stdout, testResult.stderr].filter(Boolean).join("\n");
+
+        throw new PipelineError("VERIFICATION_FAILED", `Tests failed:\n${throwOutput}`);
       }
     }
 

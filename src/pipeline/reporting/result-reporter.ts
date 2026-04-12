@@ -54,6 +54,8 @@ export function formatResult(
       durationMs: r.durationMs,
       error: r.error,
       errorCategory: r.errorCategory,
+      costUsd: r.costUsd,
+      retryCostUsd: r.retryCostUsd,
     })),
     totalDurationMs: Date.now() - startTime,
     prUrl,
@@ -77,7 +79,9 @@ export function printResult(report: PipelineReport): void {
   for (const phase of report.phases) {
     const status = phase.success ? "PASS" : "FAIL";
     const commit = phase.commit ? ` [${phase.commit}]` : "";
-    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s)`);
+    const cost = phase.costUsd !== undefined ? ` $${phase.costUsd.toFixed(4)}` : "";
+    const retryCost = phase.retryCostUsd ? ` +retry $${phase.retryCostUsd.toFixed(4)}` : "";
+    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s${cost}${retryCost})`);
   }
 
   if (report.prUrl) {

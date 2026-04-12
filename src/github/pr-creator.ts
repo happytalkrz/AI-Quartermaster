@@ -120,13 +120,30 @@ export async function createDraftPR(
     args.push("--reviewer", reviewer);
   }
 
-  const result = await runCli(ghConfig.path, args, {
+  let result = await runCli(ghConfig.path, args, {
     cwd: options.cwd,
     timeout: ghConfig.timeout,
   });
 
+  // Label not found → auto-create and retry
+  if (result.exitCode !== 0 && result.stderr.includes("label") && result.stderr.includes("not found")) {
+    logger.warn(`PR label not found, auto-creating labels and retrying...`);
+    const allLabels = [...prConfig.labels];
+    if (ctx.instanceLabel) allLabels.push(ctx.instanceLabel);
+    for (const label of allLabels) {
+      await runCli(ghConfig.path, ["label", "create", label, "--repo", ctx.repo, "--force"], {
+        cwd: options.cwd,
+        timeout: 10000,
+      });
+    }
+    result = await runCli(ghConfig.path, args, {
+      cwd: options.cwd,
+      timeout: ghConfig.timeout,
+    });
+  }
+
   if (result.exitCode !== 0) {
-    logger.error(`Failed to create PR: ${result.stderr}`);
+    logger.error(`Failed to create PR: ${result.stderr} | stdout: ${result.stdout}`);
     return null;
   }
 

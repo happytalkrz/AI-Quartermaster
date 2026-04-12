@@ -151,6 +151,35 @@ export class IssuePoller {
     }
   }
 
+  private async fetchIssues(
+    repo: string,
+    label: string,
+    ghPath: string,
+    timeout: number,
+    author: string | undefined
+  ): Promise<RawIssue[]> {
+    const args: string[] = [
+      "issue", "list",
+      "--repo", repo,
+      "--label", label,
+      "--state", "open",
+      "--json", "number,title,labels",
+      "--limit", "100",
+    ];
+
+    if (author !== undefined) {
+      args.push("--author", author);
+    }
+
+    const result = await runCli(ghPath, args, { timeout });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`이슈 목록 조회 실패 (exit ${result.exitCode}): ${result.stderr || result.stdout}`);
+    }
+
+    return JSON.parse(result.stdout) as RawIssue[];
+  }
+
   private async pollProjectLabel(
     repo: string,
     label: string,
@@ -158,29 +187,41 @@ export class IssuePoller {
     timeout: number
   ): Promise<void> {
     let issues: RawIssue[];
+    const owners = this.config.general.instanceOwners ?? [];
+
     try {
-      const result = await runCli(
-        ghPath,
-        [
-          "issue", "list",
-          "--repo", repo,
-          "--label", label,
-          "--state", "open",
-          "--json", "number,title,labels",
-          "--limit", "100",
-        ],
-        { timeout }
-      );
+      if (owners.length === 0) {
+        issues = await this.fetchIssues(repo, label, ghPath, timeout, undefined);
+        this.resetPollingErrors(repo);
+      } else {
+        const perOwnerResults = await Promise.allSettled(
+          owners.map(owner => this.fetchIssues(repo, label, ghPath, timeout, owner))
+        );
 
-      if (result.exitCode !== 0) {
-        logger.warn(`이슈 목록 조회 실패 (${repo}, label=${label}): ${result.stderr || result.stdout}`);
-        this.trackPollingFailure(repo, `이슈 목록 조회 실패 (exit ${result.exitCode})`);
-        return;
+        const merged = new Map<number, RawIssue>();
+        let allFailed = true;
+
+        for (let i = 0; i < perOwnerResults.length; i++) {
+          const result = perOwnerResults[i];
+          if (result.status === "rejected") {
+            const errorMsg = getErrorMessage(result.reason);
+            logger.warn(`이슈 목록 조회 실패 (${repo}, label=${label}, author=${owners[i]}): ${errorMsg}`);
+            this.trackPollingFailure(repo, errorMsg);
+          } else {
+            allFailed = false;
+            for (const issue of result.value) {
+              merged.set(issue.number, issue);
+            }
+          }
+        }
+
+        if (allFailed) {
+          return;
+        }
+
+        this.resetPollingErrors(repo);
+        issues = Array.from(merged.values());
       }
-
-      issues = JSON.parse(result.stdout) as RawIssue[];
-      // Polling success - reset error count
-      this.resetPollingErrors(repo);
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);
       logger.warn(`폴링 중 오류 (${repo}, label=${label}): ${errorMsg}`);

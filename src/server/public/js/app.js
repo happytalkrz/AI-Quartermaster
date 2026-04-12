@@ -65,7 +65,8 @@ document.addEventListener('click', function(e) {
   var navEl = e.target instanceof Element ? /** @type {HTMLElement | null} */ (e.target.closest('[data-nav]')) : null;
   if (navEl) {
     e.preventDefault();
-    navigateTo(navEl.dataset.nav);
+    var nav = navEl.dataset.nav;
+    if (nav) navigateTo(nav);
   }
 });
 
@@ -454,7 +455,7 @@ function addProject() {
     .then(function(response) {
       if (response.ok) {
         // Success - clear form and reload settings
-        htmlForm.reset();
+        if (htmlForm) htmlForm.reset();
         loadSettings();
         showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
       } else {

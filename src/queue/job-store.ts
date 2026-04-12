@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog } from "../store/database.js";
+import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog, ListJobsFilter } from "../store/database.js";
 import { JsonMigrator } from "./json-migrator.js";
 import type {
   Job,
@@ -30,6 +30,12 @@ export type {
   CancelledJob,
   ArchivedJob
 } from "../types/pipeline.js";
+
+export interface ListJobsOptions {
+  status?: JobStatus;
+  limit?: number;
+  offset?: number;
+}
 
 export class JobStore extends EventEmitter {
   private db: AQDatabase;
@@ -574,26 +580,46 @@ export class JobStore extends EventEmitter {
     return updatedJob;
   }
 
-  list(): Job[] {
-    const dbJobs = this.db.listJobs();
-    const allJobs = dbJobs.map(dbJob => this.dbJobToJob(dbJob));
+  list(options?: ListJobsOptions): Job[] {
+    const hasFilter = options && (options.status !== undefined || options.limit !== undefined || options.offset !== undefined);
 
-    // 캐시된 job들로 업데이트 (최신 상태 반영)
-    const cachedJobs = this.getCachedJobs();
+    if (!hasFilter) {
+      // 옵션 없음: 기존 동작 유지 (전체 로드 + 캐시 머지)
+      const dbJobs = this.db.listJobs();
+      const allJobs = dbJobs.map(dbJob => this.dbJobToJob(dbJob));
+
+      const jobMap = new Map<string, Job>();
+      for (const job of allJobs) {
+        jobMap.set(job.id, job);
+      }
+      for (const cachedJob of this.getCachedJobs()) {
+        jobMap.set(cachedJob.id, cachedJob);
+      }
+
+      return Array.from(jobMap.values())
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+
+    // 옵션 있음: DB 레벨 필터링 사용
+    const filter: ListJobsFilter = {};
+    if (options.status !== undefined) filter.status = options.status;
+    if (options.limit !== undefined) filter.limit = options.limit;
+    if (options.offset !== undefined) filter.offset = options.offset;
+
+    const dbJobs = this.db.listJobsWithFilter(filter);
     const jobMap = new Map<string, Job>();
-
-    // 먼저 SQLite에서 가져온 모든 job을 맵에 추가
-    for (const job of allJobs) {
-      jobMap.set(job.id, job);
+    for (const dbJob of dbJobs) {
+      jobMap.set(dbJob.id, this.dbJobToJob(dbJob));
     }
 
-    // 캐시된 job으로 덮어쓰기 (더 최신 상태)
-    for (const cachedJob of cachedJobs) {
-      jobMap.set(cachedJob.id, cachedJob);
+    // 결과에 포함된 job 중 캐시에 있으면 최신 상태로 덮어쓰기
+    for (const [id, cachedJob] of this.cache) {
+      if (jobMap.has(id)) {
+        jobMap.set(id, cachedJob);
+      }
     }
 
-    return Array.from(jobMap.values())
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return Array.from(jobMap.values());
   }
 
   findByIssue(issueNumber: number, repo: string): Job | undefined {
@@ -611,23 +637,22 @@ export class JobStore extends EventEmitter {
   }
 
   findCompletedByIssue(issueNumber: number, repo: string): Job | undefined {
-    const allJobs = this.list();
-    for (const job of allJobs) {
-      if (job.issueNumber === issueNumber && job.repo === repo && job.status === "success") {
-        return job;
-      }
-    }
-    return undefined;
+    const dbJob = this.db.findJobByIssueWithStatus(issueNumber, repo, "success");
+    return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
 
   findAnyByIssue(issueNumber: number, repo: string): Job | undefined {
-    const allJobs = this.list();
-    for (const job of allJobs) {
-      if (job.issueNumber === issueNumber && job.repo === repo && job.status !== "archived") {
+    // 캐시 우선 조회 (running/queued 상태만 캐싱됨)
+    const cachedJobs = this.getCachedJobs();
+    for (const job of cachedJobs) {
+      if (job.issueNumber === issueNumber && job.repo === repo) {
         return job;
       }
     }
-    return undefined;
+
+    // 캐시 미스 시 DB에서 archived 제외 조회
+    const dbJob = this.db.findJobByIssueExcludingStatus(issueNumber, repo, "archived");
+    return dbJob ? this.dbJobToJob(dbJob) : undefined;
   }
 
   shouldBlockRepickup(issueNumber: number, repo: string): boolean {

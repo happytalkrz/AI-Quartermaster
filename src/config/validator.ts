@@ -144,6 +144,7 @@ const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
 const generalConfigSchema = z.object({
   projectName: z.string().min(1, "projectName must be a non-empty string"),
   instanceLabel: z.string().optional(),
+  instanceOwners: z.array(z.string()).optional(),
   logLevel: logLevelSchema,
   logDir: z.string(),
   dryRun: z.boolean(),

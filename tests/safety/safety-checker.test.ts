@@ -89,7 +89,8 @@ describe("safety-checker", () => {
 
       expect(mockIsAllowedLabel).toHaveBeenCalledWith(
         ["enhancement", "bug"],
-        ["enhancement", "bug", "feature"]
+        ["enhancement", "bug", "feature"],
+        undefined
       );
     });
 

@@ -106,6 +106,18 @@ function loadInstanceLabel() {
     .catch(function() {});
 }
 
+function loadClaudeProfile() {
+  apiFetch('/api/claude-profile')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('claude-profile-label');
+      if (el && data.profile) {
+        el.textContent = data.profile;
+      }
+    })
+    .catch(function() {});
+}
+
 /* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
@@ -807,8 +819,9 @@ loadVersionInfo();
 // Initialize project selection
 initProjectSelection();
 
-// Load instance label for header
+// Load instance label and Claude profile for header
 loadInstanceLabel();
+loadClaudeProfile();
 
 connectSSE();
 

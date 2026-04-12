@@ -634,11 +634,11 @@ export class JobStore extends EventEmitter {
     const existingJob = this.findAnyByIssue(issueNumber, repo);
     if (!existingJob) return false;
 
-    // queued, running, success 상태의 잡이 있으면 차단
+    // queued, running 상태의 잡이 있으면 차단
+    // success는 재라벨 시 재처리를 허용하기 위해 차단하지 않음 (archive 후 재처리)
     // failure, cancelled, archived 상태는 재시도 가능하므로 차단하지 않음
     return existingJob.status === "queued" ||
-           existingJob.status === "running" ||
-           existingJob.status === "success";
+           existingJob.status === "running";
   }
 
   findFailedJobsForRetry(): Job[] {

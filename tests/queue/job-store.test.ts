@@ -104,12 +104,12 @@ describe("JobStore", () => {
       expect(result).toBe(false);
     });
 
-    it("should return true when a success job exists for the issue", () => {
+    it("should return false when a success job exists for the issue (allows re-pickup after relabel)", () => {
       const job = store.create(42, "test/repo");
       store.update(job.id, { status: "success", completedAt: new Date().toISOString() });
 
       const result = store.shouldBlockRepickup(42, "test/repo");
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
 
     it("should return false when only failure job exists for the issue", () => {
@@ -170,7 +170,7 @@ describe("JobStore", () => {
       expect(result).toBe(false);
     });
 
-    it("should return true when both success and other status jobs exist", () => {
+    it("should return false when success job exists (allows re-pickup after relabel)", () => {
       const job1 = store.create(42, "test/repo");
       store.update(job1.id, { status: "failure", completedAt: new Date().toISOString(), error: "Error 1" });
 
@@ -178,7 +178,7 @@ describe("JobStore", () => {
       store.update(job2.id, { status: "success", completedAt: new Date().toISOString() });
 
       const result = store.shouldBlockRepickup(42, "test/repo");
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
   });
 

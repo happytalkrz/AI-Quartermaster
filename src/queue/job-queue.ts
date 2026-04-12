@@ -228,6 +228,10 @@ export class JobQueue {
    * Running jobs are reset to queued and re-enqueued.
    */
   recover(): number {
+    // 재시작 시 메모리 상태 초기화 — pause 상태 자동 해제
+    this.projectErrorState.clear();
+    logger.info("재시작: projectErrorState 초기화 완료 (project pause 해제)");
+
     const jobs = this.store.list();
     let recovered = 0;
 
@@ -313,11 +317,9 @@ export class JobQueue {
     const existing = this.store.findAnyByIssue(issueNumber, repo);
     if (existing) {
       if (isSuccessJob(existing)) {
-        logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing.id}`);
-        return undefined;
-      }
-
-      if (isFailureJob(existing) || isCancelledJob(existing)) {
+        logger.info(`Auto-archiving existing success job ${existing.id} for issue #${issueNumber} (${repo})`);
+        this.store.archive(existing.id);
+      } else if (isFailureJob(existing) || isCancelledJob(existing)) {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
         this.cleanupFailedJobArtifacts(issueNumber);
         this.store.archive(existing.id);

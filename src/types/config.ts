@@ -23,6 +23,7 @@ export interface SkillContent {
 export interface GeneralConfig {
   projectName: string;
   instanceLabel?: string;
+  instanceOwners?: string[];
   logLevel: LogLevel;
   logDir: string;
   dryRun: boolean;

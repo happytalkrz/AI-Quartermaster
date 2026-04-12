@@ -134,7 +134,8 @@ export async function fetchAndValidateIssue(
     worktreePath?: string;
     branchName?: string;
     dataDir: string;
-  }
+  },
+  instanceLabel?: string
 ): Promise<IssueSetupResult> {
 
   // === RECEIVED → VALIDATED ===
@@ -161,7 +162,7 @@ export async function fetchAndValidateIssue(
     jl?.setProgress(PROGRESS_ISSUE_VALIDATED);
 
     // === Safety: validate issue labels ===
-    validateIssue(issue, project.safety);
+    validateIssue(issue, project.safety, instanceLabel);
 
     if (setupContext) {
       saveCheckpoint(setupContext.dataDir, issueNumber, {

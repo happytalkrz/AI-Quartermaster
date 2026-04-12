@@ -3,7 +3,8 @@ import { AQConfig } from "../types/config.js";
 export const DEFAULT_CONFIG: AQConfig = {
   general: {
     projectName: "ai-quartermaster",
-    instanceLabel: "ai-quartermaster",
+    instanceLabel: "aqm",
+    instanceOwners: [],
     logLevel: "info",
     logDir: "logs",
     dryRun: false,
@@ -132,7 +133,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       prCreation: 60000,
     },
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
-    allowedLabels: [],
+    allowedLabels: ["aqm"],
     rollbackStrategy: "failed-only",
     feasibilityCheck: {
       enabled: true,

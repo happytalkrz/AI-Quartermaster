@@ -1351,4 +1351,153 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
       expect(mockRunClaude).toHaveBeenCalledTimes(models.length);
     });
   });
+
+  describe("validatePlan circular dependency detection", () => {
+    const baseClaudeConfig = {
+      path: "claude",
+      model: "test",
+      maxTurns: 1,
+      timeout: 1000,
+      additionalArgs: [] as string[],
+    };
+
+    const basePlanFields = {
+      mode: "code" as const,
+      issueNumber: 1,
+      title: "Test",
+      problemDefinition: "Test problem",
+      requirements: ["Requirement A"],
+      affectedFiles: [],
+      risks: [],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+
+    it("should throw when a phase depends on itself", async () => {
+      const selfDepPlan = {
+        ...basePlanFields,
+        phases: [
+          {
+            index: 0,
+            name: "Phase A",
+            description: "Self-referencing phase",
+            targetFiles: [],
+            commitStrategy: "single",
+            verificationCriteria: [],
+            dependsOn: [0],
+          },
+        ],
+      };
+
+      mockRunClaude.mockResolvedValue({
+        success: true,
+        output: JSON.stringify(selfDepPlan),
+        durationMs: 100,
+      });
+      mockExtractJson.mockReturnValue(selfDepPlan);
+
+      await expect(
+        generatePlan({
+          issue: { number: 1, title: "Test", body: "", labels: [] },
+          repo: { owner: "test", name: "repo" },
+          branch: { base: "main", work: "ax/1-test" },
+          repoStructure: "",
+          claudeConfig: baseClaudeConfig,
+          promptsDir,
+          cwd: testDir,
+        })
+      ).rejects.toThrow();
+    });
+
+    it("should throw when phases have A→B→A circular dependency", async () => {
+      const cyclePlan = {
+        ...basePlanFields,
+        phases: [
+          {
+            index: 0,
+            name: "Phase A",
+            description: "Depends on B",
+            targetFiles: [],
+            commitStrategy: "single",
+            verificationCriteria: [],
+            dependsOn: [1],
+          },
+          {
+            index: 1,
+            name: "Phase B",
+            description: "Depends on A",
+            targetFiles: [],
+            commitStrategy: "single",
+            verificationCriteria: [],
+            dependsOn: [0],
+          },
+        ],
+      };
+
+      mockRunClaude.mockResolvedValue({
+        success: true,
+        output: JSON.stringify(cyclePlan),
+        durationMs: 100,
+      });
+      mockExtractJson.mockReturnValue(cyclePlan);
+
+      await expect(
+        generatePlan({
+          issue: { number: 1, title: "Test", body: "", labels: [] },
+          repo: { owner: "test", name: "repo" },
+          branch: { base: "main", work: "ax/1-test" },
+          repoStructure: "",
+          claudeConfig: baseClaudeConfig,
+          promptsDir,
+          cwd: testDir,
+        })
+      ).rejects.toThrow();
+    });
+
+    it("should pass when phase dependencies are valid (linear chain)", async () => {
+      const validPlan = {
+        ...basePlanFields,
+        phases: [
+          {
+            index: 0,
+            name: "Phase A",
+            description: "No dependencies",
+            targetFiles: [],
+            commitStrategy: "single",
+            verificationCriteria: [],
+            dependsOn: [],
+          },
+          {
+            index: 1,
+            name: "Phase B",
+            description: "Depends on A",
+            targetFiles: [],
+            commitStrategy: "single",
+            verificationCriteria: [],
+            dependsOn: [0],
+          },
+        ],
+      };
+
+      mockRunClaude.mockResolvedValue({
+        success: true,
+        output: JSON.stringify(validPlan),
+        durationMs: 100,
+      });
+      mockExtractJson.mockReturnValue(validPlan);
+
+      const result = await generatePlan({
+        issue: { number: 1, title: "Test", body: "", labels: [] },
+        repo: { owner: "test", name: "repo" },
+        branch: { base: "main", work: "ax/1-test" },
+        repoStructure: "",
+        claudeConfig: baseClaudeConfig,
+        promptsDir,
+        cwd: testDir,
+      });
+
+      expect(result.plan.phases).toHaveLength(2);
+      expect(result.plan.phases[1].dependsOn).toEqual([0]);
+    });
+  });
 });

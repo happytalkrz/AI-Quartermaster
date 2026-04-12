@@ -18,7 +18,7 @@ const prConfig = {
   draft: true,
   titleTemplate: "[AQ-#{issueNumber}] {title}",
   bodyTemplate: "pr-body.md",
-  labels: ["ai-quartermaster"],
+  labels: ["aqm"],
   assignees: [],
   reviewers: [],
   linkIssue: true,
@@ -147,7 +147,7 @@ describe("closeIssue", () => {
           "--title", "[AQ-#{issueNumber}] {title}",
           "--body", expect.stringContaining("Closes #42"),
           "--draft",
-          "--label", "ai-quartermaster",
+          "--label", "aqm",
         ]),
         { cwd: "/tmp", timeout: 30000 }
       );

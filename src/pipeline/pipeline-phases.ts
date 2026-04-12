@@ -167,7 +167,8 @@ export async function executeInitialSetupPhases(
       worktreePath: runtime.worktreePath,
       branchName: runtime.branchName,
       dataDir,
-    }
+    },
+    config.general.instanceLabel
   );
 
   const { issue, checkpoint } = issueResult;

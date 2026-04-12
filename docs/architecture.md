@@ -105,16 +105,20 @@ interface GitHubIssueEvent {
 
 #### 수신 조건 필터
 
+트리거 라벨은 설정으로 제어된다. `general.instanceLabel` (기본값: `"aqm"`)이 인스턴스 식별자로 사용되며,
+`safety.allowedLabels` (기본값: `["aqm"]`)에 정의된 라벨 중 하나라도 이슈에 있어야 처리된다.
+
 ```typescript
 // 다음 조건을 모두 만족해야 Job으로 전달
-const TRIGGER_LABEL = "aqm";
+// TRIGGER_LABEL은 config.safety.allowedLabels에서 로드 (기본: ["aqm"])
 
-function shouldProcess(event: GitHubIssueEvent): boolean {
+function shouldProcess(event: GitHubIssueEvent, config: AQMConfig): boolean {
   // 1. action이 "opened" 또는 "labeled"
   if (event.action !== "opened" && event.action !== "labeled") return false;
 
-  // 2. "aqm" 라벨 존재
-  if (!event.issue.labels.some(l => l.name === TRIGGER_LABEL)) return false;
+  // 2. allowedLabels 중 하나 이상의 라벨 존재 (기본: ["aqm"])
+  const allowedLabels = config.safety.allowedLabels;
+  if (!event.issue.labels.some(l => allowedLabels.includes(l.name))) return false;
 
   // 3. 허용된 repository인지 확인
   if (!ALLOWED_REPOS.includes(event.repository.full_name)) return false;
@@ -207,11 +211,11 @@ class PipelineRunner {
 #### 브랜치 네이밍 규칙
 
 ```
-ax/{issueNumber}-{slug}
+aq/{issueNumber}-{slug}
 
 예시:
   Issue #42 "사용자 로그인 기능 추가"
-  → ax/42-add-user-login
+  → aq/42-add-user-login
 ```
 
 #### slug 생성 규칙
@@ -232,8 +236,8 @@ function createSlug(issueTitle: string): string {
 ```
 [생성]
   1. git fetch origin
-  2. git checkout -B ax/{n}-{slug} origin/{baseBranch}
-  3. git worktree add /tmp/ai-quartermaster/worktrees/{jobId} ax/{n}-{slug}
+  2. git checkout -B aq/{n}-{slug} origin/{baseBranch}
+  3. git worktree add /tmp/ai-quartermaster/worktrees/{jobId} aq/{n}-{slug}
 
 [사용]
   - 모든 Claude CLI 작업의 cwd를 worktree 경로로 지정
@@ -243,7 +247,7 @@ function createSlug(issueTitle: string): string {
   - Pipeline 완료(DONE) 또는 실패(FAILED) 후:
     1. git worktree remove /tmp/ai-quartermaster/worktrees/{jobId} --force
     2. 성공 시 브랜치 유지 (PR용)
-    3. 실패 시 브랜치 삭제: git branch -D ax/{n}-{slug}
+    3. 실패 시 브랜치 삭제: git branch -D aq/{n}-{slug}
 ```
 
 #### Git Manager 인터페이스
@@ -501,7 +505,7 @@ interface GitHubAPI {
   // PR 생성
   createDraftPR(params: {
     repo: string;           // "owner/repo"
-    head: string;           // "ax/42-add-user-login"
+    head: string;           // "aq/42-add-user-login"
     base: string;           // "main"
     title: string;
     body: string;
@@ -669,8 +673,8 @@ async function handleGlobalFailure(job: Job, error: Error): Promise<void> {
     body: formatFailureComment(job, error),
   });
 
-  // 3. "ai-failed" 라벨 추가
-  await githubAPI.addLabel(job.repository, job.issueNumber, "ai-failed");
+  // 3. 실패 라벨 추가 (미구현: 향후 instanceLabel 기반으로 구현 예정)
+  // await githubAPI.addLabel(job.repository, job.issueNumber, `${instanceLabel}-failed`);
 
   // 4. Worktree 정리
   await gitManager.removeWorktree(job.id);
@@ -704,7 +708,7 @@ async function handleGlobalFailure(job: Job, error: Error): Promise<void> {
 ```
 
 ### 다음 단계
-- `aqm` 라벨을 다시 부여하면 처음부터 재시도합니다.
+- `general.instanceLabel` (기본값: `aqm`) 라벨을 다시 부여하면 처음부터 재시도합니다.
 - Issue 내용을 수정한 후 라벨을 부여하면 수정된 내용으로 재시도합니다.
 
 ---
@@ -728,9 +732,9 @@ function validateBranch(branchName: string): void {
     }
   }
 
-  // ax/ 접두사 필수
-  if (!branchName.startsWith("ax/")) {
-    throw new SafeguardError(`브랜치명은 'ax/' 접두사 필수: ${branchName}`);
+  // aq/ 접두사 필수
+  if (!branchName.startsWith("aq/")) {
+    throw new SafeguardError(`브랜치명은 'aq/' 접두사 필수: ${branchName}`);
   }
 }
 ```

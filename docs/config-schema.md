@@ -27,6 +27,7 @@ AI-Quartermaster/
 | 필드 | 타입 | 기본값 | 필수 | 설명 |
 |------|------|--------|------|------|
 | `general.projectName` | `string` | `""` | O | 프로젝트 이름. 로그/PR 본문에 표시 |
+| `general.instanceLabel` | `string` | `"aqm"` | X | 이 인스턴스를 식별하는 라벨. `safety.allowedLabels`와 연동 |
 | `general.logLevel` | `"debug" \| "info" \| "warn" \| "error"` | `"info"` | X | 로그 출력 레벨 |
 | `general.logDir` | `string` | `"./logs"` | X | 로그 파일 저장 디렉토리 경로 |
 | `general.dryRun` | `boolean` | `false` | X | `true`면 git push, PR 생성 등 외부 변경을 실행하지 않고 로그만 남긴다 |
@@ -40,13 +41,13 @@ AI-Quartermaster/
 
 | 필드 | 타입 | 기본값 | 필수 | 설명 |
 |------|------|--------|------|------|
-| `git.defaultBaseBranch` | `string` | `"master"` | X | 이슈에 베이스 브랜치가 명시되지 않았을 때 사용할 기본 브랜치 |
-| `git.branchTemplate` | `string` | `"ax/{issueNumber}-{slug}"` | X | 작업 브랜치 이름 템플릿. 사용 가능 변수: `{issueNumber}`, `{slug}`, `{timestamp}` |
-| `git.commitMessageTemplate` | `string` | `"[#{issueNumber}] {phase}: {summary}"` | X | 커밋 메시지 템플릿. 변수: `{issueNumber}`, `{phase}`, `{summary}`, `{phaseIndex}` |
+| `git.defaultBaseBranch` | `string` | `"main"` | X | 이슈에 베이스 브랜치가 명시되지 않았을 때 사용할 기본 브랜치 |
+| `git.branchTemplate` | `string` | `"aq/{{issueNumber}}-{{slug}}"` | X | 작업 브랜치 이름 템플릿. 사용 가능 변수: `{{issueNumber}}`, `{{slug}}`, `{{timestamp}}` |
+| `git.commitMessageTemplate` | `string` | `"[#{{issueNumber}}] {{phase}}: {{summary}}"` | X | 커밋 메시지 템플릿. 변수: `{{issueNumber}}`, `{{phase}}`, `{{summary}}`, `{{phaseIndex}}` |
 | `git.remoteAlias` | `string` | `"origin"` | X | git remote 이름 |
 | `git.allowedRepos` | `string[]` | `[]` | O | 허용된 저장소 목록 (형식: `"owner/repo"`). 빈 배열이면 모든 저장소에서 동작 불가 |
 | `git.gitPath` | `string` | `"git"` | X | git 바이너리 경로 |
-| `git.fetchDepth` | `number` | `0` | X | `git fetch --depth` 값. `0`은 전체 히스토리 |
+| `git.fetchDepth` | `number` | `1` | X | `git fetch --depth` 값. `1`은 얕은 클론, `0`은 전체 히스토리 |
 | `git.signCommits` | `boolean` | `false` | X | GPG 서명 커밋 여부 |
 
 ### 3. `worktree` — 워크트리 설정
@@ -117,15 +118,15 @@ rounds:
 
 | 필드 | 타입 | 기본값 | 필수 | 설명 |
 |------|------|--------|------|------|
-| `pr.targetBranch` | `string` | `"master"` | X | PR의 목표 브랜치. 비어 있으면 `git.defaultBaseBranch` 사용 |
+| `pr.targetBranch` | `string` | `"main"` | X | PR의 목표 브랜치. 비어 있으면 `git.defaultBaseBranch` 사용 |
 | `pr.draft` | `boolean` | `true` | X | Draft PR로 생성할지 여부 |
-| `pr.titleTemplate` | `string` | `"[AQ-#{issueNumber}] {title}"` | X | PR 제목 템플릿 |
+| `pr.titleTemplate` | `string` | `"[AQ-#{{issueNumber}}] {{title}}"` | X | PR 제목 템플릿 |
 | `pr.bodyTemplate` | `string` | `"pr-body.md"` | X | PR 본문 템플릿 파일 경로 (prompts/ 기준) |
-| `pr.labels` | `string[]` | `["aqm"]` | X | PR에 자동 부여할 라벨 |
+| `pr.labels` | `string[]` | `[]` | X | PR에 자동 부여할 라벨 |
 | `pr.assignees` | `string[]` | `[]` | X | PR에 자동 할당할 사용자 |
 | `pr.reviewers` | `string[]` | `[]` | X | PR에 자동 리뷰 요청할 사용자 |
 | `pr.linkIssue` | `boolean` | `true` | X | PR 본문에 `Closes #issueNumber` 자동 포함 여부 |
-| `pr.autoMerge` | `boolean` | `false` | X | 모든 체크 통과 후 자동 머지 활성화 여부 (위험: 비권장) |
+| `pr.autoMerge` | `boolean` | `false` | X | 모든 체크 통과 후 자동 머지 활성화 여부. **미구현**: 설정 필드는 존재하지만 런타임 로직이 없음 |
 | `pr.mergeMethod` | `"merge" \| "squash" \| "rebase"` | `"squash"` | X | 머지 방법 |
 
 ### 7. `safety` — 안전장치 설정
@@ -146,7 +147,7 @@ rounds:
 | `safety.timeouts.reviewRound` | `number` | `120000` | X | 리뷰 라운드 하나 타임아웃 (ms) |
 | `safety.timeouts.prCreation` | `number` | `30000` | X | PR 생성 타임아웃 (ms) |
 | `safety.stopConditions` | `string[]` | (아래 참조) | X | 파이프라인 즉시 중단 조건 문자열 패턴 |
-| `safety.allowedLabels` | `string[]` | `["aqm", "aq-auto"]` | X | 이 라벨이 있는 이슈만 처리. 빈 배열이면 모든 이슈 처리 |
+| `safety.allowedLabels` | `string[]` | `["aqm"]` | X | 이 라벨이 있는 이슈만 처리. 빈 배열이면 모든 이슈 처리 |
 
 `safety.sensitivePaths` 기본값:
 
@@ -197,15 +198,15 @@ general:
   concurrency: 2
 
 git:
-  defaultBaseBranch: "master"
-  branchTemplate: "ax/{issueNumber}-{slug}"
-  commitMessageTemplate: "[#{issueNumber}] {phase}: {summary}"
+  defaultBaseBranch: "main"
+  branchTemplate: "aq/{{issueNumber}}-{{slug}}"
+  commitMessageTemplate: "[#{{issueNumber}}] {{phase}}: {{summary}}"
   remoteAlias: "origin"
   allowedRepos:
     - "myorg/my-web-app"
     - "myorg/my-web-app-v2"
   gitPath: "git"
-  fetchDepth: 0
+  fetchDepth: 1
   signCommits: false
 
 worktree:
@@ -260,17 +261,16 @@ review:
     promptTemplate: "review-round3-simplify.md"
 
 pr:
-  targetBranch: "master"
+  targetBranch: "main"
   draft: true
-  titleTemplate: "[AQ-#{issueNumber}] {title}"
+  titleTemplate: "[AQ-#{{issueNumber}}] {{title}}"
   bodyTemplate: "pr-body.md"
-  labels:
-    - "aqm"
+  labels: []
   assignees: []
   reviewers:
     - "lead-dev"
   linkIssue: true
-  autoMerge: false
+  autoMerge: false  # 미구현: 런타임 로직 없음
   mergeMethod: "squash"
 
 safety:
@@ -311,7 +311,6 @@ safety:
     - "TEST_FAILURE_PERSISTENT"
   allowedLabels:
     - "aqm"
-    - "aq-auto"
 ```
 
 ---

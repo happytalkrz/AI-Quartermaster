@@ -469,11 +469,17 @@ function addProject() {
   })
     .then(function(response) {
       if (response.ok) {
-        // Success - clear form and reload settings
-        // @ts-ignore
-        form.reset();
-        loadSettings();
-        showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
+        return response.json().then(function(data) {
+          // Success - clear form and reload settings
+          // @ts-ignore
+          form.reset();
+          loadSettings();
+          var msg = '프로젝트가 성공적으로 추가되었습니다.';
+          if (data.detectedLanguage) {
+            msg += ' <span class="font-bold">[' + esc(data.detectedLanguage) + ' 감지됨]</span>';
+          }
+          showProjectMessage(msg, 'success');
+        });
       } else {
         return response.json().then(function(errorData) {
           throw new Error(errorData.error || '프로젝트 추가에 실패했습니다.');
@@ -562,8 +568,16 @@ function editProject(repo) {
     fieldsHtml += createModalField('모드', 'mode', project.mode || '', false);
   }
 
+  var cmds = project.commands || {};
+  fieldsHtml += '<div class="pt-2 pb-1"><span class="text-[10px] font-black uppercase text-primary tracking-widest">Commands</span></div>';
+  fieldsHtml += createModalField('테스트 (test)', 'cmd_test', cmds.test || '', false);
+  fieldsHtml += createModalField('타입체크 (typecheck)', 'cmd_typecheck', cmds.typecheck || '', false);
+  fieldsHtml += createModalField('사전 설치 (preInstall)', 'cmd_preInstall', cmds.preInstall || '', false);
+  fieldsHtml += createModalField('빌드 (build)', 'cmd_build', cmds.build || '', false);
+  fieldsHtml += createModalField('린트 (lint)', 'cmd_lint', cmds.lint || '', false);
+
   var modalHtml = '<div id="edit-project-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">' +
-    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20">' +
+    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20 overflow-y-auto max-h-[90vh]">' +
     '<div class="flex justify-between items-center mb-4">' +
     '<h3 class="text-lg font-bold text-on-surface">프로젝트 편집</h3>' +
     '<button onclick="closeEditProjectModal()" class="text-outline hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>' +
@@ -616,6 +630,21 @@ function submitEditProject(repo) {
       updates[field] = value;
     }
   });
+
+  var commands = {};
+  var hasCommands = false;
+  [['cmd_test', 'test'], ['cmd_typecheck', 'typecheck'], ['cmd_preInstall', 'preInstall'], ['cmd_build', 'build'], ['cmd_lint', 'lint']].forEach(function(pair) {
+    var value = formData.get(pair[0]);
+    if (typeof value === 'string' && value.trim() !== '') {
+      // @ts-ignore
+      commands[pair[1]] = value.trim();
+      hasCommands = true;
+    }
+  });
+  if (hasCommands) {
+    // @ts-ignore
+    updates.commands = commands;
+  }
 
   // Show loading state on submit button
   var submitButton = form.querySelector('button[type="submit"]');

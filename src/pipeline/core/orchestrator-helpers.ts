@@ -6,12 +6,12 @@ import type {
   InitialSetupResult,
   EnvironmentSetupResult,
   CoreLoopExecutionResult
-} from "./pipeline-phases.js";
+} from "../phases/pipeline-phases.js";
 import type { PipelineRuntime } from "./pipeline-context.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { PipelineMode } from "../types/config.js";
-import type { PipelineCheckpoint } from "./checkpoint.js";
-import type { JobLogger } from "../queue/job-logger.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
+import type { PipelineMode } from "../../types/config.js";
+import type { PipelineCheckpoint } from "../errors/checkpoint.js";
+import type { JobLogger } from "../../queue/job-logger.js";
 
 /**
  * Handle duplicate PR check and return early result if needed

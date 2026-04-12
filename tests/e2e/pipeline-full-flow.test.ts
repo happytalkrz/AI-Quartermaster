@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   saveCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
   removeCheckpoint: vi.fn(),
@@ -29,13 +29,13 @@ vi.mock("../../src/git/worktree-manager.js", () => ({
   createWorktree: vi.fn(),
   removeWorktree: vi.fn(),
 }));
-vi.mock("../../src/pipeline/core-loop.js", () => ({
+vi.mock("../../src/pipeline/core/core-loop.js", () => ({
   runCoreLoop: vi.fn(),
 }));
-vi.mock("../../src/pipeline/dependency-installer.js", () => ({
+vi.mock("../../src/pipeline/setup/dependency-installer.js", () => ({
   installDependencies: vi.fn(),
 }));
-vi.mock("../../src/pipeline/final-validator.js", () => ({
+vi.mock("../../src/pipeline/reporting/final-validator.js", () => ({
   runFinalValidation: vi.fn(),
 }));
 vi.mock("../../src/review/review-orchestrator.js", () => ({
@@ -56,13 +56,13 @@ vi.mock("../../src/safety/safety-checker.js", () => ({
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
-vi.mock("../../src/pipeline/pipeline-setup.js", () => ({
+vi.mock("../../src/pipeline/setup/pipeline-setup.js", () => ({
   resolveResolvedProject: vi.fn(),
   checkDuplicatePR: vi.fn(),
   fetchAndValidateIssue: vi.fn(),
 }));
-vi.mock("../../src/pipeline/pipeline-context.js", async () => {
-  const actual = await vi.importActual("../../src/pipeline/pipeline-context.js");
+vi.mock("../../src/pipeline/core/pipeline-context.js", async () => {
+  const actual = await vi.importActual("../../src/pipeline/core/pipeline-context.js");
   return {
     ...actual,
     transitionState: vi.fn(),
@@ -73,20 +73,20 @@ vi.mock("../../src/safety/rollback-manager.js", () => ({
   rollbackToCheckpoint: vi.fn(),
   createCheckpoint: vi.fn(),
 }));
-vi.mock("../../src/pipeline/pipeline-phases.js", () => ({
+vi.mock("../../src/pipeline/phases/pipeline-phases.js", () => ({
   executeInitialSetupPhases: vi.fn(),
   executeEnvironmentSetup: vi.fn(),
   executeCoreLoopPhase: vi.fn(),
   executePostProcessingPhases: vi.fn(),
 }));
 
-import { runPipeline } from "../../src/pipeline/orchestrator.js";
+import { runPipeline } from "../../src/pipeline/core/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
 import {
   resolveResolvedProject,
   checkDuplicatePR,
   fetchAndValidateIssue,
-} from "../../src/pipeline/pipeline-setup.js";
+} from "../../src/pipeline/setup/pipeline-setup.js";
 import { createDraftPR, enableAutoMerge, addIssueComment, closeIssue } from "../../src/github/pr-creator.js";
 import {
   syncBaseBranch,
@@ -96,24 +96,24 @@ import {
   attemptRebase,
 } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
-import { runCoreLoop } from "../../src/pipeline/core-loop.js";
-import { installDependencies } from "../../src/pipeline/dependency-installer.js";
-import { runFinalValidation } from "../../src/pipeline/final-validator.js";
+import { runCoreLoop } from "../../src/pipeline/core/core-loop.js";
+import { installDependencies } from "../../src/pipeline/setup/dependency-installer.js";
+import { runFinalValidation } from "../../src/pipeline/reporting/final-validator.js";
 import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { transitionState, initializePipelineState, STATE_ORDER } from "../../src/pipeline/pipeline-context.js";
+import { transitionState, initializePipelineState, STATE_ORDER } from "../../src/pipeline/core/pipeline-context.js";
 import { rollbackToCheckpoint, createCheckpoint } from "../../src/safety/rollback-manager.js";
-import { saveCheckpoint, loadCheckpoint, removeCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { saveCheckpoint, loadCheckpoint, removeCheckpoint } from "../../src/pipeline/errors/checkpoint.js";
 import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
   executeCoreLoopPhase,
   executePostProcessingPhases,
-} from "../../src/pipeline/pipeline-phases.js";
-import type { PipelineRuntime } from "../../src/pipeline/pipeline-context.js";
+} from "../../src/pipeline/phases/pipeline-phases.js";
+import type { PipelineRuntime } from "../../src/pipeline/core/pipeline-context.js";
 import type { PipelineState } from "../../src/types/pipeline.js";
 
 // Import helpers from e2e utils

@@ -1,6 +1,6 @@
-import { getLogger } from "../utils/logger.js";
-import type { FeasibilityCheckConfig } from "../types/config.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
+import { getLogger } from "../../utils/logger.js";
+import type { FeasibilityCheckConfig } from "../../types/config.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
 
 const logger = getLogger();
 

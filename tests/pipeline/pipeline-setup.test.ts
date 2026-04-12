@@ -10,7 +10,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 vi.mock("../../src/safety/safety-checker.js", () => ({
   validateIssue: vi.fn(),
 }));
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   saveCheckpoint: vi.fn(),
   removeCheckpoint: vi.fn(),
 }));
@@ -24,7 +24,7 @@ vi.mock("../../src/config/mode-presets.js", () => ({
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
-vi.mock("../../src/pipeline/progress-tracker.js", () => ({
+vi.mock("../../src/pipeline/reporting/progress-tracker.js", () => ({
   PROGRESS_ISSUE_VALIDATED: 25,
   PROGRESS_DONE: 100,
 }));
@@ -36,11 +36,11 @@ import {
   type ProjectSetupResult,
   type DuplicatePRCheckResult,
   type IssueSetupResult,
-} from "../../src/pipeline/pipeline-setup.js";
+} from "../../src/pipeline/setup/pipeline-setup.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 import { validateIssue } from "../../src/safety/safety-checker.js";
-import { saveCheckpoint, removeCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { saveCheckpoint, removeCheckpoint } from "../../src/pipeline/errors/checkpoint.js";
 import { resolveProject } from "../../src/config/project-resolver.js";
 import { detectModeFromLabels, detectExecutionModeFromLabels } from "../../src/config/mode-presets.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";

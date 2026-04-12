@@ -10,7 +10,7 @@ import {
   phaseStart,
   phaseProgress,
   progressForState,
-} from "../../src/pipeline/progress-tracker.js";
+} from "../../src/pipeline/reporting/progress-tracker.js";
 
 describe("progress-tracker constants", () => {
   it("PROGRESS_ISSUE_VALIDATED should be 5", () => {

@@ -1,4 +1,5 @@
 import { AQConfig } from "../types/config.js";
+import { CLAUDE_MODELS } from "../claude/model-constants.js";
 
 export const DEFAULT_CONFIG: AQConfig = {
   general: {
@@ -35,12 +36,12 @@ export const DEFAULT_CONFIG: AQConfig = {
   commands: {
     claudeCli: {
       path: "claude",
-      model: "claude-opus-4-5",
+      model: CLAUDE_MODELS.OPUS,
       models: {
-        plan: "claude-opus-4-5",
-        phase: "claude-sonnet-4-20250514",
-        review: "claude-haiku-4-5-20251001",
-        fallback: "claude-sonnet-4-20250514",
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.SONNET,
       },
       maxTurns: 60,
       maxTurnsPerMode: {

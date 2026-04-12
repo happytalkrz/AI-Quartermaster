@@ -4,7 +4,7 @@ vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { formatResult, printResult } from "../../src/pipeline/result-reporter.js";
+import { formatResult, printResult } from "../../src/pipeline/reporting/result-reporter.js";
 import type { Plan, PhaseResult } from "../../src/types/pipeline.js";
 
 function makePlan(overrides: Partial<Plan> = {}): Plan {

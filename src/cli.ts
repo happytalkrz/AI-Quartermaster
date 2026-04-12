@@ -4,7 +4,7 @@ import { fileURLToPath } from "url";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
-import { runPipeline } from "./pipeline/orchestrator.js";
+import { runPipeline } from "./pipeline/core/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
 import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
@@ -22,7 +22,7 @@ import { PatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 import { AutomationScheduler } from "./automation/scheduler.js";
-import { initDispatcher } from "./pipeline/automation-dispatcher.js";
+import { initDispatcher } from "./pipeline/automation/automation-dispatcher.js";
 import type { RuleEngineHandlers, AutomationRule } from "./types/automation.js";
 
 export function buildProjectConcurrency(projects: Array<{ repo: string; concurrency?: number }>): Record<string, number> {
@@ -233,7 +233,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     const jl = new JobLogger(store, job.id);
     try {
       // Check for checkpoint to resume from
-      const { loadCheckpoint } = await import("./pipeline/checkpoint.js");
+      const { loadCheckpoint } = await import("./pipeline/errors/checkpoint.js");
       const checkpoint = loadCheckpoint(resolve(aqRoot, "data"), job.issueNumber);
       if (checkpoint) {
         jl.log(`체크포인트 발견 — ${checkpoint.state} 단계부터 재개`);
@@ -518,7 +518,7 @@ async function planCommand(args: CliArgs): Promise<void> {
   const config = loadConfig(aqRoot);
   setGlobalLogLevel(config.general.logLevel);
 
-  const { listTriggerIssues, generateExecutionPlan, printExecutionPlan } = await import("./pipeline/issue-orchestrator.js");
+  const { listTriggerIssues, generateExecutionPlan, printExecutionPlan } = await import("./pipeline/automation/issue-orchestrator.js");
 
   const ghPath = config.commands.ghCli.path;
   const labels = config.safety.allowedLabels;
@@ -634,7 +634,7 @@ async function resumeCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  const { loadCheckpoint } = await import("./pipeline/checkpoint.js");
+  const { loadCheckpoint } = await import("./pipeline/errors/checkpoint.js");
   const checkpoint = loadCheckpoint(dataDir, issueNumber);
   if (!checkpoint) {
     console.error(`No checkpoint found for issue #${issueNumber}`);

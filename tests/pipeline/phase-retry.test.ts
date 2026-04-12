@@ -15,7 +15,7 @@ vi.mock("../../src/claude/model-router.js", () => ({
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runShell: vi.fn(),
 }));
-vi.mock("../../src/pipeline/error-classifier.js", () => ({
+vi.mock("../../src/pipeline/errors/error-classifier.js", () => ({
   classifyError: vi.fn(),
 }));
 vi.mock("../../src/git/commit-helper.js", () => ({
@@ -29,12 +29,12 @@ vi.mock("../../src/safety/rollback-manager.js", () => ({
   ensureCleanState: vi.fn(),
 }));
 
-import { retryPhase, type PhaseRetryContext } from "../../src/pipeline/phase-retry.js";
+import { retryPhase, type PhaseRetryContext } from "../../src/pipeline/execution/phase-retry.js";
 import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { configForTask } from "../../src/claude/model-router.js";
 import { runShell } from "../../src/utils/cli-runner.js";
-import { classifyError } from "../../src/pipeline/error-classifier.js";
+import { classifyError } from "../../src/pipeline/errors/error-classifier.js";
 import { autoCommitIfDirty, getHeadHash } from "../../src/git/commit-helper.js";
 import { ensureCleanState } from "../../src/safety/rollback-manager.js";
 import type { Plan, Phase, ErrorHistoryEntry } from "../../src/types/pipeline.js";

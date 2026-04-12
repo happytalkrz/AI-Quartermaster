@@ -1,9 +1,9 @@
 import { resolve } from "path";
-import { runCli } from "../utils/cli-runner.js";
-import { runClaude, extractJson } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
-import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
-import type { ClaudeCliConfig } from "../types/config.js";
+import { runCli } from "../../utils/cli-runner.js";
+import { runClaude, extractJson } from "../../claude/claude-runner.js";
+import { configForTask } from "../../claude/model-router.js";
+import { loadTemplate, renderTemplate } from "../../prompt/template-renderer.js";
+import type { ClaudeCliConfig } from "../../types/config.js";
 
 export interface IssuePlan {
   issueNumber: number;

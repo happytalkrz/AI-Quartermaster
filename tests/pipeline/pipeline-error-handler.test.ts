@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { handleCoreLoopFailure } from "../../src/pipeline/pipeline-error-handler.js";
-import type { CoreLoopFailureContext } from "../../src/pipeline/pipeline-error-handler.js";
+import { handleCoreLoopFailure } from "../../src/pipeline/errors/pipeline-error-handler.js";
+import type { CoreLoopFailureContext } from "../../src/pipeline/errors/pipeline-error-handler.js";
 
 // Mock dependencies
-vi.mock("../../src/pipeline/result-reporter.js", () => ({
+vi.mock("../../src/pipeline/reporting/result-reporter.js", () => ({
   formatResult: vi.fn().mockReturnValue({ summary: "test report" }),
   printResult: vi.fn(),
 }));
@@ -12,7 +12,7 @@ vi.mock("../../src/safety/rollback-manager.js", () => ({
   rollbackToCheckpoint: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../src/pipeline/pipeline-context.js", () => ({
+vi.mock("../../src/pipeline/core/pipeline-context.js", () => ({
   saveResult: vi.fn(),
 }));
 

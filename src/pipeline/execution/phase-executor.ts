@@ -1,20 +1,20 @@
 import { resolve } from "path";
-import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../prompt/template-renderer.js";
-import type { PromptLayers } from "../prompt/layer-types.js";
-import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
-import { runShell } from "../utils/cli-runner.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import type { ClaudeCliConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult } from "../types/pipeline.js";
-import { classifyError } from "./error-classifier.js";
-import { parseTscOutput, parseVitestOutput } from "./verification-parser.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
-import { getLogger } from "../utils/logger.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
-import { phaseProgress } from "./progress-tracker.js";
-import { analyzeTokenUsage, summarizeForBudget } from "../review/token-estimator.js";
+import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../../prompt/template-renderer.js";
+import type { PromptLayers } from "../../prompt/layer-types.js";
+import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
+import { configForTask } from "../../claude/model-router.js";
+import { runShell } from "../../utils/cli-runner.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import type { ClaudeCliConfig } from "../../types/config.js";
+import type { Plan, Phase, PhaseResult } from "../../types/pipeline.js";
+import { classifyError } from "../errors/error-classifier.js";
+import { parseTscOutput, parseVitestOutput } from "../reporting/verification-parser.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
+import { getLogger } from "../../utils/logger.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import { autoCommitIfDirty, getHeadHash } from "../../git/commit-helper.js";
+import { phaseProgress } from "../reporting/progress-tracker.js";
+import { analyzeTokenUsage, summarizeForBudget } from "../../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -34,8 +34,8 @@ export interface PhaseExecutorContext {
   pastFailures?: string;
   jobLogger?: JobLogger;
   locale?: string;
-  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
-  gitConfig: import("../types/config.js").GitConfig;  // commitMessageTemplate 접근용
+  cachedLayers?: import("../../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
+  gitConfig: import("../../types/config.js").GitConfig;  // commitMessageTemplate 접근용
 }
 
 export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResult> {

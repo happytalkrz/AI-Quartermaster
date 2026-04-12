@@ -7,7 +7,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 }));
 
 // Mock checkpoint removal for integration tests
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   removeCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
 }));
@@ -23,7 +23,7 @@ vi.mock("../../src/update/self-updater.js", () => ({
 }));
 
 import { runCli } from "../../src/utils/cli-runner.js";
-import { removeCheckpoint, loadCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { removeCheckpoint, loadCheckpoint } from "../../src/pipeline/errors/checkpoint.js";
 import { removeWorktree } from "../../src/git/worktree-manager.js";
 import { SelfUpdater } from "../../src/update/self-updater.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";

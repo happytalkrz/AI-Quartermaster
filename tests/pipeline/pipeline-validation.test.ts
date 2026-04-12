@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
-vi.mock("../../src/pipeline/final-validator.js", () => ({
+vi.mock("../../src/pipeline/reporting/final-validator.js", () => ({
   runFinalValidation: vi.fn(),
 }));
 vi.mock("../../src/claude/claude-runner.js", () => ({
@@ -14,11 +14,11 @@ vi.mock("../../src/claude/model-router.js", () => ({
 vi.mock("../../src/git/commit-helper.js", () => ({
   autoCommitIfDirty: vi.fn(),
 }));
-vi.mock("../../src/pipeline/result-reporter.js", () => ({
+vi.mock("../../src/pipeline/reporting/result-reporter.js", () => ({
   formatResult: vi.fn(),
   printResult: vi.fn(),
 }));
-vi.mock("../../src/pipeline/progress-tracker.js", () => ({
+vi.mock("../../src/pipeline/reporting/progress-tracker.js", () => ({
   PROGRESS_VALIDATION_START: 85,
 }));
 vi.mock("../../src/utils/logger.js", () => ({
@@ -36,12 +36,12 @@ vi.mock("path", () => ({
   resolve: vi.fn((a: string, b: string) => `${a}/${b}`),
 }));
 
-import { runValidationPhase } from "../../src/pipeline/pipeline-validation.js";
-import { runFinalValidation } from "../../src/pipeline/final-validator.js";
+import { runValidationPhase } from "../../src/pipeline/setup/pipeline-validation.js";
+import { runFinalValidation } from "../../src/pipeline/reporting/final-validator.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
-import { formatResult, printResult } from "../../src/pipeline/result-reporter.js";
+import { formatResult, printResult } from "../../src/pipeline/reporting/result-reporter.js";
 import type { ValidationPhaseContext } from "../../src/types/pipeline.js";
 import type { ExecutionMode } from "../../src/types/config.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";

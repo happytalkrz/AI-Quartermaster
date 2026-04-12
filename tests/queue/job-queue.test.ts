@@ -6,7 +6,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 // Mock the checkpoint module
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   removeCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
 }));
@@ -52,7 +52,7 @@ describe("JobQueue", () => {
 
   // Helper to get and clear mocked functions
   async function getMocks() {
-    const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
     const { removeWorktree } = await import("../../src/git/worktree-manager.js");
     const { deleteRemoteBranch } = await import("../../src/git/branch-manager.js");
     const { loadConfig } = await import("../../src/config/loader.js");
@@ -118,7 +118,7 @@ describe("JobQueue", () => {
   });
 
   it("should auto-archive failed job and create new job on re-enqueue", async () => {
-    const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
     const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
     const handler: JobHandler = vi.fn()
@@ -156,7 +156,7 @@ describe("JobQueue", () => {
   });
 
   it("should auto-archive cancelled job and create new job on re-enqueue", async () => {
-    const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+    const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
     const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/after-cancel" });
@@ -277,7 +277,7 @@ describe("JobQueue", () => {
   describe("retryJob integration tests", () => {
     it("should delete checkpoint and restart pipeline on retry", async () => {
       // Mock checkpoint operations
-      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
       const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
       // Create a failed job first
@@ -363,7 +363,7 @@ describe("JobQueue", () => {
     });
 
     it("should handle retry failure and remain in failed state", async () => {
-      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
       const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
       // Handler that always fails
@@ -436,7 +436,7 @@ describe("JobQueue", () => {
     let loadConfigSpy: any;
 
     beforeEach(async () => {
-      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeCheckpoint, loadCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
       const { removeWorktree } = await import("../../src/git/worktree-manager.js");
       const { loadConfig } = await import("../../src/config/loader.js");
 
@@ -609,7 +609,7 @@ describe("JobQueue", () => {
 
   describe("Phase 5: Full integration scenario tests", () => {
     it("should handle complete pipeline restart scenario: failed job → re-enqueue → cleanup → new execution", async () => {
-      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
       const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
       let executionCount = 0;
@@ -690,7 +690,7 @@ describe("JobQueue", () => {
     });
 
     it("should handle cascading dependency failures and cleanup", async () => {
-      const { removeCheckpoint } = await import("../../src/pipeline/checkpoint.js");
+      const { removeCheckpoint } = await import("../../src/pipeline/errors/checkpoint.js");
       const removeCheckpointSpy = vi.mocked(removeCheckpoint);
 
       const handler: JobHandler = vi.fn()

@@ -19,7 +19,7 @@ vi.mock("../../src/git/branch-manager.js", () => ({
 vi.mock("../../src/git/worktree-manager.js", () => ({
   removeWorktree: vi.fn(),
 }));
-vi.mock("../../src/pipeline/result-reporter.js", () => ({
+vi.mock("../../src/pipeline/reporting/result-reporter.js", () => ({
   formatResult: vi.fn(),
   printResult: vi.fn(),
 }));
@@ -39,7 +39,7 @@ vi.mock("../../src/utils/logger.js", () => ({
     warn: vi.fn(),
   })),
 }));
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   removeCheckpoint: vi.fn(),
 }));
 vi.mock("../../src/learning/pattern-store.js", () => ({
@@ -47,7 +47,7 @@ vi.mock("../../src/learning/pattern-store.js", () => ({
     add: vi.fn(),
   })),
 }));
-vi.mock("../../src/pipeline/progress-tracker.js", () => ({
+vi.mock("../../src/pipeline/reporting/progress-tracker.js", () => ({
   PROGRESS_PR_CREATED: 90,
   PROGRESS_DONE: 100,
 }));
@@ -59,7 +59,7 @@ vi.mock("path", () => ({
   resolve: vi.fn((a: string, b: string) => `${a}/${b}`),
 }));
 
-import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "../../src/pipeline/pipeline-publish.js";
+import { pushAndCreatePR, cleanupOnSuccess, handlePipelineFailure } from "../../src/pipeline/phases/pipeline-publish.js";
 import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../../src/github/pr-creator.js";
 import { parseDependencies, checkDependencyPRsMerged } from "../../src/queue/dependency-resolver.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
@@ -67,8 +67,8 @@ import { removeWorktree } from "../../src/git/worktree-manager.js";
 import { validateBeforePush } from "../../src/safety/safety-checker.js";
 import { rollbackToCheckpoint } from "../../src/safety/rollback-manager.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { formatResult, printResult } from "../../src/pipeline/result-reporter.js";
-import { removeCheckpoint } from "../../src/pipeline/checkpoint.js";
+import { formatResult, printResult } from "../../src/pipeline/reporting/result-reporter.js";
+import { removeCheckpoint } from "../../src/pipeline/errors/checkpoint.js";
 import { PatternStore } from "../../src/learning/pattern-store.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../../src/types/pipeline.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";

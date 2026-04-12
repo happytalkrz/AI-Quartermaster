@@ -4,7 +4,7 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
 import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
-import { removeCheckpoint, loadCheckpoint } from "../pipeline/checkpoint.js";
+import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";

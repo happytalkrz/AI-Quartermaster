@@ -36,7 +36,7 @@ import {
   buildReviewVars,
   type ReviewContext,
   type SimplifyContext,
-} from "../../src/pipeline/pipeline-review.js";
+} from "../../src/pipeline/phases/pipeline-review.js";
 import type { ExecutionModePreset } from "../../src/types/config.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { configForTask, configForTaskWithMode } from "../../src/claude/model-router.js";

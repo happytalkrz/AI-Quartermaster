@@ -1,23 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
-vi.mock("../../src/pipeline/plan-generator.js", () => ({
+vi.mock("../../src/pipeline/phases/plan-generator.js", () => ({
   generatePlan: vi.fn(),
 }));
 vi.mock("../../src/claude/claude-runner.js", () => ({
   runClaude: vi.fn(),
   extractJson: vi.fn(),
 }));
-vi.mock("../../src/pipeline/phase-executor.js", () => ({
+vi.mock("../../src/pipeline/execution/phase-executor.js", () => ({
   executePhase: vi.fn(),
 }));
-vi.mock("../../src/pipeline/phase-retry.js", () => ({
+vi.mock("../../src/pipeline/execution/phase-retry.js", () => ({
   retryPhase: vi.fn(),
 }));
 vi.mock("../../src/safety/phase-limit-guard.js", () => ({
   checkPhaseLimit: vi.fn(),
 }));
-vi.mock("../../src/pipeline/phase-scheduler.js", () => ({
+vi.mock("../../src/pipeline/execution/phase-scheduler.js", () => ({
   schedulePhases: vi.fn(),
 }));
 vi.mock("../../src/learning/pattern-store.js", () => ({
@@ -37,12 +37,12 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   computeLayerCacheKey: vi.fn(),
 }));
 
-import { runCoreLoop, type CoreLoopContext } from "../../src/pipeline/core-loop.js";
-import { generatePlan } from "../../src/pipeline/plan-generator.js";
-import { executePhase } from "../../src/pipeline/phase-executor.js";
-import { retryPhase } from "../../src/pipeline/phase-retry.js";
+import { runCoreLoop, type CoreLoopContext } from "../../src/pipeline/core/core-loop.js";
+import { generatePlan } from "../../src/pipeline/phases/plan-generator.js";
+import { executePhase } from "../../src/pipeline/execution/phase-executor.js";
+import { retryPhase } from "../../src/pipeline/execution/phase-retry.js";
 import { checkPhaseLimit } from "../../src/safety/phase-limit-guard.js";
-import { schedulePhases } from "../../src/pipeline/phase-scheduler.js";
+import { schedulePhases } from "../../src/pipeline/execution/phase-scheduler.js";
 import {
   buildBaseLayer,
   buildProjectLayer,

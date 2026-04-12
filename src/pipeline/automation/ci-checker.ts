@@ -1,11 +1,11 @@
-import { runGhCommand, runCli } from "../utils/cli-runner.js";
-import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import { retryWithClaudeFix, type RetryWithFixOptions } from "./retry-with-fix.js";
-import { commentOnIssue } from "../github/pr-creator.js";
-import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
+import { runGhCommand, runCli } from "../../utils/cli-runner.js";
+import { getLogger } from "../../utils/logger.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import { retryWithClaudeFix, type RetryWithFixOptions } from "../execution/retry-with-fix.js";
+import { commentOnIssue } from "../../github/pr-creator.js";
+import { loadTemplate, renderTemplate } from "../../prompt/template-renderer.js";
 import { resolve } from "path";
-import type { GhCliConfig, ClaudeCliConfig } from "../types/config.js";
+import type { GhCliConfig, ClaudeCliConfig } from "../../types/config.js";
 
 const logger = getLogger();
 

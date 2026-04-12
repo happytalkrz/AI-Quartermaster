@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyError } from "../../src/pipeline/error-classifier.js";
+import { classifyError } from "../../src/pipeline/errors/error-classifier.js";
 
 describe("classifyError", () => {
   describe("TS_ERROR", () => {

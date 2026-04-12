@@ -23,10 +23,10 @@ vi.mock("../../src/review/token-estimator.js", () => ({
   summarizeForBudget: vi.fn(),
 }));
 
-import { executePhase } from "../../src/pipeline/phase-executor.js";
+import { executePhase } from "../../src/pipeline/execution/phase-executor.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { runCli, runShell } from "../../src/utils/cli-runner.js";
-import type { PhaseExecutorContext } from "../../src/pipeline/phase-executor.js";
+import type { PhaseExecutorContext } from "../../src/pipeline/execution/phase-executor.js";
 
 import { assemblePrompt, loadTemplate, buildIssueLayer } from "../../src/prompt/template-renderer.js";
 import { analyzeTokenUsage, summarizeForBudget } from "../../src/review/token-estimator.js";

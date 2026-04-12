@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
-import { runPipeline } from "../src/pipeline/orchestrator.js";
+import { runPipeline } from "../src/pipeline/core/orchestrator.js";
 import { JobStore } from "../src/queue/job-store.js";
 import { JobQueue } from "../src/queue/job-queue.js";
 import { runDoctor } from "../src/setup/doctor.js";
@@ -17,7 +17,7 @@ vi.mock("../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
   tryLoadConfig: vi.fn(),
 }));
-vi.mock("../src/pipeline/orchestrator.js", () => ({
+vi.mock("../src/pipeline/core/orchestrator.js", () => ({
   runPipeline: vi.fn(),
 }));
 vi.mock("../src/queue/job-store.js", () => ({

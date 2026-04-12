@@ -1,26 +1,26 @@
-import { generatePlan } from "./plan-generator.js";
-import { executePhase } from "./phase-executor.js";
-import { retryPhase } from "./phase-retry.js";
-import { checkPhaseLimit } from "../safety/phase-limit-guard.js";
-import { schedulePhases } from "./phase-scheduler.js";
-import type { AQConfig } from "../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
-import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import { PatternStore } from "../learning/pattern-store.js";
-import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
-import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
-import { createCheckpoint } from "../safety/rollback-manager.js";
-import { createSlug } from "../utils/slug.js";
-import { buildBaseLayer, buildProjectLayer, buildStaticContent, loadTemplate, computeLayerCacheKey } from "../prompt/template-renderer.js";
+import { generatePlan } from "../phases/plan-generator.js";
+import { executePhase } from "../execution/phase-executor.js";
+import { retryPhase } from "../execution/phase-retry.js";
+import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
+import { schedulePhases } from "../execution/phase-scheduler.js";
+import type { AQConfig } from "../../types/config.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../../types/pipeline.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
+import { getLogger } from "../../utils/logger.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import { PatternStore } from "../../learning/pattern-store.js";
+import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
+import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
+import { createCheckpoint } from "../../safety/rollback-manager.js";
+import { createSlug } from "../../utils/slug.js";
+import { buildBaseLayer, buildProjectLayer, buildStaticContent, loadTemplate, computeLayerCacheKey } from "../../prompt/template-renderer.js";
 import { resolve } from "path";
 
 const logger = getLogger();
 
-function sumUsage(usages: (import("../types/pipeline.js").UsageInfo | undefined)[]): import("../types/pipeline.js").UsageInfo | undefined {
-  const validUsages = usages.filter((usage): usage is import("../types/pipeline.js").UsageInfo => !!usage);
+function sumUsage(usages: (import("../../types/pipeline.js").UsageInfo | undefined)[]): import("../../types/pipeline.js").UsageInfo | undefined {
+  const validUsages = usages.filter((usage): usage is import("../../types/pipeline.js").UsageInfo => !!usage);
   if (validUsages.length === 0) return undefined;
 
   return validUsages.reduce((acc, usage) => ({
@@ -71,7 +71,7 @@ export interface CoreLoopContext {
   checkpoint?: string;  // checkpoint hash for rollback
   worktreeInfo?: { path: string; branch: string };  // worktree information
   slug?: string;  // issue slug for worktree naming
-  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 Base+Project 레이어
+  cachedLayers?: import("../../types/pipeline.js").CachedPromptLayer;  // 캐시된 Base+Project 레이어
 }
 
 export interface CoreLoopResult {
@@ -79,7 +79,7 @@ export interface CoreLoopResult {
   phaseResults: PhaseResult[];
   success: boolean;
   totalCostUsd?: number;
-  totalUsage?: import("../types/pipeline.js").UsageInfo;
+  totalUsage?: import("../../types/pipeline.js").UsageInfo;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
@@ -138,7 +138,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
 
   let plan: Plan;
   let planCostUsd: number | undefined;
-  let planUsage: import("../types/pipeline.js").UsageInfo | undefined;
+  let planUsage: import("../../types/pipeline.js").UsageInfo | undefined;
   try {
     const planResult = await generatePlan({
       issue: ctx.issue,

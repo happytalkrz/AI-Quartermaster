@@ -1,4 +1,5 @@
 import type { ClaudeCliConfig, ExecutionMode, WorkerRole } from "../types/config.js";
+import { CLAUDE_MODELS } from "./model-constants.js";
 
 export type TaskType = "plan" | "phase" | "review" | "fallback";
 
@@ -27,22 +28,22 @@ export function configForTask(config: ClaudeCliConfig, taskType: TaskType): Clau
  */
 const EXECUTION_MODE_MODELS: Record<ExecutionMode, Record<TaskType, string>> = {
   economy: {
-    plan: "claude-sonnet-4-20250514",        // Better plan quality
-    phase: "claude-sonnet-4-20250514",      // Standard implementation
-    review: "claude-haiku-4-5-20251001",    // Quick review
-    fallback: "claude-haiku-4-5-20251001",  // Fast fallback
+    plan: CLAUDE_MODELS.SONNET,        // Better plan quality
+    phase: CLAUDE_MODELS.SONNET,       // Standard implementation
+    review: CLAUDE_MODELS.HAIKU,       // Quick review
+    fallback: CLAUDE_MODELS.HAIKU,     // Fast fallback
   },
   standard: {
-    plan: "claude-opus-4-5",                // Standard config
-    phase: "claude-sonnet-4-20250514",
-    review: "claude-haiku-4-5-20251001",
-    fallback: "claude-sonnet-4-20250514",
+    plan: CLAUDE_MODELS.OPUS,          // Standard config
+    phase: CLAUDE_MODELS.SONNET,
+    review: CLAUDE_MODELS.HAIKU,
+    fallback: CLAUDE_MODELS.SONNET,
   },
   thorough: {
-    plan: "claude-opus-4-5",                // Thorough planning
-    phase: "claude-opus-4-5",               // Careful implementation
-    review: "claude-opus-4-5",              // Thorough review
-    fallback: "claude-opus-4-5",            // Careful fallback
+    plan: CLAUDE_MODELS.OPUS,          // Thorough planning
+    phase: CLAUDE_MODELS.OPUS,         // Careful implementation
+    review: CLAUDE_MODELS.OPUS,        // Thorough review
+    fallback: CLAUDE_MODELS.OPUS,      // Careful fallback
   },
 };
 

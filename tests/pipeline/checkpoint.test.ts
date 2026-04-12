@@ -21,7 +21,7 @@ import {
   loadCheckpoint,
   removeCheckpoint,
   type PipelineCheckpoint
-} from "../../src/pipeline/checkpoint.js";
+} from "../../src/pipeline/errors/checkpoint.js";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, renameSync } from "fs";
 
 const mockWriteFileSync = vi.mocked(writeFileSync);

@@ -9,7 +9,7 @@ vi.mock("../../src/git/commit-helper.js", () => ({
   autoCommitIfDirty: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { runFinalValidation } from "../../src/pipeline/final-validator.js";
+import { runFinalValidation } from "../../src/pipeline/reporting/final-validator.js";
 import { runShell } from "../../src/utils/cli-runner.js";
 import { autoCommitIfDirty } from "../../src/git/commit-helper.js";
 

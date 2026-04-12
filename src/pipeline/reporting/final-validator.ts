@@ -1,7 +1,7 @@
-import { runShell } from "../utils/cli-runner.js";
-import { getLogger } from "../utils/logger.js";
-import type { CommandsConfig, ExecutionMode } from "../types/config.js";
-import { autoCommitIfDirty } from "../git/commit-helper.js";
+import { runShell } from "../../utils/cli-runner.js";
+import { getLogger } from "../../utils/logger.js";
+import type { CommandsConfig, ExecutionMode } from "../../types/config.js";
+import { autoCommitIfDirty } from "../../git/commit-helper.js";
 
 const logger = getLogger();
 

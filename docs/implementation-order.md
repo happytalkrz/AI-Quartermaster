@@ -303,7 +303,7 @@ GitHub Webhook으로 이슈 이벤트를 자동 수신하고, 대시보드에서
 
 ```
 1. Webhook 동작:
-   - GitHub에서 이슈에 "ai-quartermaster" 라벨 추가 시 webhook 수신
+   - GitHub에서 이슈에 "aqm" 라벨 추가 시 webhook 수신
    - 페이로드 HMAC 검증 통과
    - 파이프라인 자동 트리거
 

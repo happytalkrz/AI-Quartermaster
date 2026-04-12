@@ -783,7 +783,7 @@ async function handleDone(job: Job): Promise<void> {
 | **진입 조건** | 어떤 상태에서든 복구 불가능한 실패 발생 |
 | **실행 액션** | 1. Issue에 실패 코멘트 작성 (실패 상태, 오류 메시지, 오류 로그) <br> 2. `ai-failed` 라벨 추가, `ai-in-progress` 라벨 제거 <br> 3. worktree 정리 <br> 4. 실패한 브랜치 삭제 (PR이 없는 경우만) <br> 5. 실패 로그 저장 |
 | **성공 시 다음 상태** | 종료 (터미널 상태) |
-| **재진입** | Issue에 `ai-implement` 라벨을 다시 부여하면 `RECEIVED`부터 재시작 |
+| **재진입** | Issue에 `aqm` 라벨을 다시 부여하면 `RECEIVED`부터 재시작 |
 
 ```typescript
 async function handleFailed(job: Job, error: Error): Promise<void> {

@@ -121,7 +121,7 @@ rounds:
 | `pr.draft` | `boolean` | `true` | X | Draft PR로 생성할지 여부 |
 | `pr.titleTemplate` | `string` | `"[AQ-#{issueNumber}] {title}"` | X | PR 제목 템플릿 |
 | `pr.bodyTemplate` | `string` | `"pr-body.md"` | X | PR 본문 템플릿 파일 경로 (prompts/ 기준) |
-| `pr.labels` | `string[]` | `["ai-quartermaster"]` | X | PR에 자동 부여할 라벨 |
+| `pr.labels` | `string[]` | `["aqm"]` | X | PR에 자동 부여할 라벨 |
 | `pr.assignees` | `string[]` | `[]` | X | PR에 자동 할당할 사용자 |
 | `pr.reviewers` | `string[]` | `[]` | X | PR에 자동 리뷰 요청할 사용자 |
 | `pr.linkIssue` | `boolean` | `true` | X | PR 본문에 `Closes #issueNumber` 자동 포함 여부 |
@@ -146,7 +146,7 @@ rounds:
 | `safety.timeouts.reviewRound` | `number` | `120000` | X | 리뷰 라운드 하나 타임아웃 (ms) |
 | `safety.timeouts.prCreation` | `number` | `30000` | X | PR 생성 타임아웃 (ms) |
 | `safety.stopConditions` | `string[]` | (아래 참조) | X | 파이프라인 즉시 중단 조건 문자열 패턴 |
-| `safety.allowedLabels` | `string[]` | `["ai-quartermaster", "aq-auto"]` | X | 이 라벨이 있는 이슈만 처리. 빈 배열이면 모든 이슈 처리 |
+| `safety.allowedLabels` | `string[]` | `["aqm", "aq-auto"]` | X | 이 라벨이 있는 이슈만 처리. 빈 배열이면 모든 이슈 처리 |
 
 `safety.sensitivePaths` 기본값:
 
@@ -265,7 +265,7 @@ pr:
   titleTemplate: "[AQ-#{issueNumber}] {title}"
   bodyTemplate: "pr-body.md"
   labels:
-    - "ai-quartermaster"
+    - "aqm"
   assignees: []
   reviewers:
     - "lead-dev"
@@ -310,7 +310,7 @@ safety:
     - "TIMEOUT_EXCEEDED"
     - "TEST_FAILURE_PERSISTENT"
   allowedLabels:
-    - "ai-quartermaster"
+    - "aqm"
     - "aq-auto"
 ```
 

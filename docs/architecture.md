@@ -107,13 +107,13 @@ interface GitHubIssueEvent {
 
 ```typescript
 // 다음 조건을 모두 만족해야 Job으로 전달
-const TRIGGER_LABEL = "ai-implement";
+const TRIGGER_LABEL = "aqm";
 
 function shouldProcess(event: GitHubIssueEvent): boolean {
   // 1. action이 "opened" 또는 "labeled"
   if (event.action !== "opened" && event.action !== "labeled") return false;
 
-  // 2. "ai-implement" 라벨 존재
+  // 2. "aqm" 라벨 존재
   if (!event.issue.labels.some(l => l.name === TRIGGER_LABEL)) return false;
 
   // 3. 허용된 repository인지 확인
@@ -704,7 +704,7 @@ async function handleGlobalFailure(job: Job, error: Error): Promise<void> {
 ```
 
 ### 다음 단계
-- `ai-implement` 라벨을 다시 부여하면 처음부터 재시도합니다.
+- `aqm` 라벨을 다시 부여하면 처음부터 재시도합니다.
 - Issue 내용을 수정한 후 라벨을 부여하면 수정된 내용으로 재시도합니다.
 
 ---

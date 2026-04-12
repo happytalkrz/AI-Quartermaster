@@ -364,7 +364,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     }
   };
 
-  const automationRules: AutomationRule[] = []; // TODO: config.automations에서 변환하여 가져오기
+  const automationRules: AutomationRule[] = effectiveConfig.automations ?? [];
   const scheduler = new AutomationScheduler(effectiveConfig, automationRules, automationHandlers);
 
   // === Poller: always start (webhook mode uses it as fallback for missed events) ===

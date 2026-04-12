@@ -356,12 +356,19 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <div class="flex min-h-[calc(100vh-64px)]">
 <!-- SideNavBar -->
 <aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d]">
-  <div class="mb-6 px-2">
-    <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60" data-i18n="commandHQ">Command HQ</div>
-    <div class="text-[10px] font-mono text-outline uppercase">AQM</div>
-    <div id="claude-profile-label" class="text-[10px] font-mono text-on-surface/60 uppercase mt-0.5"></div>
-    <div id="instance-label" class="hidden text-[10px] font-mono text-primary/80 uppercase mt-1 px-1.5 py-0.5 bg-primary/10 rounded w-fit"></div>
-    <div id="instance-owners" class="hidden text-[10px] font-mono text-on-surface/60 mt-0.5 leading-relaxed"></div>
+  <div class="mb-4 px-2">
+    <div id="claude-profile-label" class="text-sm font-headline font-bold text-primary tracking-wide uppercase"></div>
+  </div>
+  <div id="instance-info-section" class="hidden mb-4 px-2 space-y-3">
+    <div id="instance-label-section" class="hidden">
+      <div class="text-[9px] font-bold text-outline uppercase tracking-widest mb-1">Instance Label</div>
+      <div id="instance-label" class="text-xs font-mono text-on-surface/80 leading-relaxed"></div>
+    </div>
+    <div id="instance-owners-section" class="hidden">
+      <div class="text-[9px] font-bold text-outline uppercase tracking-widest mb-1">Instance Owners</div>
+      <div id="instance-owners" class="text-xs font-mono text-on-surface/80 leading-relaxed"></div>
+    </div>
+    <div class="border-b border-outline-variant/20"></div>
   </div>
   <nav class="flex-1 space-y-1" id="sidebar-nav">
     <a class="nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer" data-nav="dashboard">

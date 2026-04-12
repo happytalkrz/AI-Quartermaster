@@ -101,12 +101,15 @@ function toggleTheme() {
  */
 function updateInstanceLabel(label) {
   var el = document.getElementById('instance-label');
+  var section = document.getElementById('instance-label-section');
+  var infoSection = document.getElementById('instance-info-section');
   if (!el) return;
   if (label) {
     el.textContent = label;
-    el.classList.remove('hidden');
+    if (section) section.classList.remove('hidden');
+    if (infoSection) infoSection.classList.remove('hidden');
   } else {
-    el.classList.add('hidden');
+    if (section) section.classList.add('hidden');
   }
 }
 
@@ -116,12 +119,15 @@ function updateInstanceLabel(label) {
  */
 function updateInstanceOwners(owners) {
   var el = document.getElementById('instance-owners');
+  var section = document.getElementById('instance-owners-section');
+  var infoSection = document.getElementById('instance-info-section');
   if (!el) return;
   if (Array.isArray(owners) && owners.length > 0) {
     el.textContent = owners.join(', ');
-    el.classList.remove('hidden');
+    if (section) section.classList.remove('hidden');
+    if (infoSection) infoSection.classList.remove('hidden');
   } else {
-    el.classList.add('hidden');
+    if (section) section.classList.add('hidden');
   }
 }
 

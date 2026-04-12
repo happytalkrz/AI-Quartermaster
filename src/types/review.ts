@@ -14,6 +14,7 @@ export interface ReviewResult {
   findings: ReviewFinding[];
   summary: string;
   durationMs: number;
+  costUsd?: number;
 }
 
 export interface SimplifyResult {
@@ -24,6 +25,7 @@ export interface SimplifyResult {
   testsPassed: boolean;
   rolledBack: boolean;
   summary: string;
+  costUsd?: number;
 }
 
 export interface AnalystFinding {
@@ -77,6 +79,7 @@ export interface ReviewPipelineResult {
   simplify?: SimplifyResult;
   fixAttempts?: ReviewFixAttempt[];
   allPassed: boolean;
+  costUsd?: number;
 }
 
 /**
@@ -127,4 +130,6 @@ export interface UnifiedReviewResult {
   durationMs: number;
   /** 사용된 모델 정보 */
   model?: string;
+  /** Claude 호출 비용 */
+  costUsd?: number;
 }

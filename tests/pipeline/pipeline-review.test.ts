@@ -149,6 +149,15 @@ describe("pipeline-review", () => {
     mockConfigForTask.mockReturnValue({ path: "claude", model: "sonnet" });
     mockConfigForTaskWithMode.mockReturnValue({ path: "claude", model: "sonnet" });
     mockIsPastState.mockReturnValue(false);
+    mockRunSimplify.mockResolvedValue({
+      applied: true,
+      linesRemoved: 5,
+      linesAdded: 3,
+      filesModified: ["src/foo.ts"],
+      testsPassed: true,
+      rolledBack: false,
+      summary: "Simplified 1 file",
+    });
   });
 
   describe("buildReviewVars", () => {

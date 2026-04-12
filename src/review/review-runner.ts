@@ -39,6 +39,7 @@ export async function runReviewRound(ctx: ReviewRunnerContext): Promise<ReviewRe
       findings: [{ severity: "error", message: `Claude invocation failed: ${result.output}` }],
       summary: "Review failed due to Claude error",
       durationMs: Date.now() - startTime,
+      costUsd: result.costUsd,
     };
   }
 
@@ -55,6 +56,7 @@ export async function runReviewRound(ctx: ReviewRunnerContext): Promise<ReviewRe
       findings: parsed.findings || [],
       summary: parsed.summary || "",
       durationMs: Date.now() - startTime,
+      costUsd: result.costUsd,
     };
   } catch (err: unknown) {
     // If Claude output isn't parseable JSON, try to determine verdict from text
@@ -67,6 +69,7 @@ export async function runReviewRound(ctx: ReviewRunnerContext): Promise<ReviewRe
       findings: [],
       summary: result.output.slice(0, 500),
       durationMs: Date.now() - startTime,
+      costUsd: result.costUsd,
     };
   }
 }

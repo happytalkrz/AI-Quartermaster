@@ -454,6 +454,7 @@ export async function executePostProcessingPhases(
     throw new Error(reviewResult.error || "Review phase failed");
   }
 
+  let reviewCostUsd = reviewResult.costUsd ?? 0;
   const reviewVariables = reviewResult.reviewVariables;
   transitionState(runtime, "REVIEWING");
 
@@ -485,6 +486,7 @@ export async function executePostProcessingPhases(
       throw new Error(simplifyResult.error || "Simplify phase failed");
     }
 
+    reviewCostUsd += simplifyResult.costUsd ?? 0;
     transitionState(runtime, "SIMPLIFYING");
   }
 
@@ -535,6 +537,13 @@ export async function executePostProcessingPhases(
     });
   }
 
+  // Update costBreakdown with review costs collected during post-processing
+  const updatedTotalCostUsd = (coreResult.totalCostUsd ?? 0) + reviewCostUsd;
+  if (coreResult.costBreakdown) {
+    coreResult.costBreakdown.reviewCostUsd = reviewCostUsd;
+    coreResult.costBreakdown.totalCostUsd = updatedTotalCostUsd;
+  }
+
   const publishContext = {
     issueNumber,
     repo,
@@ -550,7 +559,7 @@ export async function executePostProcessingPhases(
     dryRun: config.general.dryRun,
     jl,
     totalUsage: coreResult.totalUsage,
-    totalCostUsd: coreResult.totalCostUsd,
+    totalCostUsd: updatedTotalCostUsd,
   };
 
   const publishResult = await pushAndCreatePR(publishContext);
@@ -614,7 +623,7 @@ export async function executePostProcessingPhases(
     return {
       prUrl,
       report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl),
-      totalCostUsd: coreResult.totalCostUsd
+      totalCostUsd: updatedTotalCostUsd,
     };
   }
 
@@ -622,14 +631,14 @@ export async function executePostProcessingPhases(
   logger.info("CI auto-check disabled — skipping");
 
   // Update job with total cost and usage from core-loop results
-  if (context.jobLogger && coreResult.totalCostUsd !== undefined) {
-    context.jobLogger.setCosts(coreResult.totalCostUsd, coreResult.totalUsage);
+  if (context.jobLogger && updatedTotalCostUsd > 0) {
+    context.jobLogger.setCosts(updatedTotalCostUsd, coreResult.totalUsage);
   }
 
   return {
     prUrl,
     report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl),
-    totalCostUsd: coreResult.totalCostUsd
+    totalCostUsd: updatedTotalCostUsd,
   };
 }
 

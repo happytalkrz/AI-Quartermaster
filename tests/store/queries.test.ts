@@ -27,7 +27,7 @@ describe("queries", () => {
   let db: AQDatabase;
 
   beforeEach(() => {
-    dataDir = join(tmpdir(), `aq-queries-test-${Date.now()}`);
+    dataDir = join(tmpdir(), `aq-queries-test-${Date.now()}-${process.pid}`);
     dbPath = join(dataDir, "test.db");
     db = new AQDatabase(dbPath);
   });

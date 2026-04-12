@@ -5,6 +5,7 @@ import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
 import { configForTask } from "../../claude/model-router.js";
 import { runShell } from "../../utils/cli-runner.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig } from "../../types/config.js";
 import type { Plan, Phase, PhaseResult } from "../../types/pipeline.js";
 import { classifyError } from "../errors/error-classifier.js";
@@ -163,7 +164,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     });
 
     if (!claudeResult.success) {
-      throw new Error(`Phase implementation failed: ${claudeResult.output}`);
+      throw new PipelineError("PHASE_FAILED", `Phase implementation failed: ${claudeResult.output}`);
     }
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
@@ -238,7 +239,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           };
         }
 
-        throw new Error(`Tests failed:\n${testResult.stdout}\n${testResult.stderr}`);
+        throw new PipelineError("VERIFICATION_FAILED", `Tests failed:\n${testResult.stdout}\n${testResult.stderr}`);
       }
     }
 

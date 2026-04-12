@@ -1164,7 +1164,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("path is required and must be a string");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "path")).toBe(true);
     });
 
     it("should return 400 for invalid mode value", async () => {
@@ -1186,7 +1188,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("mode must be 'code', 'content', or null");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "mode")).toBe(true);
     });
 
     it("should return 400 when no valid fields to update", async () => {
@@ -1208,7 +1212,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("No valid fields to update");
+      // UpdateProjectRequestSchema는 .strict()이므로 알 수 없는 필드는 Zod 에러로 처리됨
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
     });
 
     it("should return 401 without proper authentication", async () => {
@@ -1597,13 +1603,19 @@ describe("Dashboard API - Version Management", () => {
 
       describe("GET /api/jobs with project filter", () => {
         it("should return jobs filtered by project", async () => {
-          const mockJobs = [
+          const allMockJobs = [
             { id: "job-1", repo: "test/repo1", status: "completed" },
             { id: "job-2", repo: "test/repo2", status: "completed" },
             { id: "job-3", repo: "test/repo1", status: "failed" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          // DB 레벨 필터링 시뮬레이션: repo 옵션에 따라 필터링
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) {
+              return allMockJobs.filter(j => j.repo === opts.repo);
+            }
+            return allMockJobs;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1");
           expect(response.status).toBe(200);
@@ -1626,6 +1638,82 @@ describe("Dashboard API - Version Management", () => {
 
           const result = await response.json();
           expect(result.jobs).toHaveLength(2);
+        });
+
+        it("should return empty array when no jobs match project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) return mockJobs.filter(j => j.repo === opts.repo);
+            return mockJobs;
+          });
+
+          const response = await app.request("/api/jobs?project=test/nonexistent");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(0);
+          expect(result.pagination.total).toBe(0);
+        });
+
+        it("should filter by project and status combined", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; status?: string }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.status) filtered = filtered.filter(j => j.status === opts.status);
+            return filtered;
+          });
+
+          const response = await app.request("/api/jobs?project=test/repo1&status=completed");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(1);
+          expect(result.jobs[0].id).toBe("job-1");
+          expect(result.jobs[0].repo).toBe("test/repo1");
+        });
+
+        it("should report correct pagination total when filtered by project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo1", status: "queued" },
+            { id: "job-4", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; limit?: number }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.limit) filtered = filtered.slice(0, opts.limit);
+            return filtered;
+          });
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=2");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(2);
+          expect(result.pagination.total).toBe(3);
+          expect(result.pagination.hasMore).toBe(true);
+        });
+
+        it("should return 400 for invalid limit query param", async () => {
+          mockJobStore.list.mockReturnValue([]);
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=notanumber");
+          expect(response.status).toBe(400);
+
+          const result = await response.json();
+          expect(result.error).toBe("Invalid query parameters");
         });
       });
 

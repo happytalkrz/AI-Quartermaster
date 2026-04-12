@@ -1,6 +1,7 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 export interface ValidationResult {
   isValid: boolean;
@@ -155,7 +156,7 @@ export async function suggestClone(repo: string): Promise<ValidationResult> {
   } catch (error: unknown) {
     return {
       isValid: false,
-      error: `GitHub CLI 확인 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
+      error: `GitHub CLI 확인 중 오류가 발생했습니다: ${getErrorMessage(error)}`,
       suggestion: "GitHub CLI가 올바르게 설치되었는지 확인해주세요."
     };
   }

@@ -962,7 +962,57 @@ function initProjectSelection() {
     if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
       dropdown.classList.add('hidden');
     }
+
+    var jobDropdown = document.getElementById('job-project-dropdown');
+    var jobButton = document.getElementById('job-project-filter');
+    if (jobDropdown && jobButton && !jobDropdown.contains(e.target) && !jobButton.contains(e.target)) {
+      jobDropdown.classList.add('hidden');
+    }
   });
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Job Filter: Inline Project Dropdown
+   ══════════════════════════════════════════════════════════════ */
+function toggleJobProjectDropdown() {
+  var dropdown = document.getElementById('job-project-dropdown');
+  if (!dropdown) return;
+
+  if (dropdown.classList.contains('hidden')) {
+    renderJobProjectDropdown();
+    dropdown.classList.remove('hidden');
+  } else {
+    dropdown.classList.add('hidden');
+  }
+}
+
+function renderJobProjectDropdown() {
+  var container = document.getElementById('job-project-dropdown-content');
+  if (!container) return;
+
+  var html = '';
+
+  // All Projects option
+  var isAllSelected = currentProject === 'all';
+  html += '<div class="project-option ' + (isAllSelected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high') + ' px-3 py-2 rounded-md cursor-pointer transition-colors text-sm" onclick="setProject(\'all\')">';
+  html += '<div class="flex items-center gap-2">';
+  html += '<span class="material-symbols-outlined text-sm">dashboard</span>';
+  html += '<span>All Projects</span>';
+  if (isAllSelected) html += '<span class="material-symbols-outlined text-sm ml-auto">check</span>';
+  html += '</div></div>';
+
+  // Individual projects
+  allProjects.forEach(function(project) {
+    var isSelected = currentProject === project.repo;
+    html += '<div class="project-option ' + (isSelected ? 'bg-primary/10 text-primary' : 'text-on-surface hover:bg-surface-container-high') + ' px-3 py-2 rounded-md cursor-pointer transition-colors text-sm" onclick="setProject(\'' + esc(project.repo) + '\')">';
+    html += '<div class="flex items-center gap-2">';
+    html += '<span class="material-symbols-outlined text-sm">account_tree</span>';
+    html += '<span>' + esc(project.repo) + '</span>';
+    if (isSelected) html += '<span class="material-symbols-outlined text-sm ml-auto">check</span>';
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1077,5 +1127,6 @@ window.closeEditProjectModal = closeEditProjectModal;
 window.performUpdate = performUpdate;
 window.dismissUpdate = dismissUpdate;
 window.toggleProjectDropdown = toggleProjectDropdown;
+window.toggleJobProjectDropdown = toggleJobProjectDropdown;
 window.setProject = setProject;
 window.setAutomationsView = setAutomationsView;

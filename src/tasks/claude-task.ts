@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { AQMTask, TaskStatus, AQMTaskSummary, BaseTaskOptions, TaskLifecycleEvent, TaskEventListener, SerializedTask } from "./aqm-task.js";
 import { runClaude, getActiveProcessPids, type ClaudeRunResult, type ClaudeRunOptions } from "../claude/claude-runner.js";
 import type { ClaudeCliConfig } from "../types/config.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 /**
  * Claude 태스크 실행을 위한 옵션
@@ -114,7 +115,7 @@ export class ClaudeTask implements AQMTask {
       }
 
       return this._result;
-    } catch (error) {
+    } catch (error: unknown) {
       this._completedAt = new Date();
       this._status = TaskStatus.FAILED;
       this._emitter.emit("failed");
@@ -122,7 +123,7 @@ export class ClaudeTask implements AQMTask {
       // 에러를 ClaudeRunResult 형태로 변환
       this._result = {
         success: false,
-        output: error instanceof Error ? error.message : String(error),
+        output: getErrorMessage(error),
         durationMs: this._completedAt.getTime() - (this._startedAt?.getTime() ?? 0),
       };
 
@@ -149,7 +150,7 @@ export class ClaudeTask implements AQMTask {
         if (activePids.includes(this._processId)) {
           process.kill(this._processId, "SIGKILL");
         }
-      } catch (error) {
+      } catch {
         // 프로세스가 이미 종료되었거나 권한 없음 - 무시
       }
     }

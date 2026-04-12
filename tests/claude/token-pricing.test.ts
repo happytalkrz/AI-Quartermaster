@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateCostFromUsage,
+  calculateCacheHitRatio,
   getModelPricingInfo,
   MODEL_PRICING,
   DEFAULT_PRICING,
@@ -205,6 +206,56 @@ describe("token-pricing", () => {
     it("should have default pricing that matches sonnet", () => {
       expect(DEFAULT_PRICING.input).toBe(MODEL_PRICING.sonnet.input);
       expect(DEFAULT_PRICING.output).toBe(MODEL_PRICING.sonnet.output);
+    });
+  });
+
+  describe("calculateCacheHitRatio", () => {
+    it("should return 0 when no cache read tokens", () => {
+      const usage: UsageInfo = {
+        input_tokens: 1_000_000,
+        output_tokens: 500_000,
+      };
+      expect(calculateCacheHitRatio(usage)).toBe(0);
+    });
+
+    it("should calculate ratio correctly with cache read tokens", () => {
+      const usage: UsageInfo = {
+        input_tokens: 800_000,
+        output_tokens: 500_000,
+        cache_read_input_tokens: 200_000,
+      };
+      // 200_000 / (800_000 + 200_000) = 0.2
+      expect(calculateCacheHitRatio(usage)).toBeCloseTo(0.2, 9);
+    });
+
+    it("should return 1 when all tokens are cache read", () => {
+      const usage: UsageInfo = {
+        input_tokens: 0,
+        output_tokens: 500_000,
+        cache_read_input_tokens: 1_000_000,
+      };
+      // 1_000_000 / (0 + 1_000_000) = 1.0
+      expect(calculateCacheHitRatio(usage)).toBe(1);
+    });
+
+    it("should return 0 when all tokens are zero", () => {
+      const usage: UsageInfo = {
+        input_tokens: 0,
+        output_tokens: 0,
+      };
+      expect(calculateCacheHitRatio(usage)).toBe(0);
+    });
+
+    it("should ignore cache_creation tokens in ratio", () => {
+      const usage: UsageInfo = {
+        input_tokens: 800_000,
+        output_tokens: 500_000,
+        cache_read_input_tokens: 200_000,
+        cache_creation_input_tokens: 500_000,
+      };
+      // cache_creation은 분자/분모 모두 포함하지 않음
+      // 200_000 / (800_000 + 200_000) = 0.2
+      expect(calculateCacheHitRatio(usage)).toBeCloseTo(0.2, 9);
     });
   });
 

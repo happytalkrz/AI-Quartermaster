@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import { parse as parseYaml } from "yaml";
+import { getErrorMessage } from "../../utils/error-utils.js";
 
 /**
  * YAML 에러 객체가 code 프로퍼티를 가지는지 확인하는 타입 가드
@@ -96,7 +97,7 @@ export function loadProjectSource(options: ProjectSourceOptions): ProjectSourceR
     return {
       error: {
         type: 'yaml_syntax',
-        message: `Failed to parse config.yml: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to parse config.yml: ${getErrorMessage(error)}`,
         file: baseConfigPath
       }
     };
@@ -111,7 +112,7 @@ export function loadProjectSource(options: ProjectSourceOptions): ProjectSourceR
       return {
         error: {
           type: 'yaml_syntax',
-          message: `Failed to parse config.local.yml: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          message: `Failed to parse config.local.yml: ${getErrorMessage(error)}`,
           file: localConfigPath
         }
       };

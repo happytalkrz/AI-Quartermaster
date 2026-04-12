@@ -222,6 +222,7 @@ export const CostEntrySchema = z.object({
   totalOutputTokens: z.number().int().nonnegative(),
   totalCacheCreationTokens: z.number().int().nonnegative(),
   totalCacheReadTokens: z.number().int().nonnegative(),
+  cacheHitRatio: z.number().min(0).max(1),
 });
 
 export type CostEntry = z.infer<typeof CostEntrySchema>;
@@ -238,6 +239,7 @@ export const CostsResponseSchema = z.object({
     totalOutputTokens: z.number().int().nonnegative(),
     totalCacheCreationTokens: z.number().int().nonnegative(),
     totalCacheReadTokens: z.number().int().nonnegative(),
+    cacheHitRatio: z.number().min(0).max(1),
   }),
   breakdown: z.array(CostEntrySchema),
 });

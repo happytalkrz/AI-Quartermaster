@@ -1,5 +1,6 @@
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { readFileSync, existsSync, writeFileSync, realpathSync } from "fs";
 import { homedir } from "os";
+import { isAbsolute, resolve } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
@@ -96,6 +97,34 @@ export function deepMerge<T = Record<string, unknown>>(target: unknown, source: 
   return result as T;
 }
 
+/**
+ * projectRoot 경로의 보안 유효성을 검증한다.
+ * - 절대 경로 필수
+ * - ".." 경로 탈출 패턴 차단
+ * - 심볼릭링크 해석 후 실제 경로가 일치하는지 확인
+ */
+export function validateProjectRoot(projectRoot: string): void {
+  if (!isAbsolute(projectRoot)) {
+    throw new Error(`projectRoot must be an absolute path: ${projectRoot}`);
+  }
+
+  // raw 입력에서 ".." 컴포넌트 검사 (resolve 전에 체크해야 탈출 탐지 가능)
+  const rawParts = projectRoot.split(/[/\\]/);
+  if (rawParts.includes('..')) {
+    throw new Error(`projectRoot contains path traversal characters: ${projectRoot}`);
+  }
+
+  const normalized = resolve(projectRoot);
+
+  // 심볼릭링크 해석: 경로가 존재하면 realpath와 비교
+  if (existsSync(projectRoot)) {
+    const realPath = realpathSync(projectRoot);
+    if (realPath !== normalized) {
+      throw new Error(`projectRoot resolves via symlink to an unexpected location: ${projectRoot} -> ${realPath}`);
+    }
+  }
+}
+
 export interface LoadConfigOptions {
   envVars?: Record<string, string | undefined>;
   configOverrides?: Record<string, unknown>;
@@ -105,6 +134,7 @@ export interface LoadConfigOptions {
 export function loadConfig(projectRoot: string): AQConfig;
 export function loadConfig(projectRoot: string, options: LoadConfigOptions): AQConfig;
 export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQConfig {
+  validateProjectRoot(projectRoot);
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
   const userConfigPath = `${homedir()}/.ai-quartermaster/config.yml`;
@@ -149,6 +179,17 @@ export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQ
 export function tryLoadConfig(projectRoot: string): TryLoadConfigResult;
 export function tryLoadConfig(projectRoot: string, options: LoadConfigOptions): TryLoadConfigResult;
 export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions): TryLoadConfigResult {
+  try {
+    validateProjectRoot(projectRoot);
+  } catch (err: unknown) {
+    return {
+      config: null,
+      error: {
+        type: 'validation',
+        message: err instanceof Error ? err.message : String(err)
+      }
+    };
+  }
   const baseConfigPath = `${projectRoot}/config.yml`;
   const localConfigPath = `${projectRoot}/config.local.yml`;
   const userConfigPath = `${homedir()}/.ai-quartermaster/config.yml`;

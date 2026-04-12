@@ -1,6 +1,6 @@
 {
   "name": "ai-quartermaster",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "AI 병참부 - GitHub Issue to Draft PR automation pipeline",
   "type": "module",
   "engines": {

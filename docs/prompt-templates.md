@@ -13,7 +13,7 @@
 | `{{issue.number}}` | `number` | GitHub 이슈 번호 | `42` |
 | `{{issue.title}}` | `string` | 이슈 제목 | `"로그인 페이지 비밀번호 재설정 기능 추가"` |
 | `{{issue.body}}` | `string` | 이슈 본문 (마크다운) | (전체 본문) |
-| `{{issue.labels}}` | `string[]` | 이슈 라벨 목록 | `["enhancement", "ai-quartermaster"]` |
+| `{{issue.labels}}` | `string[]` | 이슈 라벨 목록 | `["enhancement", "aqm"]` |
 | `{{repo.owner}}` | `string` | 저장소 소유자 | `"myorg"` |
 | `{{repo.name}}` | `string` | 저장소 이름 | `"my-web-app"` |
 | `{{repo.structure}}` | `string` | 프로젝트 디렉토리 트리 (깊이 3) | (tree 출력) |

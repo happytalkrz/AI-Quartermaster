@@ -134,7 +134,7 @@ pr:                                      # [선택] PR 설정 (모든 필드에 
   titleTemplate: "[AQ-#{{issueNumber}}] {{title}}"  # [선택] PR 제목 템플릿
   bodyTemplate: "pr-body.md"             # [선택] PR 본문 템플릿
   labels:                                # [선택] PR 라벨 (기본값: [])
-    - "ai-quartermaster"
+    - "aqm"
   assignees: []                          # [선택] 담당자 목록 (기본값: [])
   reviewers: []                          # [선택] 리뷰어 목록 (기본값: [])
   linkIssue: true                        # [선택] 이슈 연결 여부 (기본값: true)
@@ -169,7 +169,7 @@ safety:                                  # [선택] 안전장치 설정 (모든 
     - "SECURITY_VIOLATION"
     - "BASE_BRANCH_MODIFIED"
   allowedLabels:                         # [선택] 허용된 라벨 목록 (기본값: [])
-    - "ai-quartermaster"
+    - "aqm"
   # Rollback strategy on pipeline failure:
   #   "none"        — no rollback (default)
   #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)

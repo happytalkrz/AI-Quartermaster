@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * @fileoverview 프론트엔드 전역 공유 타입 정의 (JSDoc @typedef)
+ * @fileoverview 프론트엔드 전역 공유 타입 정의 (JSDoc typedef)
  * 이 파일은 타입 정의만 포함하며 런타임에서는 빈 모듈입니다.
  */
 

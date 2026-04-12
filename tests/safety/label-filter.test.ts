@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedLabel, getTriggerLabels } from "../../src/safety/label-filter.js";
+import { isAllowedLabel, isAllowedOwner, getTriggerLabels } from "../../src/safety/label-filter.js";
 
 describe("isAllowedLabel", () => {
   it("should return true when allowedLabels is empty", () => {
@@ -26,6 +26,29 @@ describe("isAllowedLabel", () => {
     expect(isAllowedLabel(["feature-request"], ["feature"])).toBe(false);
     expect(isAllowedLabel(["bug-fix"], ["bug"])).toBe(false);
     expect(isAllowedLabel(["feature"], ["feature"])).toBe(true);
+  });
+});
+
+describe("isAllowedOwner", () => {
+  it("should return true when instanceOwners is empty (allow all)", () => {
+    expect(isAllowedOwner("alice", [])).toBe(true);
+    expect(isAllowedOwner("", [])).toBe(true);
+  });
+
+  it("should return true when author is in instanceOwners", () => {
+    expect(isAllowedOwner("alice", ["alice", "bob"])).toBe(true);
+    expect(isAllowedOwner("bob", ["alice", "bob"])).toBe(true);
+  });
+
+  it("should return false when author is not in instanceOwners", () => {
+    expect(isAllowedOwner("charlie", ["alice", "bob"])).toBe(false);
+    expect(isAllowedOwner("", ["alice", "bob"])).toBe(false);
+  });
+
+  it("should be case-sensitive", () => {
+    expect(isAllowedOwner("Alice", ["alice"])).toBe(false);
+    expect(isAllowedOwner("alice", ["Alice"])).toBe(false);
+    expect(isAllowedOwner("alice", ["alice"])).toBe(true);
   });
 });
 

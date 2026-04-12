@@ -1,20 +1,27 @@
 import { describe, it, expect } from "vitest";
 import { dispatchEvent } from "../../src/server/event-dispatcher.js";
+import type { AQConfig } from "../../src/types/config.js";
 
-const makePayload = (action: string, labels: string[]) => ({
+const makePayload = (action: string, labels: string[], author = "user") => ({
   action,
   issue: {
     number: 42,
     title: "Test",
     body: "Body",
     labels: labels.map(name => ({ name })),
-    user: { login: "user" },
+    user: { login: author },
   },
   repository: {
     full_name: "test/repo",
     default_branch: "main",
   },
 });
+
+const makeConfig = (instanceOwners: string[]): AQConfig => ({
+  general: { instanceOwners },
+  git: { allowedRepos: ["test/repo"] },
+  projects: [],
+} as unknown as AQConfig);
 
 describe("dispatchEvent", () => {
   it("should process issues.labeled with matching label", () => {
@@ -42,5 +49,35 @@ describe("dispatchEvent", () => {
   it("should process when triggerLabels is empty (allow all)", () => {
     const result = dispatchEvent("issues", makePayload("labeled", ["anything"]), []);
     expect(result.shouldProcess).toBe(true);
+  });
+
+  describe("owner filtering", () => {
+    it("should process when instanceOwners is empty (allow all authors)", () => {
+      const config = makeConfig([]);
+      const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "anyone"), ["ai-quartermaster"], config);
+      expect(result.shouldProcess).toBe(true);
+    });
+
+    it("should process when author is in instanceOwners", () => {
+      const config = makeConfig(["alice", "bob"]);
+      const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "alice"), ["ai-quartermaster"], config);
+      expect(result.shouldProcess).toBe(true);
+    });
+
+    it("should reject when author is not in instanceOwners", () => {
+      const config = makeConfig(["alice", "bob"]);
+      const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "charlie"), ["ai-quartermaster"], config);
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reason).toContain("charlie");
+      expect(result.reason).toContain("instanceOwners");
+    });
+
+    it("should reject before repo check when owner is not allowed", () => {
+      const config = makeConfig(["alice"]);
+      // charlie is not in instanceOwners — should fail on owner check
+      const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "charlie"), ["ai-quartermaster"], config);
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reason).toMatch(/instanceOwners/);
+    });
   });
 });

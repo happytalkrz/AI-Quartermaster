@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { initProject, detectGitInfo } from "../config/loader.js";
 import { InitCommandOptions } from "../types/config.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 /**
  * aqm init 명령 구현
@@ -79,8 +80,7 @@ export async function runInitCommand(aqRoot: string, options: InitCommandOptions
     console.log("");
 
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`\n❌ 오류: ${msg}`);
+    console.error(`\n❌ 오류: ${getErrorMessage(error)}`);
     process.exit(1);
   }
 }

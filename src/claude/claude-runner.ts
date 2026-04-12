@@ -32,6 +32,7 @@ export interface ClaudeRunResult {
   costUsd?: number;
   durationMs: number;
   usage?: UsageInfo;
+  model?: string;
 }
 
 export interface ClaudeRunOptions {
@@ -302,6 +303,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
       costUsd: getFallbackCost(result.costUsd, result.usage),
       usage: result.usage,
       durationMs,
+      model: config.model,
     };
   }
 
@@ -311,6 +313,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
     costUsd: getFallbackCost(result.costUsd, result.usage),
     usage: result.usage,
     durationMs,
+    model: config.model,
   };
 }
 

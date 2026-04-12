@@ -279,7 +279,7 @@ async function checkDiskSpace(projectPath: string): Promise<{ status: "ok" | "wa
   } catch (error: unknown) {
     return {
       status: "warning",
-      message: `Disk space check failed: ${getErrorMessage(error)}`
+      message: `Disk space check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }
@@ -302,7 +302,7 @@ async function checkDependencies(projectPath: string): Promise<{ status: "ok" | 
   } catch (error: unknown) {
     return {
       status: "error",
-      message: `Dependencies check failed: ${getErrorMessage(error)}`
+      message: `Dependencies check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }

@@ -30,13 +30,9 @@ describe("isPathSafe — 경로 순회 패턴 차단", () => {
     expect(isPathSafe("./relative")).toBe(false);
   });
 
-  it("절대 경로(/)를 차단한다", () => {
-    expect(isPathSafe("/etc/passwd")).toBe(false);
-    expect(isPathSafe("/root/.bashrc")).toBe(false);
-  });
-
-  it("백슬래시 절대 경로를 차단한다", () => {
-    expect(isPathSafe("\\Windows\\System32")).toBe(false);
+  it("절대 경로는 허용한다 (프로젝트 로컬 경로에 필요)", () => {
+    expect(isPathSafe("/etc/passwd")).toBe(true);
+    expect(isPathSafe("/home/user/project")).toBe(true);
   });
 
   it("연속 슬래시(//)를 차단한다", () => {

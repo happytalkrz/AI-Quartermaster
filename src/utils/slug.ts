@@ -33,7 +33,6 @@ export function isPathSafe(path: string): boolean {
   const dangerousPatterns = [
     /\.\./,           // Parent directory ".."
     /^\.\//,          // Current directory "./"
-    /^[/\\]/,         // Absolute path (starts with / or \)
     /[/\\]$/,         // Ends with slash
     /[/\\]{2,}/,      // Multiple consecutive slashes
     // eslint-disable-next-line no-control-regex

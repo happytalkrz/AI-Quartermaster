@@ -876,6 +876,8 @@ function renderRepoCard(repo) {
   var successText = successRate !== null ? successRate + '%' : '—';
   var costText = (repo.totalCostUsd !== null && repo.totalCostUsd !== undefined)
     ? '$' + Number(repo.totalCostUsd).toFixed(2) : '$0.00';
+  var cacheText = (repo.cacheHitRatio !== null && repo.cacheHitRatio !== undefined && repo.cacheHitRatio > 0)
+    ? Math.round(repo.cacheHitRatio * 100) + '%' : '—';
   var lastActiveText = repo.lastActiveAt ? relativeTime(repo.lastActiveAt) : '—';
 
   var footerButtons = (health === 'local-missing')
@@ -901,7 +903,7 @@ function renderRepoCard(repo) {
         '</div>' +
         statusBadge +
       '</div>' +
-      '<div class="grid grid-cols-3 gap-4 mb-6">' +
+      '<div class="grid grid-cols-4 gap-3 mb-6">' +
         '<div class="space-y-1">' +
           '<p class="text-[10px] font-headline uppercase tracking-widest text-outline">Branch</p>' +
           '<div class="flex items-center gap-1.5">' +
@@ -921,7 +923,7 @@ function renderRepoCard(repo) {
           healthHtml +
         '</div>' +
       '</div>' +
-      '<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-3 divide-x divide-outline-variant/20' + statsClass + '">' +
+      '<div class="bg-surface-container-low rounded-lg p-4 grid grid-cols-4 divide-x divide-outline-variant/20' + statsClass + '">' +
         '<div class="px-2 text-center">' +
           '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Jobs</p>' +
           '<p class="text-xl font-headline font-bold">' + (repo.totalJobs || 0) + '</p>' +
@@ -933,6 +935,10 @@ function renderRepoCard(repo) {
         '<div class="px-2 text-center">' +
           '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cost</p>' +
           '<p class="text-xl font-headline font-bold text-tertiary">' + costText + '</p>' +
+        '</div>' +
+        '<div class="px-2 text-center">' +
+          '<p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-1">Cache</p>' +
+          '<p class="text-xl font-headline font-bold text-primary">' + cacheText + '</p>' +
         '</div>' +
       '</div>' +
     '</div>' +

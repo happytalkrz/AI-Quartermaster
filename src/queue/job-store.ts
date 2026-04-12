@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { calculateCacheHitRatio } from "../claude/token-pricing.js";
 import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog, ListJobsFilter } from "../store/database.js";
 import { JsonMigrator } from "./json-migrator.js";
 import type {
@@ -174,7 +175,10 @@ export class JobStore extends EventEmitter {
       isRetry: dbJob.isRetry,
       costUsd: dbJob.costUsd,
       totalCostUsd: dbJob.totalCostUsd,
-      totalUsage: dbJob.totalUsage as UsageStats | undefined
+      totalUsage: dbJob.totalUsage as UsageStats | undefined,
+      cacheHitRatio: dbJob.totalUsage
+        ? calculateCacheHitRatio(dbJob.totalUsage as UsageStats)
+        : undefined
     };
 
     // Phase 결과를 phaseResults 배열로 변환

@@ -38,6 +38,8 @@ interface ProjectSummaryRow {
   failure_count: number;
   total_cost_usd: number;
   last_activity: string | null;
+  total_input_tokens: number;
+  total_cache_read_input_tokens: number;
 }
 
 export interface ProjectSummary {
@@ -48,6 +50,7 @@ export interface ProjectSummary {
   totalCostUsd: number;
   successRate: number;
   lastActivity: string | null;
+  cacheHitRatio: number;
 }
 
 function getTimeRangeCutoff(timeRange: string): string | null {
@@ -213,7 +216,9 @@ export function getProjectSummary(aqDb: AQDatabase): ProjectSummary[] {
       SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
       SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) as failure_count,
       COALESCE(SUM(total_cost_usd), 0) as total_cost_usd,
-      MAX(created_at) as last_activity
+      MAX(created_at) as last_activity,
+      COALESCE(SUM(total_input_tokens), 0) as total_input_tokens,
+      COALESCE(SUM(total_cache_read_input_tokens), 0) as total_cache_read_input_tokens
     FROM jobs
     GROUP BY repo
     ORDER BY last_activity DESC
@@ -227,5 +232,8 @@ export function getProjectSummary(aqDb: AQDatabase): ProjectSummary[] {
     totalCostUsd: row.total_cost_usd,
     successRate: row.total > 0 ? Math.round((row.success_count / row.total) * 100) : 0,
     lastActivity: row.last_activity ?? null,
+    cacheHitRatio: (row.total_input_tokens + row.total_cache_read_input_tokens) > 0
+      ? row.total_cache_read_input_tokens / (row.total_input_tokens + row.total_cache_read_input_tokens)
+      : 0,
   }));
 }

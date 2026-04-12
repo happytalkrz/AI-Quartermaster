@@ -309,7 +309,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority, initialPhaseResults?: PhaseResultInfo[]): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority, initialPhaseResults?: PhaseResultInfo[], triggerReason?: string): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -336,7 +336,7 @@ export class JobQueue {
       }
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies, isRetry, initialPhaseResults, priority);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry, initialPhaseResults, priority, triggerReason);
     // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);

@@ -15,7 +15,8 @@ import type {
   CancelledJob,
   ArchivedJob,
   PhaseResultInfo,
-  UsageStats
+  UsageStats,
+  SkipEvent
 } from "../types/pipeline.js";
 
 const logger = getLogger();
@@ -178,7 +179,8 @@ export class JobStore extends EventEmitter {
       totalUsage: dbJob.totalUsage as UsageStats | undefined,
       cacheHitRatio: dbJob.totalUsage
         ? calculateCacheHitRatio(dbJob.totalUsage as UsageStats)
-        : undefined
+        : undefined,
+      triggerReason: dbJob.triggerReason
     };
 
     // Phase 결과를 phaseResults 배열로 변환
@@ -299,11 +301,12 @@ export class JobStore extends EventEmitter {
       isRetry: job.isRetry,
       costUsd: job.costUsd,
       totalCostUsd: job.totalCostUsd,
-      totalUsage: job.totalUsage
+      totalUsage: job.totalUsage,
+      triggerReason: job.triggerReason
     };
   }
 
-  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[], priority?: import("../types/pipeline.js").JobPriority): QueuedJob {
+  create(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, initialPhaseResults?: PhaseResultInfo[], priority?: import("../types/pipeline.js").JobPriority, triggerReason?: string): QueuedJob {
     const id = `aq-${issueNumber}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const job: QueuedJob = {
       id,
@@ -315,6 +318,7 @@ export class JobStore extends EventEmitter {
       ...(isRetry ? { isRetry } : {}),
       ...(initialPhaseResults && initialPhaseResults.length > 0 ? { phaseResults: initialPhaseResults } : {}),
       ...(priority ? { priority } : {}),
+      ...(triggerReason ? { triggerReason } : {}),
     };
 
     // SQLite에 저장
@@ -775,6 +779,36 @@ export class JobStore extends EventEmitter {
       jobCount: jobsWithCost.length,
       topExpensiveJobs
     };
+  }
+
+  /**
+   * 스킵 이벤트 저장
+   */
+  addSkipEvent(issueNumber: number, repo: string, reasonCode: string, reasonMessage: string, source: SkipEvent["source"]): void {
+    this.db.createSkipEvent({
+      issueNumber,
+      repo,
+      reasonCode,
+      reasonMessage,
+      source,
+      createdAt: new Date().toISOString(),
+    });
+    logger.debug(`SkipEvent saved: issue #${issueNumber} (${repo}) - ${reasonCode}`);
+  }
+
+  /**
+   * 스킵 이벤트 목록 조회
+   */
+  listSkipEvents(options?: { issueNumber?: number; repo?: string; limit?: number }): SkipEvent[] {
+    return this.db.listSkipEvents(options?.issueNumber, options?.repo, options?.limit);
+  }
+
+  /**
+   * 오래된 스킵 이벤트 정리
+   */
+  pruneSkipEvents(maxAgeDays: number): number {
+    const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+    return this.db.pruneOldSkipEvents(cutoff);
   }
 
   /**

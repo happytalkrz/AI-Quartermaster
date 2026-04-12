@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
@@ -6,18 +6,30 @@
    ══════════════════════════════════════════════════════════════ */
 var API_KEY_STORAGE = 'aqm-api-key';
 
+/**
+ * @returns {string}
+ */
 function getApiKey() {
   return localStorage.getItem(API_KEY_STORAGE) || '';
 }
 
+/**
+ * @param {string} key
+ * @returns {void}
+ */
 function setApiKey(key) {
   if (key) localStorage.setItem(API_KEY_STORAGE, key);
   else localStorage.removeItem(API_KEY_STORAGE);
 }
 
+/**
+ * @param {string} url
+ * @param {RequestInit} [opts]
+ * @returns {Promise<Response>}
+ */
 function apiFetch(url, opts) {
   var key = getApiKey();
-  var headers = Object.assign({}, opts && opts.headers);
+  var headers = /** @type {Record<string, string>} */ (Object.assign({}, opts && opts.headers));
   if (key) headers['Authorization'] = 'Bearer ' + key;
   return fetch(url, Object.assign({}, opts, { headers: headers })).then(function(r) {
     if (r.status === 401) {
@@ -28,16 +40,26 @@ function apiFetch(url, opts) {
   });
 }
 
+/** @returns {void} */
 function showApiKeyPrompt() {
-  document.getElementById('api-key-banner').style.display = 'flex';
+  var banner = document.getElementById('api-key-banner');
+  if (banner) banner.style.display = 'flex';
 }
 
+/** @returns {void} */
 function hideApiKeyPrompt() {
-  document.getElementById('api-key-banner').style.display = 'none';
+  var banner = document.getElementById('api-key-banner');
+  if (banner) banner.style.display = 'none';
 }
 
+/**
+ * @param {string} endpoint
+ * @param {Record<string, string | number | boolean | null | undefined>} [additionalParams]
+ * @returns {string}
+ */
 function buildApiUrl(endpoint, additionalParams) {
   var url = endpoint;
+  /** @type {string[]} */
   var params = [];
 
   if (currentProject && currentProject !== 'all') {
@@ -47,7 +69,7 @@ function buildApiUrl(endpoint, additionalParams) {
   if (additionalParams) {
     for (var key in additionalParams) {
       if (additionalParams.hasOwnProperty(key) && additionalParams[key] !== null && additionalParams[key] !== undefined) {
-        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(additionalParams[key]));
+        params.push(encodeURIComponent(key) + '=' + encodeURIComponent(/** @type {string | number | boolean} */ (additionalParams[key])));
       }
     }
   }
@@ -59,16 +81,25 @@ function buildApiUrl(endpoint, additionalParams) {
   return url;
 }
 
+/**
+ * @param {Record<string, string | number | boolean | null | undefined>} [additionalParams]
+ * @returns {string}
+ */
 function buildJobsUrl(additionalParams) {
   return buildApiUrl('/api/jobs', additionalParams);
 }
 
+/**
+ * @param {Record<string, string | number | boolean | null | undefined>} [additionalParams]
+ * @returns {string}
+ */
 function buildStatsUrl(additionalParams) {
   return buildApiUrl('/api/stats', additionalParams);
 }
 
+/** @returns {void} */
 function saveApiKey() {
-  var input = document.getElementById('api-key-input');
+  var input = /** @type {HTMLInputElement} */ (document.getElementById('api-key-input'));
   setApiKey(input.value.trim());
   hideApiKeyPrompt();
   connectSSE();

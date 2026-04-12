@@ -1,9 +1,10 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
    i18n
    ══════════════════════════════════════════════════════════════ */
+/** @type {Record<string, Record<string, unknown>>} */
 var i18n = {
   ko: {
     dashboard: "대시보드",
@@ -149,24 +150,35 @@ var i18n = {
   }
 };
 
+/** @type {string} */
 var currentLang = localStorage.getItem('aqm-lang') || 'ko';
 
+/**
+ * @param {string} key
+ * @returns {string}
+ */
 function t(key) {
   var keys = key.split('.');
+  /** @type {any} */
   var val = i18n[currentLang];
   for (var i = 0; i < keys.length; i++) val = val ? val[keys[i]] : undefined;
-  if (val !== undefined && val !== null && typeof val === 'object' && val._) return val._;
-  return val !== undefined && val !== null ? val : key;
+  if (val !== undefined && val !== null && typeof val === 'object' && val._) return String(val._);
+  return val !== undefined && val !== null ? String(val) : key;
 }
 
+/** @returns {void} */
 function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
-    el.textContent = t(el.dataset.i18n);
+    var htmlEl = /** @type {HTMLElement} */ (el);
+    htmlEl.textContent = t(htmlEl.dataset.i18n || '');
   });
-  document.getElementById('lang-label').textContent = currentLang.toUpperCase();
-  document.getElementById('html-root').lang = currentLang;
+  var langLabel = document.getElementById('lang-label');
+  if (langLabel) langLabel.textContent = currentLang.toUpperCase();
+  var htmlRoot = document.getElementById('html-root');
+  if (htmlRoot) htmlRoot.lang = currentLang;
 }
 
+/** @returns {void} */
 function toggleLang() {
   currentLang = currentLang === 'ko' ? 'en' : 'ko';
   localStorage.setItem('aqm-lang', currentLang);

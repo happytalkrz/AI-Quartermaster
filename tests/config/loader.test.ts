@@ -11,7 +11,7 @@ import {
   deepMerge,
   validateProjectRoot
 } from "../../src/config/loader.js";
-import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, symlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import * as cliRunner from "../../src/utils/cli-runner.js";
@@ -1906,5 +1906,35 @@ describe("validateProjectRoot", () => {
     expect(result.config).toBeNull();
     expect(result.error?.type).toBe("validation");
     expect(result.error?.message).toMatch(/must be an absolute path|path traversal/);
+  });
+
+  it("should accept a non-existent absolute path (existence check is deferred)", () => {
+    expect(() => validateProjectRoot("/nonexistent/absolute/path/that/does/not/exist")).not.toThrow();
+  });
+
+  it("should throw for path ending with .. component", () => {
+    expect(() => validateProjectRoot("/valid/path/..")).toThrow(/path traversal/);
+  });
+
+  it("should throw for path with .. immediately after root", () => {
+    expect(() => validateProjectRoot("/../escape")).toThrow(/path traversal/);
+  });
+
+  it("should throw when projectRoot is a symlink pointing to a different real path", () => {
+    const realTarget = join(tmpdir(), `aq-test-real-${Date.now()}`);
+    mkdirSync(realTarget, { recursive: true });
+    const symlinkPath = join(testDir, "symlink-to-outside");
+    symlinkSync(realTarget, symlinkPath);
+
+    try {
+      expect(() => validateProjectRoot(symlinkPath)).toThrow(/symlink/);
+    } finally {
+      rmSync(realTarget, { recursive: true, force: true });
+    }
+  });
+
+  it("should accept a real directory that resolves to itself (no symlink)", () => {
+    // testDir is a real path created in beforeEach, should pass cleanly
+    expect(() => validateProjectRoot(testDir)).not.toThrow();
   });
 });

@@ -1501,3 +1501,171 @@ Plan 생성 정확도를 높이기 위해 수집된 추가 컨텍스트입니다
     });
   });
 });
+
+describe("validatePlan failure cases", () => {
+  let testDir: string;
+  let promptsDir: string;
+  const mockRunClaude = vi.mocked(runClaude);
+  const mockExtractJson = vi.mocked(extractJson);
+
+  beforeEach(() => {
+    const { mkdirSync: mkdir, writeFileSync: writeFile } = require("fs") as typeof import("fs");
+    testDir = require("path").join(require("os").tmpdir(), `aq-plan-validate-${Date.now()}`);
+    promptsDir = require("path").join(testDir, "prompts");
+    mkdir(promptsDir, { recursive: true });
+    writeFile(
+      require("path").join(promptsDir, "plan-generation.md"),
+      "Generate plan for #{{issue.number}}: {{issue.title}}"
+    );
+    vi.clearAllMocks();
+    mockExtractJson.mockImplementation((text: string) => JSON.parse(text));
+  });
+
+  function makePlanInput(overrides: object = {}) {
+    return {
+      issue: { number: 1, title: "Test", body: "", labels: [] },
+      repo: { owner: "t", name: "r" },
+      branch: { base: "main", work: "ax/1-test" },
+      repoStructure: "",
+      claudeConfig: {
+        path: "claude",
+        model: "test",
+        maxTurns: 1,
+        timeout: 1000,
+        additionalArgs: [],
+      },
+      promptsDir,
+      cwd: testDir,
+      ...overrides,
+    };
+  }
+
+  it("should throw when plan has no phases", async () => {
+    const badPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "P",
+      requirements: ["R1"],
+      affectedFiles: [],
+      risks: [],
+      phases: [],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(badPlan);
+
+    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have at least one phase");
+  });
+
+  it("should throw when plan has no problemDefinition", async () => {
+    const badPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "",
+      requirements: ["R1"],
+      affectedFiles: [],
+      risks: [],
+      phases: [{ index: 0, name: "P1", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [] }],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(badPlan);
+
+    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have a problem definition");
+  });
+
+  it("should throw when plan has empty requirements", async () => {
+    const badPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "Some problem",
+      requirements: [],
+      affectedFiles: [],
+      risks: [],
+      phases: [{ index: 0, name: "P1", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [] }],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(badPlan);
+
+    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have requirements");
+  });
+
+  it("should throw on circular phase dependencies", async () => {
+    const badPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "Some problem",
+      requirements: ["R1"],
+      affectedFiles: [],
+      risks: [],
+      phases: [
+        { index: 0, name: "P1", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [], dependsOn: [1] },
+        { index: 1, name: "P2", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [], dependsOn: [0] },
+      ],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(badPlan);
+
+    await expect(generatePlan(makePlanInput())).rejects.toThrow(/[Cc]ircular/);
+  });
+
+  it("should pass executionMode to configForTaskWithMode", async () => {
+    const { configForTaskWithMode } = await import("../../src/claude/model-router.js");
+    const mockConfig = vi.mocked(configForTaskWithMode);
+    mockConfig.mockImplementation((config) => config);
+
+    const validPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "P",
+      requirements: ["R1"],
+      affectedFiles: [],
+      risks: [],
+      phases: [{ index: 0, name: "P1", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [] }],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(validPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(validPlan);
+
+    await generatePlan(makePlanInput({ executionMode: "parallel" }));
+
+    expect(mockConfig).toHaveBeenCalledWith(
+      expect.any(Object),
+      "plan",
+      "parallel"
+    );
+  });
+
+  it("should use locale parameter in token analysis", async () => {
+    const validPlan = {
+      mode: "code",
+      issueNumber: 1,
+      title: "T",
+      problemDefinition: "P",
+      requirements: ["R1"],
+      affectedFiles: [],
+      risks: [],
+      phases: [{ index: 0, name: "P1", description: "D", targetFiles: [], commitStrategy: "S", verificationCriteria: [] }],
+      verificationPoints: [],
+      stopConditions: [],
+    };
+    mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(validPlan), durationMs: 100 });
+    mockExtractJson.mockReturnValue(validPlan);
+
+    // Should not throw even with locale specified
+    const result = await generatePlan(makePlanInput({ locale: "ko" }));
+    expect(result.plan.issueNumber).toBe(1);
+  });
+});

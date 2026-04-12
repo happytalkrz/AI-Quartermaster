@@ -289,8 +289,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
           if (!checkpoint) {
             try {
               checkpoint = await createCheckpoint({ cwd: ctx.cwd, gitPath: ctx.config.git.gitPath });
-            } catch (checkpointError) {
-              logger.warn(`Failed to create checkpoint for retry: ${checkpointError}`);
+            } catch (checkpointError: unknown) {
+              logger.warn(`Failed to create checkpoint for retry: ${getErrorMessage(checkpointError)}`);
               checkpoint = "fallback";
             }
           }

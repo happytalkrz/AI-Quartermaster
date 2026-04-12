@@ -13,6 +13,20 @@ export function isAllowedLabel(
 }
 
 /**
+ * Checks if the issue author is an allowed owner.
+ * Returns true if instanceOwners is empty (all owners allowed).
+ */
+export function isAllowedOwner(
+  issueAuthor: string,
+  instanceOwners: string[]
+): boolean {
+  if (instanceOwners.length === 0) {
+    return true;
+  }
+  return instanceOwners.includes(issueAuthor);
+}
+
+/**
  * Determines effective trigger labels.
  * If instanceLabel is set, uses only that label (single-label mode).
  * Otherwise falls back to allowedLabels.

@@ -434,6 +434,11 @@ export class JobQueue {
 
     // Trigger immediate processing if we now have more capacity
     this.processNext();
+
+    // If processNext is already running (re-entrancy), ensure it gets called again
+    if (this.isProcessing && !this.needsReprocess) {
+      this.needsReprocess = true;
+    }
   }
 
   /**

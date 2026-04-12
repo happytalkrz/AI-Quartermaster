@@ -1,30 +1,35 @@
-const queues = new Map<string, Array<() => void>>();
-const locked = new Set<string>();
+import { lock } from 'proper-lockfile';
+import { resolve } from 'node:path';
+import { mkdir, writeFile, access } from 'node:fs/promises';
+import { AQM_HOME } from '../config/project-resolver.js';
+
+const LOCKS_DIR = resolve(AQM_HOME, 'locks');
+
+function repoToSlug(repo: string): string {
+  return repo.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+async function ensureLockFile(file: string): Promise<void> {
+  await mkdir(LOCKS_DIR, { recursive: true });
+  try {
+    await access(file);
+  } catch {
+    await writeFile(file, '');
+  }
+}
 
 export async function withRepoLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
-  // Wait until the lock is free
-  if (locked.has(repo)) {
-    await new Promise<void>(resolve => {
-      if (!queues.has(repo)) {
-        queues.set(repo, []);
-      }
-      queues.get(repo)!.push(resolve);
-    });
-  }
+  const lockFile = resolve(LOCKS_DIR, repoToSlug(repo));
+  await ensureLockFile(lockFile);
 
-  locked.add(repo);
+  const release = await lock(lockFile, {
+    retries: { retries: 20, minTimeout: 50, maxTimeout: 500 },
+    realpath: false,
+  });
+
   try {
     return await fn();
   } finally {
-    locked.delete(repo);
-    // Wake next waiter, if any
-    const queue = queues.get(repo);
-    if (queue && queue.length > 0) {
-      const next = queue.shift()!;
-      if (queue.length === 0) {
-        queues.delete(repo);
-      }
-      next();
-    }
+    await release();
   }
 }

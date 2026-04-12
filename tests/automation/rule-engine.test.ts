@@ -324,3 +324,50 @@ describe("executeAction", () => {
     expect(noopHandlers.pauseProject).not.toHaveBeenCalled();
   });
 });
+
+// ─── keyword-match 새니타이즈 ────────────────────────────────────────────────
+
+describe("keyword-match sanitization", () => {
+  const makeRule = (keywords: string[]): AutomationRule => ({
+    id: "sanitize-test",
+    name: "sanitize",
+    trigger: { type: "issue-created" },
+    conditions: [{ type: "keyword-match", keywords }],
+    actions: [],
+  });
+
+  it("matches keyword when title contains embedded null byte (bypass attempt)", () => {
+    // Attacker uses null byte to try to break keyword detection.
+    // After stripping control chars, "lo\x00gin" → "login" which should match.
+    const ctx: RuleContext = {
+      ...baseContext,
+      issue: { ...baseIssue, title: "lo\x00gin issue", body: "" },
+    };
+    expect(evaluateRule(makeRule(["login"]), ctx)).toBe(true);
+  });
+
+  it("matches keyword when body contains control char bypass attempt", () => {
+    const ctx: RuleContext = {
+      ...baseContext,
+      issue: { ...baseIssue, title: "", body: "sec\x1Furity problem" },
+    };
+    expect(evaluateRule(makeRule(["security"]), ctx)).toBe(true);
+  });
+
+  it("matches fullwidth keyword via NFKC normalization", () => {
+    // Fullwidth ｌｏｇｉｎ (U+FF4C etc.) should normalize to "login"
+    const ctx: RuleContext = {
+      ...baseContext,
+      issue: { ...baseIssue, title: "\uFF4C\uFF4F\uFF47\uFF49\uFF4E", body: "" },
+    };
+    expect(evaluateRule(makeRule(["login"]), ctx)).toBe(true);
+  });
+
+  it("normal keyword matching still works after sanitization", () => {
+    const ctx: RuleContext = {
+      ...baseContext,
+      issue: { ...baseIssue, title: "Login bug", body: "" },
+    };
+    expect(evaluateRule(makeRule(["login"]), ctx)).toBe(true);
+  });
+});

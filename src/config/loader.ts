@@ -472,8 +472,9 @@ export function removeProjectFromConfig(configPath: string, targetRepo: string):
     }
 
     if (line.startsWith(itemIndent) && line.includes('- repo:')) {
-      const repoMatch = line.match(/- repo:\s*["'](.+?)["']/);
-      if (repoMatch && repoMatch[1] === targetRepo) {
+      const repoMatch = line.match(/- repo:\s*(?:["'](.+?)["']|(\S+))/);
+      const matchedRepo = repoMatch?.[1] || repoMatch?.[2];
+      if (matchedRepo === targetRepo) {
         removeStartIndex = i;
         removeEndIndex = i;
 
@@ -536,8 +537,9 @@ export function updateProjectInConfig(configPath: string, targetRepo: string, up
     if (!line.startsWith(itemIndent) && trimmed.match(/^\w+\s*:/)) break;
 
     if (line.startsWith(itemIndent) && line.includes('- repo:')) {
-      const match = line.match(/- repo:\s*["'](.+?)["']/);
-      if (match?.[1] !== targetRepo) continue;
+      const match = line.match(/- repo:\s*(?:["'](.+?)["']|(\S+))/);
+      const matchedRepo = match?.[1] || match?.[2];
+      if (matchedRepo !== targetRepo) continue;
 
       projectStart = i;
       projectEnd = i;

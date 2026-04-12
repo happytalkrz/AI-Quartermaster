@@ -163,6 +163,10 @@ export const DEFAULT_CONFIG: AQConfig = {
   features: {
     parallelPhases: false,  // 안정성을 위해 기본값은 false
     multiAI: false,        // 기본값은 false
+    workerPool: {
+      minWorkers: 0,        // idle shrink 후 유지할 최소 워커 수
+      // idleTimeoutMs 미설정 → shrink 비활성화
+    },
   },
   automations: [],
   executionMode: "standard",

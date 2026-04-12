@@ -241,16 +241,11 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         // Detect partial tsc success: errors only in specific files
         const tscRawResult = parseTscOutput(output);
         if (tscRawResult.hasErrors && Object.keys(tscRawResult.errorsByFile).length > 0 && vitestResult.totalFiles === 0) {
-          // Filter to targetFiles only, then diff against baseline to extract new errors
-          const filteredErrors = filterErrorsByTargetFiles(tscRawResult.errorsByFile, ctx.phase.targetFiles);
-          const filteredTsc = {
-            errorsByFile: filteredErrors,
-            totalErrors: Object.values(filteredErrors).reduce((sum, errs) => sum + errs.length, 0),
-            hasErrors: Object.keys(filteredErrors).length > 0,
-          };
+          // Diff against baseline to extract only NEW errors.
+          // targetFiles filtering is applied only to throwOutput (Claude's retry context) — not here.
           const effectiveTsc = ctx.baseline
-            ? diffTscErrors(ctx.baseline.tsc, filteredTsc)
-            : filteredTsc;
+            ? diffTscErrors(ctx.baseline.tsc, tscRawResult)
+            : tscRawResult;
 
           if (effectiveTsc.hasErrors) {
             logger.warn(
@@ -275,9 +270,9 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             };
           }
 
-          // All tsc errors are pre-existing or out-of-scope — treat as success
+          // All tsc errors are pre-existing (matched baseline) — treat as success
           logger.info(
-            `Phase ${ctx.phase.index}: ${tscRawResult.totalErrors} tsc error(s) all pre-existing/out-of-scope — treating as success`
+            `Phase ${ctx.phase.index}: ${tscRawResult.totalErrors} tsc error(s) all pre-existing — treating as success`
           );
           const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
           return {

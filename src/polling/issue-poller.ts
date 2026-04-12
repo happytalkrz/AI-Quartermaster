@@ -252,16 +252,12 @@ export class IssuePoller {
     let newIssuesFound = 0;
 
     for (const issue of issues) {
-      if (this.store.shouldBlockRepickup(issue.number, repo)) {
-        const existingJob = this.store.findAnyByIssue(issue.number, repo);
-        if (existingJob) {
-          if (existingJob.status === "running" || existingJob.status === "queued") {
-            logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 처리 중), 건너뜀`);
-          } else {
-            logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 존재), 건너뜀`);
-          }
+      const existingJob = this.store.findAnyByIssue(issue.number, repo);
+      if (existingJob) {
+        if (existingJob.status === "running" || existingJob.status === "queued") {
+          logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 처리 중), 건너뜀`);
         } else {
-          logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단, 건너뜀`);
+          logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 존재), 건너뜀`);
         }
         continue;
       }

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { dispatchEvent } from "../../src/server/event-dispatcher.js";
 import type { AQConfig } from "../../src/types/config.js";
+import type { JobStore } from "../../src/queue/job-store.js";
+import type { Job } from "../../src/types/pipeline.js";
 
 const makePayload = (action: string, labels: string[], author = "user") => ({
   action,
@@ -79,6 +81,38 @@ describe("dispatchEvent", () => {
       const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "charlie"), ["ai-quartermaster"], config);
       expect(result.shouldProcess).toBe(false);
       expect(result.reason).toMatch(/instanceOwners/);
+    });
+  });
+
+  describe("active job deduplication", () => {
+    const makeStore = (job: Partial<Job> | undefined): Pick<JobStore, "findAnyByIssue"> => ({
+      findAnyByIssue: () => job as Job | undefined,
+    });
+
+    it("should block dispatch when queued job already exists", () => {
+      const store = makeStore({ id: "aq-42-1", status: "queued", issueNumber: 42, repo: "test/repo" });
+      const result = dispatchEvent("issues", makePayload("labeled", ["aqm"]), ["aqm"], undefined, store as unknown as JobStore);
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reason).toMatch(/queued/);
+    });
+
+    it("should block dispatch when running job already exists", () => {
+      const store = makeStore({ id: "aq-42-2", status: "running", issueNumber: 42, repo: "test/repo" });
+      const result = dispatchEvent("issues", makePayload("labeled", ["aqm"]), ["aqm"], undefined, store as unknown as JobStore);
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reason).toMatch(/running/);
+    });
+
+    it("should allow dispatch when only a success job exists", () => {
+      const store = makeStore({ id: "aq-42-3", status: "success", issueNumber: 42, repo: "test/repo" });
+      const result = dispatchEvent("issues", makePayload("labeled", ["aqm"]), ["aqm"], undefined, store as unknown as JobStore);
+      expect(result.shouldProcess).toBe(true);
+    });
+
+    it("should allow dispatch when no existing job", () => {
+      const store = makeStore(undefined);
+      const result = dispatchEvent("issues", makePayload("labeled", ["aqm"]), ["aqm"], undefined, store as unknown as JobStore);
+      expect(result.shouldProcess).toBe(true);
     });
   });
 });

@@ -263,7 +263,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
           errorCategory: result.report?.errorCategory,
           lastOutput: result.report?.errorSummary,
         });
-        return { error: errorMsg };
+        return { error: errorMsg, diagnosis: result.report?.diagnosis };
       }
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);

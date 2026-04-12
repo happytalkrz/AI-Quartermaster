@@ -1143,7 +1143,7 @@ function initProjectSelection() {
 
     var jobDropdown = document.getElementById('job-project-dropdown');
     var jobButton = document.getElementById('job-project-filter');
-    if (jobDropdown && jobButton && !jobDropdown.contains(e.target) && !jobButton.contains(e.target)) {
+    if (jobDropdown && jobButton && !jobDropdown.contains(/** @type {Node} */ (e.target)) && !jobButton.contains(/** @type {Node} */ (e.target))) {
       jobDropdown.classList.add('hidden');
     }
   });

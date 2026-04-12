@@ -7,7 +7,7 @@
 | 접수됨 | `RECEIVED` | Issue 이벤트 수신, Job 생성 완료 |
 | 검증됨 | `VALIDATED` | Issue 내용 파싱 및 유효성 검증 완료 |
 | 베이스 동기화 | `BASE_SYNCED` | 원격 저장소 fetch 및 base branch 동기화 완료 |
-| 브랜치 생성됨 | `BRANCH_CREATED` | 작업 브랜치 `ax/{n}-{slug}` 생성 완료 |
+| 브랜치 생성됨 | `BRANCH_CREATED` | 작업 브랜치 `aq/{n}-{slug}` 생성 완료 |
 | 워크트리 생성됨 | `WORKTREE_CREATED` | 격리된 worktree 디렉토리 생성 완료 |
 | 계획 생성됨 | `PLAN_GENERATED` | Claude가 구현 계획(phase 분할 포함) 생성 완료 |
 | Phase 진행 중 | `PHASE_IN_PROGRESS` | 현재 phase 구현 및 검증 진행 중 (루프) |
@@ -114,7 +114,7 @@
 | 항목 | 내용 |
 |------|------|
 | **진입 조건** | Webhook Receiver가 GitHub Issue 이벤트를 수신하고 필터 조건을 통과함 |
-| **실행 액션** | 1. Job 객체 생성 (UUID, issueNumber, repository, baseBranch, issueTitle, issueBody 저장) <br> 2. Job을 큐에 등록 <br> 3. Issue에 "접수 완료" 코멘트 작성 <br> 4. `ai-in-progress` 라벨 추가 |
+| **실행 액션** | 1. Job 객체 생성 (UUID, issueNumber, repository, baseBranch, issueTitle, issueBody 저장) <br> 2. Job을 큐에 등록 <br> 3. Issue에 "접수 완료" 코멘트 작성 |
 | **성공 시 다음 상태** | `VALIDATED` |
 | **실패 조건** | Job 생성 불가 (메모리 부족 등 시스템 오류) |
 | **실패 시 다음 상태** | `FAILED` |
@@ -128,7 +128,7 @@ async function handleReceived(job: Job): Promise<void> {
     body: `## AI 병참부 - 접수 완료\n\nIssue #${job.issueNumber}을 접수했습니다. 자동 구현을 시작합니다.\n\nJob ID: \`${job.id}\``,
   });
 
-  await githubAPI.addLabel(job.repository, job.issueNumber, "ai-in-progress");
+  // 미구현: "ai-in-progress" 라벨 추가 (코드에 구현되지 않음)
 }
 ```
 
@@ -216,7 +216,7 @@ async function handleBaseSync(job: Job): Promise<void> {
 | 항목 | 내용 |
 |------|------|
 | **진입 조건** | `BASE_SYNCED` 상태에서 원격 동기화 완료 |
-| **실행 액션** | 1. slug 생성: Issue 제목에서 브랜치명 생성 <br> 2. 브랜치명 조합: `ax/{issueNumber}-{slug}` <br> 3. 브랜치명 충돌 확인 및 해소 <br> 4. `git checkout -B ax/{n}-{slug} origin/{baseBranch}` 실행 |
+| **실행 액션** | 1. slug 생성: Issue 제목에서 브랜치명 생성 <br> 2. 브랜치명 조합: `aq/{issueNumber}-{slug}` <br> 3. 브랜치명 충돌 확인 및 해소 <br> 4. `git checkout -B aq/{n}-{slug} origin/{baseBranch}` 실행 |
 | **성공 시 다음 상태** | `WORKTREE_CREATED` |
 | **실패 조건** | 브랜치 생성 실패, 충돌 해소 불가 (5개 이상 동일 접두사 브랜치 존재) |
 | **실패 시 다음 상태** | `FAILED` |
@@ -225,7 +225,7 @@ async function handleBaseSync(job: Job): Promise<void> {
 ```typescript
 async function handleBranchCreation(job: Job): Promise<string> {
   const slug = createSlug(job.issueTitle);
-  const baseBranchName = `ax/${job.issueNumber}-${slug}`;
+  const baseBranchName = `aq/${job.issueNumber}-${slug}`;
 
   // 충돌 해소
   const branchName = await resolveBranchConflict(baseBranchName, job.issueNumber);
@@ -696,7 +696,7 @@ async function handleFinalValidation(
 | 항목 | 내용 |
 |------|------|
 | **진입 조건** | `FINAL_VALIDATING` 성공 |
-| **실행 액션** | 1. 작업 브랜치를 원격에 push <br> 2. PR 본문 생성 (계획, phase 요약, 검증 결과 포함) <br> 3. `gh pr create --draft` 실행 <br> 4. Issue에 PR 링크 코멘트 작성 <br> 5. `ai-review-ready` 라벨 추가 |
+| **실행 액션** | 1. 작업 브랜치를 원격에 push <br> 2. PR 본문 생성 (계획, phase 요약, 검증 결과 포함) <br> 3. `gh pr create --draft` 실행 <br> 4. Issue에 PR 링크 코멘트 작성 |
 | **성공 시 다음 상태** | `DONE` |
 | **실패 조건** | push 실패, PR 생성 실패 (권한 부족, 네트워크 오류) |
 | **실패 시 다음 상태** | 재시도 3회 초과 시 `FAILED` |
@@ -739,9 +739,7 @@ async function handleDraftPRCreation(
     body: `## AI 병참부 - 구현 완료\n\nDraft PR이 생성되었습니다: ${pr.url}\n\n검토 후 승인/머지해 주세요.`,
   });
 
-  // 5. 라벨 업데이트
-  await githubAPI.removeLabel(job.repository, job.issueNumber, "ai-in-progress");
-  await githubAPI.addLabel(job.repository, job.issueNumber, "ai-review-ready");
+  // 5. 라벨 업데이트 (미구현: "ai-in-progress" 제거, "ai-review-ready" 추가는 코드에 구현되지 않음)
 
   return pr;
 }
@@ -781,9 +779,9 @@ async function handleDone(job: Job): Promise<void> {
 | 항목 | 내용 |
 |------|------|
 | **진입 조건** | 어떤 상태에서든 복구 불가능한 실패 발생 |
-| **실행 액션** | 1. Issue에 실패 코멘트 작성 (실패 상태, 오류 메시지, 오류 로그) <br> 2. `ai-failed` 라벨 추가, `ai-in-progress` 라벨 제거 <br> 3. worktree 정리 <br> 4. 실패한 브랜치 삭제 (PR이 없는 경우만) <br> 5. 실패 로그 저장 |
+| **실행 액션** | 1. Issue에 실패 코멘트 작성 (실패 상태, 오류 메시지, 오류 로그) <br> 2. worktree 정리 <br> 3. 실패한 브랜치 삭제 (PR이 없는 경우만) <br> 4. 실패 로그 저장 |
 | **성공 시 다음 상태** | 종료 (터미널 상태) |
-| **재진입** | Issue에 `ai-implement` 라벨을 다시 부여하면 `RECEIVED`부터 재시작 |
+| **재진입** | Issue에 `instanceLabel` (기본값: `aqm`) 라벨을 다시 부여하면 `RECEIVED`부터 재시작 |
 
 ```typescript
 async function handleFailed(job: Job, error: Error): Promise<void> {
@@ -794,11 +792,7 @@ async function handleFailed(job: Job, error: Error): Promise<void> {
     body: formatFailureComment(job, error),
   });
 
-  // 2. 라벨 업데이트
-  try {
-    await githubAPI.removeLabel(job.repository, job.issueNumber, "ai-in-progress");
-  } catch { /* 라벨이 없을 수 있음 */ }
-  await githubAPI.addLabel(job.repository, job.issueNumber, "ai-failed");
+  // 2. 라벨 업데이트 (미구현: "ai-in-progress" 제거, "ai-failed" 추가는 코드에 구현되지 않음)
 
   // 3. Worktree 정리
   try {

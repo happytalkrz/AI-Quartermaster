@@ -434,6 +434,8 @@ export interface JobBase {
   costUsd?: number;
   totalCostUsd?: number;
   totalUsage?: UsageStats;
+  /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
+  cacheHitRatio?: number;
 }
 
 /**

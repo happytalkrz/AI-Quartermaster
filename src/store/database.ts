@@ -29,6 +29,7 @@ interface JobRow {
   total_output_tokens: number | null;
   total_cache_creation_input_tokens: number | null;
   total_cache_read_input_tokens: number | null;
+  cache_hit_ratio: number | null;
   priority: string | null;
 }
 
@@ -81,6 +82,8 @@ export interface DatabaseJob {
     cache_read_input_tokens?: number;
   };
   priority?: JobPriority;
+  /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
+  cacheHitRatio?: number;
 }
 
 export interface DatabasePhase {
@@ -112,6 +115,7 @@ export interface ListJobsFilter {
   status?: DatabaseJob["status"];
   statuses?: DatabaseJob["status"][];
   excludeStatus?: DatabaseJob["status"];
+  repo?: string;
   limit?: number;
   offset?: number;
 }
@@ -157,6 +161,7 @@ export class AQDatabase {
         total_output_tokens INTEGER CHECK (total_output_tokens >= 0),
         total_cache_creation_input_tokens INTEGER CHECK (total_cache_creation_input_tokens >= 0),
         total_cache_read_input_tokens INTEGER CHECK (total_cache_read_input_tokens >= 0),
+        cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1),
         priority TEXT CHECK (priority IN ('high', 'normal', 'low'))
       )
     `);
@@ -199,6 +204,8 @@ export class AQDatabase {
       CREATE INDEX IF NOT EXISTS idx_jobs_issue_repo ON jobs (issue_number, repo);
       CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
       CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs (created_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_status_retry_completed ON jobs (status, is_retry, completed_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_status_last_updated ON jobs (status, last_updated_at, completed_at, created_at);
       CREATE INDEX IF NOT EXISTS idx_phases_job_id ON phases (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_job_id ON logs (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs (timestamp);
@@ -235,6 +242,13 @@ export class AQDatabase {
       this.db.exec(`ALTER TABLE phases ADD COLUMN completed_at TEXT`);
       logger.info("Migration: added completed_at column to phases table");
     }
+
+    // jobs 테이블에 cache_hit_ratio 컬럼 추가 (기존 DB 마이그레이션)
+    const hasCacheHitRatio = jobColumns.some(col => col.name === "cache_hit_ratio");
+    if (!hasCacheHitRatio) {
+      this.db.exec(`ALTER TABLE jobs ADD COLUMN cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1)`);
+      logger.info("Migration: added cache_hit_ratio column to jobs table");
+    }
   }
 
   // === Job CRUD ===
@@ -245,15 +259,15 @@ export class AQDatabase {
         id, issue_number, repo, status, created_at, started_at, completed_at,
         pr_url, error, last_updated_at, current_step, dependencies, progress,
         is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
-        total_cache_creation_input_tokens, total_cache_read_input_tokens, priority
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_cache_creation_input_tokens, total_cache_read_input_tokens, cache_hit_ratio, priority
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
     stmt.run(
       params[0], params[1], params[2], params[3], params[4], params[5], params[6],
       params[7], params[8], params[9], params[10], params[11], params[12], params[13],
-      params[14], params[15], params[16], params[17], params[18], params[19], params[20]
+      params[14], params[15], params[16], params[17], params[18], params[19], params[20], params[21]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -278,7 +292,7 @@ export class AQDatabase {
         last_updated_at = ?, current_step = ?, dependencies = ?,
         progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
         total_input_tokens = ?, total_output_tokens = ?, total_cache_creation_input_tokens = ?,
-        total_cache_read_input_tokens = ?, priority = ?
+        total_cache_read_input_tokens = ?, cache_hit_ratio = ?, priority = ?
       WHERE id = ?
     `);
 
@@ -286,7 +300,7 @@ export class AQDatabase {
     const changes = stmt.run(
       params[1], params[2], params[3], params[4], params[5], params[6], params[7],
       params[8], params[9], params[10], params[11], params[12], params[13], params[14],
-      params[15], params[16], params[17], params[18], params[19], params[20], id
+      params[15], params[16], params[17], params[18], params[19], params[20], params[21], id
     ).changes;
 
     if (changes > 0) {
@@ -326,6 +340,11 @@ export class AQDatabase {
     if (filter.excludeStatus) {
       conditions.push("status != ?");
       params.push(filter.excludeStatus);
+    }
+
+    if (filter.repo) {
+      conditions.push("repo = ?");
+      params.push(filter.repo);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -381,6 +400,47 @@ export class AQDatabase {
 
     const row = stmt.get(issueNumber, repo) as JobRow | undefined;
     return row ? this.mapRowToJob(row) : undefined;
+  }
+
+  /**
+   * 재시도 대상 실패 job 조회: status=failure, is_retry=0, completed_at <= cutoffIso
+   */
+  findFailedJobsForRetry(cutoffIso: string): DatabaseJob[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE status = 'failure'
+        AND is_retry = 0
+        AND completed_at IS NOT NULL
+        AND completed_at <= ?
+      ORDER BY completed_at ASC
+    `);
+
+    const rows = stmt.all(cutoffIso) as JobRow[];
+    return rows.map(row => this.mapRowToJob(row));
+  }
+
+  /**
+   * prune용 완료 job LRU 조회: success/failure/cancelled 상태, LRU 순 정렬
+   */
+  listCompletedJobsForPrune(): DatabaseJob[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE status IN ('success', 'failure', 'cancelled')
+      ORDER BY
+        COALESCE(last_updated_at, completed_at, created_at) ASC,
+        created_at ASC
+    `);
+
+    const rows = stmt.all() as JobRow[];
+    return rows.map(row => this.mapRowToJob(row));
+  }
+
+  /**
+   * 전체 job 수 반환
+   */
+  countJobs(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM jobs").get() as { count: number };
+    return row.count;
   }
 
   deleteJob(id: string): boolean {
@@ -511,6 +571,7 @@ export class AQDatabase {
       job.totalUsage?.output_tokens || null,
       job.totalUsage?.cache_creation_input_tokens || null,
       job.totalUsage?.cache_read_input_tokens || null,
+      job.cacheHitRatio ?? null,
       job.priority || null
     ];
   }
@@ -539,7 +600,8 @@ export class AQDatabase {
         cache_creation_input_tokens: row.total_cache_creation_input_tokens ?? undefined,
         cache_read_input_tokens: row.total_cache_read_input_tokens ?? undefined
       } : undefined,
-      priority: (row.priority as JobPriority | null) ?? undefined
+      priority: (row.priority as JobPriority | null) ?? undefined,
+      cacheHitRatio: row.cache_hit_ratio ?? undefined
     };
   }
 

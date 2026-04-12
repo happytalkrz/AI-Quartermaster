@@ -5,6 +5,7 @@ import { renderTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import { isDirectoryNameSafe } from "../utils/slug.js";
 import type { WorktreeConfig, GitConfig } from "../types/config.js";
+import { GitError } from "../types/errors.js";
 
 const logger = getLogger();
 
@@ -20,7 +21,7 @@ export interface WorktreeInfo {
 function validateWorktreePath(rootPath: string, dirName: string): string {
   // Validate dirName for path safety
   if (!isDirectoryNameSafe(dirName)) {
-    throw new Error(`Unsafe directory name: ${dirName}`);
+    throw new GitError("GIT_UNSAFE_PATH", `Unsafe directory name: ${dirName}`, { dirName });
   }
 
   // Resolve absolute paths
@@ -32,7 +33,7 @@ function validateWorktreePath(rootPath: string, dirName: string): string {
 
   // If relative path starts with ".." or is absolute, it's outside the root
   if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
-    throw new Error(`Worktree path "${absoluteWorktreePath}" is outside allowed root "${absoluteRootPath}"`);
+    throw new GitError("GIT_PATH_TRAVERSAL", `Worktree path "${absoluteWorktreePath}" is outside allowed root "${absoluteRootPath}"`, { worktreePath: absoluteWorktreePath, rootPath: absoluteRootPath });
   }
 
   return absoluteWorktreePath;
@@ -87,7 +88,7 @@ export async function createWorktree(
   );
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to create worktree at ${worktreePath}: ${result.stderr}`);
+    throw new GitError("GIT_WORKTREE_CREATE_FAILED", `Failed to create worktree at ${worktreePath}: ${result.stderr}`, { worktreePath, branch: branchName });
   }
 
   logger.info(`Created worktree at ${worktreePath} on branch ${branchName}`);
@@ -125,10 +126,10 @@ export async function removeWorktree(
         { cwd: options.cwd }
       );
       if (forceResult.exitCode !== 0) {
-        throw new Error(`Failed to remove worktree ${worktreePath}: ${forceResult.stderr}`);
+        throw new GitError("GIT_WORKTREE_REMOVE_FAILED", `Failed to remove worktree ${worktreePath}: ${forceResult.stderr}`, { worktreePath });
       }
     } else {
-      throw new Error(`Failed to remove worktree ${worktreePath}: ${result.stderr}`);
+      throw new GitError("GIT_WORKTREE_REMOVE_FAILED", `Failed to remove worktree ${worktreePath}: ${result.stderr}`, { worktreePath });
     }
   }
 
@@ -152,7 +153,7 @@ export async function listWorktrees(
   );
 
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to list worktrees: ${result.stderr}`);
+    throw new GitError("GIT_WORKTREE_LIST_FAILED", `Failed to list worktrees: ${result.stderr}`);
   }
 
   const worktrees: WorktreeInfo[] = [];
@@ -212,7 +213,7 @@ async function setWorktreeGitAuthor(
     });
 
     if (result.exitCode !== 0) {
-      throw new Error(`Failed to set git ${key}: ${result.stderr}`);
+      throw new GitError("GIT_CONFIG_FAILED", `Failed to set git ${key}: ${result.stderr}`, { key, worktreePath });
     }
   }
 

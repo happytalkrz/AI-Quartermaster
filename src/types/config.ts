@@ -167,11 +167,20 @@ export interface SafetyConfig {
   rules: SafetyRules;
 }
 
+export interface WorkerPoolConfig {
+  /** idle 상태 워커를 제거하기까지의 시간(ms). 미설정 시 shrink 비활성화. */
+  idleTimeoutMs?: number;
+  /** shrink 후 유지할 최소 워커 수. */
+  minWorkers: number;
+}
+
 export interface FeaturesConfig {
   /** 병렬 Phase 실행 활성화 여부 (안정성을 위해 기본값은 false) */
   parallelPhases: boolean;
   /** Claude 다중 AI 워커 풀 활성화 여부 */
   multiAI: boolean;
+  /** WorkerPool idle shrink 설정 */
+  workerPool?: WorkerPoolConfig;
 }
 
 export interface ExecutionModePreset {

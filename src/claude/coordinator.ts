@@ -1,4 +1,4 @@
-import { WorkerPool, WorkerTaskHandler } from "./worker-pool.js";
+import { WorkerPool, WorkerPoolOptions, WorkerTaskHandler } from "./worker-pool.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 
@@ -26,6 +26,7 @@ export interface CoordinatorConfig {
   claudeCliPath: string;
   defaultModel: string;
   timeout: number;
+  workerPool?: WorkerPoolOptions;
 }
 
 /**
@@ -47,7 +48,7 @@ export class Coordinator {
       return this.executeClaudeTask(task, workerId);
     };
 
-    this.pool = new WorkerPool(config.maxWorkers, handler);
+    this.pool = new WorkerPool(config.maxWorkers, handler, config.workerPool);
     logger.info(`Coordinator initialized with ${config.maxWorkers} max workers`);
   }
 

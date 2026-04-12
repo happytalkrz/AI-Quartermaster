@@ -333,9 +333,15 @@ const safetyConfigSchema = z.object({
   rules: safetyRulesSchema.default({ allow: [], deny: [] }),
 });
 
+const workerPoolConfigSchema = z.object({
+  idleTimeoutMs: z.number().int().positive().optional(),
+  minWorkers: z.number().int().nonnegative(),
+});
+
 const featuresConfigSchema = z.object({
   parallelPhases: z.boolean().default(false),
   multiAI: z.boolean().default(false),
+  workerPool: workerPoolConfigSchema.optional(),
 });
 
 const projectConfigSchema = z.object({

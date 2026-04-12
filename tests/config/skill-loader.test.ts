@@ -1,20 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { loadSkills, formatSkillsForPrompt } from '../../src/config/skill-loader.js';
 
 describe('skill-loader', () => {
-  const testDir = resolve('./test-temp-skills');
+  let testDir: string;
 
   beforeEach(() => {
-    // Clean up any existing test directory
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
-    }
+    testDir = mkdtempSync(join(tmpdir(), 'skill-loader-test-'));
   });
 
   afterEach(() => {
-    // Clean up test directory
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
@@ -27,7 +24,8 @@ describe('skill-loader', () => {
     });
 
     it('should return empty array when skills path is not a directory', () => {
-      // Create a file instead of directory
+      // Replace temp directory with a file
+      rmSync(testDir, { recursive: true, force: true });
       writeFileSync(testDir, 'not a directory');
 
       const result = loadSkills(testDir);

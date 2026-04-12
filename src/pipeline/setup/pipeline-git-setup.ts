@@ -9,6 +9,7 @@ import { runCli } from "../../utils/cli-runner.js";
 import { withRepoLock } from "../../git/repo-lock.js";
 import { loadSkills, formatSkillsForPrompt } from "../../config/skill-loader.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { GitError } from "../../types/errors.js";
 import { getLogger } from "../../utils/logger.js";
 import type { GitConfig, WorktreeConfig } from "../../types/config.js";
 import type { PipelineState } from "../../types/pipeline.js";
@@ -162,7 +163,7 @@ export async function setupGitEnvironment(input: GitSetupInput): Promise<GitSetu
   });
 
   if (!branchName || !worktreePath) {
-    throw new Error("Failed to set up Git environment: missing branch name or worktree path");
+    throw new GitError("GIT_SETUP_FAILED", "Failed to set up Git environment: missing branch name or worktree path");
   }
 
   return {

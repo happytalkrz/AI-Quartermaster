@@ -167,7 +167,7 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
   `).get(...params) as CostSummaryRow;
 
   const breakdown: CostEntry[] = breakdownRows.map(row => {
-    const cacheTotal = row.total_cache_creation_tokens + row.total_cache_read_tokens;
+    const cacheHitDenominator = row.total_input_tokens + row.total_cache_read_tokens;
     return {
       label: row.label,
       totalCostUsd: row.total_cost_usd,
@@ -177,7 +177,7 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
       totalOutputTokens: row.total_output_tokens,
       totalCacheCreationTokens: row.total_cache_creation_tokens,
       totalCacheReadTokens: row.total_cache_read_tokens,
-      cacheHitRatio: cacheTotal > 0 ? row.total_cache_read_tokens / cacheTotal : 0,
+      cacheHitRatio: cacheHitDenominator > 0 ? row.total_cache_read_tokens / cacheHitDenominator : 0,
     };
   });
 
@@ -195,8 +195,8 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
       totalOutputTokens: summaryRow.total_output_tokens,
       totalCacheCreationTokens: summaryRow.total_cache_creation_tokens,
       totalCacheReadTokens: summaryRow.total_cache_read_tokens,
-      cacheHitRatio: (summaryRow.total_cache_creation_tokens + summaryRow.total_cache_read_tokens) > 0
-        ? summaryRow.total_cache_read_tokens / (summaryRow.total_cache_creation_tokens + summaryRow.total_cache_read_tokens)
+      cacheHitRatio: (summaryRow.total_input_tokens + summaryRow.total_cache_read_tokens) > 0
+        ? summaryRow.total_cache_read_tokens / (summaryRow.total_input_tokens + summaryRow.total_cache_read_tokens)
         : 0,
     },
     breakdown,

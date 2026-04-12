@@ -1,17 +1,17 @@
-import { formatResult, printResult } from "./result-reporter.js";
-import { rollbackToCheckpoint as doRollback } from "../safety/rollback-manager.js";
-import { saveResult, transitionState } from "./pipeline-context.js";
-import { PatternStore } from "../learning/pattern-store.js";
-import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import { handlePipelineFailure } from "./pipeline-publish.js";
-import type { PipelineState } from "../types/pipeline.js";
+import { formatResult, printResult } from "../reporting/result-reporter.js";
+import { rollbackToCheckpoint as doRollback } from "../../safety/rollback-manager.js";
+import { saveResult, transitionState } from "../core/pipeline-context.js";
+import { PatternStore } from "../../learning/pattern-store.js";
+import { getLogger } from "../../utils/logger.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import { handlePipelineFailure } from "../phases/pipeline-publish.js";
+import type { PipelineState } from "../../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import type { PipelineReport } from "./result-reporter.js";
-import type { CoreLoopResult } from "./core-loop.js";
-import type { AQConfig, GitConfig } from "../types/config.js";
-import type { PipelineRuntime, OrchestratorResult } from "./pipeline-context.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import type { PipelineReport } from "../reporting/result-reporter.js";
+import type { CoreLoopResult } from "../core/core-loop.js";
+import type { AQConfig, GitConfig } from "../../types/config.js";
+import type { PipelineRuntime, OrchestratorResult } from "../core/pipeline-context.js";
 
 const logger = getLogger();
 

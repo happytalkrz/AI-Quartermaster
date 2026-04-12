@@ -6,11 +6,12 @@ import {
   resolveMaxTurnsForMode,
   configForTaskWithMode,
 } from "../../src/claude/model-router.js";
+import { CLAUDE_MODELS } from "../../src/claude/model-constants.js";
 import type { ClaudeCliConfig } from "../../src/types/config.js";
 
 const baseConfig: ClaudeCliConfig = {
   path: "claude",
-  model: "claude-sonnet-4-20250514",
+  model: CLAUDE_MODELS.SONNET,
   maxTurns: 60,
   timeout: 30000,
   additionalArgs: [],
@@ -21,21 +22,21 @@ describe("resolveModel", () => {
     const config: ClaudeCliConfig = {
       ...baseConfig,
       models: {
-        plan: "claude-opus-4-5",
-        phase: "claude-sonnet-4-20250514",
-        review: "claude-haiku-4-5-20251001",
-        fallback: "claude-haiku-4-5-20251001",
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.HAIKU,
       },
     };
 
-    expect(resolveModel(config, "plan")).toBe("claude-opus-4-5");
-    expect(resolveModel(config, "phase")).toBe("claude-sonnet-4-20250514");
-    expect(resolveModel(config, "review")).toBe("claude-haiku-4-5-20251001");
+    expect(resolveModel(config, "plan")).toBe(CLAUDE_MODELS.OPUS);
+    expect(resolveModel(config, "phase")).toBe(CLAUDE_MODELS.SONNET);
+    expect(resolveModel(config, "review")).toBe(CLAUDE_MODELS.HAIKU);
   });
 
   it("should fall back to global model when models config is not set", () => {
-    expect(resolveModel(baseConfig, "plan")).toBe("claude-sonnet-4-20250514");
-    expect(resolveModel(baseConfig, "phase")).toBe("claude-sonnet-4-20250514");
+    expect(resolveModel(baseConfig, "plan")).toBe(CLAUDE_MODELS.SONNET);
+    expect(resolveModel(baseConfig, "phase")).toBe(CLAUDE_MODELS.SONNET);
   });
 });
 
@@ -44,15 +45,15 @@ describe("configForTask", () => {
     const config: ClaudeCliConfig = {
       ...baseConfig,
       models: {
-        plan: "claude-opus-4-5",
-        phase: "claude-sonnet-4-20250514",
-        review: "claude-haiku-4-5-20251001",
-        fallback: "claude-haiku-4-5-20251001",
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.HAIKU,
       },
     };
 
     const result = configForTask(config, "plan");
-    expect(result.model).toBe("claude-opus-4-5");
+    expect(result.model).toBe(CLAUDE_MODELS.OPUS);
   });
 
   it("should preserve other config fields", () => {
@@ -66,66 +67,66 @@ describe("resolveModelWithExecutionMode", () => {
   describe("economy mode", () => {
     it("should use sonnet for plan task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "plan", "economy");
-      expect(model).toBe("claude-sonnet-4-20250514");
+      expect(model).toBe(CLAUDE_MODELS.SONNET);
     });
 
     it("should use sonnet for phase task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "phase", "economy");
-      expect(model).toBe("claude-sonnet-4-20250514");
+      expect(model).toBe(CLAUDE_MODELS.SONNET);
     });
 
     it("should use haiku for review task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "review", "economy");
-      expect(model).toBe("claude-haiku-4-5-20251001");
+      expect(model).toBe(CLAUDE_MODELS.HAIKU);
     });
 
     it("should use haiku for fallback task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "fallback", "economy");
-      expect(model).toBe("claude-haiku-4-5-20251001");
+      expect(model).toBe(CLAUDE_MODELS.HAIKU);
     });
 
     it("should NOT use haiku for plan task (regression guard)", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "plan", "economy");
-      expect(model).not.toBe("claude-haiku-4-5-20251001");
+      expect(model).not.toBe(CLAUDE_MODELS.HAIKU);
     });
   });
 
   describe("standard mode", () => {
     it("should use opus for plan task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "plan", "standard");
-      expect(model).toBe("claude-opus-4-5");
+      expect(model).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it("should use sonnet for phase task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "phase", "standard");
-      expect(model).toBe("claude-sonnet-4-20250514");
+      expect(model).toBe(CLAUDE_MODELS.SONNET);
     });
 
     it("should use haiku for review task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "review", "standard");
-      expect(model).toBe("claude-haiku-4-5-20251001");
+      expect(model).toBe(CLAUDE_MODELS.HAIKU);
     });
   });
 
   describe("thorough mode", () => {
     it("should use opus for plan task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "plan", "thorough");
-      expect(model).toBe("claude-opus-4-5");
+      expect(model).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it("should use opus for phase task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "phase", "thorough");
-      expect(model).toBe("claude-opus-4-5");
+      expect(model).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it("should use opus for review task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "review", "thorough");
-      expect(model).toBe("claude-opus-4-5");
+      expect(model).toBe(CLAUDE_MODELS.OPUS);
     });
 
     it("should use opus for fallback task", () => {
       const model = resolveModelWithExecutionMode(baseConfig, "fallback", "thorough");
-      expect(model).toBe("claude-opus-4-5");
+      expect(model).toBe(CLAUDE_MODELS.OPUS);
     });
   });
 });
@@ -158,7 +159,7 @@ describe("resolveMaxTurnsForMode", () => {
 describe("configForTaskWithMode", () => {
   it("should set correct model and maxTurns for economy plan", () => {
     const result = configForTaskWithMode(baseConfig, "plan", "economy");
-    expect(result.model).toBe("claude-sonnet-4-20250514");
+    expect(result.model).toBe(CLAUDE_MODELS.SONNET);
     expect(result.maxTurns).toBe(30);
   });
 

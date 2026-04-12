@@ -1,4 +1,4 @@
-import type { Phase } from "../types/pipeline.js";
+import type { Phase } from "../../types/pipeline.js";
 
 /**
  * Represents a group of phases that can be executed in parallel

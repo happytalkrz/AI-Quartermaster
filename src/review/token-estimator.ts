@@ -3,18 +3,21 @@
  * Used to determine if review prompts exceed model context limits
  */
 
+import { CLAUDE_MODELS } from "../claude/model-constants.js";
+
 /** Claude model token limits (in tokens) */
-export const MODEL_TOKEN_LIMITS = {
-  // Claude 4.x models typically have 200K token limit
+export const MODEL_TOKEN_LIMITS: Record<string, number> = {
+  // 현재 기본 모델
+  [CLAUDE_MODELS.OPUS]: 200_000,
+  [CLAUDE_MODELS.SONNET]: 200_000,
+  [CLAUDE_MODELS.HAIKU]: 200_000,
+  // 하위호환: 사용자 config에 옛 모델 ID가 남아있을 수 있음
   'claude-opus-4-5': 200_000,
-  'claude-opus-4-6': 200_000,
   'claude-sonnet-4-20250514': 200_000,
-  'claude-sonnet-4-6': 200_000,
-  'claude-haiku-4-5-20251001': 200_000,
   'claude-haiku-4-5': 200_000,
   // Fallback for unknown models
   'default': 200_000,
-} as const;
+};
 
 /** Safety margin percentage (20%) */
 export const SAFETY_MARGIN = 0.2;
@@ -185,13 +188,13 @@ export function getTokenLimit(modelName: string): number {
 
   // Try pattern matching for similar models
   if (modelName.includes('opus')) {
-    return MODEL_TOKEN_LIMITS['claude-opus-4-5'];
+    return MODEL_TOKEN_LIMITS[CLAUDE_MODELS.OPUS];
   }
   if (modelName.includes('sonnet')) {
-    return MODEL_TOKEN_LIMITS['claude-sonnet-4-20250514'];
+    return MODEL_TOKEN_LIMITS[CLAUDE_MODELS.SONNET];
   }
   if (modelName.includes('haiku')) {
-    return MODEL_TOKEN_LIMITS['claude-haiku-4-5-20251001'];
+    return MODEL_TOKEN_LIMITS[CLAUDE_MODELS.HAIKU];
   }
 
   // Fallback to default

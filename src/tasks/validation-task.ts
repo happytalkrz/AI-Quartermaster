@@ -8,7 +8,7 @@ import {
   type TscParseResult,
   type VitestParseResult,
   type EslintParseResult,
-} from "../pipeline/verification-parser.js";
+} from "../pipeline/reporting/verification-parser.js";
 
 export type ValidationTaskType = "typecheck" | "lint" | "test";
 

@@ -1,7 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ClaudeCliConfig } from "../types/config.js";
 import { withRetry } from "../utils/rate-limiter.js";
-import { classifyError } from "../pipeline/error-classifier.js";
+import { classifyError } from "../pipeline/errors/error-classifier.js";
 import { calculateCostFromUsage } from "./token-pricing.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();

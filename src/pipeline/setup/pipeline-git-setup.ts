@@ -1,19 +1,19 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
-import { syncBaseBranch, createWorkBranch } from "../git/branch-manager.js";
-import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
+import { syncBaseBranch, createWorkBranch } from "../../git/branch-manager.js";
+import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
 import { installDependencies } from "./dependency-installer.js";
-import { createCheckpoint } from "../safety/rollback-manager.js";
-import { createSlugWithFallback, createSlug } from "../utils/slug.js";
-import { runCli } from "../utils/cli-runner.js";
-import { withRepoLock } from "../git/repo-lock.js";
-import { loadSkills, formatSkillsForPrompt } from "../config/skill-loader.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import { getLogger } from "../utils/logger.js";
-import type { GitConfig, WorktreeConfig } from "../types/config.js";
-import type { PipelineState } from "../types/pipeline.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import type { ResolvedProject } from "../config/project-resolver.js";
+import { createCheckpoint } from "../../safety/rollback-manager.js";
+import { createSlugWithFallback, createSlug } from "../../utils/slug.js";
+import { runCli } from "../../utils/cli-runner.js";
+import { withRepoLock } from "../../git/repo-lock.js";
+import { loadSkills, formatSkillsForPrompt } from "../../config/skill-loader.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import { getLogger } from "../../utils/logger.js";
+import type { GitConfig, WorktreeConfig } from "../../types/config.js";
+import type { PipelineState } from "../../types/pipeline.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import type { ResolvedProject } from "../../config/project-resolver.js";
 
 const logger = getLogger();
 

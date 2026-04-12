@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTscOutput, parseVitestOutput } from "../../src/pipeline/verification-parser.js";
+import { parseTscOutput, parseVitestOutput } from "../../src/pipeline/reporting/verification-parser.js";
 
 describe("parseTscOutput", () => {
   it("returns empty result for clean output", () => {

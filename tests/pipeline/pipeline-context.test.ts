@@ -7,7 +7,7 @@ import {
   STATE_ORDER,
   type PipelineRuntime,
   type OrchestratorInput,
-} from "../../src/pipeline/pipeline-context.js";
+} from "../../src/pipeline/core/pipeline-context.js";
 import type { AQConfig } from "../../src/types/config.js";
 import type { PipelineState } from "../../src/types/pipeline.js";
 

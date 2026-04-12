@@ -1,5 +1,5 @@
-import { transitionState } from "./pipeline-context.js";
-import type { PipelineRuntime, OrchestratorResult } from "./pipeline-context.js";
+import { transitionState } from "../core/pipeline-context.js";
+import type { PipelineRuntime, OrchestratorResult } from "../core/pipeline-context.js";
 import type { PipelineReport } from "./result-reporter.js";
 
 export interface PipelineResultValidationContext {

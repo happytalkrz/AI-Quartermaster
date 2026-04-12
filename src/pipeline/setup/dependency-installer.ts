@@ -1,5 +1,5 @@
-import { runShell } from "../utils/cli-runner.js";
-import { getLogger } from "../utils/logger.js";
+import { runShell } from "../../utils/cli-runner.js";
+import { getLogger } from "../../utils/logger.js";
 
 const logger = getLogger();
 

@@ -1,13 +1,13 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../prompt/template-renderer.js";
-import { detectCircularDependencies, validatePhaseDependencies } from "./phase-scheduler.js";
-import { runClaude, extractJson } from "../claude/claude-runner.js";
-import { configForTask, configForTaskWithMode } from "../claude/model-router.js";
-import type { ClaudeCliConfig } from "../types/config.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
-import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../types/pipeline.js";
+import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../../prompt/template-renderer.js";
+import { detectCircularDependencies, validatePhaseDependencies } from "../execution/phase-scheduler.js";
+import { runClaude, extractJson } from "../../claude/claude-runner.js";
+import { configForTask, configForTaskWithMode } from "../../claude/model-router.js";
+import type { ClaudeCliConfig } from "../../types/config.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
+import type { Plan, ContextualizationInfo, PlanRetryContext, PlanGenerationResult, ErrorCategory, PlanWithCost } from "../../types/pipeline.js";
 
 export interface PlanTemplateBaseData {
   issue: {
@@ -47,10 +47,10 @@ export interface PlanTemplateRetryData extends PlanTemplateBaseData {
 }
 
 export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
-import { notifyPlanRetryContext } from "../notification/notifier.js";
-import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../review/token-estimator.js";
+import { notifyPlanRetryContext } from "../../notification/notifier.js";
+import { getLogger } from "../../utils/logger.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../../review/token-estimator.js";
 
 const logger = getLogger();
 
@@ -66,8 +66,8 @@ export interface PlanGeneratorContext {
   maxPhases?: number;
   sensitivePaths?: string;
   locale?: string;
-  cachedLayers?: import("../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
-  executionMode?: import("../types/config.js").ExecutionMode;  // execution mode for model routing
+  cachedLayers?: import("../../types/pipeline.js").CachedPromptLayer;  // 캐시된 레이어
+  executionMode?: import("../../types/config.js").ExecutionMode;  // execution mode for model routing
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {

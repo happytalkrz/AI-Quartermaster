@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   saveCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
   removeCheckpoint: vi.fn(),
@@ -29,13 +29,13 @@ vi.mock("../../src/git/worktree-manager.js", () => ({
   createWorktree: vi.fn(),
   removeWorktree: vi.fn(),
 }));
-vi.mock("../../src/pipeline/core-loop.js", () => ({
+vi.mock("../../src/pipeline/core/core-loop.js", () => ({
   runCoreLoop: vi.fn(),
 }));
-vi.mock("../../src/pipeline/dependency-installer.js", () => ({
+vi.mock("../../src/pipeline/setup/dependency-installer.js", () => ({
   installDependencies: vi.fn(),
 }));
-vi.mock("../../src/pipeline/final-validator.js", () => ({
+vi.mock("../../src/pipeline/reporting/final-validator.js", () => ({
   runFinalValidation: vi.fn(),
 }));
 vi.mock("../../src/review/review-orchestrator.js", () => ({
@@ -59,7 +59,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
 vi.mock("../../src/claude/claude-runner.js", () => ({
   runClaude: vi.fn(),
 }));
-vi.mock("../../src/pipeline/pipeline-setup.js", () => ({
+vi.mock("../../src/pipeline/setup/pipeline-setup.js", () => ({
   resolveResolvedProject: vi.fn(),
   checkDuplicatePR: vi.fn(),
   fetchAndValidateIssue: vi.fn(),
@@ -68,21 +68,21 @@ vi.mock("../../src/github/github-cache.js", () => ({
   clearCache: vi.fn(),
 }));
 
-import { runPipeline } from "../../src/pipeline/orchestrator.js";
+import { runPipeline } from "../../src/pipeline/core/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
 import { createDraftPR, enableAutoMerge, closeIssue, commentOnIssue } from "../../src/github/pr-creator.js";
 import { syncBaseBranch, createWorkBranch, pushBranch, checkConflicts, attemptRebase } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
-import { runCoreLoop } from "../../src/pipeline/core-loop.js";
-import { installDependencies } from "../../src/pipeline/dependency-installer.js";
+import { runCoreLoop } from "../../src/pipeline/core/core-loop.js";
+import { installDependencies } from "../../src/pipeline/setup/dependency-installer.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
-import { runFinalValidation } from "../../src/pipeline/final-validator.js";
+import { runFinalValidation } from "../../src/pipeline/reporting/final-validator.js";
 import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";
 import { validateIssue, validatePlan, validateBeforePush } from "../../src/safety/safety-checker.js";
-import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "../../src/pipeline/pipeline-setup.js";
+import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "../../src/pipeline/setup/pipeline-setup.js";
 import { clearCache } from "../../src/github/github-cache.js";
 
 const mockFetchIssue = vi.mocked(fetchIssue);

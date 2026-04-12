@@ -1,26 +1,26 @@
 import { initializePipelineState } from "./pipeline-context.js";
-import { routeError } from "./pipeline-error-handler.js";
-import { validatePipelineResult } from "./pipeline-result-validator.js";
+import { routeError } from "../errors/pipeline-error-handler.js";
+import { validatePipelineResult } from "../reporting/pipeline-result-validator.js";
 import {
   executeInitialSetupPhases,
   executeEnvironmentSetup,
   executeCoreLoopPhase,
   executePostProcessingPhases
-} from "./pipeline-phases.js";
+} from "../phases/pipeline-phases.js";
 import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
-import { clearCache } from "../github/github-cache.js";
+import { clearCache } from "../../github/github-cache.js";
 import {
   handleDuplicatePR,
   extractValidatedSetupValues,
   createPostProcessingContext
 } from "./orchestrator-helpers.js";
-import { HookRegistry } from "../hooks/hook-registry.js";
-import { HookExecutor } from "../hooks/hook-executor.js";
-import { dispatchPipelineEvent } from "./automation-dispatcher.js";
-import { getErrorMessage } from "../utils/error-utils.js";
+import { HookRegistry } from "../../hooks/hook-registry.js";
+import { HookExecutor } from "../../hooks/hook-executor.js";
+import { dispatchPipelineEvent } from "../automation/automation-dispatcher.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {

@@ -1,23 +1,23 @@
-import { runFinalValidation } from "./final-validator.js";
-import { retryWithClaudeFix } from "./retry-with-fix.js";
-import { formatResult, printResult } from "./result-reporter.js";
-import { PROGRESS_VALIDATION_START } from "./progress-tracker.js";
-import { configForTaskWithMode } from "../claude/model-router.js";
-import type { CommandsConfig, AQConfig } from "../types/config.js";
-import type { PipelineReport } from "./result-reporter.js";
+import { runFinalValidation } from "../reporting/final-validator.js";
+import { retryWithClaudeFix } from "../execution/retry-with-fix.js";
+import { formatResult, printResult } from "../reporting/result-reporter.js";
+import { PROGRESS_VALIDATION_START } from "../reporting/progress-tracker.js";
+import { configForTaskWithMode } from "../../claude/model-router.js";
+import type { CommandsConfig, AQConfig } from "../../types/config.js";
+import type { PipelineReport } from "../reporting/result-reporter.js";
 import { writeFileSync, mkdirSync } from "fs";
 import { resolve } from "path";
-import { getLogger } from "../utils/logger.js";
-import type { ValidationPhaseContext } from "../types/pipeline.js";
-import type { ExecutionMode } from "../types/config.js";
-import type { PipelineTimer } from "../safety/timeout-manager.js";
+import { getLogger } from "../../utils/logger.js";
+import type { ValidationPhaseContext } from "../../types/pipeline.js";
+import type { ExecutionMode } from "../../types/config.js";
+import type { PipelineTimer } from "../../safety/timeout-manager.js";
 
 const logger = getLogger();
 
 export interface ValidationPhaseResult {
   success: boolean;
   error?: string;
-  report?: import("./result-reporter.js").PipelineReport;
+  report?: import("../reporting/result-reporter.js").PipelineReport;
 }
 
 export async function runValidationPhase(
@@ -26,11 +26,11 @@ export async function runValidationPhase(
   isPastState: (state: string) => boolean,
   skipFinalValidation: boolean,
   executionMode: ExecutionMode,
-  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
+  checkpoint: (overrides?: Partial<import("../errors/checkpoint.js").PipelineCheckpoint>) => void,
   issueNumber: number,
   repo: string,
   startTime: number,
-  config: import("../types/config.js").AQConfig,
+  config: import("../../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   _aqRoot?: string,
   _projectRoot?: string
@@ -97,19 +97,19 @@ export async function runValidationPhase(
 
 async function retryValidationWithFixes(
   context: ValidationPhaseContext,
-  validation: import("./final-validator.js").ValidationResult,
+  validation: import("../reporting/final-validator.js").ValidationResult,
   issueNumber: number,
   repo: string,
   startTime: number,
-  checkpoint: (overrides?: Partial<import("./checkpoint.js").PipelineCheckpoint>) => void,
-  config: import("../types/config.js").AQConfig,
+  checkpoint: (overrides?: Partial<import("../errors/checkpoint.js").PipelineCheckpoint>) => void,
+  config: import("../../types/config.js").AQConfig,
   fullCommands: CommandsConfig,
   executionMode: ExecutionMode,
   _aqRoot?: string,
   _projectRoot?: string
 ): Promise<boolean> {
 
-  const buildFixPromptFn = (validationResult: import("./final-validator.js").ValidationResult) => {
+  const buildFixPromptFn = (validationResult: import("../reporting/final-validator.js").ValidationResult) => {
     const failedChecks = validationResult.checks.filter((c) => !c.passed);
     const errorDetails = failedChecks
       .map((c) => `=== ${c.name} ===\n${c.output ?? "(no output)"}`)
@@ -154,7 +154,7 @@ async function retryValidationWithFixes(
     context.jl?.setStep(`검증 오류 수정 중 (${attempt}/${maxRetries})...`);
   };
 
-  const onSuccess = (attempt: number, _result: import("./final-validator.js").ValidationResult) => {
+  const onSuccess = (attempt: number, _result: import("../reporting/final-validator.js").ValidationResult) => {
     logger.info(`[FINAL_VALIDATING] Passed after retry ${attempt}`);
     context.jl?.log(`검증 통과 (retry ${attempt})`);
   };

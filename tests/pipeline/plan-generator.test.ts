@@ -19,7 +19,7 @@ vi.mock("../../src/claude/model-router.js", () => ({
   configForTaskWithMode: vi.fn(),
 }));
 
-import { generatePlan, collectContextualizationInfo } from "../../src/pipeline/plan-generator.js";
+import { generatePlan, collectContextualizationInfo } from "../../src/pipeline/phases/plan-generator.js";
 import { runClaude, extractJson } from "../../src/claude/claude-runner.js";
 import { notifyPlanRetryContext } from "../../src/notification/notifier.js";
 import { configForTaskWithMode } from "../../src/claude/model-router.js";

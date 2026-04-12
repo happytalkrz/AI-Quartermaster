@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { checkFeasibility, generateSkipComment } from "../../src/pipeline/feasibility-checker.js";
+import { checkFeasibility, generateSkipComment } from "../../src/pipeline/setup/feasibility-checker.js";
 import type { FeasibilityCheckConfig } from "../../src/types/config.js";
 import type { GitHubIssue } from "../../src/github/issue-fetcher.js";
 

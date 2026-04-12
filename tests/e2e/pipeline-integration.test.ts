@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock all dependencies
-vi.mock("../../src/pipeline/checkpoint.js", () => ({
+vi.mock("../../src/pipeline/errors/checkpoint.js", () => ({
   saveCheckpoint: vi.fn(),
   loadCheckpoint: vi.fn(),
   removeCheckpoint: vi.fn(),
@@ -29,13 +29,13 @@ vi.mock("../../src/git/worktree-manager.js", () => ({
   createWorktree: vi.fn(),
   removeWorktree: vi.fn(),
 }));
-vi.mock("../../src/pipeline/core-loop.js", () => ({
+vi.mock("../../src/pipeline/core/core-loop.js", () => ({
   runCoreLoop: vi.fn(),
 }));
-vi.mock("../../src/pipeline/dependency-installer.js", () => ({
+vi.mock("../../src/pipeline/setup/dependency-installer.js", () => ({
   installDependencies: vi.fn(),
 }));
-vi.mock("../../src/pipeline/final-validator.js", () => ({
+vi.mock("../../src/pipeline/reporting/final-validator.js", () => ({
   runFinalValidation: vi.fn(),
 }));
 vi.mock("../../src/review/review-orchestrator.js", () => ({
@@ -57,7 +57,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-import { runPipeline } from "../../src/pipeline/orchestrator.js";
+import { runPipeline } from "../../src/pipeline/core/orchestrator.js";
 import { fetchIssue } from "../../src/github/issue-fetcher.js";
 import { createDraftPR, enableAutoMerge, addIssueComment } from "../../src/github/pr-creator.js";
 import {
@@ -68,9 +68,9 @@ import {
   attemptRebase,
 } from "../../src/git/branch-manager.js";
 import { createWorktree, removeWorktree } from "../../src/git/worktree-manager.js";
-import { runCoreLoop } from "../../src/pipeline/core-loop.js";
-import { installDependencies } from "../../src/pipeline/dependency-installer.js";
-import { runFinalValidation } from "../../src/pipeline/final-validator.js";
+import { runCoreLoop } from "../../src/pipeline/core/core-loop.js";
+import { installDependencies } from "../../src/pipeline/setup/dependency-installer.js";
+import { runFinalValidation } from "../../src/pipeline/reporting/final-validator.js";
 import { runReviews } from "../../src/review/review-orchestrator.js";
 import { runSimplify } from "../../src/review/simplify-runner.js";
 import { getDiffContent } from "../../src/git/diff-collector.js";

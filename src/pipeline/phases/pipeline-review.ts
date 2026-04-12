@@ -1,31 +1,31 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
-import { getDiffContent } from "../git/diff-collector.js";
-import { runReviews } from "../review/review-orchestrator.js";
-import { runAnalyst } from "../review/analyst-runner.js";
-import { runSimplify } from "../review/simplify-runner.js";
-import { retryWithClaudeFix } from "./retry-with-fix.js";
-import { configForTaskWithMode } from "../claude/model-router.js";
-import { getLogger } from "../utils/logger.js";
-import { PROGRESS_REVIEW_START } from "./progress-tracker.js";
+import { getDiffContent } from "../../git/diff-collector.js";
+import { runReviews } from "../../review/review-orchestrator.js";
+import { runAnalyst } from "../../review/analyst-runner.js";
+import { runSimplify } from "../../review/simplify-runner.js";
+import { retryWithClaudeFix } from "../execution/retry-with-fix.js";
+import { configForTaskWithMode } from "../../claude/model-router.js";
+import { getLogger } from "../../utils/logger.js";
+import { PROGRESS_REVIEW_START } from "../reporting/progress-tracker.js";
 import type {
   ReviewVariables,
   ReviewPipelineResult,
   AnalystResult,
   ReviewFixAttempt
-} from "../types/review.js";
-import type { TemplateVariables } from "../prompt/template-renderer.js";
+} from "../../types/review.js";
+import type { TemplateVariables } from "../../prompt/template-renderer.js";
 import type {
   GitConfig,
   ProjectConfig,
   ExecutionModePreset,
   ExecutionMode
-} from "../types/config.js";
-import type { PipelineState, Plan, PhaseResult } from "../types/pipeline.js";
-import type { PipelineCheckpoint } from "./checkpoint.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import type { PipelineTimer } from "../safety/timeout-manager.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
+} from "../../types/config.js";
+import type { PipelineState, Plan, PhaseResult } from "../../types/pipeline.js";
+import type { PipelineCheckpoint } from "../errors/checkpoint.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import type { PipelineTimer } from "../../safety/timeout-manager.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
 
 const logger = getLogger();
 

@@ -11,7 +11,7 @@ vi.mock("../../src/utils/logger.js", () => ({
   getLogger: vi.fn(() => mockLogger),
 }));
 
-import { initDispatcher, dispatchPipelineEvent } from "../../src/pipeline/automation-dispatcher.js";
+import { initDispatcher, dispatchPipelineEvent } from "../../src/pipeline/automation/automation-dispatcher.js";
 import { AutomationScheduler } from "../../src/automation/scheduler.js";
 import type {
   PipelineEvent,

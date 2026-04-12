@@ -5,7 +5,7 @@ import {
   printExecutionPlan,
   type FetchedIssue,
   type ExecutionPlan,
-} from "../../src/pipeline/issue-orchestrator.js";
+} from "../../src/pipeline/automation/issue-orchestrator.js";
 import * as cliRunner from "../../src/utils/cli-runner.js";
 import * as claudeRunner from "../../src/claude/claude-runner.js";
 import * as templateRenderer from "../../src/prompt/template-renderer.js";

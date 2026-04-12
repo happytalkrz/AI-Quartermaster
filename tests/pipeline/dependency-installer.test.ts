@@ -4,7 +4,7 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runShell: vi.fn(),
 }));
 
-import { installDependencies } from "../../src/pipeline/dependency-installer.js";
+import { installDependencies } from "../../src/pipeline/setup/dependency-installer.js";
 import { runShell } from "../../src/utils/cli-runner.js";
 
 const mockRunShell = vi.mocked(runShell);

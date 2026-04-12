@@ -96,7 +96,7 @@ git:
     expect(config.git.branchTemplate).toBe("aq/{{issueNumber}}-{{slug}}");
     expect(config.worktree.cleanupOnSuccess).toBe(true);
     expect(config.safety.maxPhases).toBe(10);
-    expect(config.commands.claudeCli.model).toBe("claude-opus-4-5");
+    expect(config.commands.claudeCli.model).toBe("claude-opus-4-6");
   });
 
   it("should provide friendly error message for YAML tab characters in config.yml", () => {
@@ -148,7 +148,7 @@ projects:
     expect(config.git.defaultBaseBranch).toBe("main");
     expect(config.git.allowedRepos).toEqual([]);
     expect(config.worktree.cleanupOnSuccess).toBe(true);
-    expect(config.commands.claudeCli.model).toBe("claude-opus-4-5");
+    expect(config.commands.claudeCli.model).toBe("claude-opus-4-6");
   });
 
   it("should merge projects config with defaults and local overrides", () => {

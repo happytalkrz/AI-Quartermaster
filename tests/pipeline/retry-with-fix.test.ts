@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { retryWithClaudeFix, truncateFixPrompt, type RetryWithFixOptions } from "../../src/pipeline/retry-with-fix.js";
+import { retryWithClaudeFix, truncateFixPrompt, type RetryWithFixOptions } from "../../src/pipeline/execution/retry-with-fix.js";
 
 // Mock dependencies
 vi.mock("../../src/claude/claude-runner.js", () => ({

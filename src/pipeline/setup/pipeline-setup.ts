@@ -1,19 +1,19 @@
 import { resolve } from "path";
-import { fetchIssue } from "../github/issue-fetcher.js";
-import { runCli } from "../utils/cli-runner.js";
-import { validateIssue } from "../safety/safety-checker.js";
-import { saveCheckpoint, removeCheckpoint } from "./checkpoint.js";
-import { resolveProject, type ResolvedProject } from "../config/project-resolver.js";
-import { detectModeFromLabels, detectExecutionModeFromLabels } from "../config/mode-presets.js";
-import { getLogger } from "../utils/logger.js";
-import { getErrorMessage } from "../utils/error-utils.js";
+import { fetchIssue } from "../../github/issue-fetcher.js";
+import { runCli } from "../../utils/cli-runner.js";
+import { validateIssue } from "../../safety/safety-checker.js";
+import { saveCheckpoint, removeCheckpoint } from "../errors/checkpoint.js";
+import { resolveProject, type ResolvedProject } from "../../config/project-resolver.js";
+import { detectModeFromLabels, detectExecutionModeFromLabels } from "../../config/mode-presets.js";
+import { getLogger } from "../../utils/logger.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
 import { checkFeasibility, generateSkipComment } from "./feasibility-checker.js";
-import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "./progress-tracker.js";
-import type { AQConfig, GitConfig, PipelineMode, ExecutionMode } from "../types/config.js";
-import type { PipelineState } from "../types/pipeline.js";
-import type { PipelineCheckpoint } from "./checkpoint.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import type { PipelineTimer } from "../safety/timeout-manager.js";
+import { PROGRESS_ISSUE_VALIDATED, PROGRESS_DONE } from "../reporting/progress-tracker.js";
+import type { AQConfig, GitConfig, PipelineMode, ExecutionMode } from "../../types/config.js";
+import type { PipelineState } from "../../types/pipeline.js";
+import type { PipelineCheckpoint } from "../errors/checkpoint.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import type { PipelineTimer } from "../../safety/timeout-manager.js";
 
 const logger = getLogger();
 

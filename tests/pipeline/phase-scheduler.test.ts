@@ -5,7 +5,7 @@ import {
   detectFileConflicts,
   getExecutablePhases,
   validatePhaseDependencies,
-} from "../../src/pipeline/phase-scheduler.js";
+} from "../../src/pipeline/execution/phase-scheduler.js";
 import type { Phase } from "../../src/types/pipeline.js";
 
 describe("phase-scheduler", () => {

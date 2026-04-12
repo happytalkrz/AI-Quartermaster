@@ -1,19 +1,19 @@
 import { resolve } from "path";
-import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
-import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
-import { configForTask } from "../claude/model-router.js";
-import { runShell } from "../utils/cli-runner.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import type { ClaudeCliConfig, GitConfig, WorktreeConfig } from "../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../types/pipeline.js";
-import { classifyError } from "./error-classifier.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
-import { getLogger } from "../utils/logger.js";
-import type { JobLogger } from "../queue/job-logger.js";
-import { autoCommitIfDirty, getHeadHash } from "../git/commit-helper.js";
-import { phaseProgress } from "./progress-tracker.js";
-import { ensureCleanState, type WorktreeManager } from "../safety/rollback-manager.js";
-import type { WorktreeInfo } from "../git/worktree-manager.js";
+import { renderTemplate, loadTemplate } from "../../prompt/template-renderer.js";
+import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
+import { configForTask } from "../../claude/model-router.js";
+import { runShell } from "../../utils/cli-runner.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
+import type { ClaudeCliConfig, GitConfig, WorktreeConfig } from "../../types/config.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../../types/pipeline.js";
+import { classifyError } from "../errors/error-classifier.js";
+import type { GitHubIssue } from "../../github/issue-fetcher.js";
+import { getLogger } from "../../utils/logger.js";
+import type { JobLogger } from "../../queue/job-logger.js";
+import { autoCommitIfDirty, getHeadHash } from "../../git/commit-helper.js";
+import { phaseProgress } from "../reporting/progress-tracker.js";
+import { ensureCleanState, type WorktreeManager } from "../../safety/rollback-manager.js";
+import type { WorktreeInfo } from "../../git/worktree-manager.js";
 
 const logger = getLogger();
 
@@ -149,7 +149,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
         maxRetries: String(ctx.maxRetries),
         errorCategory: ctx.errorCategory,
         errorMessage,
-        errorHistory: errorHistory as unknown as import("../prompt/template-renderer.js").TemplateVariables,
+        errorHistory: errorHistory as unknown as import("../../prompt/template-renderer.js").TemplateVariables,
         lastOutput: ctx.lastOutput || "",
         isPartial: isPartial ? "true" : "",
         failedFiles,

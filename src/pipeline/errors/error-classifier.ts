@@ -1,4 +1,4 @@
-import type { ErrorCategory } from "../types/pipeline.js";
+import type { ErrorCategory } from "../../types/pipeline.js";
 
 export function classifyError(error: string): ErrorCategory {
   const lower = error.toLowerCase();

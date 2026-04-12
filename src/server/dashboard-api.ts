@@ -1,5 +1,5 @@
 import { Hono, type Context, type Next } from "hono";
-import { randomUUID } from "crypto";
+import { randomUUID, timingSafeEqual } from "crypto";
 import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
@@ -372,7 +372,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     // POST /api/auth — exchange Bearer key for a short-lived session token
     api.post("/api/auth", (c) => {
       const auth = c.req.header("Authorization");
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+      const expected = Buffer.from(`Bearer ${apiKey}`);
+      const actual = Buffer.from(auth ?? "");
+      if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       pruneExpiredTokens();
@@ -384,7 +386,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
     const bearerAuth = async (c: Context, next: Next) => {
       const auth = c.req.header("Authorization");
-      if (!auth || auth !== `Bearer ${apiKey}`) {
+      const expected = Buffer.from(`Bearer ${apiKey}`);
+      const actual = Buffer.from(auth ?? "");
+      if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
       await next();

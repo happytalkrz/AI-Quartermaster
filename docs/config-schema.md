@@ -57,7 +57,7 @@ AI-Quartermaster/
 | `worktree.cleanupOnSuccess` | `boolean` | `true` | X | PR 생성 성공 후 워크트리 자동 삭제 여부 |
 | `worktree.cleanupOnFailure` | `boolean` | `false` | X | 파이프라인 실패 시 워크트리 자동 삭제 여부 (디버깅용으로 보존 권장) |
 | `worktree.maxAge` | `string` | `"7d"` | X | 이 기간을 초과한 워크트리 자동 정리. 형식: `"1d"`, `"12h"`, `"30m"` |
-| `worktree.dirTemplate` | `string` | `"{issueNumber}-{slug}"` | X | 워크트리 디렉토리 이름 템플릿 |
+| `worktree.dirTemplate` | `string` | `"{{repoSlug}}-{{issueNumber}}-{{slug}}"` | X | 워크트리 디렉토리 이름 템플릿 |
 
 ### 4. `commands` — 외부 명령어 설정
 
@@ -213,7 +213,7 @@ worktree:
   cleanupOnSuccess: true
   cleanupOnFailure: false
   maxAge: "7d"
-  dirTemplate: "{issueNumber}-{slug}"
+  dirTemplate: "{{repoSlug}}-{{issueNumber}}-{{slug}}"
 
 commands:
   claudeCli:

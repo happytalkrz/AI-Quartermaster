@@ -25,6 +25,7 @@ describe("validateConfig", () => {
       pollingIntervalMs: 60000,
       maxJobs: 100,
       autoUpdate: false,
+      serverMode: "hybrid",
     },
     git: {
       defaultBaseBranch: "main",
@@ -424,6 +425,7 @@ describe("validateConfig - command safety", () => {
       pollingIntervalMs: 60000,
       maxJobs: 100,
       autoUpdate: false,
+      serverMode: "hybrid",
     },
     git: {
       defaultBaseBranch: "main",

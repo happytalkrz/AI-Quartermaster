@@ -159,7 +159,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  const isPollingMode = args.mode === "polling";
+  // CLI --mode 인자가 config보다 우선
+  const effectiveMode = (args.mode as "webhook" | "polling" | "hybrid" | undefined) ?? effectiveConfig.general.serverMode;
 
   // Override pollingIntervalMs from --interval CLI arg (seconds → ms)
   if (args.interval !== undefined) {
@@ -172,7 +173,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET ?? "";
-  if (!isPollingMode && !webhookSecret) {
+  if (effectiveMode !== "polling" && !webhookSecret) {
     console.error("\n✗ GITHUB_WEBHOOK_SECRET이 설정되지 않았습니다.");
     console.error("  먼저 aqm setup을 실행하세요.\n");
     process.exit(1);
@@ -194,7 +195,9 @@ export async function startCommand(args: CliArgs): Promise<void> {
     }
   } catch { /* js dir may not exist */ }
 
-  if (!isPollingMode) {
+  logger.info(`운영 모드: ${effectiveMode}`);
+
+  if (effectiveMode !== "polling") {
     // === Auto-register webhooks for projects in parallel (fix #16) ===
     const smeeUrl = process.env.SMEE_URL;
     if (smeeUrl) {
@@ -224,7 +227,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
       logger.warn("SMEE_URL 미설정 — webhook을 받으려면 .env에 SMEE_URL을 설정하세요");
     }
   } else {
-    logger.info(`프로젝트 ${projects.length}개 등록됨: ${projects.map(p => p.repo).join(", ")}`);
+    logger.info(`프로젝트 ${projects.length}개 등록됨: ${projects.map(p => p.repo).join(", ")} [polling 전용 모드]`);
   }
 
   const dataDir = resolve(aqRoot, "data");
@@ -367,9 +370,11 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const automationRules: AutomationRule[] = []; // TODO: config.automations에서 변환하여 가져오기
   const scheduler = new AutomationScheduler(effectiveConfig, automationRules, automationHandlers);
 
-  // === Poller: always start (webhook mode uses it as fallback for missed events) ===
-  const poller = new IssuePoller(effectiveConfig, store, queue, performGracefulRestart);
-  poller.start();
+  // === Poller: polling/hybrid 모드에서만 시작, webhook 모드에서는 비활성 ===
+  const poller = effectiveMode !== "webhook"
+    ? new IssuePoller(effectiveConfig, store, queue, performGracefulRestart)
+    : null;
+  poller?.start();
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
@@ -377,15 +382,15 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;
-  if (isPollingMode) {
-    // In polling mode, webhook routes are intentionally not mounted — only dashboard
-    // and health endpoints are exposed to avoid accepting unauthenticated webhook payloads.
+  if (effectiveMode === "polling") {
+    // polling 모드: webhook 라우트 미마운트 — 미인증 webhook 페이로드 수신 방지
     const { Hono } = await import("hono");
     const pollingApp = new Hono();
     pollingApp.route("/", dashboardRoutes);
     pollingApp.route("/", healthRoutes);
     app = pollingApp as ReturnType<typeof createWebhookApp>;
   } else {
+    // webhook/hybrid 모드: webhook 라우트 마운트
     app = createWebhookApp({
       config: effectiveConfig,
       webhookSecret,

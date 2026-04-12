@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { WorkerPool } from "../../src/claude/worker-pool.js";
 
 describe("WorkerPool constructor", () => {
@@ -348,5 +348,98 @@ describe("WorkerPool shutdown", () => {
     await pool.shutdown();
 
     await expect(pool.submit("new")).rejects.toThrow("WorkerPool is shutting down");
+  });
+});
+
+describe("WorkerPool idle shrink", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("should remove idle worker after idleTimeoutMs", async () => {
+    const handler = vi.fn().mockResolvedValue("done");
+    const pool = new WorkerPool(2, handler, { idleTimeoutMs: 5000 });
+
+    await pool.submit("input");
+    // Flush .catch().finally() microtasks so worker status becomes idle
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(pool.getWorkers().length).toBe(1);
+    expect(pool.getWorkers()[0].status).toBe("idle");
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(pool.getWorkers().length).toBe(0);
+  });
+
+  it("should not shrink below minWorkers", async () => {
+    const handler = vi.fn().mockResolvedValue("done");
+    const pool = new WorkerPool(3, handler, { idleTimeoutMs: 1000, minWorkers: 1 });
+
+    // Run 2 tasks concurrently to create 2 workers
+    await Promise.all([pool.submit("a"), pool.submit("b")]);
+    // Flush .finally() microtasks so both workers become idle with timers set
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(pool.getWorkers().length).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(pool.getWorkers().length).toBe(1);
+  });
+
+  it("should cancel idle timer when worker becomes busy again", async () => {
+    let resolveSecond!: () => void;
+    const handler = vi.fn()
+      .mockResolvedValueOnce("first")
+      .mockImplementationOnce(
+        () => new Promise<string>((resolve) => { resolveSecond = () => resolve("second"); })
+      );
+    const pool = new WorkerPool(1, handler, { idleTimeoutMs: 5000 });
+
+    // First task completes → worker becomes idle, idle timer is set
+    await pool.submit("first");
+    // Flush .finally() microtasks so worker becomes idle with timer set
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(pool.getWorkers()[0].status).toBe("idle");
+    expect(pool.getWorkers()[0].idleTimer).toBeDefined();
+
+    // Second task submitted → processNext reuses idle worker, clears idle timer synchronously
+    const p2 = pool.submit("second");
+
+    expect(pool.getWorkers()[0].status).toBe("busy");
+    expect(pool.getWorkers()[0].idleTimer).toBeUndefined();
+
+    // Advance past original idle timeout — timer was cancelled, worker must NOT be shrunk
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(pool.getWorkers().length).toBe(1);
+
+    resolveSecond();
+    await p2;
+  });
+
+  it("should clear idle timers on shutdown", async () => {
+    const handler = vi.fn().mockResolvedValue("done");
+    const pool = new WorkerPool(2, handler, { idleTimeoutMs: 5000 });
+
+    await pool.submit("input");
+    // Flush .finally() microtasks so worker becomes idle with timer set
+    await vi.advanceTimersByTimeAsync(0);
+
+    const worker = pool.getWorkers()[0];
+    expect(worker.idleTimer).toBeDefined();
+
+    await pool.shutdown();
+
+    expect(pool.getWorkers()[0].idleTimer).toBeUndefined();
+
+    // Advancing time should not shrink the worker (timer was cleared on shutdown)
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(pool.getWorkers().length).toBe(1);
   });
 });

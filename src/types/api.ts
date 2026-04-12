@@ -247,6 +247,35 @@ export const CostsResponseSchema = z.object({
 
 export type CostsResponse = z.infer<typeof CostsResponseSchema>;
 
+// GetProjectStats 쿼리 스키마 (GET /api/stats/projects)
+export const GetProjectStatsQuerySchema = z.object({
+  timeRange: z.enum(["24h", "7d", "30d", "all"]).default("7d"),
+}).strict();
+
+export type GetProjectStatsQuery = z.infer<typeof GetProjectStatsQuerySchema>;
+
+// ProjectStatsEntry — 프로젝트별 성공률/비용 통계 항목
+export const ProjectStatsEntrySchema = z.object({
+  project: z.string(),
+  total: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(100),
+  avgDurationMs: z.number().nonnegative(),
+  totalCostUsd: z.number().nonnegative(),
+  avgCostUsd: z.number().nonnegative(),
+});
+
+export type ProjectStatsEntry = z.infer<typeof ProjectStatsEntrySchema>;
+
+// ProjectStatsResponse 응답 타입 (GET /api/stats/projects)
+export const ProjectStatsResponseSchema = z.object({
+  timeRange: z.enum(["24h", "7d", "30d", "all"]),
+  projects: z.array(ProjectStatsEntrySchema),
+});
+
+export type ProjectStatsResponse = z.infer<typeof ProjectStatsResponseSchema>;
+
 // HealthCheck 응답 스키마 (GET /api/health)
 export const HealthCheckResponseSchema = z.object({
   project: z.string(),

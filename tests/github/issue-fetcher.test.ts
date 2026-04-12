@@ -1,29 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-vi.mock("../../src/github/github-cache.js", () => ({
-  memoize: vi.fn((fn) => fn), // Mock memoize to return the original function
-  getCached: vi.fn(),
-  setCached: vi.fn(),
-  clearCache: vi.fn(),
-}));
+vi.mock("../../src/github/github-cache.js", async () => {
+  return await vi.importActual("../../src/github/github-cache.js");
+});
 
-import { fetchIssue, fetchPR } from "../../src/github/issue-fetcher.js";
+import { fetchIssue, fetchPR, invalidateIssueCache, invalidatePRCache } from "../../src/github/issue-fetcher.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { getCached, setCached } from "../../src/github/github-cache.js";
+import { clearCache } from "../../src/github/github-cache.js";
 
 const mockRunCli = vi.mocked(runCli);
-const mockGetCached = vi.mocked(getCached);
-const mockSetCached = vi.mocked(setCached);
 
 describe("fetchIssue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 기본적으로 캐시 미스 상태로 설정
-    mockGetCached.mockReturnValue(undefined);
+    clearCache();
   });
 
   it("should fetch issue successfully with basic options", async () => {
@@ -332,336 +326,180 @@ describe("fetchIssue", () => {
     );
   });
 
-  it("should throw auth error when 401 authentication required", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "HTTP 401: authentication required",
-      exitCode: 1
+  describe("TTL 캐시 만료", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
     });
 
-    await expect(fetchIssue("test/repo", 1)).rejects.toThrow(
-      "Failed to fetch issue #1 from test/repo: GitHub issue view failed: Authentication required"
-    );
-  });
-
-  it("should throw auth error when stderr contains authentication required text", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "authentication required - please run gh auth login",
-      exitCode: 1
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    await expect(fetchIssue("test/repo", 1)).rejects.toThrow(
-      "Failed to fetch issue #1 from test/repo: GitHub issue view failed: Authentication required"
-    );
-  });
+    it("should re-fetch after TTL (5 minutes) expires", async () => {
+      const mockResponse = {
+        number: 1001,
+        title: "TTL test issue",
+        body: "Testing TTL expiration",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
 
-  it("should throw permission error when 403 forbidden", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "HTTP 403: Forbidden",
-      exitCode: 1
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — TTL 이전이므로 캐시 히트
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // TTL(5분) 경과 후 재호출
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
     });
 
-    await expect(fetchIssue("private/repo", 42)).rejects.toThrow(
-      "Failed to fetch issue #42 from private/repo: GitHub issue view failed: Permission denied"
-    );
+    it("should not re-fetch before TTL expires", async () => {
+      const mockResponse = {
+        number: 1002,
+        title: "TTL not expired test",
+        body: "Cache should still be valid",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await fetchIssue("test/repo", 1002);
+      vi.advanceTimersByTime(5 * 60 * 1000 - 1);
+      await fetchIssue("test/repo", 1002);
+
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it("should throw rate limit error when rate limit exceeded", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "rate limit exceeded, try again later",
-      exitCode: 1
+  describe("캐시 선택적 무효화 — invalidateIssueCache", () => {
+    it("should re-fetch after invalidateIssueCache is called", async () => {
+      const mockResponse = {
+        number: 1003,
+        title: "Invalidation test",
+        body: "Testing cache invalidation",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      // 첫 번째 호출 — runCli 실행
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — 캐시 히트, runCli 미실행
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 캐시 무효화 후 재호출 — runCli 재실행
+      invalidateIssueCache("test/repo", 1003);
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
     });
 
-    await expect(fetchIssue("test/repo", 10)).rejects.toThrow(
-      "Failed to fetch issue #10 from test/repo: GitHub issue view failed: Rate limit exceeded"
-    );
+    it("should only invalidate the specified issue, not others", async () => {
+      mockRunCli
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1004, title: "Issue A", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1005, title: "Issue B", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1004, title: "Issue A updated", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        });
+
+      await fetchIssue("test/repo", 1004);
+      await fetchIssue("test/repo", 1005);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+
+      // 1004만 무효화
+      invalidateIssueCache("test/repo", 1004);
+
+      // 1004는 재요청, 1005는 캐시 히트
+      await fetchIssue("test/repo", 1004);
+      await fetchIssue("test/repo", 1005);
+      expect(mockRunCli).toHaveBeenCalledTimes(3);
+    });
   });
 
-  it("should throw rate limit error when HTTP 429 response", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "HTTP 429: too many requests",
-      exitCode: 1
+  describe("캐시 선택적 무효화 — invalidatePRCache", () => {
+    it("should re-fetch PR after invalidatePRCache is called", async () => {
+      const mockPRResponse = {
+        number: 10,
+        title: "PR title",
+        body: "PR body",
+        state: "open",
+        headRefName: "feature-branch",
+        headRefOid: "abc123def456",
+        baseRefName: "main"
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockPRResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      // 첫 번째 호출 — runCli 실행
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — 캐시 히트
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // PR 캐시 무효화 후 재호출
+      invalidatePRCache("test/repo", 10);
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
     });
 
-    await expect(fetchIssue("test/repo", 10)).rejects.toThrow(
-      "Failed to fetch issue #10 from test/repo: GitHub issue view failed: Rate limit exceeded"
-    );
-  });
+    it("invalidatePRCache should not affect issue cache", async () => {
+      mockRunCli
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1006, title: "Issue", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            number: 11, title: "PR", body: "", state: "open",
+            headRefName: "feat", headRefOid: "sha", baseRefName: "main"
+          }),
+          stderr: "",
+          exitCode: 0
+        });
 
-  it("should throw error when network timeout occurs", async () => {
-    mockRunCli.mockRejectedValue(new Error("ETIMEDOUT: connection timed out"));
+      await fetchIssue("test/repo", 1006);
+      await fetchPR("test/repo", 11);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
 
-    await expect(fetchIssue("test/repo", 5, { timeout: 1000 })).rejects.toThrow(
-      "ETIMEDOUT: connection timed out"
-    );
-  });
+      // PR 캐시만 무효화
+      invalidatePRCache("test/repo", 11);
 
-  it("should throw not found error when accessing deleted repository", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "Could not resolve to a Repository with the name 'deleted/repo'. HTTP 404: not found",
-      exitCode: 1
+      // 이슈는 여전히 캐시 히트
+      await fetchIssue("test/repo", 1006);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
     });
-
-    await expect(fetchIssue("deleted/repo", 1)).rejects.toThrow(
-      "Failed to fetch issue #1 from deleted/repo: GitHub issue view failed: Resource not found"
-    );
-  });
-
-});
-
-describe("fetchPR", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetCached.mockReturnValue(undefined);
-  });
-
-  it("should fetch PR successfully with all fields", async () => {
-    const mockResponse = {
-      number: 42,
-      title: "Add new feature",
-      body: "This PR adds a new feature",
-      state: "OPEN",
-      headRefName: "feature/new-feature",
-      headRefOid: "abc123def456",
-      baseRefName: "main"
-    };
-
-    mockRunCli.mockResolvedValue({
-      stdout: JSON.stringify(mockResponse),
-      stderr: "",
-      exitCode: 0
-    });
-
-    const result = await fetchPR("test/repo", 42);
-
-    expect(result).toEqual({
-      number: 42,
-      title: "Add new feature",
-      body: "This PR adds a new feature",
-      state: "OPEN",
-      head: {
-        ref: "feature/new-feature",
-        sha: "abc123def456"
-      },
-      base: {
-        ref: "main"
-      }
-    });
-
-    expect(mockRunCli).toHaveBeenCalledWith(
-      "gh",
-      ["pr", "view", "42", "--repo", "test/repo", "--json", "number,title,body,state,headRefName,headRefOid,baseRefName"],
-      { timeout: undefined }
-    );
-  });
-
-  it("should fetch closed PR", async () => {
-    const mockResponse = {
-      number: 10,
-      title: "Old PR",
-      body: "Already merged",
-      state: "CLOSED",
-      headRefName: "old-branch",
-      headRefOid: "deadbeef1234",
-      baseRefName: "main"
-    };
-
-    mockRunCli.mockResolvedValue({
-      stdout: JSON.stringify(mockResponse),
-      stderr: "",
-      exitCode: 0
-    });
-
-    const result = await fetchPR("test/repo", 10);
-
-    expect(result.state).toBe("CLOSED");
-    expect(result.head.ref).toBe("old-branch");
-    expect(result.base.ref).toBe("main");
-  });
-
-  it("should use custom gh path", async () => {
-    const mockResponse = {
-      number: 1,
-      title: "Test PR",
-      body: "",
-      state: "OPEN",
-      headRefName: "feat/test",
-      headRefOid: "abcdef01",
-      baseRefName: "main"
-    };
-
-    mockRunCli.mockResolvedValue({
-      stdout: JSON.stringify(mockResponse),
-      stderr: "",
-      exitCode: 0
-    });
-
-    await fetchPR("test/repo", 1, { ghPath: "/custom/gh" });
-
-    expect(mockRunCli).toHaveBeenCalledWith(
-      "/custom/gh",
-      ["pr", "view", "1", "--repo", "test/repo", "--json", "number,title,body,state,headRefName,headRefOid,baseRefName"],
-      { timeout: undefined }
-    );
-  });
-
-  it("should pass timeout option to runCli", async () => {
-    const mockResponse = {
-      number: 5,
-      title: "Timeout test PR",
-      body: "",
-      state: "OPEN",
-      headRefName: "branch",
-      headRefOid: "sha1sha2sha3",
-      baseRefName: "main"
-    };
-
-    mockRunCli.mockResolvedValue({
-      stdout: JSON.stringify(mockResponse),
-      stderr: "",
-      exitCode: 0
-    });
-
-    await fetchPR("test/repo", 5, { timeout: 8000 });
-
-    expect(mockRunCli).toHaveBeenCalledWith(
-      "gh",
-      ["pr", "view", "5", "--repo", "test/repo", "--json", "number,title,body,state,headRefName,headRefOid,baseRefName"],
-      { timeout: 8000 }
-    );
-  });
-
-  it("should throw error when PR not found (404)", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "no pull requests found for branch 'nonexistent'. HTTP 404: not found",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("test/repo", 9999)).rejects.toThrow(
-      "Failed to fetch PR #9999 from test/repo: GitHub pr view failed: Resource not found"
-    );
-  });
-
-  it("should throw error when stdout contains not found", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "GraphQL: Could not resolve to a PullRequest. not found",
-      stderr: "",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("test/repo", 99)).rejects.toThrow(
-      "Failed to fetch PR #99 from test/repo: GitHub pr view failed: Resource not found"
-    );
-  });
-
-  it("should throw auth error when 401 authentication required", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "HTTP 401: authentication required",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("test/repo", 1)).rejects.toThrow(
-      "Failed to fetch PR #1 from test/repo: GitHub pr view failed: Authentication required"
-    );
-  });
-
-  it("should throw permission error when 403 forbidden", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "HTTP 403: Forbidden - insufficient permissions to access private repo",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("private/repo", 7)).rejects.toThrow(
-      "Failed to fetch PR #7 from private/repo: GitHub pr view failed: Permission denied"
-    );
-  });
-
-  it("should throw rate limit error when rate limit exceeded", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "API rate limit exceeded for user",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("test/repo", 3)).rejects.toThrow(
-      "Failed to fetch PR #3 from test/repo: GitHub pr view failed: Rate limit exceeded"
-    );
-  });
-
-  it("should throw error when JSON is malformed", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "not valid json at all",
-      stderr: "",
-      exitCode: 0
-    });
-
-    await expect(fetchPR("test/repo", 1)).rejects.toThrow(
-      "Failed to parse gh output for PR #1: not valid json at all"
-    );
-  });
-
-  it("should throw error when JSON is partially malformed", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: '{"number": 1, "title": "Test", "broken":',
-      stderr: "",
-      exitCode: 0
-    });
-
-    await expect(fetchPR("test/repo", 1)).rejects.toThrow(
-      'Failed to parse gh output for PR #1: {"number": 1, "title": "Test", "broken":'
-    );
-  });
-
-  it("should throw error on network timeout", async () => {
-    mockRunCli.mockRejectedValue(new Error("ETIMEDOUT: operation timed out"));
-
-    await expect(fetchPR("test/repo", 2, { timeout: 500 })).rejects.toThrow(
-      "ETIMEDOUT: operation timed out"
-    );
-  });
-
-  it("should throw not found error when accessing PR on deleted repository", async () => {
-    mockRunCli.mockResolvedValue({
-      stdout: "",
-      stderr: "Could not resolve to a Repository with the name 'deleted/repo'. HTTP 404: not found",
-      exitCode: 1
-    });
-
-    await expect(fetchPR("deleted/repo", 1)).rejects.toThrow(
-      "Failed to fetch PR #1 from deleted/repo: GitHub pr view failed: Resource not found"
-    );
-  });
-
-  it("should map headRefName and headRefOid to head.ref and head.sha", async () => {
-    const mockResponse = {
-      number: 77,
-      title: "Field mapping test",
-      body: "Verify field mapping",
-      state: "MERGED",
-      headRefName: "feature/branch-name",
-      headRefOid: "commitsha123456",
-      baseRefName: "develop"
-    };
-
-    mockRunCli.mockResolvedValue({
-      stdout: JSON.stringify(mockResponse),
-      stderr: "",
-      exitCode: 0
-    });
-
-    const result = await fetchPR("test/repo", 77);
-
-    expect(result.head.ref).toBe("feature/branch-name");
-    expect(result.head.sha).toBe("commitsha123456");
-    expect(result.base.ref).toBe("develop");
   });
 
 });

@@ -1627,6 +1627,69 @@ describe("Dashboard API - Version Management", () => {
           const result = await response.json();
           expect(result.jobs).toHaveLength(2);
         });
+
+        it("should return empty array when no jobs match project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs?project=test/nonexistent");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(0);
+          expect(result.pagination.total).toBe(0);
+        });
+
+        it("should filter by project and status combined", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs?project=test/repo1&status=completed");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(1);
+          expect(result.jobs[0].id).toBe("job-1");
+          expect(result.jobs[0].repo).toBe("test/repo1");
+        });
+
+        it("should report correct pagination total when filtered by project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo1", status: "queued" },
+            { id: "job-4", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockReturnValue(mockJobs);
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=2");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(2);
+          expect(result.pagination.total).toBe(3);
+          expect(result.pagination.hasMore).toBe(true);
+        });
+
+        it("should return 400 for invalid limit query param", async () => {
+          mockJobStore.list.mockReturnValue([]);
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=notanumber");
+          expect(response.status).toBe(400);
+
+          const result = await response.json();
+          expect(result.error).toBe("Invalid query parameters");
+        });
       });
 
       describe("GET /api/stats with project filter", () => {

@@ -27,6 +27,8 @@ export interface DispatchResult {
   issueNumber?: number;
   repo?: string;
   reason?: string;
+  /** 처리/스킵 사유 코드 (구조화된 분류) */
+  reasonCode?: string;
   dependencies?: number[];
 }
 
@@ -43,17 +45,17 @@ export function dispatchEvent(
 ): DispatchResult {
   // Defensive validation: ensure required fields are present
   if (!payload?.issue?.number || !Array.isArray(payload?.issue?.labels) || !payload?.repository?.full_name) {
-    return { shouldProcess: false, reason: "Malformed payload: missing required fields" };
+    return { shouldProcess: false, reasonCode: "invalid_payload", reason: "Malformed payload: missing required fields" };
   }
 
   // Only handle issue events
   if (eventType !== "issues") {
-    return { shouldProcess: false, reason: `Ignored event type: ${eventType}` };
+    return { shouldProcess: false, reasonCode: "ignored_event_type", reason: `Ignored event type: ${eventType}` };
   }
 
   // Only handle labeled action
   if (payload.action !== "labeled") {
-    return { shouldProcess: false, reason: `Ignored action: ${payload.action}` };
+    return { shouldProcess: false, reasonCode: "ignored_action", reason: `Ignored action: ${payload.action}` };
   }
 
   // Check if any label matches trigger labels
@@ -64,6 +66,7 @@ export function dispatchEvent(
   if (!hasTriggerLabel) {
     return {
       shouldProcess: false,
+      reasonCode: "label_not_matched",
       reason: `No matching trigger label. Issue labels: [${issueLabels.join(", ")}], trigger: [${triggerLabels.join(", ")}]`,
     };
   }
@@ -74,6 +77,7 @@ export function dispatchEvent(
     if (!hasInstanceOwnersConfigured(instanceOwners)) {
       return {
         shouldProcess: false,
+        reasonCode: "instance_owners_not_configured",
         reason: "instanceOwners is not configured. Set at least one owner in config to enable issue processing.",
       };
     }
@@ -81,6 +85,7 @@ export function dispatchEvent(
     if (!isAllowedOwner(author, instanceOwners)) {
       return {
         shouldProcess: false,
+        reasonCode: "instance_owners_mismatch",
         reason: `Issue author @${author} is not in instanceOwners`,
       };
     }
@@ -93,6 +98,7 @@ export function dispatchEvent(
     if (!configuredRepos.includes(repo)) {
       return {
         shouldProcess: false,
+        reasonCode: "repo_not_configured",
         reason: `Repository ${repo} is not configured`,
       };
     }
@@ -111,6 +117,7 @@ export function dispatchEvent(
       );
       return {
         shouldProcess: false,
+        reasonCode: "circular_dependency",
         reason: `Circular dependency detected for issue #${payload.issue.number}`,
       };
     }
@@ -125,6 +132,7 @@ export function dispatchEvent(
       );
       return {
         shouldProcess: false,
+        reasonCode: "active_job_exists",
         reason: `Active job already exists for issue #${payload.issue.number} (${activeJob.status})`,
       };
     }
@@ -136,6 +144,8 @@ export function dispatchEvent(
     shouldProcess: true,
     issueNumber: payload.issue.number,
     repo,
+    reasonCode: "trigger_label_matched",
+    reason: "트리거 라벨 매칭으로 실행",
     ...(dependencies.length > 0 ? { dependencies } : {}),
   };
 }

@@ -26,6 +26,7 @@ const mockStore = {
   shouldBlockRepickup: vi.fn(),
   findFailedJobsForRetry: vi.fn().mockReturnValue([]),
   findAnyByIssue: vi.fn(),
+  addSkipEvent: vi.fn(),
 };
 
 const mockQueue = {
@@ -695,8 +696,8 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(124, "test/repo");
 
       // job이 없는 이슈만 enqueue
-      expect(mockQueue.enqueue).toHaveBeenCalledWith(124, "test/repo");
-      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(123, "test/repo");
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(124, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(123, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
     });
 
     it("queued/running/success 등 모든 비-archived 상태 job이 있으면 스킵해야 한다", async () => {
@@ -773,8 +774,8 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(201, "test/repo");
 
       // 모든 이슈가 enqueue되어야 함
-      expect(mockQueue.enqueue).toHaveBeenCalledWith(200, "test/repo");
-      expect(mockQueue.enqueue).toHaveBeenCalledWith(201, "test/repo");
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(200, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(201, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
     });
 
     it("혼합 시나리오: job 있는 이슈는 스킵, 없는 이슈는 enqueue", async () => {
@@ -805,9 +806,9 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(302, "test/repo");
 
       // 301만 enqueue
-      expect(mockQueue.enqueue).toHaveBeenCalledWith(301, "test/repo");
-      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(300, "test/repo");
-      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(302, "test/repo");
+      expect(mockQueue.enqueue).toHaveBeenCalledWith(301, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(300, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
+      expect(mockQueue.enqueue).not.toHaveBeenCalledWith(302, "test/repo", undefined, undefined, undefined, undefined, expect.any(String));
     });
 
     it("success 상태 job이 있는 이슈도 재enqueue하지 않아야 한다 (스팸 방지)", async () => {

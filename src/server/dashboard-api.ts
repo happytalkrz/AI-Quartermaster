@@ -529,7 +529,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ projects: [] });
       }
 
-      return c.json({ projects: config.projects });
+      const projects = config.projects.map(project => ({
+        ...project,
+        errorState: queue.getProjectStatus(project.repo),
+      }));
+
+      return c.json({ projects });
     } catch (error: unknown) {
       const logger = getLogger();
       logger.error(`Failed to load projects: ${getErrorMessage(error)}`);

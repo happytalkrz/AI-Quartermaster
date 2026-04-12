@@ -290,6 +290,8 @@ export function buildDynamicSection(data: {
   branch: { base: string; work: string };
   config: { maxPhases: number; sensitivePaths: string };
 }): string {
+  const sanitizedBody = `<USER_INPUT>\n${data.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
+
   return `
 # 이슈 정보
 
@@ -298,7 +300,7 @@ export function buildDynamicSection(data: {
 **라벨**: ${data.issue.labels.join(", ")}
 
 **본문**:
-${data.issue.body}
+${sanitizedBody}
 
 # 저장소 정보
 

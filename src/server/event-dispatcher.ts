@@ -3,6 +3,7 @@ import { listConfiguredRepos } from "../config/project-resolver.js";
 import type { AQConfig } from "../types/config.js";
 import { parseDependencies, checkCircularDependency } from "../queue/dependency-resolver.js";
 import type { JobStore } from "../queue/job-store.js";
+import { isAllowedOwner } from "../safety/label-filter.js";
 
 const logger = getLogger();
 
@@ -65,6 +66,18 @@ export function dispatchEvent(
       shouldProcess: false,
       reason: `No matching trigger label. Issue labels: [${issueLabels.join(", ")}], trigger: [${triggerLabels.join(", ")}]`,
     };
+  }
+
+  // Check if issue author is an allowed owner (when config is provided)
+  if (config) {
+    const instanceOwners = config.general.instanceOwners ?? [];
+    const author = payload.issue.user.login;
+    if (!isAllowedOwner(author, instanceOwners)) {
+      return {
+        shouldProcess: false,
+        reason: `Issue author @${author} is not in instanceOwners`,
+      };
+    }
   }
 
   // Check if repo is configured (when config is provided)

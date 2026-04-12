@@ -258,6 +258,10 @@ function getInputValue(input) {
     case 'number':
       return parseInt(input.value, 10) || 0;
     default:
+      // comma-array 타입 처리 (예: instanceOwners)
+      if (input.dataset.inputType === 'comma-array') {
+        return input.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+      }
       // textarea이고 JSON 데이터인 경우 파싱 시도
       if (input.tagName.toLowerCase() === 'textarea') {
         try {

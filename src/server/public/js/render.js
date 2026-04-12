@@ -661,6 +661,7 @@ function renderTabForm(tabName, data) {
 
 var FIELD_DISPLAY_LABELS = {
   'general.instanceLabel': 'Instance Label',
+  'general.instanceOwners': 'Instance Owners',
 };
 
 function renderFormField(key, value, configPath) {
@@ -677,7 +678,11 @@ function renderFormField(key, value, configPath) {
   } else if (typeof value === 'number') {
     html += renderNumberInput(fieldId, value, configPath, isReadonly);
   } else if (Array.isArray(value)) {
-    html += renderArrayInput(fieldId, value, configPath, isReadonly);
+    if (configPath === 'general.instanceOwners') {
+      html += renderInstanceOwnersInput(fieldId, value, configPath, isReadonly);
+    } else {
+      html += renderArrayInput(fieldId, value, configPath, isReadonly);
+    }
   } else if (typeof value === 'object' && value !== null) {
     html += renderObjectInput(fieldId, value, configPath, isReadonly);
   } else {
@@ -736,6 +741,23 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
          'class="' + classes + '"' +
          (isReadonly ? ' disabled' : '') + '/>' +
          '</div>';
+}
+
+function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
+  var classes = buildInputClasses(
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    isReadonly
+  );
+  var commaSeparated = Array.isArray(value) ? value.join(', ') : '';
+
+  return '<input type="text" id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'data-input-type="comma-array" ' +
+         'value="' + esc(commaSeparated) + '" ' +
+         'placeholder="owner1, owner2, owner3" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '/>' +
+         '<div class="text-[10px] text-outline/50 mt-1">쉼표로 구분 (예: user1, user2)</div>';
 }
 
 function renderArrayInput(fieldId, value, configPath, isReadonly) {

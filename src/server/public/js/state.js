@@ -91,19 +91,21 @@ function setProject(projectRepo) {
     connectSSE();
   }
 
-  // Close dropdown
+  // Close dropdowns
   var dropdown = document.getElementById('project-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
+  var jobDropdown = document.getElementById('job-project-dropdown');
+  if (jobDropdown) jobDropdown.classList.add('hidden');
 }
 
 function updateProjectDropdownUI() {
-  var label = document.getElementById('current-project-label');
-  if (!label) return;
+  var labelText = currentProject === 'all'
+    ? 'All Projects'
+    : (allProjects.find(function(p) { return p.repo === currentProject; }) || { repo: currentProject }).repo;
 
-  if (currentProject === 'all') {
-    label.textContent = 'All Projects';
-  } else {
-    var project = allProjects.find(function(p) { return p.repo === currentProject; });
-    label.textContent = project ? project.repo : currentProject;
-  }
+  var label = document.getElementById('current-project-label');
+  if (label) label.textContent = labelText;
+
+  var jobLabel = document.getElementById('job-project-filter-label');
+  if (jobLabel) jobLabel.textContent = labelText;
 }

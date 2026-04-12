@@ -50,6 +50,76 @@ describe("cli-runner", () => {
     vi.clearAllMocks();
   });
 
+  describe("runCli - shell injection prevention", () => {
+    it("should pass shell metacharacters as literal args, not interpreted by shell", async () => {
+      const { execFile } = await import("child_process");
+      const mockExecFile = vi.mocked(execFile);
+
+      mockExecFile.mockImplementation((command, args, options, callback) => {
+        if (callback) {
+          callback(null, "output", "");
+        }
+        return {} as ReturnType<typeof execFile>;
+      });
+
+      const maliciousArgs = ["; rm -rf /", "$(echo pwned)", "`id`", "| cat /etc/passwd", "&& malicious"];
+
+      await runCli("echo", maliciousArgs);
+
+      // execFile must be called with the exact array — no shell expansion
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "echo",
+        maliciousArgs,
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it("should not invoke shell when running runCli (execFile, not exec)", async () => {
+      const { execFile } = await import("child_process");
+      const mockExecFile = vi.mocked(execFile);
+
+      mockExecFile.mockImplementation((command, args, options, callback) => {
+        if (callback) {
+          callback(null, "safe", "");
+        }
+        return {} as ReturnType<typeof execFile>;
+      });
+
+      // Command chaining via semicolon in a single arg must not split into multiple commands
+      await runCli("git", ["log", "--format=; echo injected"]);
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "git",
+        ["log", "--format=; echo injected"],
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+
+    it("should pass newline and null-byte chars as literal args without shell interpretation", async () => {
+      const { execFile } = await import("child_process");
+      const mockExecFile = vi.mocked(execFile);
+
+      mockExecFile.mockImplementation((command, args, options, callback) => {
+        if (callback) {
+          callback(null, "", "");
+        }
+        return {} as ReturnType<typeof execFile>;
+      });
+
+      const argsWithSpecials = ["title\necho injected", "arg\x00null"];
+      await runCli("echo", argsWithSpecials);
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "echo",
+        argsWithSpecials,
+        expect.any(Object),
+        expect.any(Function)
+      );
+    });
+  });
+
   describe("runCli", () => {
     it("should execute command successfully", async () => {
       const { execFile } = await import("child_process");

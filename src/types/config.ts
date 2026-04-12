@@ -20,6 +20,16 @@ export interface SkillContent {
   content: string;
 }
 
+export interface StuckThresholdConfig {
+  defaultMs: number;           // 기본 fallback (600000)
+  planGenerationMs: number;    // plan 생성 (600000)
+  implementationMs: number;    // phase 구현 (900000 = 15분)
+  reviewMs: number;            // 리뷰 (600000)
+  verificationMs: number;      // tsc/vitest (1200000 = 20분)
+  publishMs: number;           // push/PR (300000 = 5분)
+  activityThresholdMs: number; // Claude 활동 기준 (300000 = 5분)
+}
+
 export interface GeneralConfig {
   projectName: string;
   instanceLabel?: string;
@@ -31,6 +41,7 @@ export interface GeneralConfig {
   concurrency: number;
   targetRoot?: string;
   stuckTimeoutMs: number;
+  stuckThresholds: StuckThresholdConfig;
   pollingIntervalMs: number;
   maxJobs: number;
   autoUpdate: boolean;

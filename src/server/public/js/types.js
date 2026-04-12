@@ -62,6 +62,7 @@
  * @property {UsageStats} [totalUsage]
  * @property {boolean} [isRetry]
  * @property {number[]} [dependencies]
+ * @property {string} [issueTitle]
  */
 
 /**

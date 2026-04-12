@@ -8,7 +8,7 @@ import { checkDuplicateExtension, checkFileScope } from "../../safety/scope-guar
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig } from "../../types/config.js";
-import type { Plan, Phase, PhaseResult } from "../../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ModelCostEntry } from "../../types/pipeline.js";
 import { classifyError } from "../errors/error-classifier.js";
 import { parseTscOutput, parseVitestOutput } from "../reporting/verification-parser.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
@@ -211,6 +211,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           const warnings = vitestResult.failedTests.length > 0
             ? vitestResult.failedTests.map(t => `Test failed: ${t}`)
             : undefined;
+          const partialVitestModelCosts: ModelCostEntry[] | undefined =
+            claudeResult?.model && claudeResult.usage
+              ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+              : undefined;
           return {
             phaseIndex: ctx.phase.index,
             phaseName: ctx.phase.name,
@@ -224,6 +228,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
+            modelCosts: partialVitestModelCosts,
           };
         }
 
@@ -237,6 +242,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           const errors = Object.entries(tscResult.errorsByFile).flatMap(([file, msgs]) =>
             msgs.map(msg => `${file}: ${msg}`)
           );
+          const partialTscModelCosts: ModelCostEntry[] | undefined =
+            claudeResult?.model && claudeResult.usage
+              ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+              : undefined;
           return {
             phaseIndex: ctx.phase.index,
             phaseName: ctx.phase.name,
@@ -249,6 +258,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
+            modelCosts: partialTscModelCosts,
           };
         }
 
@@ -259,6 +269,10 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     // 5. Get latest commit hash
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
+    const successModelCosts: ModelCostEntry[] | undefined =
+      claudeResult.model && claudeResult.usage
+        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -269,9 +283,14 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       completedAt: new Date().toISOString(),
       costUsd: claudeResult.costUsd,
       usage: claudeResult.usage,
+      modelCosts: successModelCosts,
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
+    const errorModelCosts: ModelCostEntry[] | undefined =
+      claudeResult?.model && claudeResult.usage
+        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -284,6 +303,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       completedAt: new Date().toISOString(),
       costUsd: claudeResult?.costUsd,
       usage: claudeResult?.usage,
+      modelCosts: errorModelCosts,
     };
   }
 }

@@ -6,7 +6,7 @@ import { runShell } from "../../utils/cli-runner.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig, GitConfig, WorktreeConfig } from "../../types/config.js";
-import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../../types/pipeline.js";
+import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry, ModelCostEntry } from "../../types/pipeline.js";
 import { classifyError } from "../errors/error-classifier.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
@@ -206,6 +206,10 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
 
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
+    const retryModelCosts: ModelCostEntry[] | undefined =
+      claudeResult.model && claudeResult.usage
+        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -215,9 +219,16 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       startedAt,
       completedAt: new Date().toISOString(),
       costUsd: claudeResult.costUsd,
+      retryCostUsd: claudeResult.costUsd,
+      retryCount: ctx.attempt,
+      modelCosts: retryModelCosts,
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
+    const retryErrorModelCosts: ModelCostEntry[] | undefined =
+      claudeResult?.model && claudeResult.usage
+        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
+        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -229,6 +240,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       startedAt,
       completedAt: new Date().toISOString(),
       costUsd: claudeResult?.costUsd,
+      retryCostUsd: claudeResult?.costUsd,
+      retryCount: ctx.attempt,
+      modelCosts: retryErrorModelCosts,
     };
   }
 }

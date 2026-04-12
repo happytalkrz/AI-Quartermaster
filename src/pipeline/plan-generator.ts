@@ -123,7 +123,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       issue: {
         number: ctx.issue.number,
         title: ctx.issue.title,
-        body: attempt === 1 ? `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>` : ctx.issue.body,
+        body: `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>`,
         labels: ctx.issue.labels,
       },
       repo: {
@@ -220,7 +220,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
           ...data,
           issue: {
             ...data.issue,
-            body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
+            body: `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>`,
           },
         }),
         "issue body truncation"

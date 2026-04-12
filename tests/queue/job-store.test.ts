@@ -15,8 +15,17 @@ describe("JobStore", () => {
   });
 
   afterEach(() => {
-    store?.stopWatching();
-    rmSync(dataDir, { recursive: true, force: true });
+    try {
+      store?.stopWatching();
+      store?.close();
+    } catch (err) {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(dataDir, { recursive: true, force: true });
+    } catch (err) {
+      // ignore cleanup errors
+    }
   });
 
   describe("Event Emission", () => {

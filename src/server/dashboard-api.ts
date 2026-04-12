@@ -16,6 +16,7 @@ import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 
 // In-memory session token store: token → expiry timestamp
@@ -228,7 +229,7 @@ async function checkGitRemoteAccess(projectPath: string, gitPath: string): Promi
   } catch (error: unknown) {
     return {
       status: "error",
-      message: `Git remote check failed: ${getErrorMessage(error)}`
+      message: `Git remote check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }
@@ -248,7 +249,7 @@ async function checkLocalPath(projectPath: string): Promise<{ status: "ok" | "er
   } catch (error: unknown) {
     return {
       status: "error",
-      message: `Local path check failed: ${getErrorMessage(error)}`
+      message: `Local path check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }
@@ -278,7 +279,7 @@ async function checkDiskSpace(projectPath: string): Promise<{ status: "ok" | "wa
   } catch (error: unknown) {
     return {
       status: "warning",
-      message: `Disk space check failed: ${getErrorMessage(error)}`
+      message: `Disk space check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }
@@ -301,7 +302,7 @@ async function checkDependencies(projectPath: string): Promise<{ status: "ok" | 
   } catch (error: unknown) {
     return {
       status: "error",
-      message: `Dependencies check failed: ${getErrorMessage(error)}`
+      message: `Dependencies check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
     };
   }
 }
@@ -422,13 +423,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const maskedConfig = maskSensitiveConfig(config);
       return c.json({ config: maskedConfig });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+      return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
-
-  const getErrorMessage = (error: unknown): string =>
-    error instanceof Error ? error.message : "Unknown error";
 
   const projectRoot = process.cwd();
   const configPath = `${projectRoot}/config.yml`;
@@ -484,18 +481,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         } catch (runtimeError: unknown) {
           // Log runtime application error but don't fail the request
           const logger = getLogger();
-          const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
-          logger.warn(`Failed to apply runtime config changes: ${errMsg}`);
+          logger.warn(`Failed to apply runtime config changes: ${getErrorMessage(runtimeError)}`);
         }
       }
 
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      const isValidationError = message.includes("validation") || message.includes("Invalid") || message.includes("not found");
+      const rawMessage = getErrorMessage(error);
+      const isValidationError = rawMessage.includes("validation") || rawMessage.includes("Invalid") || rawMessage.includes("not found");
       const status = isValidationError ? 400 : 500;
       const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
-      return c.json({ error: `${prefix}: ${message}` }, status);
+      return c.json({ error: `${prefix}: ${sanitizeErrorMessage(rawMessage)}` }, status);
     }
   });
 
@@ -538,8 +534,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       try {
         normalizedPath = validateAndNormalizePath(path, "path");
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Invalid path";
-        return c.json({ error: message }, 400);
+        return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
       }
 
       const project: ProjectConfig = {
@@ -563,7 +558,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       try {
         validateConfig(loadConfig(projectRoot));
       } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
+        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
 
       return c.json({
@@ -571,7 +566,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         project
       }, 201);
     } catch (error: unknown) {
-      return c.json({ error: `Failed to add project: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to add project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -590,7 +585,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
       } catch (error: unknown) {
-        return c.json({ error: `Failed to load configuration: ${getErrorMessage(error)}` }, 500);
+        return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
       removeProjectFromConfig(configPath, repo);
@@ -598,7 +593,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       try {
         validateConfig(loadConfig(projectRoot));
       } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
+        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
 
       return c.json({
@@ -606,7 +601,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         repo
       });
     } catch (error: unknown) {
-      return c.json({ error: `Failed to remove project: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to remove project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -632,7 +627,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
       } catch (error: unknown) {
-        return c.json({ error: `Failed to load configuration: ${getErrorMessage(error)}` }, 500);
+        return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
       // Extract valid update fields
@@ -643,8 +638,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         try {
           updates.path = validateAndNormalizePath(path, "path");
         } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : "Invalid path";
-          return c.json({ error: message }, 400);
+          return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
         }
       }
 
@@ -672,7 +666,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       try {
         validateConfig(loadConfig(projectRoot));
       } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${getErrorMessage(error)}` }, 400);
+        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
 
       return c.json({
@@ -681,7 +675,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         updates
       });
     } catch (error: unknown) {
-      return c.json({ error: `Failed to update project: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to update project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -756,7 +750,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }
       });
     } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch jobs: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to fetch jobs: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -833,7 +827,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const stats = getJobStats(store.getAqDb(), parseResult.data);
       return c.json(stats);
     } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch stats: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to fetch stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -857,7 +851,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const costs = getCostStats(store.getAqDb(), parseResult.data);
       return c.json(costs);
     } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch cost stats: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Failed to fetch cost stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -1031,7 +1025,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         });
       }
     } catch (error: unknown) {
-      return c.json({ error: `버전 정보 조회 실패: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `버전 정보 조회 실패: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -1095,8 +1089,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         needsRestart: result.needsRestart,
       });
     } catch (error: unknown) {
-      const message = getErrorMessage(error);
-      getLogger().error(`업데이트 실패: ${message}`);
+      const rawMessage = getErrorMessage(error);
+      getLogger().error(`업데이트 실패: ${rawMessage}`);
+      const message = sanitizeErrorMessage(rawMessage);
       broadcastToAllClients('updateFailed', {
         error: message,
         timestamp: new Date().toISOString()
@@ -1274,7 +1269,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       return c.json({ projects: projectsWithStats, summary });
     } catch (error: unknown) {
-      return c.json({ error: `Projects health check failed: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Projects health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -1331,7 +1326,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       return c.json(healthResponse);
     } catch (error: unknown) {
-      return c.json({ error: `Health check failed: ${getErrorMessage(error)}` }, 500);
+      return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

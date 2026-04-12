@@ -61,7 +61,7 @@ export class ConfigWatcher extends EventEmitter {
         watcher.close();
         logger.debug(`Stopped watching: ${path}`);
       } catch (err: unknown) {
-        logger.warn(`Error closing watcher for ${path}: ${err}`);
+        logger.warn(`Error closing watcher for ${path}: ${getErrorMessage(err)}`);
       }
     }
 
@@ -89,7 +89,7 @@ export class ConfigWatcher extends EventEmitter {
       this.registerWatcher(filePath, type, watcher);
       logger.debug(`Started watching file: ${filePath}`);
     } catch (err: unknown) {
-      logger.error(`Failed to watch file ${filePath}: ${err}`);
+      logger.error(`Failed to watch file ${filePath}: ${getErrorMessage(err)}`);
       this.handleWatcherError(filePath, type, err);
     }
   }
@@ -104,7 +104,7 @@ export class ConfigWatcher extends EventEmitter {
       this.registerWatcher(this.projectRoot, 'local', watcher);
       logger.debug(`Started watching directory: ${this.projectRoot}`);
     } catch (err: unknown) {
-      logger.error(`Failed to watch directory ${this.projectRoot}: ${err}`);
+      logger.error(`Failed to watch directory ${this.projectRoot}: ${getErrorMessage(err)}`);
       this.handleWatcherError(this.projectRoot, 'local', err);
     }
   }
@@ -199,7 +199,7 @@ export class ConfigWatcher extends EventEmitter {
     const errorCount = (this.errorCounts.get(filePath) || 0) + 1;
     this.errorCounts.set(filePath, errorCount);
 
-    logger.warn(`Watcher error for ${filePath} (attempt ${errorCount}/${this.maxErrorRetries}): ${error}`);
+    logger.warn(`Watcher error for ${filePath} (attempt ${errorCount}/${this.maxErrorRetries}): ${getErrorMessage(error)}`);
 
     // Close and remove the problematic watcher
     const existingWatcher = this.watchers.get(filePath);
@@ -207,8 +207,8 @@ export class ConfigWatcher extends EventEmitter {
       try {
         existingWatcher.removeAllListeners();
         existingWatcher.close();
-      } catch (closeError) {
-        logger.warn(`Error closing watcher for ${filePath}: ${closeError}`);
+      } catch (closeError: unknown) {
+        logger.warn(`Error closing watcher for ${filePath}: ${getErrorMessage(closeError)}`);
       }
       this.watchers.delete(filePath);
     }

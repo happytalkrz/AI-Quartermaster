@@ -124,8 +124,8 @@ export class AutomationScheduler {
       } else {
         logger.debug(`[AutomationScheduler] 규칙 조건 미충족: ${rule.id}`);
       }
-    } catch (err) {
-      logger.error(`[AutomationScheduler] cron 규칙 실행 실패 (${rule.id}):`, err);
+    } catch (err: unknown) {
+      logger.error(`[AutomationScheduler] cron 규칙 실행 실패 (${rule.id}): ${getErrorMessage(err)}`);
     }
   }
 }

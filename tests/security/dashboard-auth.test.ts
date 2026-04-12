@@ -106,24 +106,23 @@ describe("Dashboard Auth — apiKey 미설정 시 쓰기 API 차단", () => {
     stopPeriodicCleanup();
   });
 
-  it("apiKey 미설정 시 job cancel(POST)은 403을 반환한다", async () => {
+  it("apiKey 미설정 시 job cancel(POST)은 허용된다", async () => {
     const app = createDashboardRoutes(store, queue);
     const res = await request(app, "POST", "/api/jobs/job-123/cancel");
-    expect(res.status).toBe(403);
-    const body = await res.json() as { error: string };
-    expect(body.error).toContain("API key required");
+    // readOnlyGuard 제거 — apiKey 없이도 모든 API 허용
+    expect(res.status).not.toBe(403);
   });
 
-  it("apiKey 미설정 시 job retry(POST)은 403을 반환한다", async () => {
+  it("apiKey 미설정 시 job retry(POST)은 허용된다", async () => {
     const app = createDashboardRoutes(store, queue);
     const res = await request(app, "POST", "/api/jobs/job-123/retry");
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(403);
   });
 
-  it("apiKey 미설정 시 job delete(DELETE)은 403을 반환한다", async () => {
+  it("apiKey 미설정 시 job delete(DELETE)은 허용된다", async () => {
     const app = createDashboardRoutes(store, queue);
     const res = await request(app, "DELETE", "/api/jobs/job-123");
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 project 관리(DELETE)는 허용된다", async () => {

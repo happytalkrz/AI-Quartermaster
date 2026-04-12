@@ -438,28 +438,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/events", sseTokenAuth);
     api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
   } else {
-    // apiKey 미설정 경고: 쓰기 API 비활성화
-    getLogger().warn(
-      "Dashboard API key is not configured. Write endpoints (cancel/retry/delete) are disabled. " +
-        "Set dashboard.apiKey in config.yml to enable full access."
+    // apiKey 미설정: 로컬 환경에서는 모든 API 허용
+    getLogger().info(
+      "Dashboard API key is not configured. All endpoints are accessible without authentication."
     );
-
-    // 파괴적 쓰기 요청 차단 미들웨어 (cancel/retry/delete)
-    const readOnlyGuard = async (c: Context, next: Next) => {
-      const method = c.req.method;
-      if (method !== "GET" && method !== "HEAD") {
-        return c.json(
-          { error: "API key required for write operations. Set dashboard.apiKey in config." },
-          403
-        );
-      }
-      await next();
-    };
-
-    // cancel/retry/delete만 차단 (config, projects 관리는 허용)
-    api.use("/api/jobs/:id/cancel", readOnlyGuard);
-    api.use("/api/jobs/:id/retry", readOnlyGuard);
-    api.use("/api/jobs/:id", readOnlyGuard);
   }
 
   // Get configuration (masked for security)

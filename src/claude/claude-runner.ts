@@ -46,6 +46,36 @@ export interface ClaudeRunOptions {
   disallowedTools?: string[];  // Tools to block (e.g. ["Read", "Glob", "Grep", "Bash"])
 }
 
+/** Claude CLI spawn에 전달할 환경변수 화이트리스트. 민감 정보(GITHUB_TOKEN 등) 노출 방지. */
+function buildClaudeEnv(): NodeJS.ProcessEnv {
+  const ALLOWED_KEYS = [
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "NODE_ENV",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "ANTHROPIC_API_KEY",
+    "CLAUDE_API_KEY",
+  ];
+
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ALLOWED_KEYS) {
+    if (process.env[key] !== undefined) {
+      env[key] = process.env[key];
+    }
+  }
+  return env;
+}
+
 async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunResult> {
   const { prompt, cwd, config, systemPrompt, maxTurns, enableAgents } = options;
 
@@ -86,7 +116,7 @@ async function _runClaudeInternal(options: ClaudeRunOptions): Promise<ClaudeRunR
   const result = await new Promise<{ stdout: string; stderr: string; exitCode: number; costUsd?: number; usage?: UsageInfo }>((resolve, reject) => {
     const child = spawn(config.path, args, {
       cwd,
-      env: process.env,
+      env: buildClaudeEnv(),
       stdio: [useStdin ? "pipe" : "ignore", "pipe", "pipe"],
     });
 

@@ -112,6 +112,7 @@ export interface ListJobsFilter {
   status?: DatabaseJob["status"];
   statuses?: DatabaseJob["status"][];
   excludeStatus?: DatabaseJob["status"];
+  repo?: string;
   limit?: number;
   offset?: number;
 }
@@ -199,6 +200,8 @@ export class AQDatabase {
       CREATE INDEX IF NOT EXISTS idx_jobs_issue_repo ON jobs (issue_number, repo);
       CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
       CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs (created_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_status_retry_completed ON jobs (status, is_retry, completed_at);
+      CREATE INDEX IF NOT EXISTS idx_jobs_status_last_updated ON jobs (status, last_updated_at, completed_at, created_at);
       CREATE INDEX IF NOT EXISTS idx_phases_job_id ON phases (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_job_id ON logs (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs (timestamp);
@@ -328,6 +331,11 @@ export class AQDatabase {
       params.push(filter.excludeStatus);
     }
 
+    if (filter.repo) {
+      conditions.push("repo = ?");
+      params.push(filter.repo);
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limitPart = filter.limit !== undefined ? "LIMIT ?" : "";
     const offsetPart = filter.offset !== undefined ? "OFFSET ?" : "";
@@ -381,6 +389,47 @@ export class AQDatabase {
 
     const row = stmt.get(issueNumber, repo) as JobRow | undefined;
     return row ? this.mapRowToJob(row) : undefined;
+  }
+
+  /**
+   * 재시도 대상 실패 job 조회: status=failure, is_retry=0, completed_at <= cutoffIso
+   */
+  findFailedJobsForRetry(cutoffIso: string): DatabaseJob[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE status = 'failure'
+        AND is_retry = 0
+        AND completed_at IS NOT NULL
+        AND completed_at <= ?
+      ORDER BY completed_at ASC
+    `);
+
+    const rows = stmt.all(cutoffIso) as JobRow[];
+    return rows.map(row => this.mapRowToJob(row));
+  }
+
+  /**
+   * prune용 완료 job LRU 조회: success/failure/cancelled 상태, LRU 순 정렬
+   */
+  listCompletedJobsForPrune(): DatabaseJob[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE status IN ('success', 'failure', 'cancelled')
+      ORDER BY
+        COALESCE(last_updated_at, completed_at, created_at) ASC,
+        created_at ASC
+    `);
+
+    const rows = stmt.all() as JobRow[];
+    return rows.map(row => this.mapRowToJob(row));
+  }
+
+  /**
+   * 전체 job 수 반환
+   */
+  countJobs(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM jobs").get() as { count: number };
+    return row.count;
   }
 
   deleteJob(id: string): boolean {

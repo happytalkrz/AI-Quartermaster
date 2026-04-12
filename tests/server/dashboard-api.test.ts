@@ -67,6 +67,11 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
+vi.mock("../../src/config/project-detector.js", () => ({
+  detectProjectCommands: vi.fn(),
+  detectBaseBranch: vi.fn(),
+}));
+
 // Mock imports
 const mockLoadConfig = vi.mocked(await import("../../src/config/loader.js")).loadConfig;
 const mockUpdateConfigSection = vi.mocked(await import("../../src/config/loader.js")).updateConfigSection;

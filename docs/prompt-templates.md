@@ -19,8 +19,8 @@
 | `{{repo.structure}}` | `string` | 프로젝트 디렉토리 트리 (깊이 3) | (tree 출력) |
 | `{{repo.packageJson}}` | `string` | package.json 내용 | (JSON 문자열) |
 | `{{repo.tsconfig}}` | `string` | tsconfig.json 내용 (있을 경우) | (JSON 문자열) |
-| `{{branch.base}}` | `string` | 베이스 브랜치 이름 | `"master"` |
-| `{{branch.work}}` | `string` | 작업 브랜치 이름 | `"ax/42-add-password-reset"` |
+| `{{branch.base}}` | `string` | 베이스 브랜치 이름 | `"main"` |
+| `{{branch.work}}` | `string` | 작업 브랜치 이름 | `"aq/42-add-password-reset"` |
 | `{{plan}}` | `string` | 생성된 Plan 전체 (JSON) | (Plan 객체 직렬화) |
 | `{{plan.summary}}` | `string` | Plan 요약 | `"비밀번호 재설정 기능 구현"` |
 | `{{plan.phases}}` | `string` | Phase 목록 (JSON 배열) | (Phase 배열 직렬화) |

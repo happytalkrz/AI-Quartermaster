@@ -7,6 +7,7 @@ import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
 import { runPipeline } from "./pipeline/core/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
+import { runCli } from "./utils/cli-runner.js";
 import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
@@ -294,11 +295,12 @@ export async function startCommand(args: CliArgs): Promise<void> {
         ? { ...newConfig, general: { ...newConfig.general, dryRun: true } }
         : newConfig;
 
-      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue);
+      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue, scheduler);
 
       // Update effectiveConfig reference for future use
       effectiveConfig.general = newEffectiveConfig.general;
       effectiveConfig.projects = newEffectiveConfig.projects;
+      effectiveConfig.automations = newEffectiveConfig.automations;
 
       logger.info('Config hot reload 완료');
     } catch (err: unknown) {
@@ -352,19 +354,26 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const automationHandlers: RuleEngineHandlers = {
     addLabel: async (repo: string, issueNumber: number, labels: string[]) => {
       logger.info(`[AutomationScheduler] 라벨 추가: ${repo}#${issueNumber} <- ${labels.join(', ')}`);
-      // TODO: GitHub API 연동으로 실제 라벨 추가
+      const ghPath = effectiveConfig.commands.ghCli.path;
+      const result = await runCli(
+        ghPath,
+        ["issue", "edit", String(issueNumber), "--repo", repo, "--add-label", labels.join(",")],
+        {}
+      );
+      if (result.exitCode !== 0) {
+        logger.error(`[AutomationScheduler] 라벨 추가 실패: ${result.stderr}`);
+      }
     },
     startJob: async (repo: string, issueNumber: number) => {
       logger.info(`[AutomationScheduler] 잡 시작: ${repo}#${issueNumber}`);
       queue.enqueue(issueNumber, repo, []);
     },
     pauseProject: async (repo: string, reason?: string) => {
-      logger.info(`[AutomationScheduler] 프로젝트 일시정지: ${repo} ${reason ? `(${reason})` : ''}`);
-      // TODO: 프로젝트 일시정지 로직
+      logger.warn(`[AutomationScheduler] pauseProject 액션은 현재 미지원입니다 — 구현 예정: ${repo}${reason ? ` (${reason})` : ''}`);
     }
   };
 
-  const automationRules: AutomationRule[] = []; // TODO: config.automations에서 변환하여 가져오기
+  const automationRules: AutomationRule[] = effectiveConfig.automations ?? [];
   const scheduler = new AutomationScheduler(effectiveConfig, automationRules, automationHandlers);
 
   // === Poller: always start (webhook mode uses it as fallback for missed events) ===

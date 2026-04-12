@@ -373,29 +373,32 @@ const projectConfigSchema = z.object({
   pauseDurationMs: z.number().int().min(60000).optional(), // 최소 1분
 }).strict();
 
-const automationTriggerSchema = z.object({
-  type: z.enum(["cron", "event", "rate-limit"]),
-  schedule: z.enum(["daily", "weekly"]).optional(),
-  event: z.enum(["pr-merged", "phase-failed"]).optional(),
-  threshold: z.number().optional(),
-});
+const automationTriggerSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("issue-labeled"), label: z.string().optional() }),
+  z.object({ type: z.literal("issue-created") }),
+  z.object({ type: z.literal("pipeline-failed"), repo: z.string().optional() }),
+  z.object({ type: z.literal("cron"), schedule: z.enum(["daily", "weekly"]) }),
+]);
 
-const automationConditionSchema = z.object({
-  expression: z.string().min(1),
-});
+const automationConditionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("label-match"), labels: z.array(z.string()), operator: z.enum(["and", "or"]).optional() }),
+  z.object({ type: z.literal("path-match"), patterns: z.array(z.string()) }),
+  z.object({ type: z.literal("keyword-match"), keywords: z.array(z.string()), fields: z.array(z.enum(["title", "body"])).optional(), operator: z.enum(["and", "or"]).optional() }),
+]);
 
-const automationActionSchema = z.object({
-  type: z.enum(["notify", "pause", "retry", "label", "close"]),
-  params: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
-});
+const automationActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("add-label"), labels: z.array(z.string()) }),
+  z.object({ type: z.literal("start-job"), repo: z.string().optional() }),
+  z.object({ type: z.literal("pause-project"), reason: z.string().optional() }),
+]);
 
 const automationRuleSchema = z.object({
   id: z.string().min(1),
-  description: z.string().optional(),
+  name: z.string().min(1),
+  enabled: z.boolean().optional(),
   trigger: automationTriggerSchema,
   conditions: z.array(automationConditionSchema).optional(),
   actions: z.array(automationActionSchema).min(1),
-  enabled: z.boolean().optional(),
 });
 
 const hooksConfigSchema = z.record(

@@ -4,7 +4,7 @@ import { retryPhase } from "../execution/phase-retry.js";
 import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
 import { schedulePhases } from "../execution/phase-scheduler.js";
 import type { AQConfig } from "../../types/config.js";
-import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost } from "../../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost, CostBreakdown, ModelCostEntry } from "../../types/pipeline.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
@@ -34,6 +34,59 @@ function sumUsage(usages: (import("../../types/pipeline.js").UsageInfo | undefin
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
   });
+}
+
+function buildCostBreakdown(
+  planCostUsd: number | undefined,
+  phaseResults: PhaseResult[],
+  reviewCostUsd: number = 0,
+): CostBreakdown {
+  const phaseCosts = phaseResults.map(r => ({
+    phaseIndex: r.phaseIndex,
+    phaseName: r.phaseName,
+    costUsd: r.costUsd ?? 0,
+    retryCostUsd: r.retryCostUsd ?? 0,
+    retryCount: r.retryCount ?? 0,
+    modelCosts: r.modelCosts ?? [],
+  }));
+
+  // model별 비용 집계
+  const modelMap = new Map<string, ModelCostEntry>();
+  for (const phase of phaseCosts) {
+    for (const mc of phase.modelCosts) {
+      const existing = modelMap.get(mc.model);
+      if (existing) {
+        existing.costUsd += mc.costUsd;
+        existing.usage.input_tokens += mc.usage.input_tokens;
+        existing.usage.output_tokens += mc.usage.output_tokens;
+        existing.usage.cache_creation_input_tokens = (existing.usage.cache_creation_input_tokens ?? 0) + (mc.usage.cache_creation_input_tokens ?? 0);
+        existing.usage.cache_read_input_tokens = (existing.usage.cache_read_input_tokens ?? 0) + (mc.usage.cache_read_input_tokens ?? 0);
+      } else {
+        modelMap.set(mc.model, {
+          model: mc.model,
+          costUsd: mc.costUsd,
+          usage: {
+            input_tokens: mc.usage.input_tokens,
+            output_tokens: mc.usage.output_tokens,
+            cache_creation_input_tokens: mc.usage.cache_creation_input_tokens ?? 0,
+            cache_read_input_tokens: mc.usage.cache_read_input_tokens ?? 0,
+          },
+        });
+      }
+    }
+  }
+
+  const modelSummary = Array.from(modelMap.values());
+  const phasesTotalCost = phaseCosts.reduce((sum, p) => sum + p.costUsd + p.retryCostUsd, 0);
+  const totalCostUsd = (planCostUsd ?? 0) + phasesTotalCost + reviewCostUsd;
+
+  return {
+    planCostUsd: planCostUsd ?? 0,
+    phaseCosts,
+    reviewCostUsd,
+    totalCostUsd,
+    modelSummary,
+  };
 }
 
 function addErrorToHistory(
@@ -184,6 +237,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: 0,
       totalUsage: undefined,
+      costBreakdown: buildCostBreakdown(undefined, []),
     };
   }
 
@@ -224,6 +278,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: planCostUsd ?? 0,
       totalUsage: planUsage,
+      costBreakdown: buildCostBreakdown(planCostUsd, phaseResults),
     };
   }
 
@@ -364,7 +419,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
         const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
         const totalUsage = sumUsage(allUsages);
-        return { plan, phaseResults, success: false, totalCostUsd, totalUsage };
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults) };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -389,5 +444,5 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
   }
 
-  return { plan, phaseResults, success: true, totalCostUsd, totalUsage };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults) };
 }

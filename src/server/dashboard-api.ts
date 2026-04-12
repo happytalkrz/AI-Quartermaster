@@ -9,6 +9,7 @@ import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
+import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
 import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
@@ -311,7 +312,7 @@ async function checkDependencies(projectPath: string): Promise<{ status: "ok" | 
 /**
  * Applies runtime configuration changes to system components.
  */
-export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue): void {
+export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, queue: JobQueue, scheduler?: AutomationScheduler): void {
   const logger = getLogger();
 
   // Update JobQueue concurrency
@@ -343,6 +344,16 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
     if (!newProjects.has(repo)) {
       queue.setProjectConcurrency(repo, null);
       logger.info(`Project concurrency limit removed for ${repo} (project removed from config)`);
+    }
+  }
+
+  // Update automation rules in scheduler
+  if (scheduler !== undefined) {
+    const oldAutomations = oldConfig.automations ?? [];
+    const newAutomations = newConfig.automations ?? [];
+    if (JSON.stringify(oldAutomations) !== JSON.stringify(newAutomations)) {
+      scheduler.updateAutomationRules(newAutomations);
+      logger.info(`Automation rules updated: ${oldAutomations.length} → ${newAutomations.length} rules`);
     }
   }
 }
@@ -475,9 +486,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       // Update configuration file
-      // Filter out undefined values and complex sections (projects, automations, hooks)
+      // Filter out undefined values and complex sections (projects, hooks)
       // that should not be updated via this endpoint
-      const { projects, automations, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
+      const { projects, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,

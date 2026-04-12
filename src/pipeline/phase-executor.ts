@@ -82,6 +82,13 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         planSummary: ctx.plan.problemDefinition,
       }),
       phase: {
+        issue: {
+          number: ctx.issue.number,
+          title: ctx.issue.title,
+          body: sanitizedBody,
+          labels: ctx.issue.labels,
+        },
+        planSummary: ctx.plan.problemDefinition,
         currentPhase: {
           index: ctx.phase.index + 1,
           totalCount: ctx.plan.phases.length,
@@ -90,6 +97,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           targetFiles: ctx.phase.targetFiles,
         },
         previousResults: summary,
+        repository: { owner: "", name: "", baseBranch: "", workBranch: "" },
         locale: ctx.locale,
       },
       learning: buildLearningLayer(

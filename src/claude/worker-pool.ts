@@ -8,6 +8,14 @@ export type WorkerStatus = "idle" | "busy";
 export interface Worker {
   id: string;
   status: WorkerStatus;
+  idleTimer?: ReturnType<typeof setTimeout>;
+}
+
+export interface WorkerPoolOptions {
+  /** idle 상태 유지 시 워커를 삭제하기까지의 시간(ms). 미설정 시 shrink 비활성화. */
+  idleTimeoutMs?: number;
+  /** shrink 후 유지할 최소 워커 수. 기본값: 0. */
+  minWorkers?: number;
 }
 
 export type WorkerTaskHandler<TInput, TOutput> = (
@@ -27,6 +35,8 @@ interface PendingTask<TInput, TOutput> {
  */
 export class WorkerPool<TInput, TOutput> {
   private maxWorkers: number;
+  private minWorkers: number;
+  private idleTimeoutMs: number | undefined;
   private workers: Map<string, Worker>;
   private pending: PendingTask<TInput, TOutput>[];
   private handler: WorkerTaskHandler<TInput, TOutput>;
@@ -35,11 +45,17 @@ export class WorkerPool<TInput, TOutput> {
   private shuttingDown: boolean;
   private nextWorkerId: number;
 
-  constructor(maxWorkers: number, handler: WorkerTaskHandler<TInput, TOutput>) {
+  constructor(
+    maxWorkers: number,
+    handler: WorkerTaskHandler<TInput, TOutput>,
+    options?: WorkerPoolOptions
+  ) {
     if (maxWorkers <= 0 || !Number.isInteger(maxWorkers)) {
       throw new Error("maxWorkers must be a positive integer");
     }
     this.maxWorkers = maxWorkers;
+    this.minWorkers = options?.minWorkers ?? 0;
+    this.idleTimeoutMs = options?.idleTimeoutMs;
     this.handler = handler;
     this.workers = new Map();
     this.pending = [];
@@ -99,6 +115,9 @@ export class WorkerPool<TInput, TOutput> {
           worker = { id: workerId, status: "idle" };
           this.workers.set(workerId, worker);
           logger.debug(`WorkerPool: created ${workerId} (total: ${this.workers.size})`);
+        } else if (worker.idleTimer !== undefined) {
+          clearTimeout(worker.idleTimer);
+          worker.idleTimer = undefined;
         }
 
         worker.status = "busy";
@@ -131,10 +150,28 @@ export class WorkerPool<TInput, TOutput> {
         if (worker) {
           worker.status = "idle";
           logger.debug(`WorkerPool: ${workerId} idle (pending: ${this.pending.length})`);
+          this.scheduleIdleShrink(worker);
         }
         // Defer to avoid deep call stacks
         setImmediate(() => this.processNext());
       });
+  }
+
+  private scheduleIdleShrink(worker: Worker): void {
+    if (this.idleTimeoutMs === undefined || this.shuttingDown) return;
+    worker.idleTimer = setTimeout(() => {
+      this.shrinkWorker(worker.id);
+    }, this.idleTimeoutMs);
+  }
+
+  private shrinkWorker(workerId: string): void {
+    const worker = this.workers.get(workerId);
+    if (!worker || worker.status !== "idle") return;
+    if (this.workers.size <= this.minWorkers) return;
+
+    worker.idleTimer = undefined;
+    this.workers.delete(workerId);
+    logger.debug(`WorkerPool: shrunk ${workerId} (total: ${this.workers.size})`);
   }
 
   /**
@@ -175,6 +212,14 @@ export class WorkerPool<TInput, TOutput> {
    */
   shutdown(timeoutMs: number = 30000): Promise<void> {
     this.shuttingDown = true;
+
+    // Clear all idle timers
+    for (const worker of this.workers.values()) {
+      if (worker.idleTimer !== undefined) {
+        clearTimeout(worker.idleTimer);
+        worker.idleTimer = undefined;
+      }
+    }
 
     // Reject all pending tasks immediately
     const pending = this.pending.splice(0);

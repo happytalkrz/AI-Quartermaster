@@ -121,6 +121,7 @@ function renderJobDetail(job) {
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
   var costHtml = fmtCost(job.totalCostUsd);
   if (costHtml) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + costHtml + '</span>';
+  if (job.cacheHitRatio != null && job.cacheHitRatio > 0) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">cached</span> Cache: ' + Math.round(job.cacheHitRatio * 100) + '%</span>';
   html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">calendar_today</span> ' + relativeTime(job.createdAt) + '</span>';
   html += '<span class="flex items-center gap-1.5 font-mono text-xs opacity-80">' + esc(job.id) + '</span>';
   html += '</div></div>';
@@ -317,6 +318,10 @@ function renderAccordionDetail(job) {
   html += '</div>';
   html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Cost</span>';
   html += '<p class="font-mono text-sm text-tertiary mt-1">$' + (job.totalCostUsd || job.costUsd || 0).toFixed(4) + '</p></div>';
+  if (job.cacheHitRatio != null && job.cacheHitRatio > 0) {
+    html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Cache</span>';
+    html += '<p class="font-mono text-sm text-tertiary mt-1">Cache: ' + Math.round(job.cacheHitRatio * 100) + '%</p></div>';
+  }
   html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Status</span>';
   html += '<p class="mt-1">' + statusLabel(job.status, job) + '</p></div>';
   html += '</div>';

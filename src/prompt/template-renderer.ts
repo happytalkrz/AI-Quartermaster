@@ -352,6 +352,117 @@ ${projectLayer.skillsContext ? `## 스킬 컨텍스트\n\n${projectLayer.skillsC
 ${projectLayer.pastFailures ? `## 과거 실패 사례\n\n${projectLayer.pastFailures}` : ''}`;
 }
 
+// ---------------------------------------------------------------------------
+// 캐시 친화적 조립 타입 및 함수
+// ---------------------------------------------------------------------------
+
+/**
+ * buildStaticLayers 반환값 — Base+Project 조립 결과
+ */
+export interface StaticLayersResult {
+  /** 정적 레이어(Base+Project) 조립 결과 문자열 */
+  content: string;
+  /** 정적 레이어 캐시 키 (16자리 hex) */
+  cacheKey: string;
+  /** 생성 시각 (ISO 8601) */
+  createdAt: string;
+}
+
+/**
+ * buildDynamicLayers 반환값 — Issue+Phase+Learning 변수 맵
+ */
+export interface DynamicLayersResult {
+  /** 템플릿 렌더링에 사용할 변수 맵 */
+  variables: TemplateVariables;
+}
+
+/**
+ * 정적 레이어(Base+Project)를 1회 조립합니다.
+ * 반환된 content는 Anthropic 프롬프트 캐싱에서 정적 블록으로 활용할 수 있습니다.
+ */
+export function buildStaticLayers(
+  base: BaseLayer,
+  project: ProjectLayer
+): StaticLayersResult {
+  const content = buildStaticContent(base, project);
+  const cacheKey = computeLayerCacheKey({
+    role: base.role,
+    conventions: project.conventions,
+    testCommand: project.testCommand,
+    lintCommand: project.lintCommand,
+  });
+  return {
+    content,
+    cacheKey,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * 동적 레이어(Issue+Phase+Learning)를 변수 맵으로 조립합니다.
+ * Phase마다 새로 생성하며, assembleFromCached에 전달합니다.
+ * phase 파라미터는 currentPhase와 previousResults만 사용합니다.
+ */
+export function buildDynamicLayers(
+  issue: IssueLayer,
+  phase: Pick<PhaseLayer, "currentPhase" | "previousResults">,
+  learning: LearningLayer
+): DynamicLayersResult {
+  const pastFailuresText = learning.pastFailures
+    .map(f => `- ${f.context}: ${f.message}${f.resolution ? ` (해결: ${f.resolution})` : ""}`)
+    .join("\n");
+
+  return {
+    variables: {
+      issue: {
+        number: String(issue.number),
+        title: issue.title,
+        body: issue.body,
+        labels: issue.labels,
+      },
+      plan: {
+        summary: issue.planSummary,
+      },
+      repository: issue.repository as unknown as TemplateVariables,
+      phase: {
+        index: String(phase.currentPhase.index),
+        totalCount: String(phase.currentPhase.totalCount),
+        name: phase.currentPhase.name,
+        description: phase.currentPhase.description,
+        files: phase.currentPhase.targetFiles,
+      },
+      previousPhases: {
+        summary: phase.previousResults,
+      },
+      pastFailures: pastFailuresText,
+      errorPatterns: learning.errorPatterns,
+      learnedPatterns: learning.learnedPatterns,
+    },
+  };
+}
+
+/**
+ * 캐시된 정적 레이어와 동적 레이어를 조합하여 최종 프롬프트를 생성합니다.
+ * templateContent는 동적 변수(issue, phase, learning 관련)를 참조하는 템플릿입니다.
+ * 정적 content(Base+Project)는 그대로 prepend되므로 Anthropic API에서 cache_control로 캐시 가능합니다.
+ */
+export function assembleFromCached(
+  staticResult: StaticLayersResult,
+  dynamicResult: DynamicLayersResult,
+  templateContent: string
+): AssembledPrompt {
+  const startTime = Date.now();
+  const renderedDynamic = renderTemplate(templateContent, dynamicResult.variables);
+  const content = `${staticResult.content}\n\n${renderedDynamic}`;
+
+  return {
+    content,
+    cacheKey: staticResult.cacheKey,
+    cacheHit: true,
+    assemblyTimeMs: Date.now() - startTime,
+  };
+}
+
 /**
  * PromptLayers(5계층) 여부를 판별하는 타입 가드
  */

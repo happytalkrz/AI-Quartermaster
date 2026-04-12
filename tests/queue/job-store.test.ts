@@ -1163,4 +1163,228 @@ describe("JobStore", () => {
       newStore.close();
     });
   });
+
+  describe("list() DB-level pagination and filtering", () => {
+    it("should return all jobs when no options provided", () => {
+      store.create(1, "test/repo");
+      store.create(2, "test/repo");
+      store.create(3, "test/repo");
+
+      const jobs = store.list();
+      expect(jobs.length).toBe(3);
+    });
+
+    it("should limit results when limit option is provided", () => {
+      for (let i = 1; i <= 5; i++) {
+        store.create(i, "test/repo");
+      }
+
+      const jobs = store.list({ limit: 3 });
+      expect(jobs.length).toBe(3);
+    });
+
+    it("should paginate with offset option", () => {
+      for (let i = 1; i <= 5; i++) {
+        store.create(i, "test/repo");
+      }
+
+      const firstPage = store.list({ limit: 2, offset: 0 });
+      const secondPage = store.list({ limit: 2, offset: 2 });
+
+      expect(firstPage.length).toBe(2);
+      expect(secondPage.length).toBe(2);
+
+      const firstPageIds = firstPage.map(j => j.id);
+      const secondPageIds = secondPage.map(j => j.id);
+      for (const id of secondPageIds) {
+        expect(firstPageIds).not.toContain(id);
+      }
+    });
+
+    it("should filter by status when status option is provided", () => {
+      const job1 = store.create(1, "test/repo");
+      const job2 = store.create(2, "test/repo");
+      store.update(job1.id, { status: "running", startedAt: new Date().toISOString() });
+      // job2 stays queued
+
+      const runningJobs = store.list({ status: "running" });
+      expect(runningJobs.length).toBe(1);
+      expect(runningJobs[0].id).toBe(job1.id);
+      expect(runningJobs[0].status).toBe("running");
+
+      const queuedJobs = store.list({ status: "queued" });
+      expect(queuedJobs.length).toBe(1);
+      expect(queuedJobs[0].id).toBe(job2.id);
+    });
+
+    it("should filter by success status", () => {
+      const job1 = store.create(1, "test/repo");
+      store.create(2, "test/repo");
+      store.update(job1.id, {
+        status: "success",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        prUrl: "https://github.com/test/pr/1"
+      });
+
+      const successJobs = store.list({ status: "success" });
+      expect(successJobs.length).toBe(1);
+      expect(successJobs[0].status).toBe("success");
+    });
+
+    it("should return empty array when no jobs match status filter", () => {
+      store.create(1, "test/repo");
+
+      const failureJobs = store.list({ status: "failure" });
+      expect(failureJobs.length).toBe(0);
+    });
+
+    it("should combine status filter and limit", () => {
+      for (let i = 1; i <= 4; i++) {
+        const job = store.create(i, "test/repo");
+        store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
+      }
+      store.create(5, "test/repo"); // queued
+
+      const jobs = store.list({ status: "running", limit: 2 });
+      expect(jobs.length).toBe(2);
+      for (const job of jobs) {
+        expect(job.status).toBe("running");
+      }
+    });
+
+    it("should return jobs sorted by createdAt desc when no options", () => {
+      const job1 = store.create(1, "test/repo");
+      const job2 = store.create(2, "test/repo");
+      const job3 = store.create(3, "test/repo");
+
+      const jobs = store.list();
+      const ids = jobs.map(j => j.id);
+      expect(ids[0]).toBe(job3.id);
+      expect(ids[1]).toBe(job2.id);
+      expect(ids[2]).toBe(job1.id);
+    });
+
+    it("should reflect cache updates in filtered list", () => {
+      const job = store.create(1, "test/repo");
+      store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
+
+      const running = store.list({ status: "running" });
+      expect(running.length).toBe(1);
+      expect(running[0].status).toBe("running");
+    });
+  });
+
+  describe("findCompletedByIssue / findAnyByIssue", () => {
+    it("findCompletedByIssue should return undefined when no success job exists", () => {
+      const job = store.create(10, "test/repo");
+      store.update(job.id, {
+        status: "failure",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        error: "some error"
+      });
+
+      const result = store.findCompletedByIssue(10, "test/repo");
+      expect(result).toBeUndefined();
+    });
+
+    it("findCompletedByIssue should return success job", () => {
+      const job = store.create(11, "test/repo");
+      store.update(job.id, {
+        status: "success",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        prUrl: "https://github.com/test/pr/11"
+      });
+
+      const result = store.findCompletedByIssue(11, "test/repo");
+      expect(result).toBeDefined();
+      expect(result?.status).toBe("success");
+      expect(result?.issueNumber).toBe(11);
+    });
+
+    it("findCompletedByIssue should respect repo boundary", () => {
+      const job = store.create(12, "other/repo");
+      store.update(job.id, {
+        status: "success",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        prUrl: "https://github.com/other/pr/1"
+      });
+
+      const result = store.findCompletedByIssue(12, "test/repo");
+      expect(result).toBeUndefined();
+    });
+
+    it("findAnyByIssue should return undefined when no job exists", () => {
+      const result = store.findAnyByIssue(20, "test/repo");
+      expect(result).toBeUndefined();
+    });
+
+    it("findAnyByIssue should return queued job from cache", () => {
+      const job = store.create(21, "test/repo");
+
+      const result = store.findAnyByIssue(21, "test/repo");
+      expect(result).toBeDefined();
+      expect(result?.id).toBe(job.id);
+      expect(result?.status).toBe("queued");
+    });
+
+    it("findAnyByIssue should return running job from cache", () => {
+      const job = store.create(22, "test/repo");
+      store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
+
+      const result = store.findAnyByIssue(22, "test/repo");
+      expect(result).toBeDefined();
+      expect(result?.status).toBe("running");
+    });
+
+    it("findAnyByIssue should return failure job from DB (not archived)", () => {
+      const job = store.create(23, "test/repo");
+      store.update(job.id, {
+        status: "failure",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        error: "failed"
+      });
+
+      const result = store.findAnyByIssue(23, "test/repo");
+      expect(result).toBeDefined();
+      expect(result?.status).toBe("failure");
+    });
+
+    it("findAnyByIssue should return undefined when only archived job exists", () => {
+      const job = store.create(24, "test/repo");
+      store.update(job.id, { status: "archived" });
+
+      const result = store.findAnyByIssue(24, "test/repo");
+      expect(result).toBeUndefined();
+    });
+
+    it("findAnyByIssue should prefer non-archived job over archived", () => {
+      const archivedJob = store.create(25, "test/repo");
+      store.update(archivedJob.id, { status: "archived" });
+
+      const failedJob = store.create(25, "test/repo");
+      store.update(failedJob.id, {
+        status: "failure",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        error: "failed"
+      });
+
+      const result = store.findAnyByIssue(25, "test/repo");
+      expect(result).toBeDefined();
+      expect(result?.id).toBe(failedJob.id);
+      expect(result?.status).toBe("failure");
+    });
+
+    it("findAnyByIssue should respect repo boundary", () => {
+      store.create(26, "other/repo");
+
+      const result = store.findAnyByIssue(26, "test/repo");
+      expect(result).toBeUndefined();
+    });
+  });
 });

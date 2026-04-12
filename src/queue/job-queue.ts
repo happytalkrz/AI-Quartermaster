@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -309,7 +309,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority, initialPhaseResults?: PhaseResultInfo[]): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -336,7 +336,7 @@ export class JobQueue {
       }
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies, isRetry, undefined, priority);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry, initialPhaseResults, priority);
     // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
@@ -378,10 +378,10 @@ export class JobQueue {
       return undefined;
     }
 
-    const { issueNumber, repo } = oldJob;
+    const { issueNumber, repo, phaseResults } = oldJob;
     this.cleanupFailedJobArtifacts(issueNumber);
     this.store.archive(jobId);
-    return this.enqueue(issueNumber, repo, undefined, true);
+    return this.enqueue(issueNumber, repo, undefined, true, undefined, phaseResults);
   }
 
   /**

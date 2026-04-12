@@ -631,6 +631,35 @@ describe("JobStore", () => {
       expect(retrievedJob?.phaseResults?.[0].usage?.output_tokens).toBe(400);
     });
 
+    it("should persist startedAt and completedAt in initialPhaseResults to DB", () => {
+      const startedAt = "2026-01-01T00:00:00.000Z";
+      const completedAt = "2026-01-01T00:01:00.000Z";
+
+      const initialPhaseResults = [{
+        name: "Phase 1",
+        success: true,
+        durationMs: 60000,
+        startedAt,
+        completedAt,
+        costUsd: 0.30,
+      }];
+
+      const job = store.create(100, "test/repo", undefined, true, initialPhaseResults);
+
+      // Timestamps should be present on immediate retrieval
+      const retrievedJob = store.get(job.id);
+      expect(retrievedJob?.phaseResults).toHaveLength(1);
+      expect(retrievedJob?.phaseResults?.[0].startedAt).toBe(startedAt);
+      expect(retrievedJob?.phaseResults?.[0].completedAt).toBe(completedAt);
+
+      // Timestamps should survive a store restart (i.e. were written to DB, not just cache)
+      const newStore = new JobStore(dataDir);
+      const reloadedJob = newStore.get(job.id);
+      expect(reloadedJob?.phaseResults?.[0].startedAt).toBe(startedAt);
+      expect(reloadedJob?.phaseResults?.[0].completedAt).toBe(completedAt);
+      newStore.close();
+    });
+
     it("should handle multiple phase results with different cost data", () => {
       const job = store.create(44, "test/repo");
 

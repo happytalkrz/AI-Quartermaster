@@ -559,7 +559,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       );
 
       poller = new IssuePoller(config, mockStore as any, mockQueue);
-      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockStore.findAnyByIssue.mockReturnValue(null);
 
       await (poller as any).poll();
 
@@ -600,7 +600,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       );
 
       poller = new IssuePoller(config, mockStore as any, mockQueue);
-      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockStore.findAnyByIssue.mockReturnValue(null);
 
       await (poller as any).poll();
 
@@ -669,22 +669,16 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
     });
   });
 
-  describe("shouldBlockRepickup integration", () => {
-    it("should skip issues blocked by shouldBlockRepickup", async () => {
+  describe("findAnyByIssue 기반 중복 디스패치 방지", () => {
+    it("findAnyByIssue가 job을 반환하면 이슈를 스킵해야 한다", async () => {
       const config = makeConfig();
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
 
-      // Mock shouldBlockRepickup to return true for specific issue
-      mockStore.shouldBlockRepickup.mockImplementation((issueNumber: number) =>
-        issueNumber === 123
-      );
-
-      // Mock findAnyByIssue to return a running job for blocked issue
+      // findAnyByIssue: 123은 running job 존재, 124는 없음
       mockStore.findAnyByIssue.mockImplementation((issueNumber: number) =>
         issueNumber === 123 ? { id: "job-123", status: "running", issueNumber: 123, repo: "test/repo" } : null
       );
 
-      // Mock issues response
       mockRunCli.mockResolvedValue({
         stdout: JSON.stringify([
           { number: 123, title: "Blocked issue", state: "open" },
@@ -696,21 +690,20 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
 
-      // Verify shouldBlockRepickup was called for both issues
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(123, "test/repo");
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(124, "test/repo");
+      // findAnyByIssue는 모든 이슈에 대해 호출되어야 함
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(123, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(124, "test/repo");
 
-      // Verify only non-blocked issue was enqueued
+      // job이 없는 이슈만 enqueue
       expect(mockQueue.enqueue).toHaveBeenCalledWith(124, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(123, "test/repo");
     });
 
-    it("should handle different blocking job statuses", async () => {
+    it("queued/running/success 등 모든 비-archived 상태 job이 있으면 스킵해야 한다", async () => {
       const config = makeConfig();
 
-      // Test queued status blocking
+      // queued 상태 차단
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
-      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
       mockStore.findAnyByIssue.mockReturnValueOnce({
         id: "job-100", status: "queued", issueNumber: 100, repo: "test/repo"
       });
@@ -722,12 +715,11 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       });
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(100, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(100, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(100, "test/repo");
 
-      // Reset and test running status blocking
+      // running 상태 차단
       vi.clearAllMocks();
-      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
       mockStore.findAnyByIssue.mockReturnValueOnce({
         id: "job-101", status: "running", issueNumber: 101, repo: "test/repo"
       });
@@ -739,12 +731,11 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       });
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(101, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(101, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(101, "test/repo");
 
-      // Reset and test success status blocking
+      // success 상태도 차단 (핵심 변경: 이전에는 shouldBlockRepickup이 success를 허용했음)
       vi.clearAllMocks();
-      mockStore.shouldBlockRepickup.mockReturnValueOnce(true);
       mockStore.findAnyByIssue.mockReturnValueOnce({
         id: "job-102", status: "success", issueNumber: 102, repo: "test/repo"
       });
@@ -756,16 +747,14 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       });
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(102, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(102, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(102, "test/repo");
     });
 
-    it("should enqueue available issues when shouldBlockRepickup returns false", async () => {
+    it("findAnyByIssue가 null을 반환하면 이슈를 enqueue해야 한다", async () => {
       const config = makeConfig();
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
 
-      // Mock shouldBlockRepickup to allow all issues
-      mockStore.shouldBlockRepickup.mockReturnValue(false);
       mockStore.findAnyByIssue.mockReturnValue(null);
 
       mockRunCli.mockResolvedValue({
@@ -779,25 +768,20 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
 
-      // Verify shouldBlockRepickup was called for all issues
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(200, "test/repo");
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(201, "test/repo");
+      // findAnyByIssue는 모든 이슈에 대해 호출되어야 함
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(200, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(201, "test/repo");
 
-      // Verify all issues were enqueued
+      // 모든 이슈가 enqueue되어야 함
       expect(mockQueue.enqueue).toHaveBeenCalledWith(200, "test/repo");
       expect(mockQueue.enqueue).toHaveBeenCalledWith(201, "test/repo");
     });
 
-    it("should handle mixed blocked and available issues correctly", async () => {
+    it("혼합 시나리오: job 있는 이슈는 스킵, 없는 이슈는 enqueue", async () => {
       const config = makeConfig();
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
 
-      // Mock mixed scenarios: block 300 and 302, allow 301
-      mockStore.shouldBlockRepickup
-        .mockReturnValueOnce(true)  // issue 300 blocked
-        .mockReturnValueOnce(false) // issue 301 available
-        .mockReturnValueOnce(true); // issue 302 blocked
-
+      // 300: running job 존재(차단), 301: 없음(허용), 302: queued job 존재(차단)
       mockStore.findAnyByIssue
         .mockReturnValueOnce({ id: "job-300", status: "running", issueNumber: 300, repo: "test/repo" })
         .mockReturnValueOnce(null)
@@ -815,27 +799,21 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
 
-      // Verify shouldBlockRepickup was called for all issues
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(300, "test/repo");
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(301, "test/repo");
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(302, "test/repo");
+      // findAnyByIssue는 모든 이슈에 대해 호출되어야 함
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(300, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(301, "test/repo");
+      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(302, "test/repo");
 
-      // Verify only available issue was enqueued
+      // 301만 enqueue
       expect(mockQueue.enqueue).toHaveBeenCalledWith(301, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(300, "test/repo");
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(302, "test/repo");
-
-      // Verify findAnyByIssue was called for blocked issues to get job details
-      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(300, "test/repo");
-      expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(302, "test/repo");
     });
 
-    it("should correctly integrate shouldBlockRepickup with existing job lookup", async () => {
+    it("success 상태 job이 있는 이슈도 재enqueue하지 않아야 한다 (스팸 방지)", async () => {
       const config = makeConfig();
       poller = new IssuePoller(config, mockStore as any, mockQueue as any);
 
-      // Mock shouldBlockRepickup to return true and verify findAnyByIssue integration
-      mockStore.shouldBlockRepickup.mockReturnValue(true);
       mockStore.findAnyByIssue.mockReturnValue({
         id: "job-400",
         status: "success",
@@ -852,11 +830,7 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
 
       await (poller as any).pollProjectLabel("test/repo", "aqm:ready", "gh", 30000);
 
-      // Verify the integration flow: shouldBlockRepickup -> findAnyByIssue for job details
-      expect(mockStore.shouldBlockRepickup).toHaveBeenCalledWith(400, "test/repo");
       expect(mockStore.findAnyByIssue).toHaveBeenCalledWith(400, "test/repo");
-
-      // Verify issue was not enqueued due to blocking
       expect(mockQueue.enqueue).not.toHaveBeenCalledWith(400, "test/repo");
     });
   });

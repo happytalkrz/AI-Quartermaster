@@ -17,6 +17,7 @@ import {
   diffTscErrors,
   type BaselineErrors,
 } from "../reporting/verification-parser.js";
+import { formatBaselineSummary } from "../reporting/error-baseline.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
 import type { JobLogger } from "../../queue/job-logger.js";
@@ -108,6 +109,9 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         previousResults: summary,
         repository: { owner: "", name: "", baseBranch: "", workBranch: "" },
         locale: ctx.locale,
+        buildStatus: ctx.baseline
+          ? `이 프로젝트는 기존 ${formatBaselineSummary(ctx.baseline)}. 이것은 네 책임이 아니며 절대 수정하지 마세요.`
+          : "",
       },
       learning: buildLearningLayer(
         ctx.pastFailures

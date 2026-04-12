@@ -3,7 +3,8 @@ import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildI
 import type { PromptLayers } from "../../prompt/layer-types.js";
 import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
 import { configForTask } from "../../claude/model-router.js";
-import { runShell } from "../../utils/cli-runner.js";
+import { runShell, runCli } from "../../utils/cli-runner.js";
+import { checkDuplicateExtension, checkFileScope } from "../../safety/scope-guard.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig } from "../../types/config.js";
@@ -144,6 +145,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
 
     // 2. Run Claude to implement the phase
     jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
+    const phaseStartHash = await getHeadHash(ctx.gitPath, ctx.cwd);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
     claudeResult = await runClaude({
@@ -167,6 +169,17 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       throw new PipelineError("PHASE_FAILED", `Phase implementation failed: ${claudeResult.output}`);
     }
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
+
+    // 2.5. Scope guard: collect changed files and validate
+    const committedResult = await runCli(ctx.gitPath, ["diff", phaseStartHash, "HEAD", "--name-only"], { cwd: ctx.cwd });
+    const uncommittedResult = await runCli(ctx.gitPath, ["diff", "HEAD", "--name-only"], { cwd: ctx.cwd });
+    const changedFiles = [
+      ...committedResult.stdout.trim().split("\n"),
+      ...uncommittedResult.stdout.trim().split("\n"),
+    ].filter(Boolean);
+    const uniqueChangedFiles = [...new Set(changedFiles)];
+    checkDuplicateExtension(uniqueChangedFiles, ctx.cwd);
+    checkFileScope(uniqueChangedFiles, ctx.phase.targetFiles);
 
     // 3. Auto-commit if Claude didn't commit
     const commitMsg = ctx.gitConfig.commitMessageTemplate

@@ -436,6 +436,24 @@ export interface JobBase {
   totalUsage?: UsageStats;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** 이슈가 처리된 사유 (트리거 원인) */
+  triggerReason?: string;
+}
+
+/**
+ * 스킵된 이벤트 기록
+ */
+export interface SkipEvent {
+  id?: number;
+  issueNumber: number;
+  repo: string;
+  /** 스킵 사유 코드 (예: ALREADY_RUNNING, LABEL_MISMATCH, SAFETY_VIOLATION) */
+  reasonCode: string;
+  /** 스킵 사유 상세 메시지 */
+  reasonMessage: string;
+  /** 이벤트 소스 */
+  source: "webhook" | "polling";
+  createdAt: string;
 }
 
 /**

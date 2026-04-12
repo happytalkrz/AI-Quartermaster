@@ -1,18 +1,18 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
+import { assembleHtml } from "../../src/server/html-assembler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const HTML_PATH = resolve(__dirname, "../../src/server/public/index.html");
+const PUBLIC_DIR = resolve(__dirname, "../../src/server/public");
 
 describe("dashboard HTML structure (regression guard for index.html refactor)", () => {
   let html: string;
 
   beforeAll(() => {
-    html = readFileSync(HTML_PATH, "utf-8");
+    html = assembleHtml(PUBLIC_DIR);
   });
 
   describe("view panels", () => {

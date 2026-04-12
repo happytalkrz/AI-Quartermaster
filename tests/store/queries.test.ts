@@ -128,6 +128,12 @@ describe("queries", () => {
 
     describe("timeRange filter", () => {
       beforeEach(() => {
+        // Ensure clean database state for this describe block
+        const allJobs = db.listJobs();
+        for (const job of allJobs) {
+          db.deleteJob(job.id);
+        }
+
         db.createJob(makeJob({ id: "j-12h", status: "success", createdAt: daysAgo(0.5) }));
         db.createJob(makeJob({ id: "j-3d", status: "success", createdAt: daysAgo(3) }));
         db.createJob(makeJob({ id: "j-10d", status: "success", createdAt: daysAgo(10) }));

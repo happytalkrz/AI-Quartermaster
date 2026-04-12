@@ -252,7 +252,7 @@ export async function prepareWorkEnvironment(input: EnvironmentPrepInput): Promi
         const sigs = grepResult.stdout.split("\n").slice(0, 5).map((l: string) => l.trim()).join("; ");
         exportLines.push(`${file}: ${sigs}`);
       }
-    } catch {
+    } catch (_err: unknown) {
       // skip files that fail
     }
   }

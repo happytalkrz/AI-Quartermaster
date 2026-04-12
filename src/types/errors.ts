@@ -45,6 +45,39 @@ export class RollbackError extends AQMError {
   }
 }
 
+export class PipelineError extends AQMError {
+  constructor(
+    code: string,
+    message: string,
+    public readonly context?: Record<string, unknown>,
+    cause?: Error | unknown
+  ) {
+    super(code, message, cause);
+  }
+}
+
+export class ConfigError extends AQMError {
+  constructor(
+    code: string,
+    message: string,
+    public readonly context?: Record<string, unknown>,
+    cause?: Error | unknown
+  ) {
+    super(code, message, cause);
+  }
+}
+
+export class GitError extends AQMError {
+  constructor(
+    code: string,
+    message: string,
+    public readonly context?: Record<string, unknown>,
+    cause?: Error | unknown
+  ) {
+    super(code, message, cause);
+  }
+}
+
 /**
  * Discriminated union for classified errors with category-specific metadata
  */

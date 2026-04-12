@@ -495,7 +495,7 @@ function extractFunctionSignatures(filePath: string, content: string): string[] 
     );
 
     visitNodeForSignatures(sourceFile, signatures);
-  } catch (error) {
+  } catch (_error: unknown) {
     // TypeScript 파싱 실패 시 정규식으로 폴백
     return extractFunctionSignaturesRegex(content);
   }
@@ -607,7 +607,7 @@ function extractImportRelations(filePath: string, content: string): { imports: s
     );
 
     visitNodeForImports(sourceFile, imports, exports);
-  } catch (error) {
+  } catch (_error: unknown) {
     // 파싱 실패 시 정규식으로 폴백
     return extractImportRelationsRegex(content);
   }
@@ -673,7 +673,7 @@ function extractTypeDefinitions(filePath: string, content: string): string[] {
     );
 
     visitNodeForTypes(sourceFile, typeDefinitions);
-  } catch (error) {
+  } catch (_error: unknown) {
     // 파싱 실패 시 정규식으로 폴백
     return extractTypeDefinitionsRegex(content);
   }

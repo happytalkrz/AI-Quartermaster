@@ -1032,7 +1032,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           hasUpdates: updateInfo.hasUpdates,
           packageLockChanged: updateInfo.packageLockChanged,
         });
-      } catch (updateError) {
+      } catch (updateError: unknown) {
         getLogger().warn(`업데이트 확인 실패: ${getErrorMessage(updateError)}`);
         return c.json({
           currentVersion,

@@ -290,7 +290,7 @@ export async function cleanupOnSuccess(context: CleanupContext): Promise<void> {
       type: "success",
       tags: [],
     });
-  } catch { /* non-fatal */ }
+  } catch (_err: unknown) { /* non-fatal */ }
 
   const report = formatResult(issueNumber, repo, plan, phaseResults, startTime, prUrl);
   printResult(report);
@@ -336,7 +336,7 @@ export async function handlePipelineFailure(context: FailureHandlerContext): Pro
   if (worktreePath && cleanupOnFailure) {
     try {
       await removeWorktree(gitConfig, worktreePath, { cwd: projectRoot, force: true });
-    } catch {
+    } catch (_err: unknown) {
       // ignore cleanup errors
     }
   }
@@ -346,7 +346,7 @@ export async function handlePipelineFailure(context: FailureHandlerContext): Pro
     try {
       await runCli(gitConfig.gitPath, ["branch", "-D", branchName], { cwd: projectRoot });
       logger.info(`Cleaned up branch: ${branchName}`);
-    } catch {
+    } catch (_err: unknown) {
       // ignore — branch may not exist
     }
   }

@@ -310,3 +310,20 @@ export const UpdateJobPriorityRequestSchema = z.object({
 }).strict();
 
 export type UpdateJobPriorityRequest = z.infer<typeof UpdateJobPriorityRequestSchema>;
+
+// UpdateProject 요청 스키마 (PUT /api/projects/:repo)
+export const UpdateProjectRequestSchema = z.object({
+  path: z.string().min(1).optional(),
+  baseBranch: z.string().nullable().optional(),
+  mode: z.enum(["code", "content"]).nullable().optional(),
+}).strict();
+
+export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
+
+// Zod 에러를 클라이언트 친화적 형태로 변환
+export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
+  return error.issues.map((issue) => ({
+    field: issue.path.join(".") || "(root)",
+    message: issue.message,
+  }));
+}

@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
-import type { JobStore, Job } from "../queue/job-store.js";
+import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
@@ -10,7 +10,7 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, UpdateJobPriorityRequestSchema, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
@@ -355,11 +355,14 @@ const SSE_INITIAL_JOB_LIMIT = 20;
  * - Fills remaining slots with recent non-active jobs (up to SSE_INITIAL_JOB_LIMIT total)
  */
 function getInitialJobs(store: JobStore): Job[] {
-  const all = store.list().filter(j => j.status !== "archived");
-  const active = all.filter(j => j.status === "running" || j.status === "queued");
-  const rest = all.filter(j => j.status !== "running" && j.status !== "queued");
+  // DB 레벨에서 active job 조회
+  const active = store.list({ statuses: ["running", "queued"] });
   const remaining = Math.max(0, SSE_INITIAL_JOB_LIMIT - active.length);
-  return [...active, ...rest.slice(0, remaining)];
+  // 나머지 슬롯은 최근 non-active, non-archived job으로 채움
+  const rest = remaining > 0
+    ? store.list({ statuses: ["success", "failure", "cancelled"], limit: remaining })
+    : [];
+  return [...active, ...rest];
 }
 
 /**
@@ -461,7 +464,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!parseResult.success) {
         return c.json({
           error: "Invalid request body",
-          details: parseResult.error
+          details: formatZodError(parseResult.error)
         }, 400);
       }
 
@@ -544,7 +547,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!parseResult.success) {
         return c.json({
           error: "Invalid request body",
-          details: parseResult.error
+          details: formatZodError(parseResult.error)
         }, 400);
       }
 
@@ -635,10 +638,19 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: "repo parameter is required" }, 400);
       }
 
-      const body = await c.req.json();
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return c.json({ error: "Invalid JSON body" }, 400);
+      }
 
-      if (!body || typeof body !== "object") {
-        return c.json({ error: "Invalid request body" }, 400);
+      const parseResult = UpdateProjectRequestSchema.safeParse(body);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid request body",
+          details: formatZodError(parseResult.error)
+        }, 400);
       }
 
       // Validate that project exists
@@ -651,8 +663,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
-      // Extract valid update fields
-      const { path, baseBranch, mode } = body;
+      const { path, baseBranch, mode } = parseResult.data;
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
 
       if (path !== undefined) {
@@ -664,17 +675,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       if (baseBranch !== undefined) {
-        if (typeof baseBranch !== "string") {
-          return c.json({ error: "baseBranch must be a string" }, 400);
-        }
-        updates.baseBranch = baseBranch.trim() || undefined;
+        updates.baseBranch = baseBranch?.trim() || undefined;
       }
 
       if (mode !== undefined) {
-        if (mode !== "code" && mode !== "content" && mode !== null) {
-          return c.json({ error: "mode must be 'code', 'content', or null" }, 400);
-        }
-        updates.mode = mode || undefined;
+        updates.mode = mode ?? undefined;
       }
 
       // Check if any fields to update
@@ -717,47 +722,33 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!parseResult.success) {
         return c.json({
           error: "Invalid query parameters",
-          details: parseResult.error
+          details: formatZodError(parseResult.error)
         }, 400);
       }
 
       const { project, status, limit, offset } = parseResult.data;
 
-      // Get base job list
-      let jobs = includeArchived ? store.list() : store.list().filter(j => j.status !== "archived");
+      // DB 레벨 필터 옵션 구성
+      const baseOptions: ListJobsOptions = {};
+      if (!includeArchived) baseOptions.excludeStatus = "archived";
+      if (project) baseOptions.repo = project;
 
-      // Apply project filter
-      if (project) {
-        jobs = jobs.filter(j => j.repo === project);
-      }
-
-      // Apply status filter
-      if (status) {
-        jobs = jobs.filter(j => {
-          // Map internal status to API status
-          switch (status) {
-            case "pending":
-              return j.status === "queued";
-            case "running":
-              return j.status === "running";
-            case "completed":
-              return j.status === "success";
-            case "failed":
-              return j.status === "failure" || j.status === "cancelled";
-            default:
-              return false;
-          }
-        });
+      // API status → 내부 JobStatus 매핑
+      if (status === "pending") {
+        baseOptions.status = "queued";
+      } else if (status === "running") {
+        baseOptions.status = "running";
+      } else if (status === "completed") {
+        baseOptions.status = "success";
+      } else if (status === "failed") {
+        baseOptions.statuses = ["failure", "cancelled"];
       }
 
-      // Apply pagination
-      const totalJobs = jobs.length;
-      if (offset !== undefined) {
-        jobs = jobs.slice(offset);
-      }
-      if (limit !== undefined) {
-        jobs = jobs.slice(0, limit);
-      }
+      // DB 레벨에서 총 개수 조회 (페이지네이션 없이)
+      const totalJobs = store.list(baseOptions).length;
+
+      // DB 레벨에서 페이지네이션 적용하여 결과 조회
+      const jobs = store.list({ ...baseOptions, limit, offset });
 
       const queueStatus = queue.getStatus();
       return c.json({
@@ -805,7 +796,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
     const parseResult = UpdateJobPriorityRequestSchema.safeParse(body);
     if (!parseResult.success) {
-      return c.json({ error: "Invalid request body", details: parseResult.error }, 400);
+      return c.json({ error: "Invalid request body", details: formatZodError(parseResult.error) }, 400);
     }
 
     const { priority } = parseResult.data;
@@ -841,7 +832,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!parseResult.success) {
         return c.json({
           error: "Invalid query parameters",
-          details: parseResult.error
+          details: formatZodError(parseResult.error)
         }, 400);
       }
 
@@ -865,7 +856,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!parseResult.success) {
         return c.json({
           error: "Invalid query parameters",
-          details: parseResult.error
+          details: formatZodError(parseResult.error)
         }, 400);
       }
 

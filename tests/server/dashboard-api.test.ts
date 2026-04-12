@@ -1164,7 +1164,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("path is required and must be a string");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "path")).toBe(true);
     });
 
     it("should return 400 for invalid mode value", async () => {
@@ -1186,7 +1188,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("mode must be 'code', 'content', or null");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "mode")).toBe(true);
     });
 
     it("should return 400 when no valid fields to update", async () => {
@@ -1208,7 +1212,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("No valid fields to update");
+      // UpdateProjectRequestSchema는 .strict()이므로 알 수 없는 필드는 Zod 에러로 처리됨
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
     });
 
     it("should return 401 without proper authentication", async () => {
@@ -1597,13 +1603,19 @@ describe("Dashboard API - Version Management", () => {
 
       describe("GET /api/jobs with project filter", () => {
         it("should return jobs filtered by project", async () => {
-          const mockJobs = [
+          const allMockJobs = [
             { id: "job-1", repo: "test/repo1", status: "completed" },
             { id: "job-2", repo: "test/repo2", status: "completed" },
             { id: "job-3", repo: "test/repo1", status: "failed" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          // DB 레벨 필터링 시뮬레이션: repo 옵션에 따라 필터링
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) {
+              return allMockJobs.filter(j => j.repo === opts.repo);
+            }
+            return allMockJobs;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1");
           expect(response.status).toBe(200);

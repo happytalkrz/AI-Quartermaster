@@ -1282,6 +1282,156 @@ describe("JobStore", () => {
       expect(running.length).toBe(1);
       expect(running[0].status).toBe("running");
     });
+
+    it("should exclude jobs with excludeStatus filter", () => {
+      const job1 = store.create(1, "test/repo");
+      const job2 = store.create(2, "test/repo");
+      store.update(job1.id, { status: "archived" });
+      // job2 stays queued
+
+      const nonArchived = store.list({ excludeStatus: "archived" });
+      expect(nonArchived.length).toBe(1);
+      expect(nonArchived[0].id).toBe(job2.id);
+      expect(nonArchived[0].status).toBe("queued");
+    });
+
+    it("should exclude archived jobs with excludeStatus and return mixed statuses", () => {
+      const job1 = store.create(1, "test/repo");
+      const job2 = store.create(2, "test/repo");
+      const job3 = store.create(3, "test/repo");
+      store.update(job1.id, { status: "archived" });
+      store.update(job2.id, { status: "running", startedAt: new Date().toISOString() });
+      // job3 stays queued
+
+      const nonArchived = store.list({ excludeStatus: "archived" });
+      const ids = nonArchived.map(j => j.id);
+      expect(ids).not.toContain(job1.id);
+      expect(ids).toContain(job2.id);
+      expect(ids).toContain(job3.id);
+    });
+
+    it("should filter by repo option", () => {
+      const job1 = store.create(1, "repo/alpha");
+      const job2 = store.create(2, "repo/beta");
+      const job3 = store.create(3, "repo/alpha");
+
+      const alphaJobs = store.list({ repo: "repo/alpha" });
+      const ids = alphaJobs.map(j => j.id);
+      expect(ids).toContain(job1.id);
+      expect(ids).toContain(job3.id);
+      expect(ids).not.toContain(job2.id);
+    });
+
+    it("should return empty array when repo filter matches no jobs", () => {
+      store.create(1, "repo/alpha");
+      store.create(2, "repo/alpha");
+
+      const betaJobs = store.list({ repo: "repo/nonexistent" });
+      expect(betaJobs.length).toBe(0);
+    });
+
+    it("should combine repo filter and status filter", () => {
+      const job1 = store.create(1, "repo/alpha");
+      const job2 = store.create(2, "repo/alpha");
+      const job3 = store.create(3, "repo/beta");
+      store.update(job1.id, { status: "running", startedAt: new Date().toISOString() });
+      store.update(job3.id, { status: "running", startedAt: new Date().toISOString() });
+      // job2 stays queued
+
+      const alphaRunning = store.list({ repo: "repo/alpha", status: "running" });
+      expect(alphaRunning.length).toBe(1);
+      expect(alphaRunning[0].id).toBe(job1.id);
+      expect(alphaRunning[0].repo).toBe("repo/alpha");
+      expect(alphaRunning[0].status).toBe("running");
+    });
+
+    it("should combine repo filter and excludeStatus filter", () => {
+      const job1 = store.create(1, "repo/alpha");
+      const job2 = store.create(2, "repo/alpha");
+      const job3 = store.create(3, "repo/beta");
+      store.update(job1.id, { status: "archived" });
+      store.update(job3.id, { status: "archived" });
+      // job2 stays queued
+
+      const alphaNonArchived = store.list({ repo: "repo/alpha", excludeStatus: "archived" });
+      expect(alphaNonArchived.length).toBe(1);
+      expect(alphaNonArchived[0].id).toBe(job2.id);
+    });
+
+    it("should filter by multiple statuses with statuses option", () => {
+      const job1 = store.create(1, "test/repo");
+      const job2 = store.create(2, "test/repo");
+      const job3 = store.create(3, "test/repo");
+      store.update(job1.id, { status: "running", startedAt: new Date().toISOString() });
+      store.update(job2.id, {
+        status: "success",
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+        prUrl: "https://github.com/test/pr/2"
+      });
+      // job3 stays queued
+
+      const activeJobs = store.list({ statuses: ["running", "queued"] });
+      const ids = activeJobs.map(j => j.id);
+      expect(ids).toContain(job1.id);
+      expect(ids).toContain(job3.id);
+      expect(ids).not.toContain(job2.id);
+    });
+
+    it("should combine statuses filter and limit", () => {
+      for (let i = 1; i <= 4; i++) {
+        const job = store.create(i, "test/repo");
+        store.update(job.id, { status: "running", startedAt: new Date().toISOString() });
+      }
+      store.create(5, "test/repo"); // queued
+
+      const limited = store.list({ statuses: ["running", "queued"], limit: 3 });
+      expect(limited.length).toBe(3);
+      for (const job of limited) {
+        expect(["running", "queued"]).toContain(job.status);
+      }
+    });
+
+    it("should combine repo filter and limit for pagination", () => {
+      for (let i = 1; i <= 6; i++) {
+        store.create(i, "repo/alpha");
+      }
+      store.create(7, "repo/beta");
+
+      const page1 = store.list({ repo: "repo/alpha", limit: 3, offset: 0 });
+      const page2 = store.list({ repo: "repo/alpha", limit: 3, offset: 3 });
+
+      expect(page1.length).toBe(3);
+      expect(page2.length).toBe(3);
+
+      const page1Ids = page1.map(j => j.id);
+      const page2Ids = page2.map(j => j.id);
+      for (const id of page2Ids) {
+        expect(page1Ids).not.toContain(id);
+      }
+      // All should be from repo/alpha
+      for (const job of [...page1, ...page2]) {
+        expect(job.repo).toBe("repo/alpha");
+      }
+    });
+
+    it("should return remaining jobs when offset exceeds available count", () => {
+      for (let i = 1; i <= 3; i++) {
+        store.create(i, "test/repo");
+      }
+
+      const jobs = store.list({ limit: 10, offset: 2 });
+      expect(jobs.length).toBe(1);
+    });
+
+    it("should return empty array when offset equals total count", () => {
+      for (let i = 1; i <= 3; i++) {
+        store.create(i, "test/repo");
+      }
+
+      const jobs = store.list({ limit: 10, offset: 3 });
+      expect(jobs.length).toBe(0);
+    });
   });
 
   describe("findCompletedByIssue / findAnyByIssue", () => {

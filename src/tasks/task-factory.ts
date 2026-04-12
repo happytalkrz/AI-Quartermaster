@@ -73,7 +73,7 @@ class HandlerWrappedTask implements AQMTask {
       this._completedAt = new Date().toISOString();
       this._status = result.error ? TaskStatus.FAILED : TaskStatus.SUCCESS;
       return result;
-    } catch (err) {
+    } catch (err: unknown) {
       this._completedAt = new Date().toISOString();
       this._status = TaskStatus.FAILED;
       throw err;

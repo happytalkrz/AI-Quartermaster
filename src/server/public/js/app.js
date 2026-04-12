@@ -43,9 +43,9 @@ function navigateTo(view) {
     loadSettings();
   }
 
-  // If navigating to repositories view, render it
+  // If navigating to repositories view, load from API
   if (view === 'repositories') {
-    renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
+    loadRepositories();
   }
 
   // If navigating to automations view, render it

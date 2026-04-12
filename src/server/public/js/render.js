@@ -1,9 +1,14 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
    Render Job List Item
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @param {boolean} isSelected
+ * @returns {string}
+ */
 function renderJobListItem(job, isSelected) {
   var color = statusColor(job.status);
   var isRunning = job.status === 'running';
@@ -43,6 +48,10 @@ function renderJobListItem(job, isSelected) {
 /* ══════════════════════════════════════════════════════════════
    Render Kanban Card
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderKanbanCard(job) {
   var color = statusColor(job.status);
   var isRunning = job.status === 'running';
@@ -94,6 +103,10 @@ function renderKanbanCard(job) {
 /* ══════════════════════════════════════════════════════════════
    Render Job Detail
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job|null} job
+ * @returns {string}
+ */
 function renderJobDetail(job) {
   if (!job) {
     return '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
@@ -174,6 +187,10 @@ function renderJobDetail(job) {
 /* ══════════════════════════════════════════════════════════════
    Phase Progress Bar
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderPhaseProgress(job) {
   var pct = (typeof job.progress === 'number') ? job.progress : 0;
 
@@ -208,6 +225,12 @@ function renderPhaseProgress(job) {
 /* ══════════════════════════════════════════════════════════════
    Phase List
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {PhaseResultInfo} phase
+ * @param {number} i
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderPhaseItem(phase, i, job) {
   var isComplete = phase.success !== undefined;
   var isSuccess = phase.success === true;
@@ -261,6 +284,10 @@ function renderPhaseItem(phase, i, job) {
   '</div>';
 }
 
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderPhaseList(job) {
   var phases = job.phaseResults || [];
   if (phases.length === 0) return '';
@@ -276,6 +303,10 @@ function renderPhaseList(job) {
 /* ══════════════════════════════════════════════════════════════
    Log Section
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderLogSection(job) {
   if (!job.logs || job.logs.length === 0) return '';
 
@@ -303,6 +334,10 @@ function renderLogSection(job) {
 /* ══════════════════════════════════════════════════════════════
    Accordion Detail Panel (Tablet Mode)
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderAccordionDetail(job) {
   var html = '<div class="accordion-detail">';
 
@@ -335,6 +370,7 @@ function renderAccordionDetail(job) {
     job.phaseResults.forEach(function(p, i) {
       var icon = p.success ? '<span class="text-[#3fb950]">✓</span>' : '<span class="text-error">✗</span>';
       html += '<span class="text-xs font-mono text-on-surface-variant">' + icon + ' P' + (i + 1) + '</span>';
+      // @ts-ignore
       if (i < job.phaseResults.length - 1) html += '<span class="text-outline/30">→</span>';
     });
     html += '</div></div>';
@@ -359,6 +395,10 @@ function renderAccordionDetail(job) {
 /* ══════════════════════════════════════════════════════════════
    Mobile Activity Log Renderer
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job|null} job
+ * @returns {void}
+ */
 function renderMobileActivityLog(job) {
   var container = document.getElementById('mobile-activity-log');
   if (!container) return;
@@ -368,12 +408,16 @@ function renderMobileActivityLog(job) {
   container.style.display = 'none';
   return;
 
+  // @ts-ignore
   if (!job.logs || job.logs.length === 0) {
+    // @ts-ignore
     container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';
     return;
   }
 
+  // @ts-ignore
   var maxLines = job.status === 'running' ? 10 : 20;
+  // @ts-ignore
   var lines = job.logs.slice(-maxLines);
 
   var html = '<div class="space-y-3">';
@@ -391,15 +435,21 @@ function renderMobileActivityLog(job) {
   });
 
   html += '</div></div></div>';
+  // @ts-ignore
   container.innerHTML = html;
 }
 
 /* ══════════════════════════════════════════════════════════════
    Logs Full View
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {void}
+ */
 function renderLogsView(job) {
   var container = document.getElementById('logs-detail');
   if (!job || !job.logs || job.logs.length === 0) {
+    // @ts-ignore
     container.innerHTML = '<div class="text-outline text-center py-12">이 작업에 대한 로그가 없습니다.</div>';
     return;
   }
@@ -410,18 +460,28 @@ function renderLogsView(job) {
     html += colorizeLogLine(line);
   });
 
+  // @ts-ignore
   container.innerHTML = html;
+  // @ts-ignore
   container.scrollTop = container.scrollHeight;
 }
 
 /* ══════════════════════════════════════════════════════════════
    Main Render
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {ApiResponse} data
+ * @returns {void}
+ */
 function handleData(data) {
   currentJobs = sortJobs(data.jobs || []);
   render(data);
 }
 
+/**
+ * @param {ApiResponse} data
+ * @returns {void}
+ */
 function render(data) {
   currentJobs = sortJobs(data.jobs || []);
   var q = data.queue || {};
@@ -435,9 +495,13 @@ function render(data) {
   var completed = successCount + failedCount;
   var rate = completed > 0 ? ((successCount / completed) * 100).toFixed(1) : '0';
 
+  // @ts-ignore
   document.getElementById('stat-total').textContent = total;
+  // @ts-ignore
   document.getElementById('stat-rate').textContent = rate + '%';
+  // @ts-ignore
   document.getElementById('stat-active').textContent = activeCount;
+  // @ts-ignore
   document.getElementById('stat-failed').textContent = failedCount;
 
   renderFromState();
@@ -448,31 +512,46 @@ function render(data) {
   }
 }
 
+/** @returns {void} */
 function renderFromState() {
   var allJobs = currentJobs;
   var filtered = filterJobs(allJobs);
 
   // Update filter counts
+  // @ts-ignore
   document.getElementById('cnt-all').textContent = allJobs.filter(function(j) { return j.status !== 'archived'; }).length;
+  // @ts-ignore
   document.getElementById('cnt-running').textContent = allJobs.filter(function(j) { return j.status === 'running'; }).length;
+  // @ts-ignore
   document.getElementById('cnt-success').textContent = allJobs.filter(function(j) { return j.status === 'success'; }).length;
+  // @ts-ignore
   document.getElementById('cnt-failure').textContent = allJobs.filter(function(j) { return j.status === 'failure'; }).length;
+  // @ts-ignore
   document.getElementById('cnt-queued').textContent = allJobs.filter(function(j) { return j.status === 'queued'; }).length;
 
   var listEl = document.getElementById('job-list');
   var emptyEl = document.getElementById('empty-state');
   var filterEmptyEl = document.getElementById('filter-empty');
 
+  // @ts-ignore
   emptyEl.classList.add('hidden');
+  // @ts-ignore
   emptyEl.classList.remove('flex');
+  // @ts-ignore
   filterEmptyEl.classList.add('hidden');
+  // @ts-ignore
   filterEmptyEl.classList.remove('flex');
+  // @ts-ignore
   listEl.classList.remove('hidden');
 
   if (allJobs.length === 0) {
+    // @ts-ignore
     listEl.classList.add('hidden');
+    // @ts-ignore
     emptyEl.classList.remove('hidden');
+    // @ts-ignore
     emptyEl.classList.add('flex');
+    // @ts-ignore
     document.getElementById('job-detail').innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     renderMobileActivityLog(null);
     startLiveTickers();
@@ -480,8 +559,11 @@ function renderFromState() {
   }
 
   if (filtered.length === 0) {
+    // @ts-ignore
     listEl.classList.add('hidden');
+    // @ts-ignore
     filterEmptyEl.classList.remove('hidden');
+    // @ts-ignore
     filterEmptyEl.classList.add('flex');
     startLiveTickers();
     return;
@@ -496,6 +578,7 @@ function renderFromState() {
   var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
 
   // Render job list (with inline accordion on tablet)
+  // @ts-ignore
   listEl.innerHTML = filtered.map(function(j) {
     var isSelected = j.id === selectedJobId;
     var html = renderJobListItem(j, isSelected);
@@ -509,6 +592,7 @@ function renderFromState() {
   // Render detail panel (desktop only)
   var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
   if (!isTablet) {
+    // @ts-ignore
     document.getElementById('job-detail').innerHTML = renderJobDetail(selectedJob);
   }
 
@@ -530,6 +614,10 @@ function renderFromState() {
 /* ══════════════════════════════════════════════════════════════
    Select Job
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function selectJob(id) {
   var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
   // Tablet accordion toggle: clicking same row closes it
@@ -544,8 +632,11 @@ function selectJob(id) {
 /* ══════════════════════════════════════════════════════════════
    Live Duration Ticker
    ══════════════════════════════════════════════════════════════ */
+/** @type {ReturnType<typeof setInterval>|null} */
 var tickerInterval = null;
+/** @returns {void} */
 function startLiveTickers() {
+  // @ts-ignore
   if (tickerInterval) clearInterval(tickerInterval);
   tickerInterval = setInterval(function() {
     currentJobs.filter(function(j) { return j.status === 'running'; }).forEach(function(job) {
@@ -561,13 +652,18 @@ function startLiveTickers() {
 /* ══════════════════════════════════════════════════════════════
    Fetch Stats
    ══════════════════════════════════════════════════════════════ */
+/** @returns {void} */
 function fetchStats() {
   apiFetch(buildStatsUrl())
     .then(function(r) { return r.json(); })
     .then(function(stats) {
+      // @ts-ignore
       if (stats.totalJobs !== undefined) document.getElementById('stat-total').textContent = stats.totalJobs;
+      // @ts-ignore
       if (stats.successRate !== undefined) document.getElementById('stat-rate').textContent = stats.successRate + '%';
+      // @ts-ignore
       if (stats.active !== undefined) document.getElementById('stat-active').textContent = stats.active;
+      // @ts-ignore
       if (stats.failed !== undefined) document.getElementById('stat-failed').textContent = stats.failed;
     })
     .catch(function() {});
@@ -577,6 +673,10 @@ function fetchStats() {
    Settings Rendering
    ══════════════════════════════════════════════════════════════ */
 
+/**
+ * @param {ProjectConfig} project
+ * @returns {string}
+ */
 function renderProjectCard(project) {
   var html = '<div class="bg-surface-container-low p-5 rounded-xl transition-all hover:bg-surface-container flex flex-col justify-between group">';
   html += '<div class="flex justify-between items-start mb-4">';
@@ -621,6 +721,10 @@ function renderProjectCard(project) {
   return html;
 }
 
+/**
+ * @param {AqmConfig|null} config
+ * @returns {void}
+ */
 function renderSettingsView(config) {
   if (!config) {
     var container = document.getElementById('settings-content');
@@ -641,15 +745,20 @@ function renderSettingsView(config) {
   }
 
   // 각 탭별로 폼 렌더링
-  renderTabForm('general', config.general);
-  renderTabForm('safety', config.safety);
-  renderTabForm('review', config.review);
+  renderTabForm('general', config.general || null);
+  renderTabForm('safety', config.safety || null);
+  renderTabForm('review', config.review || null);
 
   // 저장된 탭 선택 복원 또는 기본 탭 설정
   var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
   setSettingsTab(savedTab);
 }
 
+/**
+ * @param {string} tabName
+ * @param {Record<string, *>|null} data
+ * @returns {void}
+ */
 function renderTabForm(tabName, data) {
   var container = document.getElementById(tabName + '-settings-form');
   if (!container || !data) return;
@@ -665,11 +774,18 @@ function renderTabForm(tabName, data) {
   container.innerHTML = html;
 }
 
+/** @type {Record<string, string>} */
 var FIELD_DISPLAY_LABELS = {
   'general.instanceLabel': 'Instance Label',
   'general.instanceOwners': 'Instance Owners',
 };
 
+/**
+ * @param {string} key
+ * @param {*} value
+ * @param {string} configPath
+ * @returns {string}
+ */
 function renderFormField(key, value, configPath) {
   var fieldId = 'field-' + configPath.replace(/\./g, '-');
   var isMasked = typeof value === 'string' && value.includes('********');
@@ -699,6 +815,12 @@ function renderFormField(key, value, configPath) {
   return html;
 }
 
+/**
+ * @param {string} baseClasses
+ * @param {boolean} isReadonly
+ * @param {string} [additionalClasses]
+ * @returns {string}
+ */
 function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
   var classes = baseClasses;
   if (isReadonly) classes += ' opacity-60 cursor-not-allowed';
@@ -706,6 +828,14 @@ function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
   return classes;
 }
 
+/**
+ * @param {string} fieldId
+ * @param {string} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @param {boolean} isMasked
+ * @returns {string}
+ */
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
   var classes = buildInputClasses(
     'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
@@ -720,6 +850,13 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
          (isReadonly ? ' readonly' : '') + '/>';
 }
 
+/**
+ * @param {string} fieldId
+ * @param {number} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @returns {string}
+ */
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
     'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
@@ -733,6 +870,13 @@ function renderNumberInput(fieldId, value, configPath, isReadonly) {
          (isReadonly ? ' readonly' : '') + '/>';
 }
 
+/**
+ * @param {string} fieldId
+ * @param {boolean} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @returns {string}
+ */
 function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
   var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-1 focus:ring-primary bg-surface-container-highest/40';
   if (isReadonly) {
@@ -749,6 +893,13 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
          '</div>';
 }
 
+/**
+ * @param {string} fieldId
+ * @param {string[]} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @returns {string}
+ */
 function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
     'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
@@ -766,6 +917,13 @@ function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
          '<div class="text-[10px] text-outline/50 mt-1">쉼표로 구분 (예: user1, user2)</div>';
 }
 
+/**
+ * @param {string} fieldId
+ * @param {*[]} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @returns {string}
+ */
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
     'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
@@ -783,6 +941,13 @@ function renderArrayInput(fieldId, value, configPath, isReadonly) {
          '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
 }
 
+/**
+ * @param {string} fieldId
+ * @param {Record<string, *>} value
+ * @param {string} configPath
+ * @param {boolean} isReadonly
+ * @returns {string}
+ */
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
     'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
@@ -804,17 +969,18 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
    Repositories View
    ══════════════════════════════════════════════════════════════ */
 
+/** @returns {void} */
 function loadRepositories() {
   apiFetch('/api/repositories')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var repos = (data.repositories || []).map(function(item) {
+      var repos = (data.repositories || []).map(function(/** @type {any} */ item) {
         var localPathStatus = item.health && item.health.localPath ? item.health.localPath.status : 'ok';
         var health = localPathStatus === 'error' ? 'local-missing' : (item.status === 'healthy' ? 'stable' : item.status);
         var stats = item.stats || {};
         var lastActivity = stats.lastActivity || null;
         var isActive = lastActivity !== null && (Date.now() - new Date(lastActivity).getTime()) < 7 * 24 * 60 * 60 * 1000;
-        return {
+        return /** @type {RepoInfo} */ ({
           repo: item.repository || item.name,
           path: item.path,
           totalJobs: stats.totalJobs || 0,
@@ -824,7 +990,7 @@ function loadRepositories() {
           lastActiveAt: lastActivity,
           isActive: isActive,
           health: health
-        };
+        });
       });
       renderRepositoriesView(repos, {});
     })
@@ -833,6 +999,10 @@ function loadRepositories() {
     });
 }
 
+/**
+ * @param {number|null|undefined} bytes
+ * @returns {string}
+ */
 function fmtBytes(bytes) {
   if (bytes === null || bytes === undefined) return '—';
   if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
@@ -841,6 +1011,10 @@ function fmtBytes(bytes) {
   return bytes + ' B';
 }
 
+/**
+ * @param {RepoInfo} repo
+ * @returns {string}
+ */
 function renderRepoCard(repo) {
   var isActive = repo.isActive;
   var health = repo.health || 'stable';
@@ -949,6 +1123,10 @@ function renderRepoCard(repo) {
   '</div>';
 }
 
+/**
+ * @param {StorageData} storageData
+ * @returns {void}
+ */
 function renderStorageSection(storageData) {
   var data = storageData || {};
   var dbSizeEl = document.getElementById('repo-stat-db-size');
@@ -963,6 +1141,11 @@ function renderStorageSection(storageData) {
   if (retentionLabelEl) retentionLabelEl.textContent = pct + '% Capacity Reached';
 }
 
+/**
+ * @param {RepoInfo[]} repos
+ * @param {StorageData} storageData
+ * @returns {void}
+ */
 function renderRepositoriesView(repos, storageData) {
   var grid = document.getElementById('repo-card-grid');
   if (!grid) return;
@@ -985,6 +1168,7 @@ function renderRepositoriesView(repos, storageData) {
     );
   } else {
     repoList.forEach(function(repo) {
+      // @ts-ignore
       grid.insertAdjacentHTML('beforeend', renderRepoCard(repo));
     });
   }

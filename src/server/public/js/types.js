@@ -63,6 +63,8 @@
  * @property {boolean} [isRetry]
  * @property {number[]} [dependencies]
  * @property {string} [issueTitle]
+ * @property {number} [cacheHitRatio]
+ * @property {string} [branchName]
  */
 
 /**
@@ -99,6 +101,8 @@
  * @property {string} repo
  * @property {string} path
  * @property {string} [label]
+ * @property {string} [baseBranch]
+ * @property {string} [mode]
  */
 
 /**
@@ -107,6 +111,8 @@
  * @property {{instanceLabel?: string, projectName?: string, instanceOwners?: string[]}} [general]
  * @property {ProjectConfig[]} [projects]
  * @property {AutomationRule[]} [automations]
+ * @property {Record<string, *>} [safety]
+ * @property {Record<string, *>} [review]
  */
 
 /**
@@ -115,5 +121,40 @@
  * @property {Job[]} [jobs]
  * @property {QueueStatus} [queue]
  * @property {AqmConfig} [config]
+ */
+
+/**
+ * 저장소 정보 (레포지토리 뷰)
+ * @typedef {Object} RepoInfo
+ * @property {string} repo
+ * @property {string} path
+ * @property {string} [baseBranch]
+ * @property {number} [totalJobs]
+ * @property {number} [successRate]
+ * @property {number} [totalCostUsd]
+ * @property {number} [worktreeCount]
+ * @property {string} [lastActiveAt]
+ * @property {boolean} [isActive]
+ * @property {string} [health]
+ * @property {number} [cacheHitRatio]
+ */
+
+/**
+ * 저장소 스토리지 통계
+ * @typedef {Object} StorageData
+ * @property {number} [dbSizeBytes]
+ * @property {number} [logSizeBytes]
+ * @property {number} [retentionPct]
+ */
+
+/**
+ * 버전 정보 응답
+ * @typedef {Object} VersionInfo
+ * @property {string} [currentVersion]
+ * @property {string} [currentHash]
+ * @property {string} [remoteHash]
+ * @property {boolean} [hasUpdates]
+ * @property {boolean} [updated]
+ * @property {boolean} [needsRestart]
  */
 

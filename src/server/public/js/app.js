@@ -1,11 +1,16 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
    Navigation
    ══════════════════════════════════════════════════════════════ */
+/** @type {string} */
 var currentView = 'dashboard';
 
+/**
+ * @param {string} view
+ * @returns {void}
+ */
 function navigateTo(view) {
   currentView = view;
   // Update view panels
@@ -15,6 +20,7 @@ function navigateTo(view) {
 
   // Update sidebar nav
   document.querySelectorAll('#sidebar-nav a').forEach(function(a) {
+    // @ts-ignore
     var isActive = a.dataset.nav === view;
     if (isActive) {
       a.className = 'nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer';
@@ -25,6 +31,7 @@ function navigateTo(view) {
 
   // Update top nav
   document.querySelectorAll('header nav a').forEach(function(a) {
+    // @ts-ignore
     var isActive = a.dataset.nav === view;
     if (isActive) {
       a.className = 'font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer';
@@ -57,6 +64,7 @@ function navigateTo(view) {
 
 // Bind navigation clicks
 document.addEventListener('click', function(e) {
+  // @ts-ignore
   var navEl = e.target.closest('[data-nav]');
   if (navEl) {
     e.preventDefault();
@@ -67,16 +75,19 @@ document.addEventListener('click', function(e) {
 /* ══════════════════════════════════════════════════════════════
    Theme Toggle
    ══════════════════════════════════════════════════════════════ */
+/** @returns {void} */
 function toggleTheme() {
   var html = document.documentElement;
   var isDark = html.classList.contains('dark');
   if (isDark) {
     html.classList.remove('dark');
     localStorage.setItem('aqm-theme', 'light');
+    // @ts-ignore
     document.getElementById('btn-theme').textContent = 'light_mode';
   } else {
     html.classList.add('dark');
     localStorage.setItem('aqm-theme', 'dark');
+    // @ts-ignore
     document.getElementById('btn-theme').textContent = 'dark_mode';
   }
 }
@@ -84,6 +95,10 @@ function toggleTheme() {
 /* ══════════════════════════════════════════════════════════════
    Instance Label
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {string} label
+ * @returns {void}
+ */
 function updateInstanceLabel(label) {
   var el = document.getElementById('instance-label');
   if (!el) return;
@@ -95,6 +110,10 @@ function updateInstanceLabel(label) {
   }
 }
 
+/**
+ * @param {string[]|null|undefined} owners
+ * @returns {void}
+ */
 function updateInstanceOwners(owners) {
   var el = document.getElementById('instance-owners');
   if (!el) return;
@@ -106,6 +125,7 @@ function updateInstanceOwners(owners) {
   }
 }
 
+/** @returns {void} */
 function loadInstanceLabel() {
   apiFetch('/api/config')
     .then(function(r) { return r.json(); })
@@ -120,6 +140,7 @@ function loadInstanceLabel() {
     .catch(function() {});
 }
 
+/** @returns {void} */
 function loadClaudeProfile() {
   apiFetch('/api/claude-profile')
     .then(function(r) { return r.json(); })
@@ -135,13 +156,20 @@ function loadClaudeProfile() {
 /* ══════════════════════════════════════════════════════════════
    Settings
    ══════════════════════════════════════════════════════════════ */
+/** @type {AqmConfig|null} */
 var currentConfig = null; // 현재 설정 데이터 저장
 
+/**
+ * @param {string} message
+ * @returns {void}
+ */
 function showErrorMessage(message) {
   var container = document.getElementById('settings-content');
+  // @ts-ignore
   container.innerHTML = '<div class="col-span-full flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
 }
 
+/** @returns {void} */
 function loadSettings() {
   var container = document.getElementById('settings-content');
   if (!container) return;
@@ -156,12 +184,14 @@ function loadSettings() {
       if (data.config) {
         currentConfig = data.config;
         // Clear loading state from settings-content
+        // @ts-ignore
         container.innerHTML = '';
         // Try to render settings view with error handling
         try {
           renderSettingsView(data.config);
         } catch (renderError) {
           console.error('Settings render error:', renderError);
+          // @ts-ignore
           showErrorMessage('설정을 렌더링하는데 실패했습니다: ' + renderError.message);
         }
       } else {
@@ -173,10 +203,15 @@ function loadSettings() {
     });
 }
 
+/**
+ * @param {string} tabName
+ * @returns {void}
+ */
 function setSettingsTab(tabName) {
   var activeClasses = ['bg-primary/10', 'text-primary', 'shadow-sm'];
   var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
+    // @ts-ignore
     var isActive = btn.dataset.tab === tabName;
     activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
     inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
@@ -190,9 +225,18 @@ function setSettingsTab(tabName) {
   localStorage.setItem('aqm-selected-tab', tabName);
 }
 
+/** @type {string|null} */
 var _btnOriginal = null;
+/** @type {ReturnType<typeof setTimeout>|null} */
 var _btnTimer = null;
 
+/**
+ * @param {HTMLButtonElement} btn
+ * @param {string} icon
+ * @param {string} message
+ * @param {string} colorClass
+ * @returns {void}
+ */
 function showButtonState(btn, icon, message, colorClass) {
   if (_btnTimer) clearTimeout(_btnTimer);
   if (!_btnOriginal) _btnOriginal = btn.innerHTML;
@@ -204,6 +248,7 @@ function showButtonState(btn, icon, message, colorClass) {
   if (icon !== 'sync') {
     _btnTimer = setTimeout(function() {
       btn.disabled = false;
+      // @ts-ignore
       btn.innerHTML = _btnOriginal;
       btn.className = btn.className.replace(/bg-\S+/g, 'bg-primary');
       _btnOriginal = null;
@@ -212,10 +257,12 @@ function showButtonState(btn, icon, message, colorClass) {
   }
 }
 
+/** @returns {void} */
 function saveSettings() {
   var saveBtn = document.getElementById('save-settings-btn');
   if (!saveBtn || !currentConfig) return;
 
+  // @ts-ignore
   showButtonState(saveBtn, 'sync', t('config.saveState.saving'), 'bg-primary');
 
   apiFetch('/api/config', {
@@ -225,19 +272,25 @@ function saveSettings() {
   })
     .then(function(r) {
       if (r.ok) {
+        // @ts-ignore
         showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
         // Update currentConfig without re-rendering UI
         var newData = collectFormData();
+        // @ts-ignore
         if (newData) Object.assign(currentConfig, newData);
       } else {
         throw new Error('Save failed');
       }
     })
     .catch(function() {
+      // @ts-ignore
       showButtonState(saveBtn, 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
     });
 }
 
+/**
+ * @returns {Record<string, *>|null}
+ */
 function collectFormData() {
   if (!currentConfig) return null;
 
@@ -248,26 +301,35 @@ function collectFormData() {
     var form = document.getElementById(section + '-settings-form');
     if (!form) return;
 
+    // @ts-ignore
     var sectionData = currentConfig[section] ? JSON.parse(JSON.stringify(currentConfig[section])) : {};
     var inputs = form.querySelectorAll('input, select, textarea');
     inputs.forEach(function(input) {
+      // @ts-ignore
       var path = input.dataset.configPath;
       if (!path) return;
 
+      // @ts-ignore
       var value = getInputValue(input);
       // path에서 섹션 prefix 제거 (예: "general.logLevel" → "logLevel")
       var subPath = path.startsWith(section + '.') ? path.slice(section.length + 1) : path;
       setNestedValue(sectionData, subPath, value);
     });
+    // @ts-ignore
     result[section] = sectionData;
   });
 
   return result;
 }
 
+/**
+ * @param {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} input
+ * @returns {*}
+ */
 function getInputValue(input) {
   switch (input.type) {
     case 'checkbox':
+      // @ts-ignore
       return input.checked;
     case 'number':
       return parseInt(input.value, 10) || 0;
@@ -288,6 +350,12 @@ function getInputValue(input) {
   }
 }
 
+/**
+ * @param {Record<string, *>} obj
+ * @param {string} path
+ * @param {*} value
+ * @returns {void}
+ */
 function setNestedValue(obj, path, value) {
   var keys = path.split('.');
   var current = obj;
@@ -303,6 +371,10 @@ function setNestedValue(obj, path, value) {
 /* ══════════════════════════════════════════════════════════════
    Job Actions
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function cancelJob(id) {
   showConfirm(t('cancelConfirm'), '').then(function(ok) {
     if (!ok) return;
@@ -312,12 +384,20 @@ function cancelJob(id) {
   });
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function retryJob(id) {
   apiFetch('/api/jobs/' + encodeURIComponent(id) + '/retry', { method: 'POST' })
     .then(function() { return apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData); })
     .catch(function() {});
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function deleteJob(id) {
   apiFetch('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' })
     .then(function(r) {
@@ -329,6 +409,7 @@ function deleteJob(id) {
     .catch(function() {});
 }
 
+/** @returns {void} */
 function clearAllJobs() {
   showConfirm(t('clearAllConfirm'), currentLang === 'ko' ? '이 작업은 되돌릴 수 없습니다.' : 'This action cannot be undone.').then(function(ok) {
     if (!ok) return;
@@ -345,10 +426,12 @@ function clearAllJobs() {
 /* ══════════════════════════════════════════════════════════════
    Project Actions
    ══════════════════════════════════════════════════════════════ */
+/** @returns {void} */
 function addProject() {
   var form = document.getElementById('add-project-form');
   if (!form) return;
 
+  // @ts-ignore
   var formData = new FormData(form);
   var projectData = {
     repo: formData.get('repo'),
@@ -363,8 +446,11 @@ function addProject() {
 
   // Show loading state on submit button
   var submitButton = form.querySelector('button[type="submit"]');
+  // @ts-ignore
   var originalButtonContent = submitButton.innerHTML;
+  // @ts-ignore
   submitButton.disabled = true;
+  // @ts-ignore
   submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>추가 중...</span>';
 
   // Send API request
@@ -378,6 +464,7 @@ function addProject() {
     .then(function(response) {
       if (response.ok) {
         // Success - clear form and reload settings
+        // @ts-ignore
         form.reset();
         loadSettings();
         showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
@@ -392,11 +479,18 @@ function addProject() {
     })
     .finally(function() {
       // Restore submit button
+      // @ts-ignore
       submitButton.disabled = false;
+      // @ts-ignore
       submitButton.innerHTML = originalButtonContent;
     });
 }
 
+/**
+ * @param {string} message
+ * @param {string} type
+ * @returns {void}
+ */
 function showProjectMessage(message, type) {
   var messageId = 'add-project-' + type;
   var existing = document.getElementById(messageId);
@@ -422,6 +516,13 @@ function showProjectMessage(message, type) {
   }, config.timeout);
 }
 
+/**
+ * @param {string} label
+ * @param {string} name
+ * @param {string} value
+ * @param {boolean} readonly
+ * @returns {string}
+ */
 function createModalField(label, name, value, readonly) {
   var inputClass = 'w-full border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none';
   var readonlyClass = readonly ? 'bg-surface-container-high/50 cursor-not-allowed' : 'bg-surface-container-high';
@@ -432,6 +533,10 @@ function createModalField(label, name, value, readonly) {
     '</div>';
 }
 
+/**
+ * @param {string} repo
+ * @returns {void}
+ */
 function editProject(repo) {
   if (!currentConfig || !currentConfig.projects) return;
 
@@ -471,38 +576,50 @@ function editProject(repo) {
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 
+  // @ts-ignore
   document.getElementById('edit-project-form').addEventListener('submit', function(e) {
     e.preventDefault();
     submitEditProject(repo);
   });
 
   var firstInput = document.querySelector('#edit-project-form input[name="path"]');
+  // @ts-ignore
   if (firstInput) firstInput.focus();
 }
 
+/** @returns {void} */
 function closeEditProjectModal() {
   var modal = document.getElementById('edit-project-modal');
   if (modal) modal.remove();
 }
 
+/**
+ * @param {string} repo
+ * @returns {void}
+ */
 function submitEditProject(repo) {
   var form = document.getElementById('edit-project-form');
   if (!form) return;
 
+  // @ts-ignore
   var formData = new FormData(form);
   var updates = {};
 
   ['path', 'baseBranch', 'mode'].forEach(function(field) {
     var value = formData.get(field);
     if (field === 'path' ? value : value !== null) {
+      // @ts-ignore
       updates[field] = value;
     }
   });
 
   // Show loading state on submit button
   var submitButton = form.querySelector('button[type="submit"]');
+  // @ts-ignore
   var originalButtonContent = submitButton.innerHTML;
+  // @ts-ignore
   submitButton.disabled = true;
+  // @ts-ignore
   submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>저장 중...</span>';
 
   // Send PUT request
@@ -528,11 +645,17 @@ function submitEditProject(repo) {
     .catch(function(error) {
       showProjectMessage(error.message || '프로젝트 수정 중 오류가 발생했습니다.', 'error');
       // Restore submit button
+      // @ts-ignore
       submitButton.disabled = false;
+      // @ts-ignore
       submitButton.innerHTML = originalButtonContent;
     });
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function deleteProject(id) {
   showConfirm(t('deleteProjectConfirm'), currentLang === 'ko' ? '이 프로젝트를 삭제하시겠습니까?' : 'Are you sure you want to delete this project?').then(function(ok) {
     if (!ok) return;
@@ -552,26 +675,41 @@ function deleteProject(id) {
 /* ══════════════════════════════════════════════════════════════
    SSE Connection
    ══════════════════════════════════════════════════════════════ */
+/** @type {EventSource|null} */
 var es = null;
+/** @type {ReturnType<typeof setTimeout>|null} */
 var reconnectTimer = null;
+/** @type {number} */
 var reconnectDelay = 1000;
+/** @type {number} */
 var reconnectAttempts = 0;
 
+/**
+ * @param {'connected'|'connecting'|'disconnected'} state
+ * @returns {void}
+ */
 function setConnState(state) {
   var dot = document.getElementById('conn-dot');
   var label = document.getElementById('conn-label');
   if (state === 'connected') {
+    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-[#3fb950]';
+    // @ts-ignore
     label.textContent = 'Connected';
   } else if (state === 'connecting') {
+    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-pulse';
+    // @ts-ignore
     label.textContent = currentLang === 'ko' ? '연결 중...' : 'Connecting...';
   } else {
+    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-outline';
+    // @ts-ignore
     label.textContent = 'Disconnected';
   }
 }
 
+/** @returns {void} */
 function connectSSE() {
   if (es) { try { es.close(); } catch(e) {} }
   setConnState('connecting');
@@ -613,6 +751,7 @@ function connectSSE() {
   });
   es.onerror = function() {
     setConnState('disconnected');
+    // @ts-ignore
     es.close();
     reconnectAttempts++;
     reconnectTimer = setTimeout(connectSSE, reconnectDelay);
@@ -623,9 +762,12 @@ function connectSSE() {
 /* ══════════════════════════════════════════════════════════════
    Version & Update Management
    ══════════════════════════════════════════════════════════════ */
+/** @type {VersionInfo|null} */
 var versionInfo = null;
+/** @type {boolean} */
 var updateDismissed = false;
 
+/** @returns {void} */
 function loadVersionInfo() {
   apiFetch('/api/version')
     .then(function(r) { return r.json(); })
@@ -640,6 +782,10 @@ function loadVersionInfo() {
     });
 }
 
+/**
+ * @param {VersionInfo} data
+ * @returns {void}
+ */
 function updateVersionDisplay(data) {
   var versionLabel = document.getElementById('version-label');
   var versionHash = document.getElementById('version-hash');
@@ -653,6 +799,9 @@ function updateVersionDisplay(data) {
   }
 }
 
+/**
+ * @returns {number}
+ */
 function getApiBannerHeight() {
   var apiBanner = document.getElementById('api-key-banner');
   if (apiBanner && apiBanner.style.display !== 'none') {
@@ -661,6 +810,10 @@ function getApiBannerHeight() {
   return 0;
 }
 
+/**
+ * @param {VersionInfo} data
+ * @returns {void}
+ */
 function checkForUpdates(data) {
   if (updateDismissed || !data.hasUpdates) return;
 
@@ -681,6 +834,10 @@ function checkForUpdates(data) {
   adjustPagePadding();
 }
 
+/**
+ * @param {string[]|null|undefined} owners
+ * @returns {void}
+ */
 function checkOwnersWarning(owners) {
   var banner = document.getElementById('owners-warning-banner');
   if (!banner) return;
@@ -696,6 +853,9 @@ function checkOwnersWarning(owners) {
   adjustPagePadding();
 }
 
+/**
+ * @returns {number}
+ */
 function getUpdateBannerHeight() {
   var updateBanner = document.getElementById('update-banner');
   if (updateBanner && updateBanner.style.display !== 'none') {
@@ -704,6 +864,7 @@ function getUpdateBannerHeight() {
   return 0;
 }
 
+/** @returns {void} */
 function adjustPagePadding() {
   var header = document.querySelector('header');
   var apiBanner = document.getElementById('api-key-banner');
@@ -745,6 +906,12 @@ function adjustPagePadding() {
   }
 }
 
+/**
+ * @param {string} icon
+ * @param {string} text
+ * @param {boolean} isLoading
+ * @returns {void}
+ */
 function setUpdateButtonState(icon, text, isLoading) {
   var updateBtn = document.getElementById('update-btn');
   var updateBtnIcon = document.getElementById('update-btn-icon');
@@ -762,12 +929,15 @@ function setUpdateButtonState(icon, text, isLoading) {
     updateBtnText.textContent = text;
   }
   if (updateBtn) {
+    // @ts-ignore
     updateBtn.disabled = isLoading;
   }
 }
 
+/** @returns {void} */
 function performUpdate() {
   var updateBtn = document.getElementById('update-btn');
+  // @ts-ignore
   if (!updateBtn || updateBtn.disabled) return;
 
   var activeCount = currentJobs.filter(function(j) { return j.status === 'running' || j.status === 'queued'; }).length;
@@ -809,6 +979,7 @@ function performUpdate() {
   });
 }
 
+/** @returns {void} */
 function dismissUpdate() {
   updateDismissed = true;
   var updateBanner = document.getElementById('update-banner');
@@ -860,6 +1031,7 @@ applyTranslations();
 
 // Bind project form submit event
 document.addEventListener('submit', function(e) {
+  // @ts-ignore
   if (e.target.id === 'add-project-form') {
     e.preventDefault();
     addProject();
@@ -897,6 +1069,7 @@ document.addEventListener('visibilitychange', function() {
 /* ══════════════════════════════════════════════════════════════
    Project Selection Dropdown
    ══════════════════════════════════════════════════════════════ */
+/** @returns {void} */
 function toggleProjectDropdown() {
   var dropdown = document.getElementById('project-dropdown');
   if (!dropdown) return;
@@ -909,6 +1082,7 @@ function toggleProjectDropdown() {
   }
 }
 
+/** @returns {void} */
 function loadProjectList() {
   apiFetch('/api/projects')
     .then(function(r) { return r.json(); })
@@ -922,6 +1096,7 @@ function loadProjectList() {
     });
 }
 
+/** @returns {void} */
 function renderProjectDropdown() {
   var container = document.getElementById('project-dropdown-content');
   if (!container) return;
@@ -951,6 +1126,7 @@ function renderProjectDropdown() {
   container.innerHTML = html;
 }
 
+/** @returns {void} */
 function initProjectSelection() {
   // Load initial project list and update UI
   loadProjectList();
@@ -960,6 +1136,7 @@ function initProjectSelection() {
   document.addEventListener('click', function(e) {
     var dropdown = document.getElementById('project-dropdown');
     var button = document.getElementById('project-selector');
+    // @ts-ignore
     if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
       dropdown.classList.add('hidden');
     }
@@ -1019,6 +1196,10 @@ function renderJobProjectDropdown() {
 /* ══════════════════════════════════════════════════════════════
    Automations View Toggle
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {'list'|'kanban'|'rules'} view
+ * @returns {void}
+ */
 function setAutomationsView(view) {
   currentAutomationsView = view;
   localStorage.setItem('aqm-automations-view', view);
@@ -1058,6 +1239,7 @@ function setAutomationsView(view) {
   }
 }
 
+/** @returns {void} */
 function renderAutomationsList() {
   var listEl   = document.getElementById('automations-job-list');
   var detailEl = document.getElementById('automations-job-detail');
@@ -1090,6 +1272,7 @@ function renderAutomationsList() {
   }
 }
 
+/** @returns {void} */
 function renderAutomationsKanban() {
   var boardEl = document.getElementById('kanban-board');
   if (!boardEl) return;
@@ -1101,6 +1284,7 @@ function renderAutomationsKanban() {
   }
 }
 
+/** @returns {void} */
 function renderAutomationsPanel() {
   if (currentView !== 'automations') return;
   if (currentAutomationsView === 'kanban') {
@@ -1115,6 +1299,7 @@ function renderAutomationsPanel() {
 // SSE/data 업데이트 시 automations 패널도 갱신
 (function() {
   var orig = renderFromState;
+  // @ts-ignore
   renderFromState = function() {
     orig();
     renderAutomationsPanel();

@@ -295,11 +295,12 @@ export async function startCommand(args: CliArgs): Promise<void> {
         ? { ...newConfig, general: { ...newConfig.general, dryRun: true } }
         : newConfig;
 
-      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue);
+      applyConfigChanges(effectiveConfig, newEffectiveConfig, queue, scheduler);
 
       // Update effectiveConfig reference for future use
       effectiveConfig.general = newEffectiveConfig.general;
       effectiveConfig.projects = newEffectiveConfig.projects;
+      effectiveConfig.automations = newEffectiveConfig.automations;
 
       logger.info('Config hot reload 완료');
     } catch (err: unknown) {

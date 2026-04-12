@@ -946,14 +946,20 @@ src/
   store/              # 영속성 레이어 (SQLite 기반 DB)
     database.ts         # DB 연결 및 마이그레이션
     queries.ts          # 통계/비용 쿼리
+  automation/         # 자동화 규칙 및 스케줄링
+    rule-engine.ts      # 규칙 기반 자동화 엔진
+    scheduler.ts        # 작업 스케줄러
   hooks/              # 이벤트 훅 시스템
     hook-registry.ts    # 훅 등록 관리
     hook-executor.ts    # 훅 실행기
-    pattern-store.ts    # 패턴 기반 훅 저장소
   learning/           # 실행 결과 학습 및 패턴 수집
+    pattern-store.ts    # 패턴 기반 학습 데이터 저장소
   tasks/              # 작업 추상화 레이어
     aqm-task.ts         # AQM 내부 작업
     claude-task.ts      # Claude CLI 작업 래퍼
+    git-task.ts         # Git 작업 래퍼
+    task-factory.ts     # 작업 생성 팩토리
+    validation-task.ts  # 검증 작업 래퍼
   update/             # self-updater
   polling/            # 이슈 폴러
   utils/              # CLI 러너, 로거, slug

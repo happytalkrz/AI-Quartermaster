@@ -117,7 +117,7 @@ for (let i = 0; i < MAX_ATTEMPTS; i++) {
     const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR);
     await fd.close();
     await writeFile(${JSON.stringify(resultFile)}, String(Date.now()));
-    try { await unlink(lockPath); } catch {}
+    try { await unlink(lockPath); } catch { /* cleanup */ }
     process.exit(0);
   } catch {
     await new Promise(r => setTimeout(r, 50 + i * 10));
@@ -144,7 +144,7 @@ process.exit(1);
     await new Promise<void>((r) => setTimeout(r, HOLD_MS));
 
     // 부모가 락 해제
-    try { await unlink(flockPath); } catch {}
+    try { await unlink(flockPath); } catch { /* cleanup */ }
 
     // 자식이 완료될 때까지 대기
     await new Promise<void>((res, rej) => {

@@ -557,9 +557,7 @@ function editProject(repo) {
 
   var fieldsHtml = createModalField('저장소 (owner/repo)', 'repo', project.repo, true);
   fieldsHtml += createModalField('로컬 경로', 'path', project.path, false);
-  if (project.baseBranch !== undefined) {
-    fieldsHtml += createModalField('기본 브랜치', 'baseBranch', project.baseBranch || '', false);
-  }
+  fieldsHtml += createModalField('기본 브랜치', 'baseBranch', project.baseBranch || '', false);
   if (project.mode !== undefined) {
     fieldsHtml += createModalField('모드', 'mode', project.mode || '', false);
   }

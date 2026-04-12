@@ -31,13 +31,23 @@ describe("JobQueue", () => {
   let store: JobStore;
 
   beforeEach(() => {
-    dataDir = join(tmpdir(), `aq-queue-test-${Date.now()}`);
+    dataDir = join(tmpdir(), `aq-queue-test-${Date.now()}-${process.pid}`);
     mkdirSync(dataDir, { recursive: true });
     store = new JobStore(dataDir);
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    try {
+      // SQLite 연결 종료
+      store.close();
+    } catch (err) {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(dataDir, { recursive: true, force: true });
+    } catch (err) {
+      // ignore cleanup errors
+    }
   });
 
   // Helper to get and clear mocked functions

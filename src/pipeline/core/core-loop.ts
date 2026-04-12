@@ -351,6 +351,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         success: r.success,
         commit: r.commitHash?.slice(0, 8),
         durationMs: r.durationMs,
+        startedAt: r.startedAt,
+        completedAt: r.completedAt,
+        costUsd: r.costUsd,
         error: r.error,
       })));
 

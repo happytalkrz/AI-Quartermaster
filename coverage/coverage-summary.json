@@ -1,3 +1,0 @@
-{"total": {"lines":{"total":1339,"covered":891,"skipped":0,"pct":66.54},"statements":{"total":1339,"covered":891,"skipped":0,"pct":66.54},"functions":{"total":25,"covered":20,"skipped":0,"pct":80},"branches":{"total":227,"covered":182,"skipped":0,"pct":80.17},"branchesTrue":{"total":0,"covered":0,"skipped":0,"pct":"Unknown"}}
-,"/home/by/repository/.aq-worktrees/500-test-80/src/server/dashboard-api.ts": {"lines":{"total":1339,"covered":891,"skipped":0,"pct":66.54},"functions":{"total":25,"covered":20,"skipped":0,"pct":80},"statements":{"total":1339,"covered":891,"skipped":0,"pct":66.54},"branches":{"total":227,"covered":182,"skipped":0,"pct":80.17}}
-}

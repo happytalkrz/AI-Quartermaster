@@ -1,11 +1,31 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
+
+/**
+ * @typedef {Object} AutomationTrigger
+ * @property {string} type
+ * @property {string} [event]
+ * @property {string} [schedule]
+ * @property {number} [threshold]
+ */
+
+/**
+ * @typedef {Object} AutomationRuleFull
+ * @property {string} id
+ * @property {AutomationTrigger} trigger
+ * @property {AutomationAction[]} actions
+ * @property {boolean} [enabled]
+ * @property {string} [description]
+ */
 
 /* ══════════════════════════════════════════════════════════════
    Automation Rules Management
    ══════════════════════════════════════════════════════════════ */
+
+/** @type {AutomationRuleFull[]} */
 var automationRules = [];
 
+/** @returns {void} */
 function loadAutomationRules() {
   var container = document.getElementById('rules-container');
   if (!container) return;
@@ -15,14 +35,15 @@ function loadAutomationRules() {
   apiFetch('/api/config')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      automationRules = (data.config && data.config.automations) || [];
+      automationRules = /** @type {AutomationRuleFull[]} */ ((data.config && data.config.automations) || []);
       renderAutomationRules();
     })
     .catch(function() {
-      container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>규칙을 불러오는데 실패했습니다.</div>';
+      if (container) container.innerHTML = '<div class="flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>규칙을 불러오는데 실패했습니다.</div>';
     });
 }
 
+/** @returns {void} */
 function renderAutomationRules() {
   var container = document.getElementById('rules-container');
   if (!container) return;
@@ -47,6 +68,10 @@ function renderAutomationRules() {
     '</div>';
 }
 
+/**
+ * @param {AutomationRuleFull} rule
+ * @returns {string}
+ */
 function renderRuleCard(rule) {
   var isEnabled = rule.enabled !== false;
   var triggerLabel = getTriggerLabel(rule.trigger);
@@ -84,6 +109,10 @@ function renderRuleCard(rule) {
   );
 }
 
+/**
+ * @param {AutomationTrigger | undefined} trigger
+ * @returns {string}
+ */
 function getTriggerLabel(trigger) {
   if (!trigger) return '알 수 없음';
   if (trigger.type === 'cron') return 'Cron: ' + (trigger.schedule || '');
@@ -92,12 +121,21 @@ function getTriggerLabel(trigger) {
   return trigger.type;
 }
 
+/**
+ * @param {AutomationAction | undefined} action
+ * @returns {string}
+ */
 function getActionLabel(action) {
   if (!action) return '';
+  /** @type {Record<string, string>} */
   var labels = { notify: '알림', pause: '일시정지', retry: '재시도', label: '라벨', close: '종료' };
   return labels[action.type] || action.type;
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function toggleAutomationRule(id) {
   var rule = automationRules.find(function(r) { return r.id === id; });
   if (!rule) return;
@@ -105,6 +143,10 @@ function toggleAutomationRule(id) {
   saveAutomationRules(function() { renderAutomationRules(); });
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function deleteAutomationRule(id) {
   showConfirm('이 자동화 규칙을 삭제하시겠습니까?', '').then(function(ok) {
     if (!ok) return;
@@ -113,6 +155,10 @@ function deleteAutomationRule(id) {
   });
 }
 
+/**
+ * @param {(() => void) | undefined} onSuccess
+ * @returns {void}
+ */
 function saveAutomationRules(onSuccess) {
   apiFetch('/api/config')
     .then(function(r) { return r.json(); })
@@ -133,16 +179,25 @@ function saveAutomationRules(onSuccess) {
 
 /* ── Add / Edit Modal ─────────────────────────────────────────── */
 
+/** @returns {void} */
 function showAddRuleModal() {
   openRuleModal(null);
 }
 
+/**
+ * @param {string} id
+ * @returns {void}
+ */
 function showEditRuleModal(id) {
   var rule = automationRules.find(function(r) { return r.id === id; });
   if (!rule) return;
   openRuleModal(rule);
 }
 
+/**
+ * @param {AutomationRuleFull | null} rule
+ * @returns {void}
+ */
 function openRuleModal(rule) {
   var existingModal = document.getElementById('rule-modal');
   if (existingModal) existingModal.remove();
@@ -229,45 +284,65 @@ function openRuleModal(rule) {
     '</div></div>';
 
   document.body.insertAdjacentHTML('beforeend', html);
-  document.getElementById('rule-form').addEventListener('submit', function(e) {
+  var formEl = document.getElementById('rule-form');
+  if (formEl) formEl.addEventListener('submit', function(e) {
     e.preventDefault();
     submitRuleForm(isEdit);
   });
 }
 
+/** @returns {void} */
 function onTriggerTypeChange() {
-  var type = document.getElementById('rule-trigger-type').value;
-  document.getElementById('trigger-event-field').classList.toggle('hidden', type !== 'event');
-  document.getElementById('trigger-cron-field').classList.toggle('hidden', type !== 'cron');
-  document.getElementById('trigger-threshold-field').classList.toggle('hidden', type !== 'rate-limit');
+  var typeEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-trigger-type'));
+  var type = typeEl ? typeEl.value : 'event';
+  var eventField = document.getElementById('trigger-event-field');
+  var cronField = document.getElementById('trigger-cron-field');
+  var thresholdField = document.getElementById('trigger-threshold-field');
+  if (eventField) eventField.classList.toggle('hidden', type !== 'event');
+  if (cronField) cronField.classList.toggle('hidden', type !== 'cron');
+  if (thresholdField) thresholdField.classList.toggle('hidden', type !== 'rate-limit');
 }
 
+/** @returns {void} */
 function closeRuleModal() {
   var modal = document.getElementById('rule-modal');
   if (modal) modal.remove();
 }
 
+/**
+ * @param {boolean} isEdit
+ * @returns {void}
+ */
 function submitRuleForm(isEdit) {
-  var id = (document.getElementById('rule-id').value || '').trim();
+  var idEl = /** @type {HTMLInputElement | null} */ (document.getElementById('rule-id'));
+  var id = (idEl ? idEl.value : '').trim();
   if (!id) { alert('ID를 입력해주세요.'); return; }
 
-  var triggerType = document.getElementById('rule-trigger-type').value;
-  var trigger = { type: triggerType };
+  var triggerTypeEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-trigger-type'));
+  var triggerType = triggerTypeEl ? triggerTypeEl.value : 'event';
+  var trigger = /** @type {AutomationTrigger} */ ({ type: triggerType });
   if (triggerType === 'event') {
-    trigger.event = document.getElementById('rule-trigger-event').value;
+    var eventEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-trigger-event'));
+    trigger.event = eventEl ? eventEl.value : '';
   } else if (triggerType === 'cron') {
-    trigger.schedule = document.getElementById('rule-trigger-schedule').value;
+    var schedEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-trigger-schedule'));
+    trigger.schedule = schedEl ? schedEl.value : '';
   } else if (triggerType === 'rate-limit') {
-    trigger.threshold = parseInt(document.getElementById('rule-trigger-threshold').value, 10) || 1;
+    var threshEl = /** @type {HTMLInputElement | null} */ (document.getElementById('rule-trigger-threshold'));
+    trigger.threshold = parseInt(threshEl ? threshEl.value : '1', 10) || 1;
   }
 
-  var rule = {
+  var descEl = /** @type {HTMLInputElement | null} */ (document.getElementById('rule-desc'));
+  var actionTypeEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-action-type'));
+  var enabledEl = /** @type {HTMLInputElement | null} */ (document.getElementById('rule-enabled'));
+
+  var rule = /** @type {AutomationRuleFull} */ ({
     id: id,
-    description: document.getElementById('rule-desc').value.trim() || undefined,
+    description: (descEl ? descEl.value.trim() : '') || undefined,
     trigger: trigger,
-    actions: [{ type: document.getElementById('rule-action-type').value }],
-    enabled: document.getElementById('rule-enabled').checked
-  };
+    actions: [{ type: actionTypeEl ? actionTypeEl.value : 'notify' }],
+    enabled: enabledEl ? enabledEl.checked : true
+  });
 
   if (isEdit) {
     var idx = automationRules.findIndex(function(r) { return r.id === id; });

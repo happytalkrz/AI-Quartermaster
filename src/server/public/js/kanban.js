@@ -1,10 +1,20 @@
-// @ts-nocheck
+// @ts-check
 'use strict';
+
+/**
+ * @typedef {Object} KanbanColumnDef
+ * @property {string} id
+ * @property {string} label
+ * @property {string} letter
+ * @property {string} letterColor
+ * @property {string} letterBg
+ */
 
 /* ══════════════════════════════════════════════════════════════
    Kanban Board — Pipeline Stage Visualization
    ══════════════════════════════════════════════════════════════ */
 
+/** @type {KanbanColumnDef[]} */
 var KANBAN_COLUMNS = [
   { id: 'queued',       label: 'Queued',       letter: 'Q', letterColor: 'text-outline',   letterBg: 'bg-surface-container-highest' },
   { id: 'planning',     label: 'Planning',     letter: 'P', letterColor: 'text-primary',   letterBg: 'bg-surface-container-highest' },
@@ -13,9 +23,17 @@ var KANBAN_COLUMNS = [
   { id: 'done',         label: 'Done',         letter: 'D', letterColor: 'text-[#3fb950]', letterBg: 'bg-surface-container-highest' },
 ];
 
+/** @type {Job[]} */
+var currentJobs;
+
 /* ══════════════════════════════════════════════════════════════
    Column Mapping
    ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function getJobKanbanColumn(job) {
   if (job.status === 'queued') return 'queued';
 
@@ -33,6 +51,11 @@ function getJobKanbanColumn(job) {
 /* ══════════════════════════════════════════════════════════════
    Card Rendering
    ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
 function renderKanbanCard(job) {
   var isRunning  = job.status === 'running';
   var isFailed   = job.status === 'failure';
@@ -144,6 +167,12 @@ function renderKanbanCard(job) {
 /* ══════════════════════════════════════════════════════════════
    Column Rendering
    ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @param {KanbanColumnDef} col
+ * @param {Job[]} jobs
+ * @returns {string}
+ */
 function renderKanbanColumn(col, jobs) {
   var cardsHtml = jobs.length > 0
     ? jobs.map(renderKanbanCard).join('')
@@ -167,7 +196,13 @@ function renderKanbanColumn(col, jobs) {
 /* ══════════════════════════════════════════════════════════════
    Board Rendering
    ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @param {Job[]} jobs
+ * @returns {string}
+ */
 function renderKanban(jobs) {
+  /** @type {Record<string, Job[]>} */
   var columnJobs = {};
   KANBAN_COLUMNS.forEach(function(col) { columnJobs[col.id] = []; });
 
@@ -184,8 +219,15 @@ function renderKanban(jobs) {
 /* ══════════════════════════════════════════════════════════════
    Drag & Drop Priority Management
    ══════════════════════════════════════════════════════════════ */
+
+/** @type {string | null} */
 var draggedJobId = null;
 
+/**
+ * @param {string} jobId
+ * @param {JobPriority} priority
+ * @returns {Promise<unknown>}
+ */
 function updateJobPriority(jobId, priority) {
   var url = '/api/jobs/' + encodeURIComponent(jobId) + '/priority';
   return apiFetch(url, {
@@ -200,10 +242,14 @@ function updateJobPriority(jobId, priority) {
   });
 }
 
+/**
+ * @param {string} jobId
+ * @param {JobPriority} newPriority
+ * @returns {void}
+ */
 function optimisticUpdatePriority(jobId, newPriority) {
-  // Find job in current jobs array and update priority locally
-  if (typeof window.currentJobs !== 'undefined' && window.currentJobs) {
-    var job = window.currentJobs.find(function(j) { return j.id === jobId; });
+  if (currentJobs) {
+    var job = currentJobs.find(function(j) { return j.id === jobId; });
     if (job) {
       var oldPriority = job.priority;
       job.priority = newPriority;
@@ -211,7 +257,7 @@ function optimisticUpdatePriority(jobId, newPriority) {
       // Re-render kanban with updated data
       var container = document.getElementById('kanban-container');
       if (container) {
-        container.innerHTML = renderKanban(window.currentJobs);
+        container.innerHTML = renderKanban(currentJobs);
         setupDragAndDrop(); // Re-attach event listeners
       }
 
@@ -220,8 +266,9 @@ function optimisticUpdatePriority(jobId, newPriority) {
         console.error('Failed to update job priority:', error);
         // Rollback
         job.priority = oldPriority;
-        if (container) {
-          container.innerHTML = renderKanban(window.currentJobs);
+        var rollbackContainer = document.getElementById('kanban-container');
+        if (rollbackContainer) {
+          rollbackContainer.innerHTML = renderKanban(currentJobs);
           setupDragAndDrop();
         }
       });
@@ -229,6 +276,7 @@ function optimisticUpdatePriority(jobId, newPriority) {
   }
 }
 
+/** @returns {void} */
 function setupDragAndDrop() {
   // Remove existing listeners to avoid duplicates
   document.removeEventListener('dragstart', handleDragStart);
@@ -241,37 +289,55 @@ function setupDragAndDrop() {
   document.addEventListener('drop', handleDrop);
 }
 
+/**
+ * @param {DragEvent} e
+ * @returns {void}
+ */
 function handleDragStart(e) {
-  var card = e.target.closest('[data-job-id]');
+  var target = e.target instanceof Element ? e.target : null;
+  var card = /** @type {HTMLElement | null} */ (target ? target.closest('[data-job-id]') : null);
   if (card && card.draggable) {
-    draggedJobId = card.dataset.jobId;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', card.outerHTML);
+    draggedJobId = card.dataset.jobId || null;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', card.outerHTML);
+    }
     card.style.opacity = '0.5';
   }
 }
 
+/**
+ * @param {DragEvent} e
+ * @returns {void}
+ */
 function handleDragOver(e) {
   e.preventDefault();
-  var dropZone = e.target.closest('[data-job-id]');
+  var target = e.target instanceof Element ? e.target : null;
+  var dropZone = /** @type {HTMLElement | null} */ (target ? target.closest('[data-job-id]') : null);
   if (dropZone && draggedJobId && dropZone.dataset.jobId !== draggedJobId) {
-    var draggedJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === draggedJobId; });
-    var targetJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === dropZone.dataset.jobId; });
+    var dropJobId = dropZone.dataset.jobId;
+    var draggedJob = currentJobs && currentJobs.find(function(j) { return j.id === draggedJobId; });
+    var targetJob = currentJobs && currentJobs.find(function(j) { return j.id === dropJobId; });
 
     // Only allow drops on queued jobs
     if (draggedJob && targetJob && draggedJob.status === 'queued' && targetJob.status === 'queued') {
-      e.dataTransfer.dropEffect = 'move';
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
       dropZone.style.borderColor = '#3b82f6';
     }
   }
 }
 
+/**
+ * @param {DragEvent} e
+ * @returns {void}
+ */
 function handleDrop(e) {
   e.preventDefault();
-  var dropZone = e.target.closest('[data-job-id]');
+  var target = e.target instanceof Element ? e.target : null;
+  var dropZone = /** @type {HTMLElement | null} */ (target ? target.closest('[data-job-id]') : null);
 
   // Reset opacity and border styles
-  var draggedCard = document.querySelector('[data-job-id="' + draggedJobId + '"]');
+  var draggedCard = /** @type {HTMLElement | null} */ (draggedJobId ? document.querySelector('[data-job-id="' + draggedJobId + '"]') : null);
   if (draggedCard) {
     draggedCard.style.opacity = '';
   }
@@ -280,13 +346,15 @@ function handleDrop(e) {
   }
 
   if (dropZone && draggedJobId && dropZone.dataset.jobId !== draggedJobId) {
-    var draggedJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === draggedJobId; });
-    var targetJob = window.currentJobs && window.currentJobs.find(function(j) { return j.id === dropZone.dataset.jobId; });
+    var localDraggedId = draggedJobId;
+    var dropJobId = dropZone.dataset.jobId;
+    var draggedJob = currentJobs && currentJobs.find(function(j) { return j.id === localDraggedId; });
+    var targetJob = currentJobs && currentJobs.find(function(j) { return j.id === dropJobId; });
 
     // Only allow drops between queued jobs
     if (draggedJob && targetJob && draggedJob.status === 'queued' && targetJob.status === 'queued') {
-      var targetPriority = targetJob.priority || 'normal';
-      optimisticUpdatePriority(draggedJobId, targetPriority);
+      var targetPriority = /** @type {JobPriority} */ (targetJob.priority || 'normal');
+      optimisticUpdatePriority(localDraggedId, targetPriority);
     }
   }
 

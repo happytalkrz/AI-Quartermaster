@@ -94,6 +94,17 @@ function updateInstanceLabel(label) {
   }
 }
 
+function updateInstanceOwners(owners) {
+  var el = document.getElementById('instance-owners');
+  if (!el) return;
+  if (Array.isArray(owners) && owners.length > 0) {
+    el.textContent = owners.join(', ');
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 function loadInstanceLabel() {
   apiFetch('/api/config')
     .then(function(r) { return r.json(); })
@@ -101,6 +112,7 @@ function loadInstanceLabel() {
       if (data.config && data.config.general) {
         var label = data.config.general.instanceLabel || data.config.general.projectName || '';
         updateInstanceLabel(label);
+        updateInstanceOwners(data.config.general.instanceOwners);
       }
     })
     .catch(function() {});
@@ -589,6 +601,7 @@ function connectSSE() {
       if (data.changes && data.changes.general) {
         var label = data.changes.general.instanceLabel || data.changes.general.projectName || '';
         updateInstanceLabel(label);
+        updateInstanceOwners(data.changes.general.instanceOwners);
       }
       if (currentView === 'settings') {
         loadSettings();

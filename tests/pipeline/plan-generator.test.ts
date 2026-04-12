@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { mkdirSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 // Mock claude-runner before importing
 vi.mock("../../src/claude/claude-runner.js", () => ({
@@ -1509,12 +1512,11 @@ describe("validatePlan failure cases", () => {
   const mockExtractJson = vi.mocked(extractJson);
 
   beforeEach(() => {
-    const { mkdirSync: mkdir, writeFileSync: writeFile } = require("fs") as typeof import("fs");
-    testDir = require("path").join(require("os").tmpdir(), `aq-plan-validate-${Date.now()}`);
-    promptsDir = require("path").join(testDir, "prompts");
-    mkdir(promptsDir, { recursive: true });
-    writeFile(
-      require("path").join(promptsDir, "plan-generation.md"),
+    testDir = join(tmpdir(), `aq-plan-validate-${Date.now()}`);
+    promptsDir = join(testDir, "prompts");
+    mkdirSync(promptsDir, { recursive: true });
+    writeFileSync(
+      join(promptsDir, "plan-generation.md"),
       "Generate plan for #{{issue.number}}: {{issue.title}}"
     );
     vi.clearAllMocks();

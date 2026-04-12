@@ -27,6 +27,25 @@ describe("isAllowedLabel", () => {
     expect(isAllowedLabel(["bug-fix"], ["bug"])).toBe(false);
     expect(isAllowedLabel(["feature"], ["feature"])).toBe(true);
   });
+
+  it("should return true when issueLabels contains instanceLabel", () => {
+    expect(isAllowedLabel(["aqm-by"], ["ai-quartermaster"], "aqm-by")).toBe(true);
+    expect(isAllowedLabel(["aqm-by", "bug"], ["ai-quartermaster"], "aqm-by")).toBe(true);
+  });
+
+  it("should not require double-config when instanceLabel matches", () => {
+    // instanceLabel=aqm-by, allowedLabels does not include it — should still pass
+    expect(isAllowedLabel(["aqm-by"], [], "aqm-by")).toBe(true);
+  });
+
+  it("should return false when instanceLabel is set but issue has neither instanceLabel nor allowedLabels", () => {
+    expect(isAllowedLabel(["unrelated"], ["ai-quartermaster"], "aqm-by")).toBe(false);
+  });
+
+  it("should ignore instanceLabel when it is empty string", () => {
+    expect(isAllowedLabel(["bug"], [], "")).toBe(true); // empty allowedLabels → allow all
+    expect(isAllowedLabel(["bug"], ["feature"], "")).toBe(false);
+  });
 });
 
 describe("getTriggerLabels", () => {

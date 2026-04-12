@@ -346,6 +346,22 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
   }
 }
 
+const SSE_INITIAL_JOB_LIMIT = 20;
+
+/**
+ * Returns jobs for SSE initial state:
+ * - Excludes archived jobs
+ * - Always includes running/queued jobs (regardless of position)
+ * - Fills remaining slots with recent non-active jobs (up to SSE_INITIAL_JOB_LIMIT total)
+ */
+function getInitialJobs(store: JobStore): Job[] {
+  const all = store.list().filter(j => j.status !== "archived");
+  const active = all.filter(j => j.status === "running" || j.status === "queued");
+  const rest = all.filter(j => j.status !== "running" && j.status !== "queued");
+  const remaining = Math.max(0, SSE_INITIAL_JOB_LIMIT - active.length);
+  return [...active, ...rest.slice(0, remaining)];
+}
+
 /**
  * Creates dashboard API routes.
  * If apiKey is provided, all /api/* routes require `Authorization: Bearer <key>`.
@@ -955,9 +971,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         // Send initial state
         const sendInitialState = () => {
           try {
-            const jobs = store.list();
             const status = queue.getStatus();
-            const data = JSON.stringify({ jobs: jobs.slice(0, 20), queue: status });
+            const data = JSON.stringify({ jobs: getInitialJobs(store), queue: status });
             controller.enqueue(encoder.encode(`data: ${data}\n\n`));
           } catch {
             // stream closed

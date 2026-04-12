@@ -126,10 +126,11 @@ describe("Dashboard Auth — apiKey 미설정 시 쓰기 API 차단", () => {
     expect(res.status).toBe(403);
   });
 
-  it("apiKey 미설정 시 PUT 요청(project route)은 차단된다", async () => {
+  it("apiKey 미설정 시 project 관리(DELETE)는 허용된다", async () => {
     const app = createDashboardRoutes(store, queue);
     const res = await request(app, "DELETE", "/api/projects/owner-repo");
-    expect(res.status).toBe(403);
+    // projects 관리는 apiKey 없이도 허용 (403이 아님)
+    expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 GET 읽기 요청은 허용된다", async () => {

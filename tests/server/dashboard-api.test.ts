@@ -915,7 +915,7 @@ describe("Dashboard API - Projects Management", () => {
       }
     });
 
-    it("should reject path with absolute paths", async () => {
+    it("should accept absolute paths (required for local project paths)", async () => {
       const projectConfig = {
         general: { projectName: "test-project" },
         projects: []
@@ -923,29 +923,20 @@ describe("Dashboard API - Projects Management", () => {
 
       mockLoadConfig.mockReturnValue(projectConfig as any);
 
-      const absolutePaths = [
-        "/etc/passwd",
-        "\\windows\\system32",
-        "C:\\Windows"
-      ];
+      const response = await app.request("/api/projects", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          repo: "test/repo",
+          path: "/home/user/project"
+        })
+      });
 
-      for (const absolutePath of absolutePaths) {
-        const response = await app.request("/api/projects", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            repo: "test/repo",
-            path: absolutePath
-          })
-        });
-
-        expect(response.status).toBe(400);
-        const result = await response.json();
-        expect(result.error).toContain("unsafe characters or path traversal");
-      }
+      // 절대 경로는 허용 — 201 또는 config 관련 에러 (400이 아님)
+      expect(response.status).not.toBe(400);
     });
 
     it("should reject path with control characters and forbidden characters", async () => {

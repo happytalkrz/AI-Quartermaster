@@ -63,10 +63,9 @@ describe("isPathSafe", () => {
     expect(isPathSafe("..")).toBe(false);
   });
 
-  it("should return false for absolute paths", () => {
-    expect(isPathSafe("/etc/passwd")).toBe(false);
-    expect(isPathSafe("\\windows\\system32")).toBe(false);
-    expect(isPathSafe("C:\\Windows")).toBe(false);
+  it("should allow absolute paths (required for local project paths)", () => {
+    expect(isPathSafe("/etc/passwd")).toBe(true);
+    expect(isPathSafe("/home/user/project")).toBe(true);
   });
 
   it("should return false for paths ending with slash", () => {

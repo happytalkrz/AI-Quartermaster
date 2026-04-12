@@ -12,6 +12,13 @@
         <span>Auto-scroll</span>
       </button>
     </div>
+    <div class="flex items-center gap-3 mb-3">
+      <select id="logs-job-selector" onchange="selectJobFromLogs(this.value)" class="bg-surface-container-highest/40 border border-outline-variant/30 rounded-md py-1.5 px-3 text-xs text-on-surface outline-none focus:border-primary transition-colors min-w-[250px]">
+        <option value="">작업을 선택하세요</option>
+      </select>
+      <span id="logs-job-status" class="text-[10px] px-2 py-0.5 rounded uppercase font-bold"></span>
+      <span id="logs-job-duration" class="text-[10px] text-outline font-mono"></span>
+    </div>
     <div id="logs-detail" class="bg-surface-container-lowest p-6 rounded-xl font-mono text-xs leading-relaxed border border-outline-variant/10 min-h-[400px] max-h-[calc(100vh-250px)] overflow-y-auto custom-scrollbar">
       <div class="text-outline text-center py-12">왼쪽 Dashboard에서 작업을 선택하면 전체 로그가 여기에 표시됩니다.</div>
     </div>

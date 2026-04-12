@@ -448,14 +448,40 @@ function renderMobileActivityLog(job) {
  */
 function renderLogsView(job) {
   var container = document.getElementById('logs-detail');
+
+  // Update job selector dropdown
+  var selector = /** @type {HTMLSelectElement|null} */ (document.getElementById('logs-job-selector'));
+  if (selector && currentJobs) {
+    var opts = '<option value="">작업을 선택하세요</option>';
+    currentJobs.forEach(function(j) {
+      var selected = (job && j.id === job.id) ? ' selected' : '';
+      opts += '<option value="' + esc(j.id) + '"' + selected + '>#' + j.issueNumber + ' ' + esc(j.repo) + ' — ' + statusLabel(j.status, j) + '</option>';
+    });
+    selector.innerHTML = opts;
+  }
+
+  // Update status badge and duration
+  var statusEl = document.getElementById('logs-job-status');
+  var durEl = document.getElementById('logs-job-duration');
+  if (job) {
+    var color = statusColor(job.status);
+    if (statusEl) {
+      statusEl.textContent = statusLabel(job.status, job);
+      statusEl.style.cssText = 'background:' + color + '15;color:' + color + ';border:1px solid ' + color + '33';
+    }
+    if (durEl) durEl.textContent = fmtDuration(job) || '';
+  } else {
+    if (statusEl) { statusEl.textContent = ''; statusEl.style.cssText = ''; }
+    if (durEl) durEl.textContent = '';
+  }
+
   if (!job || !job.logs || job.logs.length === 0) {
     // @ts-ignore
-    container.innerHTML = '<div class="text-outline text-center py-12">이 작업에 대한 로그가 없습니다.</div>';
+    container.innerHTML = '<div class="text-outline text-center py-12">' + (job ? '이 작업에 대한 로그가 없습니다.' : '작업을 선택하세요.') + '</div>';
     return;
   }
 
-  var html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status, job) + '</div>';
-
+  var html = '';
   job.logs.forEach(function(line) {
     html += '<div class="log-line" data-log-text="' + esc(line) + '">' + colorizeLogLine(line) + '</div>';
   });
@@ -466,6 +492,17 @@ function renderLogsView(job) {
     // @ts-ignore
     container.scrollTop = container.scrollHeight;
   }
+}
+
+/**
+ * @param {string} jobId
+ * @returns {void}
+ */
+function selectJobFromLogs(jobId) {
+  if (!jobId) return;
+  selectedJobId = jobId;
+  var job = currentJobs.find(function(j) { return j.id === jobId; });
+  if (job) renderLogsView(job);
 }
 
 /* ══════════════════════════════════════════════════════════════

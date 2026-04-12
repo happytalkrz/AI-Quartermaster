@@ -456,11 +456,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       await next();
     };
 
-    // cancel/retry/delete만 차단 (config, projects POST/PUT 등은 허용)
+    // cancel/retry/delete만 차단 (config, projects 관리는 허용)
     api.use("/api/jobs/:id/cancel", readOnlyGuard);
     api.use("/api/jobs/:id/retry", readOnlyGuard);
     api.use("/api/jobs/:id", readOnlyGuard);
-    api.use("/api/projects/:repo", readOnlyGuard);
   }
 
   // Get configuration (masked for security)

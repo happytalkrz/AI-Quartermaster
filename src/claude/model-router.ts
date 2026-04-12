@@ -27,7 +27,7 @@ export function configForTask(config: ClaudeCliConfig, taskType: TaskType): Clau
  */
 const EXECUTION_MODE_MODELS: Record<ExecutionMode, Record<TaskType, string>> = {
   economy: {
-    plan: "claude-haiku-4-5-20251001",      // Faster planning
+    plan: "claude-sonnet-4-20250514",        // Better plan quality
     phase: "claude-sonnet-4-20250514",      // Standard implementation
     review: "claude-haiku-4-5-20251001",    // Quick review
     fallback: "claude-haiku-4-5-20251001",  // Fast fallback

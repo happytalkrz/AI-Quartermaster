@@ -244,8 +244,8 @@ export class ConfigWatcher extends EventEmitter {
       } else {
         this.watchFile(filePath, type);
       }
-    } catch (restartError) {
-      logger.error(`Failed to restart watcher for ${filePath}: ${restartError}`);
+    } catch (restartError: unknown) {
+      logger.error(`Failed to restart watcher for ${filePath}: ${getErrorMessage(restartError)}`);
       this.handleWatcherError(filePath, type, restartError);
     }
   }

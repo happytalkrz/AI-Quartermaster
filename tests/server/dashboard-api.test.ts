@@ -88,6 +88,8 @@ const mockRunCli = vi.mocked(await import("../../src/utils/cli-runner.js")).runC
 const mockGetJobStats = vi.mocked(await import("../../src/store/queries.js")).getJobStats;
 const mockGetCostStats = vi.mocked(await import("../../src/store/queries.js")).getCostStats;
 const mockGetProjectSummary = vi.mocked(await import("../../src/store/queries.js")).getProjectSummary;
+const mockDetectProjectCommands = vi.mocked(await import("../../src/config/project-detector.js")).detectProjectCommands;
+const mockDetectBaseBranch = vi.mocked(await import("../../src/config/project-detector.js")).detectBaseBranch;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();
@@ -716,6 +718,8 @@ describe("Dashboard API - Projects Management", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDetectProjectCommands.mockReturnValue({ language: "unknown", commands: {} });
+    mockDetectBaseBranch.mockResolvedValue("main");
     app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
   });
 

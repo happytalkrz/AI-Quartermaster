@@ -474,9 +474,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       // Update configuration file
-      // Filter out undefined values and complex sections (projects, automations, hooks)
+      // Filter out undefined values and complex sections (projects, hooks)
       // that should not be updated via this endpoint
-      const { projects, automations, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
+      const { projects, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,

@@ -18,6 +18,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
+import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 
 // In-memory session token store: token → expiry timestamp
 const sessionTokens = new Map<string, number>();
@@ -561,7 +562,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }, 400);
       }
 
-      const { repo, path, baseBranch, mode } = parseResult.data;
+      const { repo, path, baseBranch, mode, commands } = parseResult.data;
 
       // Validate and normalize path
       let normalizedPath: string;
@@ -571,11 +572,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
       }
 
+      // Auto-detect commands and baseBranch if not explicitly provided
+      const detection = detectProjectCommands(normalizedPath);
+      const resolvedBaseBranch = baseBranch?.trim() || await detectBaseBranch(normalizedPath);
+
       const project: ProjectConfig = {
         repo: repo.trim(),
         path: normalizedPath,
-        baseBranch: baseBranch?.trim() || undefined,
+        baseBranch: resolvedBaseBranch,
         mode,
+        commands: commands ?? detection.commands,
       };
 
       try {
@@ -597,7 +603,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       return c.json({
         message: "Project added successfully",
-        project
+        project,
+        detectedLanguage: detection.language,
       }, 201);
     } catch (error: unknown) {
       return c.json({ error: `Failed to add project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
@@ -673,8 +680,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
-      const { path, baseBranch, mode } = parseResult.data;
-      const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>> = {};
+      const { path, baseBranch, mode, commands } = parseResult.data;
+      const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode' | 'commands'>> = {};
 
       if (path !== undefined) {
         try {
@@ -690,6 +697,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       if (mode !== undefined) {
         updates.mode = mode ?? undefined;
+      }
+
+      if (commands !== undefined) {
+        updates.commands = commands;
       }
 
       // Check if any fields to update

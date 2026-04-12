@@ -325,7 +325,7 @@ describe("Hook Integration", () => {
       const hooks = registry.getHooks("pre-plan");
       await executor.executeHooks(hooks);
 
-      expect(capturedCommand).toBe("echo owner/project 42");
+      expect(capturedCommand).toBe('echo "$HOOK_REPO" "$HOOK_ISSUE_NUMBER"');
     });
 
     it("updateVariables로 추가된 변수도 치환된다", async () => {
@@ -350,7 +350,7 @@ describe("Hook Integration", () => {
       const hooks = registry.getHooks("post-plan");
       await executor.executeHooks(hooks);
 
-      expect(capturedCommand).toBe("notify.sh standard 5");
+      expect(capturedCommand).toBe('notify.sh "$HOOK_MODE" "$HOOK_PHASE_COUNT"');
     });
 
     it("존재하지 않는 변수는 그대로 유지된다", async () => {
@@ -373,7 +373,7 @@ describe("Hook Integration", () => {
       const hooks = registry.getHooks("pre-phase");
       await executor.executeHooks(hooks);
 
-      expect(capturedCommand).toBe("run {{missing_var}} owner/repo");
+      expect(capturedCommand).toBe('run {{missing_var}} "$HOOK_REPO"');
     });
 
     it("같은 변수가 여러 번 등장하면 모두 치환된다", async () => {
@@ -396,7 +396,7 @@ describe("Hook Integration", () => {
       const hooks = registry.getHooks("post-phase");
       await executor.executeHooks(hooks);
 
-      expect(capturedCommand).toBe("echo owner/my-repo && log owner/my-repo");
+      expect(capturedCommand).toBe('echo "$HOOK_REPO" && log "$HOOK_REPO"');
     });
 
     it("여러 훅 각각에 변수가 독립적으로 치환된다", async () => {
@@ -425,8 +425,8 @@ describe("Hook Integration", () => {
       const hooks = registry.getHooks("post-pr");
       await executor.executeHooks(hooks);
 
-      expect(capturedCommands[0]).toBe("curl https://github.com/owner/repo/pull/99");
-      expect(capturedCommands[1]).toBe("notify https://github.com/owner/repo/pull/99 42");
+      expect(capturedCommands[0]).toBe('curl "$HOOK_PR_URL"');
+      expect(capturedCommands[1]).toBe('notify "$HOOK_PR_URL" "$HOOK_ISSUE_NUMBER"');
     });
   });
 

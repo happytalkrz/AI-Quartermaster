@@ -326,6 +326,7 @@ export const UpdateProjectRequestSchema = z.object({
   path: z.string().min(1).optional(),
   baseBranch: z.string().nullable().optional(),
   mode: z.enum(["code", "content"]).nullable().optional(),
+  commands: projectCommandsSchema.optional(),
 }).strict();
 
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;

@@ -18,6 +18,8 @@ export interface PipelineReport {
     durationMs: number;
     error?: string;
     errorCategory?: ErrorCategory;
+    costUsd?: number;
+    retryCostUsd?: number;
   }>;
   totalDurationMs: number;
   prUrl?: string;

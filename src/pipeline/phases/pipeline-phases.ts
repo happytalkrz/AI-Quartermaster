@@ -560,6 +560,7 @@ export async function executePostProcessingPhases(
     jl,
     totalUsage: coreResult.totalUsage,
     totalCostUsd: updatedTotalCostUsd,
+    costBreakdown: coreResult.costBreakdown,
   };
 
   const publishResult = await pushAndCreatePR(publishContext);

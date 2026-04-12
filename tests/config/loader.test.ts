@@ -19,7 +19,7 @@ describe("loadConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -389,7 +389,7 @@ describe("loadConfig - 프로젝트별 오버라이드 로딩", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -596,7 +596,7 @@ describe("tryLoadConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -861,7 +861,7 @@ describe("writeMinimalConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -940,7 +940,7 @@ describe("addProjectToConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1076,7 +1076,7 @@ describe("removeProjectFromConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1214,7 +1214,7 @@ describe("initProject", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
 
     // Mock process.cwd
@@ -1372,7 +1372,7 @@ describe("loadConfig with environment variables and CLI overrides", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1525,7 +1525,7 @@ describe("tryLoadConfig with environment variables and CLI overrides", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1603,7 +1603,7 @@ describe("Full pipeline integration tests", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 

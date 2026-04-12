@@ -27,7 +27,7 @@ export interface PrContext {
   instanceLabel?: string;
 }
 
-function buildPhaseCostTable(breakdown?: CostBreakdown): string {
+export function buildPhaseCostTable(breakdown?: CostBreakdown): string {
   if (!breakdown?.phaseCosts.length) return '';
   const rows = breakdown.phaseCosts.map(p =>
     `| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |`
@@ -35,7 +35,7 @@ function buildPhaseCostTable(breakdown?: CostBreakdown): string {
   return `\n### Phase Cost Breakdown\n\n| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|\n${rows}\n`;
 }
 
-function buildModelSummary(breakdown?: CostBreakdown): string {
+export function buildModelSummary(breakdown?: CostBreakdown): string {
   if (!breakdown?.modelSummary.length) return '';
   const rows = breakdown.modelSummary.map(m =>
     `| ${m.model} | $${m.costUsd.toFixed(4)} |`

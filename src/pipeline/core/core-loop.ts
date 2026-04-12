@@ -36,7 +36,7 @@ function sumUsage(usages: (import("../../types/pipeline.js").UsageInfo | undefin
   });
 }
 
-function buildCostBreakdown(
+export function buildCostBreakdown(
   planCostUsd: number | undefined,
   phaseResults: PhaseResult[],
   reviewCostUsd: number = 0,

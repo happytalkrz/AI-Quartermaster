@@ -9,7 +9,7 @@ describe("JobStore", () => {
   let store: JobStore;
 
   beforeEach(() => {
-    dataDir = join(tmpdir(), `aq-jobstore-test-${Date.now()}`);
+    dataDir = join(tmpdir(), `aq-jobstore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(dataDir, { recursive: true });
     store = new JobStore(dataDir);
   });

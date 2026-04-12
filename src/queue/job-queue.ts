@@ -104,6 +104,7 @@ export class JobQueue {
   private stuckAborted: Set<string> = new Set();
   private isProcessing: boolean = false;
   private needsReprocess: boolean = false;
+  private processingJobs: Set<string> = new Set(); // jobs temporarily removed during processNext
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
@@ -461,7 +462,7 @@ export class JobQueue {
    */
   getStatus(): { pending: number; running: number; concurrency: number } {
     return {
-      pending: this.pending.length,
+      pending: this.pending.length + this.processingJobs.size,
       running: this.running.size,
       concurrency: this.concurrency,
     };
@@ -662,13 +663,18 @@ export class JobQueue {
         const jobId = this.getNextPriorityJob();
         if (!jobId) break; // No valid jobs available
 
+        // Track job as being processed
+        this.processingJobs.add(jobId);
+
         if (this.cancelled.has(jobId)) {
           this.cancelled.delete(jobId);
+          this.processingJobs.delete(jobId);
           continue;
         }
 
         const job = this.store.get(jobId);
         if (!job) {
+          this.processingJobs.delete(jobId);
           continue;
         }
 
@@ -693,7 +699,10 @@ export class JobQueue {
             }
             if (!depFailed) {
               logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
+              this.processingJobs.delete(jobId);
               deferred.push(jobId);
+            } else {
+              this.processingJobs.delete(jobId);
             }
             continue;
           }
@@ -702,6 +711,7 @@ export class JobQueue {
         // Check project-specific concurrency limits
         if (!this.canStartJobForRepo(job.repo)) {
           logger.info(`Job ${jobId} deferred due to project concurrency limit for repo ${job.repo}`);
+          this.processingJobs.delete(jobId);
           deferred.push(jobId);
           continue;
         }
@@ -711,12 +721,14 @@ export class JobQueue {
           const errorState = this.projectErrorState.get(job.repo);
           const remainingMs = errorState!.pausedUntil! - Date.now();
           logger.info(`Job ${jobId} deferred due to project pause (${job.repo}). Resume in ${Math.round(remainingMs / 1000)}s`);
+          this.processingJobs.delete(jobId);
           deferred.push(jobId);
           continue;
         }
 
         this.running.add(jobId);
         this.addJobToRepo(jobId, job.repo);
+        this.processingJobs.delete(jobId);
         this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
 
         logger.info(`Job started: ${jobId}`);

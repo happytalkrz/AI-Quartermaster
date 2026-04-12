@@ -121,6 +121,7 @@ function renderJobDetail(job) {
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
   var costHtml = fmtCost(job.totalCostUsd);
   if (costHtml) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + costHtml + '</span>';
+  if (job.cacheHitRatio != null && job.cacheHitRatio > 0) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">cached</span> Cache: ' + Math.round(job.cacheHitRatio * 100) + '%</span>';
   html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">calendar_today</span> ' + relativeTime(job.createdAt) + '</span>';
   html += '<span class="flex items-center gap-1.5 font-mono text-xs opacity-80">' + esc(job.id) + '</span>';
   html += '</div></div>';
@@ -317,6 +318,10 @@ function renderAccordionDetail(job) {
   html += '</div>';
   html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Cost</span>';
   html += '<p class="font-mono text-sm text-tertiary mt-1">$' + (job.totalCostUsd || job.costUsd || 0).toFixed(4) + '</p></div>';
+  if (job.cacheHitRatio != null && job.cacheHitRatio > 0) {
+    html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Cache</span>';
+    html += '<p class="font-mono text-sm text-tertiary mt-1">Cache: ' + Math.round(job.cacheHitRatio * 100) + '%</p></div>';
+  }
   html += '<div><span class="text-[10px] uppercase tracking-widest font-bold text-outline">Status</span>';
   html += '<p class="mt-1">' + statusLabel(job.status, job) + '</p></div>';
   html += '</div>';
@@ -661,6 +666,7 @@ function renderTabForm(tabName, data) {
 
 var FIELD_DISPLAY_LABELS = {
   'general.instanceLabel': 'Instance Label',
+  'general.instanceOwners': 'Instance Owners',
 };
 
 function renderFormField(key, value, configPath) {
@@ -677,7 +683,11 @@ function renderFormField(key, value, configPath) {
   } else if (typeof value === 'number') {
     html += renderNumberInput(fieldId, value, configPath, isReadonly);
   } else if (Array.isArray(value)) {
-    html += renderArrayInput(fieldId, value, configPath, isReadonly);
+    if (configPath === 'general.instanceOwners') {
+      html += renderInstanceOwnersInput(fieldId, value, configPath, isReadonly);
+    } else {
+      html += renderArrayInput(fieldId, value, configPath, isReadonly);
+    }
   } else if (typeof value === 'object' && value !== null) {
     html += renderObjectInput(fieldId, value, configPath, isReadonly);
   } else {
@@ -736,6 +746,23 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
          'class="' + classes + '"' +
          (isReadonly ? ' disabled' : '') + '/>' +
          '</div>';
+}
+
+function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
+  var classes = buildInputClasses(
+    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    isReadonly
+  );
+  var commaSeparated = Array.isArray(value) ? value.join(', ') : '';
+
+  return '<input type="text" id="' + fieldId + '" ' +
+         'data-config-path="' + esc(configPath) + '" ' +
+         'data-input-type="comma-array" ' +
+         'value="' + esc(commaSeparated) + '" ' +
+         'placeholder="owner1, owner2, owner3" ' +
+         'class="' + classes + '"' +
+         (isReadonly ? ' readonly' : '') + '/>' +
+         '<div class="text-[10px] text-outline/50 mt-1">쉼표로 구분 (예: user1, user2)</div>';
 }
 
 function renderArrayInput(fieldId, value, configPath, isReadonly) {

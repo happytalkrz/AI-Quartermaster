@@ -94,6 +94,17 @@ function updateInstanceLabel(label) {
   }
 }
 
+function updateInstanceOwners(owners) {
+  var el = document.getElementById('instance-owners');
+  if (!el) return;
+  if (Array.isArray(owners) && owners.length > 0) {
+    el.textContent = owners.join(', ');
+    el.classList.remove('hidden');
+  } else {
+    el.classList.add('hidden');
+  }
+}
+
 function loadInstanceLabel() {
   apiFetch('/api/config')
     .then(function(r) { return r.json(); })
@@ -101,6 +112,8 @@ function loadInstanceLabel() {
       if (data.config && data.config.general) {
         var label = data.config.general.instanceLabel || data.config.general.projectName || '';
         updateInstanceLabel(label);
+        updateInstanceOwners(data.config.general.instanceOwners);
+        checkOwnersWarning(data.config.general.instanceOwners);
       }
     })
     .catch(function() {});
@@ -258,6 +271,10 @@ function getInputValue(input) {
     case 'number':
       return parseInt(input.value, 10) || 0;
     default:
+      // comma-array 타입 처리 (예: instanceOwners)
+      if (input.dataset.inputType === 'comma-array') {
+        return input.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+      }
       // textarea이고 JSON 데이터인 경우 파싱 시도
       if (input.tagName.toLowerCase() === 'textarea') {
         try {
@@ -585,6 +602,8 @@ function connectSSE() {
       if (data.changes && data.changes.general) {
         var label = data.changes.general.instanceLabel || data.changes.general.projectName || '';
         updateInstanceLabel(label);
+        updateInstanceOwners(data.changes.general.instanceOwners);
+        checkOwnersWarning(data.changes.general.instanceOwners);
       }
       if (currentView === 'settings') {
         loadSettings();
@@ -661,10 +680,34 @@ function checkForUpdates(data) {
   adjustPagePadding();
 }
 
+function checkOwnersWarning(owners) {
+  var banner = document.getElementById('owners-warning-banner');
+  if (!banner) return;
+
+  var isEmpty = !Array.isArray(owners) || owners.length === 0;
+  if (isEmpty) {
+    var topOffset = getApiBannerHeight() + getUpdateBannerHeight();
+    banner.style.top = topOffset + 'px';
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+  adjustPagePadding();
+}
+
+function getUpdateBannerHeight() {
+  var updateBanner = document.getElementById('update-banner');
+  if (updateBanner && updateBanner.style.display !== 'none') {
+    return updateBanner.offsetHeight;
+  }
+  return 0;
+}
+
 function adjustPagePadding() {
   var header = document.querySelector('header');
   var apiBanner = document.getElementById('api-key-banner');
   var updateBanner = document.getElementById('update-banner');
+  var ownersBanner = document.getElementById('owners-warning-banner');
 
   if (!header) return;
 
@@ -674,6 +717,21 @@ function adjustPagePadding() {
   }
   if (updateBanner && updateBanner.style.display !== 'none') {
     totalBannerHeight += updateBanner.offsetHeight;
+  }
+  if (ownersBanner && ownersBanner.style.display !== 'none') {
+    totalBannerHeight += ownersBanner.offsetHeight;
+  }
+
+  // owners-warning-banner top을 api+update 배너 높이만큼 동적으로 조정
+  if (ownersBanner && ownersBanner.style.display !== 'none') {
+    var ownersBannerTop = 0;
+    if (apiBanner && apiBanner.style.display !== 'none') {
+      ownersBannerTop += apiBanner.offsetHeight;
+    }
+    if (updateBanner && updateBanner.style.display !== 'none') {
+      ownersBannerTop += updateBanner.offsetHeight;
+    }
+    ownersBanner.style.top = ownersBannerTop + 'px';
   }
 
   // 헤더 top을 배너 높이만큼 동적으로 조정 (sticky header가 배너 아래로 밀리도록)

@@ -52,10 +52,11 @@ describe("dispatchEvent", () => {
   });
 
   describe("owner filtering", () => {
-    it("should process when instanceOwners is empty (allow all authors)", () => {
+    it("should block when instanceOwners is empty (not configured)", () => {
       const config = makeConfig([]);
       const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"], "anyone"), ["ai-quartermaster"], config);
-      expect(result.shouldProcess).toBe(true);
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reason).toMatch(/instanceOwners/);
     });
 
     it("should process when author is in instanceOwners", () => {

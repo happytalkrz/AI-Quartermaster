@@ -123,7 +123,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       issue: {
         number: ctx.issue.number,
         title: ctx.issue.title,
-        body: attempt === 1 ? `<USER_INPUT>\n${ctx.issue.body}\n</USER_INPUT>` : ctx.issue.body,
+        body: `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`,
         labels: ctx.issue.labels,
       },
       repo: {
@@ -220,7 +220,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
           ...data,
           issue: {
             ...data.issue,
-            body: attempt === 1 ? `<USER_INPUT>\n${truncatedIssueBody}\n</USER_INPUT>` : truncatedIssueBody,
+            body: `<USER_INPUT>\n${truncatedIssueBody.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`,
           },
         }),
         "issue body truncation"
@@ -495,7 +495,7 @@ function extractFunctionSignatures(filePath: string, content: string): string[] 
     );
 
     visitNodeForSignatures(sourceFile, signatures);
-  } catch (error) {
+  } catch (_error: unknown) {
     // TypeScript 파싱 실패 시 정규식으로 폴백
     return extractFunctionSignaturesRegex(content);
   }
@@ -607,7 +607,7 @@ function extractImportRelations(filePath: string, content: string): { imports: s
     );
 
     visitNodeForImports(sourceFile, imports, exports);
-  } catch (error) {
+  } catch (_error: unknown) {
     // 파싱 실패 시 정규식으로 폴백
     return extractImportRelationsRegex(content);
   }
@@ -673,7 +673,7 @@ function extractTypeDefinitions(filePath: string, content: string): string[] {
     );
 
     visitNodeForTypes(sourceFile, typeDefinitions);
-  } catch (error) {
+  } catch (_error: unknown) {
     // 파싱 실패 시 정규식으로 폴백
     return extractTypeDefinitionsRegex(content);
   }

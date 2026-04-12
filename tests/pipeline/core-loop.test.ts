@@ -27,7 +27,14 @@ vi.mock("../../src/learning/pattern-store.js", () => ({
   })),
 }));
 vi.mock("../../src/utils/logger.js", () => ({
-  getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}));
+vi.mock("../../src/prompt/template-renderer.js", () => ({
+  buildBaseLayer: vi.fn(),
+  buildProjectLayer: vi.fn(),
+  buildStaticContent: vi.fn(),
+  loadTemplate: vi.fn(),
+  computeLayerCacheKey: vi.fn(),
 }));
 
 import { runCoreLoop, type CoreLoopContext } from "../../src/pipeline/core-loop.js";
@@ -36,6 +43,13 @@ import { executePhase } from "../../src/pipeline/phase-executor.js";
 import { retryPhase } from "../../src/pipeline/phase-retry.js";
 import { checkPhaseLimit } from "../../src/safety/phase-limit-guard.js";
 import { schedulePhases } from "../../src/pipeline/phase-scheduler.js";
+import {
+  buildBaseLayer,
+  buildProjectLayer,
+  buildStaticContent,
+  loadTemplate,
+  computeLayerCacheKey,
+} from "../../src/prompt/template-renderer.js";
 import type { Plan, Phase, PhaseResult } from "../../src/types/pipeline.js";
 
 const mockGeneratePlan = vi.mocked(generatePlan);
@@ -43,6 +57,11 @@ const mockExecutePhase = vi.mocked(executePhase);
 const mockRetryPhase = vi.mocked(retryPhase);
 const mockCheckPhaseLimit = vi.mocked(checkPhaseLimit);
 const mockSchedulePhases = vi.mocked(schedulePhases);
+const mockBuildBaseLayer = vi.mocked(buildBaseLayer);
+const mockBuildProjectLayer = vi.mocked(buildProjectLayer);
+const mockBuildStaticContent = vi.mocked(buildStaticContent);
+const mockLoadTemplate = vi.mocked(loadTemplate);
+const mockComputeLayerCacheKey = vi.mocked(computeLayerCacheKey);
 
 function makeContext(overrides: Partial<CoreLoopContext> = {}): CoreLoopContext {
   return {
@@ -166,6 +185,28 @@ describe("runCoreLoop", () => {
     mockGeneratePlan.mockReset();
     mockSchedulePhases.mockReset().mockReturnValue({ success: true, groups: [] });
     mockCheckPhaseLimit.mockReset().mockImplementation(() => {});
+
+    // template-renderer 기본 mock 설정:
+    // loadTemplate은 기본적으로 throw (파일 없음 시뮬레이션) — 기존 테스트 동작 보존
+    mockBuildBaseLayer.mockReset().mockReturnValue({
+      role: "시니어 개발자",
+      rules: [],
+      outputFormat: "",
+      progressReporting: "",
+      parallelWorkGuide: "",
+    });
+    mockBuildProjectLayer.mockReset().mockReturnValue({
+      conventions: "",
+      structure: "",
+      testCommand: "npm test",
+      lintCommand: "npm run lint",
+      safetyRules: [],
+    });
+    mockBuildStaticContent.mockReset().mockReturnValue("mocked-static-content");
+    mockLoadTemplate.mockReset().mockImplementation(() => {
+      throw new Error("Template file not found: /tmp/prompts/phase-implementation.md");
+    });
+    mockComputeLayerCacheKey.mockReset().mockReturnValue("mock-cache-key-1234");
   });
 
   describe("parallel execution", () => {
@@ -1138,6 +1179,179 @@ describe("runCoreLoop", () => {
         // Should default to false when features is undefined
         expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       });
+    });
+  });
+
+  describe("static layer caching (레이어 기반 프롬프트 조립 회귀 테스트)", () => {
+    it("should build static layers on first run and pass them to executePhase", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+      mockLoadTemplate.mockReturnValue("phase-template-content");
+      mockBuildStaticContent.mockReturnValue("built-static-content");
+      mockComputeLayerCacheKey.mockReturnValue("computed-cache-key");
+
+      await runCoreLoop(makeContext());
+
+      expect(mockBuildBaseLayer).toHaveBeenCalledWith(
+        expect.objectContaining({ role: "시니어 개발자" })
+      );
+      expect(mockBuildProjectLayer).toHaveBeenCalled();
+      expect(mockBuildStaticContent).toHaveBeenCalled();
+      expect(mockLoadTemplate).toHaveBeenCalled();
+
+      expect(mockExecutePhase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cachedLayers: expect.objectContaining({
+            staticContent: "built-static-content",
+            cacheKey: "computed-cache-key",
+            phaseTemplate: "phase-template-content",
+          }),
+        })
+      );
+    });
+
+    it("should pass cachedLayers to generatePlan", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+      mockLoadTemplate.mockReturnValue("phase-template-content");
+      mockBuildStaticContent.mockReturnValue("built-static-content");
+      mockComputeLayerCacheKey.mockReturnValue("computed-cache-key");
+
+      await runCoreLoop(makeContext());
+
+      expect(mockGeneratePlan).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cachedLayers: expect.objectContaining({
+            staticContent: "built-static-content",
+            cacheKey: "computed-cache-key",
+          }),
+        })
+      );
+    });
+
+    it("should reuse existing cachedLayers without rebuilding static layers", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+      const preCachedLayers = {
+        staticContent: "pre-cached-static",
+        cacheKey: "pre-cached-key",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        phaseTemplate: "pre-cached-template",
+      };
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+
+      await runCoreLoop(makeContext({ cachedLayers: preCachedLayers }));
+
+      // 이미 캐시가 있으므로 정적 레이어를 다시 빌드하지 않아야 함
+      expect(mockBuildBaseLayer).not.toHaveBeenCalled();
+      expect(mockBuildProjectLayer).not.toHaveBeenCalled();
+      expect(mockBuildStaticContent).not.toHaveBeenCalled();
+      expect(mockLoadTemplate).not.toHaveBeenCalled();
+
+      // 사전 캐시된 레이어를 executePhase에 전달해야 함
+      expect(mockExecutePhase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cachedLayers: preCachedLayers,
+        })
+      );
+    });
+
+    it("should continue execution without cache when loadTemplate fails", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+      // loadTemplate은 beforeEach에서 기본적으로 throw하도록 설정되어 있음
+
+      const result = await runCoreLoop(makeContext());
+
+      // 캐시 실패에도 불구하고 실행이 성공해야 함
+      expect(result.success).toBe(true);
+      expect(result.phaseResults).toHaveLength(1);
+      expect(mockExecutePhase).toHaveBeenCalledTimes(1);
+    });
+
+    it("should compute cache key using cwd, conventions, and structure", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+      mockLoadTemplate.mockReturnValue("template");
+
+      const ctx = makeContext({
+        cwd: "/custom/project",
+        repoStructure: "src/\n  main.ts",
+        projectConventions: "custom-conventions",
+      });
+
+      await runCoreLoop(ctx);
+
+      expect(mockComputeLayerCacheKey).toHaveBeenCalledWith({
+        cwd: "/custom/project",
+        conventions: "custom-conventions",
+        structure: "src/\n  main.ts",
+      });
+    });
+
+    it("should build projectLayer with context values (conventions, structure, commands)", async () => {
+      const phases = [makePhase(0, "Test")];
+      const plan = makePlan(phases);
+
+      mockGeneratePlan.mockResolvedValue({ plan });
+      mockSchedulePhases.mockReturnValue({
+        success: true,
+        groups: [{ level: 0, phases }],
+      });
+      mockExecutePhase.mockResolvedValue(makeSuccessResult(0, "Test"));
+      mockLoadTemplate.mockReturnValue("template");
+
+      const ctx = makeContext({
+        projectConventions: "TypeScript strict, ESM",
+        repoStructure: "src/\n  app.ts",
+        skillsContext: "use logger",
+      });
+
+      await runCoreLoop(ctx);
+
+      expect(mockBuildProjectLayer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conventions: "TypeScript strict, ESM",
+          structure: "src/\n  app.ts",
+          skillsContext: "use logger",
+          testCommand: ctx.config.commands.test,
+          lintCommand: ctx.config.commands.lint,
+        })
+      );
     });
   });
 });

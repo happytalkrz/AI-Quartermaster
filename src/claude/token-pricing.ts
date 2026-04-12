@@ -91,6 +91,20 @@ export function calculateCostFromUsage(usage: UsageInfo, model: string): number 
 }
 
 /**
+ * cache hit ratio를 계산합니다.
+ * 공식: cache_read / (input + cache_read)
+ *
+ * @param usage - Claude CLI가 반환한 토큰 사용량 정보
+ * @returns 0~1 범위의 cache hit ratio (토큰 없으면 0)
+ */
+export function calculateCacheHitRatio(usage: UsageInfo): number {
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
+  const denominator = usage.input_tokens + cacheRead;
+  if (denominator === 0) return 0;
+  return cacheRead / denominator;
+}
+
+/**
  * 모델별 단가 정보를 반환합니다.
  *
  * @param model - Claude 모델명

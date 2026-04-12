@@ -389,5 +389,177 @@ PORT=3000
       const resultContent = await runInteractiveWizard();
       expect(resultContent.serverMode).toBe("webhook");
     });
+
+    it("should call handleValidationError for non-existence path errors", async () => {
+      vi.spyOn(promptUtils, "askQuestion")
+        .mockResolvedValueOnce("user/repo")    // valid repo
+        .mockResolvedValueOnce("")             // empty path - triggers non-existence error
+        .mockResolvedValueOnce(mockPath);      // valid path
+
+      vi.spyOn(promptUtils, "askChoice").mockResolvedValue(0);
+
+      // Mock validateLocalPath to return a non-existence error first
+      vi.spyOn(validators, "validateLocalPath").mockImplementationOnce(() => ({
+        isValid: false,
+        error: "경로가 올바르지 않습니다."  // not "존재하지 않습니다"
+      })).mockImplementation(() => ({ isValid: true }));
+
+      const handleErrorSpy = vi.spyOn(validators, "handleValidationError").mockImplementation(() => {});
+
+      const result = await runInteractiveWizard();
+
+      expect(handleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(result.path).toBe(mockPath);
+    });
+  });
+
+  describe("setupWebhook", () => {
+    it("should exit when .env file does not exist", async () => {
+      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      await expect(setupWizard.setupWebhook(aqRoot, "user/repo")).rejects.toThrow("process.exit called");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit when GITHUB_WEBHOOK_SECRET is missing from .env", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "SMEE_URL=https://smee.io/test\nPORT=3000\n");
+
+      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      await expect(setupWizard.setupWebhook(aqRoot, "user/repo")).rejects.toThrow("process.exit called");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should exit when SMEE_URL is missing from .env", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "GITHUB_WEBHOOK_SECRET=abc123\nPORT=3000\n");
+
+      const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("process.exit called");
+      });
+
+      await expect(setupWizard.setupWebhook(aqRoot, "user/repo")).rejects.toThrow("process.exit called");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should skip registration when webhook already exists", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "GITHUB_WEBHOOK_SECRET=abc123\nSMEE_URL=https://smee.io/existing\nPORT=3000\n");
+
+      vi.spyOn(cliRunner, "runCli").mockResolvedValue({
+        exitCode: 0,
+        stdout: "https://smee.io/existing",
+        stderr: ""
+      });
+
+      await setupWizard.setupWebhook(aqRoot, "user/repo");
+
+      expect(cliRunner.runCli).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["api", "repos/user/repo/hooks"]),
+        expect.any(Object)
+      );
+    });
+
+    it("should create webhook when it does not exist", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "GITHUB_WEBHOOK_SECRET=abc123\nSMEE_URL=https://smee.io/newchan\nPORT=3000\n");
+
+      vi.spyOn(cliRunner, "runCli")
+        .mockResolvedValueOnce({ exitCode: 0, stdout: "https://smee.io/other", stderr: "" }) // list hooks
+        .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" }); // create hook
+
+      await setupWizard.setupWebhook(aqRoot, "user/repo");
+
+      const calls = vi.mocked(cliRunner.runCli).mock.calls;
+      expect(calls[1][1]).toContain("POST");
+    });
+
+    it("should log error when webhook creation fails", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "GITHUB_WEBHOOK_SECRET=abc123\nSMEE_URL=https://smee.io/newchan\nPORT=3000\n");
+
+      vi.spyOn(cliRunner, "runCli")
+        .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" }) // list hooks (empty)
+        .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "Forbidden" }); // create fails
+
+      await setupWizard.setupWebhook(aqRoot, "user/repo");
+
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Webhook 등록 실패"));
+    });
+  });
+
+  describe("runSetup interactive mode full flow", () => {
+    it("should write config and return early for polling mode", async () => {
+      vi.spyOn(promptUtils, "askQuestion")
+        .mockResolvedValueOnce("user/repo")
+        .mockResolvedValueOnce(testDir);  // testDir already exists
+
+      vi.spyOn(promptUtils, "askChoice").mockResolvedValue(0); // polling
+
+      await runSetup(aqRoot, {});
+
+      const configPath = join(aqRoot, "config.yml");
+      expect(existsSync(configPath)).toBe(true);
+      const content = readFileSync(configPath, "utf-8");
+      expect(content).toContain("user/repo");
+    });
+
+    it("should continue to smee/webhook steps for webhook mode", async () => {
+      vi.spyOn(promptUtils, "askQuestion")
+        .mockResolvedValueOnce("user/repo")
+        .mockResolvedValueOnce(testDir);
+
+      vi.spyOn(promptUtils, "askChoice").mockResolvedValue(1); // webhook
+
+      await runSetup(aqRoot, {});
+
+      const configPath = join(aqRoot, "config.yml");
+      const envPath = join(aqRoot, ".env");
+      expect(existsSync(configPath)).toBe(true);
+      expect(existsSync(envPath)).toBe(true);
+    });
+
+    it("should skip .env creation when it already exists", async () => {
+      const envPath = join(aqRoot, ".env");
+      writeFileSync(envPath, "GITHUB_WEBHOOK_SECRET=existing\nSMEE_URL=https://smee.io/existing\nPORT=3000\n");
+
+      const options: SetupOptions = { nonInteractive: true };
+      await runSetup(aqRoot, options);
+
+      const content = readFileSync(envPath, "utf-8");
+      expect(content).toContain("GITHUB_WEBHOOK_SECRET=existing");
+    });
+
+    it("should handle smee URL creation failure gracefully", async () => {
+      vi.spyOn(cliRunner, "runCli").mockImplementation(async (command: string, args: string[]) => {
+        if (command === "git" && args.includes("--version")) {
+          return { exitCode: 0, stdout: "git version 2.0.0", stderr: "" };
+        }
+        if (command === "gh" && args.includes("status")) {
+          return { exitCode: 0, stdout: "Logged in", stderr: "" };
+        }
+        if (command === "claude" && args.includes("--version")) {
+          return { exitCode: 0, stdout: "claude 1.0.0", stderr: "" };
+        }
+        if (command === "curl") {
+          return { exitCode: 0, stdout: "invalid-url", stderr: "" }; // not a smee URL
+        }
+        return { exitCode: 0, stdout: "", stderr: "" };
+      });
+
+      const options: SetupOptions = { nonInteractive: true };
+      await runSetup(aqRoot, options);
+
+      // Should log failure message but not throw
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining("Smee 채널 생성 실패")
+      );
+    });
   });
 });

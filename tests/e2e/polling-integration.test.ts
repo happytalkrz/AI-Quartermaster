@@ -159,6 +159,7 @@ function makeJobQueue(store: ReturnType<typeof makeJobStore>) {
 function makeConfig(overrides: Partial<AQConfig> = {}): AQConfig {
   const config = structuredClone(DEFAULT_CONFIG);
   config.general.pollingIntervalMs = 50; // fast for tests
+  config.general.instanceOwners = ["test-user"]; // poll() 차단 방지용 기본값
   config.safety.allowedLabels = ["aq-task"];
   config.projects = [
     {

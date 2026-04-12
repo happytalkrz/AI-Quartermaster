@@ -3,7 +3,7 @@ import { listConfiguredRepos } from "../config/project-resolver.js";
 import type { AQConfig } from "../types/config.js";
 import { parseDependencies, checkCircularDependency } from "../queue/dependency-resolver.js";
 import type { JobStore } from "../queue/job-store.js";
-import { isAllowedOwner } from "../safety/label-filter.js";
+import { isAllowedOwner, hasInstanceOwnersConfigured } from "../safety/label-filter.js";
 
 const logger = getLogger();
 
@@ -71,6 +71,12 @@ export function dispatchEvent(
   // Check if issue author is an allowed owner (when config is provided)
   if (config) {
     const instanceOwners = config.general.instanceOwners ?? [];
+    if (!hasInstanceOwnersConfigured(instanceOwners)) {
+      return {
+        shouldProcess: false,
+        reason: "instanceOwners is not configured. Set at least one owner in config to enable issue processing.",
+      };
+    }
     const author = payload.issue.user.login;
     if (!isAllowedOwner(author, instanceOwners)) {
       return {

@@ -31,13 +31,23 @@ describe("JobQueue", () => {
   let store: JobStore;
 
   beforeEach(() => {
-    dataDir = join(tmpdir(), `aq-queue-test-${Date.now()}`);
+    dataDir = join(tmpdir(), `aq-queue-test-${Date.now()}-${process.pid}`);
     mkdirSync(dataDir, { recursive: true });
     store = new JobStore(dataDir);
   });
 
   afterEach(() => {
-    rmSync(dataDir, { recursive: true, force: true });
+    try {
+      // SQLite 연결 종료
+      store.close();
+    } catch (err) {
+      // ignore cleanup errors
+    }
+    try {
+      rmSync(dataDir, { recursive: true, force: true });
+    } catch (err) {
+      // ignore cleanup errors
+    }
   });
 
   // Helper to get and clear mocked functions
@@ -1771,6 +1781,88 @@ describe("JobQueue", () => {
       expect(handler).toHaveBeenCalledTimes(3);
       // Should maintain FIFO order for same priority
       expect(executionOrder).toEqual([1, 2, 3]);
+    });
+  });
+
+  describe("shutdown", () => {
+    it("should resolve immediately when no jobs are running", async () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      const start = Date.now();
+      await queue.shutdown(5000);
+      expect(Date.now() - start).toBeLessThan(100);
+    });
+
+    it("should reject new jobs after shutdown", async () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const queue = new JobQueue(store, 1, handler);
+
+      void queue.shutdown(100);
+
+      const job = queue.enqueue(1, "test/repo");
+      expect(job).toBeUndefined();
+    });
+
+    it("should resolve after running jobs finish", async () => {
+      let resolve!: () => void;
+      const handler: JobHandler = vi.fn().mockImplementation(
+        () =>
+          new Promise<{ prUrl: string }>((res) => {
+            resolve = () => res({ prUrl: "https://pr/1" });
+          })
+      );
+      const queue = new JobQueue(store, 1, handler);
+      queue.enqueue(1, "test/repo");
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(1);
+
+      const shutdownPromise = queue.shutdown(2000);
+      resolve();
+      await shutdownPromise;
+
+      expect(queue.getStatus().running).toBe(0);
+    });
+
+    it("should resolve after timeout even if jobs are still running", async () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves
+      const queue = new JobQueue(store, 1, handler);
+      queue.enqueue(1, "test/repo");
+
+      await new Promise((r) => setTimeout(r, 30));
+      expect(queue.getStatus().running).toBe(1);
+
+      const start = Date.now();
+      await queue.shutdown(200); // short timeout
+      const elapsed = Date.now() - start;
+
+      expect(elapsed).toBeGreaterThanOrEqual(190);
+      expect(elapsed).toBeLessThan(2000);
+    });
+  });
+
+  describe("getActiveTask", () => {
+    it("should return undefined when no taskFactory is set", () => {
+      const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
+      const queue = new JobQueue(store, 1, handler);
+
+      queue.enqueue(1, "test/repo");
+      const jobs = store.list();
+      expect(jobs.length).toBeGreaterThan(0);
+      expect(queue.getActiveTask(jobs[0].id)).toBeUndefined();
+    });
+  });
+
+  describe("enqueue while shutting down", () => {
+    it("should return undefined and log warning when queue is shutting down", () => {
+      const handler: JobHandler = vi.fn();
+      const queue = new JobQueue(store, 1, handler);
+
+      void queue.shutdown(5000);
+
+      const result = queue.enqueue(42, "test/repo");
+      expect(result).toBeUndefined();
     });
   });
 });

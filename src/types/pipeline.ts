@@ -266,73 +266,26 @@ export interface PlanRetryContext {
 
 // 프롬프트 레이어 분리를 위한 타입 정의
 
-// BaseLayer는 layer-types.ts와 동일 — import 후 re-export로 중복 제거
-import type { BaseLayer } from "../prompt/layer-types.js";
-export type { BaseLayer };
-
-// IssueLayer, LearningLayer, CacheKeyConfig, PromptLayers는 새 5계층 타입 — 호환성을 위해 re-export
-export type {
+// BaseLayer, ProjectLayer, PhaseLayer, IssueLayer, LearningLayer, CacheKeyConfig, PromptLayers는
+// layer-types.ts에서 단일 관리 — 호환성을 위해 re-export
+import type {
+  BaseLayer,
+  ProjectLayer,
+  PhaseLayer,
   IssueLayer,
   LearningLayer,
   CacheKeyConfig,
   PromptLayers,
 } from "../prompt/layer-types.js";
-
-/**
- * 프로젝트 레이어 - 프로젝트 수준 설정 (정적)
- * @note layer-types.ts의 ProjectLayer보다 pastFailures? 필드가 추가됨.
- *       template-renderer.ts에서 사용 중이므로 별도 유지.
- */
-export interface ProjectLayer {
-  /** 프로젝트 컨벤션 (CLAUDE.md 내용) */
-  conventions: string;
-  /** 프로젝트 구조 정보 */
-  structure: string;
-  /** 스킬 컨텍스트 */
-  skillsContext?: string;
-  /** 과거 실패 사례 */
-  pastFailures?: string;
-  /** 테스트 명령어 */
-  testCommand: string;
-  /** 린트 명령어 */
-  lintCommand: string;
-  /** 프로젝트 특정 안전 규칙 */
-  safetyRules: string[];
-}
-
-/**
- * Phase 레이어 - 현재 실행 컨텍스트 (동적)
- */
-export interface PhaseLayer {
-  /** 이슈 정보 */
-  issue: {
-    number: number;
-    title: string;
-    body: string;
-    labels: string[];
-  };
-  /** 전체 계획 요약 */
-  planSummary: string;
-  /** 현재 Phase 정보 */
-  currentPhase: {
-    index: number;
-    totalCount: number;
-    name: string;
-    description: string;
-    targetFiles: string[];
-  };
-  /** 이전 Phase 결과 요약 */
-  previousResults: string;
-  /** 저장소 정보 */
-  repository: {
-    owner: string;
-    name: string;
-    baseBranch: string;
-    workBranch: string;
-  };
-  /** 로케일 설정 */
-  locale?: string;
-}
+export type {
+  BaseLayer,
+  ProjectLayer,
+  PhaseLayer,
+  IssueLayer,
+  LearningLayer,
+  CacheKeyConfig,
+  PromptLayers,
+};
 
 /**
  * 조합된 프롬프트 레이어

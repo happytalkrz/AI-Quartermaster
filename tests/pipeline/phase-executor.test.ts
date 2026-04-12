@@ -8,8 +8,12 @@ vi.mock("../../src/utils/cli-runner.js", () => ({
   runShell: vi.fn(),
 }));
 vi.mock("../../src/prompt/template-renderer.js", () => ({
-  renderTemplate: vi.fn().mockReturnValue("rendered prompt"),
+  assemblePrompt: vi.fn().mockReturnValue({ content: "rendered prompt", cacheHit: false, assemblyTimeMs: 0 }),
   loadTemplate: vi.fn().mockReturnValue("template content"),
+  buildBaseLayer: vi.fn().mockReturnValue({ role: "시니어 개발자", rules: [], outputFormat: "", progressReporting: "", parallelWorkGuide: "" }),
+  buildProjectLayer: vi.fn().mockReturnValue({ conventions: "", structure: "", testCommand: "", lintCommand: "", safetyRules: [] }),
+  buildIssueLayer: vi.fn().mockImplementation((cfg: { number: number; title: string; body: string; labels: string[]; repository: object; planSummary: string }) => ({ ...cfg })),
+  buildLearningLayer: vi.fn().mockReturnValue({ pastFailures: [], errorPatterns: [], learnedPatterns: [], updatedAt: "" }),
 }));
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -24,13 +28,14 @@ import { runClaude } from "../../src/claude/claude-runner.js";
 import { runCli, runShell } from "../../src/utils/cli-runner.js";
 import type { PhaseExecutorContext } from "../../src/pipeline/phase-executor.js";
 
-import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
+import { assemblePrompt, loadTemplate, buildIssueLayer } from "../../src/prompt/template-renderer.js";
 import { analyzeTokenUsage, summarizeForBudget } from "../../src/review/token-estimator.js";
 
 const mockRunClaude = vi.mocked(runClaude);
 const mockRunCli = vi.mocked(runCli);
 const mockRunShell = vi.mocked(runShell);
-const mockRenderTemplate = vi.mocked(renderTemplate);
+const mockAssemblePrompt = vi.mocked(assemblePrompt);
+const mockBuildIssueLayer = vi.mocked(buildIssueLayer);
 const mockLoadTemplate = vi.mocked(loadTemplate);
 const mockAnalyzeTokenUsage = vi.mocked(analyzeTokenUsage);
 const mockSummarizeForBudget = vi.mocked(summarizeForBudget);
@@ -86,7 +91,8 @@ describe("executePhase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadTemplate.mockReturnValue("template content");
-    mockRenderTemplate.mockReturnValue("rendered prompt");
+    mockAssemblePrompt.mockReturnValue({ content: "rendered prompt", cacheHit: false, assemblyTimeMs: 0 });
+    mockBuildIssueLayer.mockImplementation((cfg) => ({ ...cfg }));
     mockRunCli.mockResolvedValue({ stdout: "", stderr: "", exitCode: 0 });
     mockAnalyzeTokenUsage.mockReturnValue({
       estimatedTokens: 1000,
@@ -239,18 +245,15 @@ describe("executePhase", () => {
     const result = await executePhase(ctx);
 
     expect(result.success).toBe(true);
-    // Verify that renderTemplate was called with escaped content
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      expect.any(String),
+    // Verify that buildIssueLayer was called with escaped content
+    expect(mockBuildIssueLayer).toHaveBeenCalledWith(
       expect.objectContaining({
-        issue: expect.objectContaining({
-          body: expect.stringContaining("&lt;/USER_INPUT&gt;")
-        })
+        body: expect.stringContaining("&lt;/USER_INPUT&gt;")
       })
     );
     // Ensure the malicious tag is escaped in the user input part
-    const renderCall = mockRenderTemplate.mock.calls[0];
-    const issueBody = renderCall[1].issue.body;
+    const buildCall = mockBuildIssueLayer.mock.calls[0][0];
+    const issueBody = buildCall.body;
     expect(issueBody).toContain("&lt;/USER_INPUT&gt;");
     // The wrapper closing tag should still exist (not escaped)
     expect(issueBody).toMatch(/<USER_INPUT>[\s\S]*<\/USER_INPUT>$/);
@@ -271,8 +274,8 @@ describe("executePhase", () => {
 
     await executePhase(ctx);
 
-    const renderCall = mockRenderTemplate.mock.calls[0];
-    const issueBody = renderCall[1].issue.body;
+    const buildCall2 = mockBuildIssueLayer.mock.calls[0][0];
+    const issueBody = buildCall2.body;
     // All case variations should be escaped to the same HTML entity
     expect(issueBody).toContain("&lt;/USER_INPUT&gt;");
     // Count occurrences to ensure all 3 variations were escaped
@@ -345,7 +348,7 @@ describe("executePhase", () => {
     expect(result.success).toBe(true);
     expect(mockAnalyzeTokenUsage).toHaveBeenCalledTimes(2);
     expect(mockSummarizeForBudget).toHaveBeenCalled();
-    expect(mockRenderTemplate).toHaveBeenCalledTimes(2); // Initial render + optimized render
+    expect(mockAssemblePrompt).toHaveBeenCalledTimes(2); // Initial render + optimized render
   });
 
   it("analyzes token usage with correct model name from config", async () => {
@@ -417,7 +420,7 @@ describe("executePhase", () => {
     expect(result.usage).toBeUndefined();
   });
 
-  it("does not include plan.phases in renderTemplate call", async () => {
+  it("does not include plan.phases in assemblePrompt layers", async () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     mockRunCli
       .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
@@ -426,130 +429,10 @@ describe("executePhase", () => {
 
     await executePhase(makeCtx());
 
-    // Verify that renderTemplate was called without plan.phases
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        plan: expect.not.objectContaining({
-          phases: expect.anything()
-        })
-      })
-    );
-  });
-
-  it("includes correct nextPhase information when not the last phase", async () => {
-    const multiPhaseCtx = makeCtx({
-      plan: {
-        issueNumber: 42,
-        title: "Multi-phase plan",
-        problemDefinition: "Complex problem",
-        requirements: [],
-        affectedFiles: [],
-        risks: [],
-        phases: [
-          {
-            index: 0,
-            name: "Phase One",
-            description: "First phase",
-            targetFiles: ["src/foo.ts"],
-            commitStrategy: "atomic",
-            verificationCriteria: [],
-            dependsOn: [],
-          },
-          {
-            index: 1,
-            name: "Phase Two",
-            description: "Second phase",
-            targetFiles: ["src/bar.ts"],
-            commitStrategy: "atomic",
-            verificationCriteria: [],
-            dependsOn: [],
-          },
-        ],
-        verificationPoints: [],
-        stopConditions: [],
-      },
-      phase: {
-        index: 0,
-        name: "Phase One",
-        description: "First phase",
-        targetFiles: ["src/foo.ts"],
-        commitStrategy: "atomic",
-        verificationCriteria: [],
-        dependsOn: [],
-      },
-    });
-
-    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
-    mockRunCli
-      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
-      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
-    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
-
-    await executePhase(multiPhaseCtx);
-
-    // Verify that renderTemplate includes only next phase info
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        plan: expect.objectContaining({
-          nextPhase: "Next: Phase 2 - Phase Two"
-        })
-      })
-    );
-  });
-
-  it("includes final phase message when executing the last phase", async () => {
-    const finalPhaseCtx = makeCtx({
-      plan: {
-        issueNumber: 42,
-        title: "Single phase plan",
-        problemDefinition: "Simple problem",
-        requirements: [],
-        affectedFiles: [],
-        risks: [],
-        phases: [
-          {
-            index: 0,
-            name: "Only Phase",
-            description: "The only phase",
-            targetFiles: ["src/foo.ts"],
-            commitStrategy: "atomic",
-            verificationCriteria: [],
-            dependsOn: [],
-          },
-        ],
-        verificationPoints: [],
-        stopConditions: [],
-      },
-      phase: {
-        index: 0,
-        name: "Only Phase",
-        description: "The only phase",
-        targetFiles: ["src/foo.ts"],
-        commitStrategy: "atomic",
-        verificationCriteria: [],
-        dependsOn: [],
-      },
-    });
-
-    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
-    mockRunCli
-      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
-      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
-    mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
-
-    await executePhase(finalPhaseCtx);
-
-    // Verify that renderTemplate includes final phase message
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        plan: expect.objectContaining({
-          nextPhase: "This is the final phase"
-        })
-      })
-    );
+    // Verify that assemblePrompt was called (layers do not expose plan.phases directly)
+    expect(mockAssemblePrompt).toHaveBeenCalledOnce();
+    const [layers] = mockAssemblePrompt.mock.calls[0];
+    expect(layers).not.toHaveProperty("phases");
   });
 
   it("skips auto-commit when Claude has already committed (clean git status)", async () => {
@@ -715,10 +598,10 @@ describe("executePhase", () => {
     expect(result.success).toBe(true);
     // loadTemplate should NOT have been called when cachedLayers is provided
     expect(mockLoadTemplate).not.toHaveBeenCalled();
-    // renderTemplate should have been called with the cached phaseTemplate
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      "cached phase template content",
-      expect.any(Object)
+    // assemblePrompt should have been called with the cached phaseTemplate
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Object),
+      "cached phase template content"
     );
   });
 
@@ -734,9 +617,9 @@ describe("executePhase", () => {
 
     expect(result.success).toBe(true);
     expect(mockLoadTemplate).toHaveBeenCalledOnce();
-    expect(mockRenderTemplate).toHaveBeenCalledWith(
-      "template content",
-      expect.any(Object)
+    expect(mockAssemblePrompt).toHaveBeenCalledWith(
+      expect.any(Object),
+      "template content"
     );
   });
 

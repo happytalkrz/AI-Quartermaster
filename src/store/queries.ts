@@ -166,16 +166,20 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
     ${whereClause}
   `).get(...params) as CostSummaryRow;
 
-  const breakdown: CostEntry[] = breakdownRows.map(row => ({
-    label: row.label,
-    totalCostUsd: row.total_cost_usd,
-    jobCount: row.job_count,
-    avgCostUsd: row.job_count > 0 ? row.total_cost_usd / row.job_count : 0,
-    totalInputTokens: row.total_input_tokens,
-    totalOutputTokens: row.total_output_tokens,
-    totalCacheCreationTokens: row.total_cache_creation_tokens,
-    totalCacheReadTokens: row.total_cache_read_tokens,
-  }));
+  const breakdown: CostEntry[] = breakdownRows.map(row => {
+    const cacheHitDenominator = row.total_input_tokens + row.total_cache_read_tokens;
+    return {
+      label: row.label,
+      totalCostUsd: row.total_cost_usd,
+      jobCount: row.job_count,
+      avgCostUsd: row.job_count > 0 ? row.total_cost_usd / row.job_count : 0,
+      totalInputTokens: row.total_input_tokens,
+      totalOutputTokens: row.total_output_tokens,
+      totalCacheCreationTokens: row.total_cache_creation_tokens,
+      totalCacheReadTokens: row.total_cache_read_tokens,
+      cacheHitRatio: cacheHitDenominator > 0 ? row.total_cache_read_tokens / cacheHitDenominator : 0,
+    };
+  });
 
   const totalJobCount = summaryRow.job_count;
 
@@ -191,6 +195,9 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
       totalOutputTokens: summaryRow.total_output_tokens,
       totalCacheCreationTokens: summaryRow.total_cache_creation_tokens,
       totalCacheReadTokens: summaryRow.total_cache_read_tokens,
+      cacheHitRatio: (summaryRow.total_input_tokens + summaryRow.total_cache_read_tokens) > 0
+        ? summaryRow.total_cache_read_tokens / (summaryRow.total_input_tokens + summaryRow.total_cache_read_tokens)
+        : 0,
     },
     breakdown,
   };

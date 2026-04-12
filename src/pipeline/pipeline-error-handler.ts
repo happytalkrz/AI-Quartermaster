@@ -85,7 +85,7 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
       phaseName: failedPhase?.phaseName,
       tags: [],
     });
-  } catch {
+  } catch (_err: unknown) {
     // non-fatal
   }
 
@@ -106,8 +106,8 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
         rollbackInfo = `Rolled back to ${targetHash.slice(0, 8)} (strategy: ${rollbackStrategy})`;
         logger.info(rollbackInfo);
       }
-    } catch (rbErr) {
-      logger.warn(`Rollback failed: ${rbErr}`);
+    } catch (rbErr: unknown) {
+      logger.warn(`Rollback failed: ${getErrorMessage(rbErr)}`);
     }
   }
 

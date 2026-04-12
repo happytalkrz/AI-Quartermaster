@@ -1,5 +1,6 @@
 import { resolve } from "path";
-import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
+import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../prompt/template-renderer.js";
+import type { PromptLayers } from "../prompt/layer-types.js";
 import { runClaude, type ClaudeRunResult } from "../claude/claude-runner.js";
 import { configForTask } from "../claude/model-router.js";
 import { runShell } from "../utils/cli-runner.js";
@@ -58,44 +59,56 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       .map(r => `Phase ${r.phaseIndex}: ${r.phaseName} - ${r.success ? "SUCCESS" : "FAILED"}`)
       .join("\n");
 
-    // Get next phase info if not the last phase
-    const nextPhase = ctx.plan.phases[ctx.phase.index + 1] ?? null;
-
-const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
+    const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
     const config = configForTask(ctx.claudeConfig, "phase");
     const modelName = config.model || ctx.claudeConfig.model;
 
-    // Helper to create template data
-    const createTemplateData = (summary: string) => ({
-      issue: {
-        number: String(ctx.issue.number),
-        title: ctx.issue.title,
-        body: sanitizedBody,
-      },
-      plan: {
-        summary: ctx.plan.problemDefinition,
-        nextPhase: nextPhase ? `Next: Phase ${nextPhase.index + 1} - ${nextPhase.name}` : "This is the final phase"
-      },
-      phase: {
-        index: String(ctx.phase.index + 1),
-        name: ctx.phase.name,
-        description: ctx.phase.description,
-        files: ctx.phase.targetFiles,
-        totalCount: String(ctx.plan.phases.length),
-      },
-      previousPhases: { summary },
-      config: {
+    // Build PromptLayers for assemblePrompt
+    const buildLayers = (summary: string): PromptLayers => ({
+      base: buildBaseLayer({ role: "시니어 개발자", locale: ctx.locale }),
+      project: buildProjectLayer({
+        conventions: ctx.projectConventions ?? "",
+        skillsContext: ctx.skillsContext,
         testCommand: ctx.testCommand,
         lintCommand: ctx.lintCommand,
+      }),
+      issue: buildIssueLayer({
+        number: ctx.issue.number,
+        title: ctx.issue.title,
+        body: sanitizedBody,
+        labels: ctx.issue.labels,
+        repository: { owner: "", name: "", baseBranch: "", workBranch: "" },
+        planSummary: ctx.plan.problemDefinition,
+      }),
+      phase: {
+        issue: {
+          number: ctx.issue.number,
+          title: ctx.issue.title,
+          body: sanitizedBody,
+          labels: ctx.issue.labels,
+        },
+        planSummary: ctx.plan.problemDefinition,
+        currentPhase: {
+          index: ctx.phase.index + 1,
+          totalCount: ctx.plan.phases.length,
+          name: ctx.phase.name,
+          description: ctx.phase.description,
+          targetFiles: ctx.phase.targetFiles,
+        },
+        previousResults: summary,
+        repository: { owner: "", name: "", baseBranch: "", workBranch: "" },
+        locale: ctx.locale,
       },
-      projectConventions: ctx.projectConventions ?? "",
-      skillsContext: ctx.skillsContext ?? "",
-      pastFailures: ctx.pastFailures ?? "",
+      learning: buildLearningLayer(
+        ctx.pastFailures
+          ? { pastFailures: [{ context: "이전 실패 이력", message: ctx.pastFailures }] }
+          : undefined
+      ),
     });
 
     let optimizedPreviousSummary = previousSummary;
-    let rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
+    let rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), template).content;
 
     // Check token usage and optimize if budget exceeded
     const tokenUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
@@ -111,7 +124,7 @@ const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi
         logger.warn(`Attempting to reduce previousResults context to fit budget...`);
         const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1);
         optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens, ctx.locale || 'en');
-        rendered = renderTemplate(template, createTemplateData(optimizedPreviousSummary));
+        rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), template).content;
 
         const optimizedUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
         if (!optimizedUsage.exceedsLimit) {

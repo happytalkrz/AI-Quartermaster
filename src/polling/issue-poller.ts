@@ -32,6 +32,7 @@ export class IssuePoller {
   private lastActivityAt: number = Date.now(); // 마지막 이슈 발견 시각
   private readonly IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5분 idle 임계값
   private readonly IDLE_INTERVAL_MS = 5 * 60 * 1000; // 5분 idle 폴링 간격
+  private hasWarnedNoOwners = false; // instanceOwners 미설정 경고 중복 방지
 
   constructor(
     config: AQConfig,
@@ -85,6 +86,20 @@ export class IssuePoller {
   }
 
   private async poll(): Promise<void> {
+    const owners = this.config.general.instanceOwners ?? [];
+
+    // instanceOwners 미설정 시 이슈 픽업 전체 차단 (스팸 방지: 최초 1회만 경고)
+    if (owners.length === 0) {
+      if (!this.hasWarnedNoOwners) {
+        logger.warn(
+          "[instanceOwners 미설정] 이슈 픽업이 차단됩니다. config.general.instanceOwners를 설정하세요."
+        );
+        this.hasWarnedNoOwners = true;
+      }
+      return;
+    }
+    this.hasWarnedNoOwners = false;
+
     const projects = this.config.projects ?? [];
     const triggerLabels = getTriggerLabels(this.config.general.instanceLabel, this.config.safety.allowedLabels);
     const ghPath = this.config.commands.ghCli.path;

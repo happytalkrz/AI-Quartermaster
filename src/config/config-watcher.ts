@@ -2,6 +2,7 @@ import { watch, FSWatcher, existsSync } from "fs";
 import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 
@@ -16,6 +17,7 @@ export class ConfigWatcher extends EventEmitter {
   private localConfigPath: string;
   private watchers: Map<string, FSWatcher> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
+  private pendingRestartTimers: Set<NodeJS.Timeout> = new Set();
   private pendingChanges: Set<string> = new Set();
   private errorCounts: Map<string, number> = new Map();
   private readonly maxErrorRetries = 3;
@@ -60,9 +62,15 @@ export class ConfigWatcher extends EventEmitter {
         watcher.close();
         logger.debug(`Stopped watching: ${path}`);
       } catch (err: unknown) {
-        logger.warn(`Error closing watcher for ${path}: ${err}`);
+        logger.warn(`Error closing watcher for ${path}: ${getErrorMessage(err)}`);
       }
     }
+
+    // Cancel all pending restart timers
+    for (const timer of this.pendingRestartTimers) {
+      clearTimeout(timer);
+    }
+    this.pendingRestartTimers.clear();
 
     // Clear all maps and sets
     this.watchers.clear();
@@ -88,7 +96,7 @@ export class ConfigWatcher extends EventEmitter {
       this.registerWatcher(filePath, type, watcher);
       logger.debug(`Started watching file: ${filePath}`);
     } catch (err: unknown) {
-      logger.error(`Failed to watch file ${filePath}: ${err}`);
+      logger.error(`Failed to watch file ${filePath}: ${getErrorMessage(err)}`);
       this.handleWatcherError(filePath, type, err);
     }
   }
@@ -103,7 +111,7 @@ export class ConfigWatcher extends EventEmitter {
       this.registerWatcher(this.projectRoot, 'local', watcher);
       logger.debug(`Started watching directory: ${this.projectRoot}`);
     } catch (err: unknown) {
-      logger.error(`Failed to watch directory ${this.projectRoot}: ${err}`);
+      logger.error(`Failed to watch directory ${this.projectRoot}: ${getErrorMessage(err)}`);
       this.handleWatcherError(this.projectRoot, 'local', err);
     }
   }
@@ -198,7 +206,7 @@ export class ConfigWatcher extends EventEmitter {
     const errorCount = (this.errorCounts.get(filePath) || 0) + 1;
     this.errorCounts.set(filePath, errorCount);
 
-    logger.warn(`Watcher error for ${filePath} (attempt ${errorCount}/${this.maxErrorRetries}): ${error}`);
+    logger.warn(`Watcher error for ${filePath} (attempt ${errorCount}/${this.maxErrorRetries}): ${getErrorMessage(error)}`);
 
     // Close and remove the problematic watcher
     const existingWatcher = this.watchers.get(filePath);
@@ -206,8 +214,8 @@ export class ConfigWatcher extends EventEmitter {
       try {
         existingWatcher.removeAllListeners();
         existingWatcher.close();
-      } catch (closeError) {
-        logger.warn(`Error closing watcher for ${filePath}: ${closeError}`);
+      } catch (closeError: unknown) {
+        logger.warn(`Error closing watcher for ${filePath}: ${getErrorMessage(closeError)}`);
       }
       this.watchers.delete(filePath);
     }
@@ -215,9 +223,11 @@ export class ConfigWatcher extends EventEmitter {
     // Attempt to restart the watcher if we haven't exceeded retry limit
     if (errorCount <= this.maxErrorRetries) {
       logger.info(`Attempting to restart watcher for ${filePath} in ${this.errorRetryDelay}ms`);
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.pendingRestartTimers.delete(timer);
         this.restartWatcher(filePath, type);
       }, this.errorRetryDelay);
+      this.pendingRestartTimers.add(timer);
     } else {
       logger.error(`Maximum retry attempts exceeded for ${filePath}. Disabling watcher for this file.`);
       this.errorCounts.delete(filePath); // Clean up error count
@@ -243,8 +253,8 @@ export class ConfigWatcher extends EventEmitter {
       } else {
         this.watchFile(filePath, type);
       }
-    } catch (restartError) {
-      logger.error(`Failed to restart watcher for ${filePath}: ${restartError}`);
+    } catch (restartError: unknown) {
+      logger.error(`Failed to restart watcher for ${filePath}: ${getErrorMessage(restartError)}`);
       this.handleWatcherError(filePath, type, restartError);
     }
   }

@@ -8,9 +8,10 @@ import {
   removeProjectFromConfig,
   updateProjectInConfig,
   initProject,
-  deepMerge
+  deepMerge,
+  validateProjectRoot
 } from "../../src/config/loader.js";
-import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync, symlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import * as cliRunner from "../../src/utils/cli-runner.js";
@@ -19,7 +20,7 @@ describe("loadConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -389,7 +390,7 @@ describe("loadConfig - 프로젝트별 오버라이드 로딩", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -596,7 +597,7 @@ describe("tryLoadConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -861,7 +862,7 @@ describe("writeMinimalConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -940,7 +941,7 @@ describe("addProjectToConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1076,7 +1077,7 @@ describe("removeProjectFromConfig", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1214,7 +1215,7 @@ describe("initProject", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
 
     // Mock process.cwd
@@ -1372,7 +1373,7 @@ describe("loadConfig with environment variables and CLI overrides", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1525,7 +1526,7 @@ describe("tryLoadConfig with environment variables and CLI overrides", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1603,7 +1604,7 @@ describe("Full pipeline integration tests", () => {
   let testDir: string;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    testDir = join(tmpdir(), `aq-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -1854,5 +1855,86 @@ describe("deepMerge", () => {
     const result = deepMerge(target, source) as Record<string, unknown>;
     expect(result["a"]).toBe(1);
     expect(result["b"]).toEqual({ nested: true });
+  });
+});
+
+describe("validateProjectRoot", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("should accept a valid absolute path", () => {
+    expect(() => validateProjectRoot(testDir)).not.toThrow();
+  });
+
+  it("should throw for relative path", () => {
+    expect(() => validateProjectRoot("relative/path")).toThrow(/must be an absolute path/);
+  });
+
+  it("should throw for path with .. traversal", () => {
+    expect(() => validateProjectRoot("/safe/path/../escape")).toThrow(/must be an absolute path|path traversal/);
+  });
+
+  it("should throw for path starting with ./", () => {
+    expect(() => validateProjectRoot("./local/path")).toThrow(/must be an absolute path/);
+  });
+
+  it("loadConfig should throw for relative projectRoot", () => {
+    expect(() => loadConfig("relative/path")).toThrow(/must be an absolute path/);
+  });
+
+  it("loadConfig should throw for path with .. traversal", () => {
+    expect(() => loadConfig("/safe/../escape")).toThrow(/must be an absolute path|path traversal/);
+  });
+
+  it("tryLoadConfig should return validation error for relative projectRoot", () => {
+    const result = tryLoadConfig("relative/path");
+    expect(result.config).toBeNull();
+    expect(result.error?.type).toBe("validation");
+    expect(result.error?.message).toMatch(/must be an absolute path/);
+  });
+
+  it("tryLoadConfig should return validation error for path with .. traversal", () => {
+    const result = tryLoadConfig("/safe/../escape");
+    expect(result.config).toBeNull();
+    expect(result.error?.type).toBe("validation");
+    expect(result.error?.message).toMatch(/must be an absolute path|path traversal/);
+  });
+
+  it("should accept a non-existent absolute path (existence check is deferred)", () => {
+    expect(() => validateProjectRoot("/nonexistent/absolute/path/that/does/not/exist")).not.toThrow();
+  });
+
+  it("should throw for path ending with .. component", () => {
+    expect(() => validateProjectRoot("/valid/path/..")).toThrow(/path traversal/);
+  });
+
+  it("should throw for path with .. immediately after root", () => {
+    expect(() => validateProjectRoot("/../escape")).toThrow(/path traversal/);
+  });
+
+  it("should throw when projectRoot is a symlink pointing to a different real path", () => {
+    const realTarget = join(tmpdir(), `aq-test-real-${Date.now()}`);
+    mkdirSync(realTarget, { recursive: true });
+    const symlinkPath = join(testDir, "symlink-to-outside");
+    symlinkSync(realTarget, symlinkPath);
+
+    try {
+      expect(() => validateProjectRoot(symlinkPath)).toThrow(/symlink/);
+    } finally {
+      rmSync(realTarget, { recursive: true, force: true });
+    }
+  });
+
+  it("should accept a real directory that resolves to itself (no symlink)", () => {
+    // testDir is a real path created in beforeEach, should pass cleanly
+    expect(() => validateProjectRoot(testDir)).not.toThrow();
   });
 });

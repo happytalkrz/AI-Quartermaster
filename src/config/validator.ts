@@ -1,6 +1,53 @@
 import { z } from "zod";
 import { AQConfig } from "../types/config.js";
 
+// 위험한 shell 패턴 목록 (commands config 값 검증용)
+const DANGEROUS_COMMAND_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  {
+    pattern: /\|\s*(sh|bash|zsh|fish|dash|\/bin\/(sh|bash|zsh))\b/i,
+    reason: "파이프를 통한 shell 실행 (원격 코드 실행 위험)",
+  },
+  {
+    pattern: /\brm\s+-[a-z]*r[a-z]*f[a-z]*\s+(\/(\s|$)|~([/\s]|$)|\/\*|\$HOME\b|\$\{HOME\})/im,
+    reason: "루트/홈 디렉토리 강제 삭제 위험",
+  },
+  {
+    pattern: /:\(\)\s*\{\s*:\s*\|\s*:&\s*\}/,
+    reason: "포크 폭탄 패턴",
+  },
+  {
+    pattern: />\s*(\/etc\/passwd|\/etc\/shadow|\/etc\/sudoers)\b/i,
+    reason: "시스템 파일 덮어쓰기 위험",
+  },
+  {
+    pattern: /\bcurl\b.+\|\s*(sh|bash|zsh|\/bin\/(sh|bash|zsh))\b/i,
+    reason: "curl 결과를 shell에 파이프 (원격 코드 실행 위험)",
+  },
+  {
+    pattern: /\bwget\b.+\|\s*(sh|bash|zsh|\/bin\/(sh|bash|zsh))\b/i,
+    reason: "wget 결과를 shell에 파이프 (원격 코드 실행 위험)",
+  },
+];
+
+/**
+ * command config 값에 위험한 shell 패턴이 있는지 검사한다.
+ * 관리자가 설정하는 값이지만 공급망 공격이나 설정 탈취 시 피해를 최소화하기 위해 방어적으로 검증.
+ */
+export function validateCommandSafety(command: string): { safe: boolean; reason?: string } {
+  if (!command) return { safe: true };
+  for (const { pattern, reason } of DANGEROUS_COMMAND_PATTERNS) {
+    if (pattern.test(command)) {
+      return { safe: false, reason };
+    }
+  }
+  return { safe: true };
+}
+
+const safeCommandString = z.string().refine(
+  (val) => validateCommandSafety(val).safe,
+  (val) => ({ message: `위험한 shell 패턴이 감지되었습니다: ${validateCommandSafety(val).reason ?? "알 수 없는 패턴"}` })
+);
+
 
 // 에러 메시지 매핑 테이블
 interface ErrorMessageMapping {
@@ -213,11 +260,11 @@ const ghCliConfigSchema = z.object({
 const commandsConfigSchema = z.object({
   claudeCli: claudeCliConfigSchema,
   ghCli: ghCliConfigSchema,
-  test: z.string(),
-  lint: z.string(),
-  build: z.string(),
-  typecheck: z.string(),
-  preInstall: z.string(),
+  test: safeCommandString,
+  lint: safeCommandString,
+  build: safeCommandString,
+  typecheck: safeCommandString,
+  preInstall: safeCommandString,
   claudeMdPath: z.string(),
 });
 
@@ -299,11 +346,11 @@ const projectConfigSchema = z.object({
   mode: z.enum(["code", "content"]).optional(),
   concurrency: z.number().int().positive().optional(),
   commands: z.object({
-    test: z.string(),
-    lint: z.string(),
-    build: z.string(),
-    typecheck: z.string(),
-    preInstall: z.string(),
+    test: safeCommandString,
+    lint: safeCommandString,
+    build: safeCommandString,
+    typecheck: safeCommandString,
+    preInstall: safeCommandString,
   }).partial().optional(),
   review: z.object({
     enabled: z.boolean(),

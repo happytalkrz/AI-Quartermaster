@@ -78,7 +78,7 @@ function renderRuleCard(rule) {
   var actionsLabel = rule.actions.map(function(a) { return getActionLabel(a); }).join(', ');
 
   return (
-    '<div class="bg-surface-container rounded-xl ring-1 ' + (isEnabled ? 'ring-outline-variant/20' : 'ring-outline-variant/10 opacity-60') + ' p-5 flex items-start gap-4">' +
+    '<div class="bg-surface-container rounded-xl ring-1 ' + (isEnabled ? 'ring-outline-variant/20' : 'ring-outline-variant/10 opacity-80') + ' p-5 flex items-start gap-4">' +
       '<div class="flex-1 min-w-0">' +
         '<div class="flex items-center gap-2 mb-1">' +
           '<span class="font-mono text-xs text-primary/70 bg-primary/10 px-2 py-0.5 rounded">' + esc(rule.id) + '</span>' +
@@ -86,7 +86,7 @@ function renderRuleCard(rule) {
         '</div>' +
         '<div class="flex items-center gap-3 text-xs text-outline mt-2">' +
           '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">bolt</span>' + esc(triggerLabel) + '</span>' +
-          '<span class="text-outline/40">→</span>' +
+          '<span class="text-outline/60">→</span>' +
           '<span class="flex items-center gap-1"><span class="material-symbols-outlined text-sm">play_arrow</span>' + esc(actionsLabel) + '</span>' +
         '</div>' +
       '</div>' +

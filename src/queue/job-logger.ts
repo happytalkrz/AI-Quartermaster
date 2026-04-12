@@ -1,5 +1,6 @@
 import type { Job, UsageInfo, PhaseResultInfo } from "../types/pipeline.js";
 import { JobStore } from "./job-store.js";
+import { calculateCacheHitRatio } from "../claude/token-pricing.js";
 
 /**
  * Appends log messages to a job and updates its current step.
@@ -34,6 +35,9 @@ export class JobLogger {
 
   setCosts(totalCostUsd: number, totalUsage?: UsageInfo): void {
     const updates: Partial<Job> = { totalCostUsd, totalUsage };
+    if (totalUsage) {
+      updates.cacheHitRatio = calculateCacheHitRatio(totalUsage);
+    }
     this.store.update(this.jobId, updates);
   }
 }

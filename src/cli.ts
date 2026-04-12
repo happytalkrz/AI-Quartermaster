@@ -10,7 +10,7 @@ import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
-import { createDashboardRoutes } from "./server/dashboard-api.js";
+import { createDashboardRoutes, cleanupDashboardResources } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
 import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
 import { notifySuccess, notifyFailure } from "./notification/notifier.js";
@@ -433,6 +433,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     poller?.stop();
     scheduler.stop();
     configWatcher.stopWatching();
+    cleanupDashboardResources();
     await queue.shutdown(30000);
     cleanup();
     process.exit(0);

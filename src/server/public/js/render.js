@@ -143,16 +143,16 @@ function renderJobDetail(job) {
   // Action buttons
   html += '<div class="flex gap-3">';
   if (job.phaseResults && job.phaseResults.length > 0) {
-    html += '<button onclick="openTimelineModal(currentJobs.find(function(j){return j.id===\'' + esc(job.id) + '\'})||{})" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">timeline</span> 타임라인</button>';
+    html += '<button onclick="openTimelineModal(currentJobs.find(function(j){return j.id===\'' + esc(job.id) + '\'})||{})" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1.5 whitespace-nowrap"><span class="material-symbols-outlined text-sm">timeline</span> 타임라인</button>';
   }
   if (isActive) {
-    html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors">' + t('cancel') + '</button>';
+    html += '<button onclick="cancelJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-[#f85149] text-sm font-bold rounded-lg border border-[#f85149]/30 hover:bg-[#f85149]/10 transition-colors whitespace-nowrap">' + t('cancel') + '</button>';
   }
   if (job.status === 'failure') {
-    html += '<button onclick="retryJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors">' + t('retry') + '</button>';
+    html += '<button onclick="retryJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors whitespace-nowrap">' + t('retry') + '</button>';
   }
   if (!isActive) {
-    html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors">' + t('delete') + '</button>';
+    html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors whitespace-nowrap">' + t('delete') + '</button>';
   }
   html += '</div></div>';
 
@@ -265,7 +265,7 @@ function renderPhaseItem(phase, i, job) {
     durHtml = '<span class="text-xs font-mono text-primary animate-pulse">Running...</span>';
     chevronColor = 'text-primary';
   } else {
-    containerClass = 'bg-surface-container-low p-4 flex items-center justify-between opacity-50';
+    containerClass = 'bg-surface-container-low p-4 flex items-center justify-between opacity-70';
     iconHtml = '<span class="material-symbols-outlined text-outline">pending</span>';
     nameClass = 'text-sm font-bold';
     subtitleHtml = '';
@@ -914,7 +914,7 @@ function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
          'placeholder="owner1, owner2, owner3" ' +
          'class="' + classes + '"' +
          (isReadonly ? ' readonly' : '') + '/>' +
-         '<div class="text-[10px] text-outline/50 mt-1">쉼표로 구분 (예: user1, user2)</div>';
+         '<div class="text-[10px] text-outline/70 mt-1">쉼표로 구분 (예: user1, user2)</div>';
 }
 
 /**
@@ -938,7 +938,7 @@ function renderArrayInput(fieldId, value, configPath, isReadonly) {
          (isReadonly ? ' readonly' : '') + '>' +
          esc(arrayText) +
          '</textarea>' +
-         '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
+         '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
 }
 
 /**
@@ -962,7 +962,7 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          (isReadonly ? ' readonly' : '') + '>' +
          esc(objectText) +
          '</textarea>' +
-         '<div class="text-[10px] text-outline/50 mt-1">JSON</div>';
+         '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
 }
 
 /* ══════════════════════════════════════════════════════════════

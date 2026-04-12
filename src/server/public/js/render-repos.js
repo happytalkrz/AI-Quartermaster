@@ -89,13 +89,13 @@ function renderRepoCard(repo) {
 
   var footerButtons = (health === 'local-missing')
     ? '<div class="flex gap-2">' +
-        '<button class="px-3 py-1 bg-primary text-on-primary text-[10px] font-headline font-bold uppercase tracking-widest rounded hover:bg-primary-container transition-colors">RE-LINK</button>' +
-        '<button class="p-1.5 hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+        '<button onclick="relinkRepo(\'' + esc(repo.repo) + '\')" class="px-3 py-1 bg-primary text-on-primary text-[10px] font-headline font-bold uppercase tracking-widest rounded hover:bg-primary-container transition-colors">RE-LINK</button>' +
+        '<button onclick="deleteRepo(\'' + esc(repo.repo) + '\')" class="p-1.5 hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>' +
       '</div>'
     : '<div class="flex gap-2">' +
-        '<button class="p-1.5 hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">terminal</span></button>' +
-        '<button class="p-1.5 hover:text-primary transition-colors"><span class="material-symbols-outlined text-sm">sync</span></button>' +
-        '<button class="p-1.5 hover:text-error transition-colors"><span class="material-symbols-outlined text-sm">delete</span></button>' +
+        '<button onclick="openRepoTerminal(\'' + esc(repo.repo) + '\')" class="p-1.5 hover:text-primary transition-colors" title="터미널"><span class="material-symbols-outlined text-sm">terminal</span></button>' +
+        '<button onclick="syncRepo(\'' + esc(repo.repo) + '\')" class="p-1.5 hover:text-primary transition-colors" title="동기화"><span class="material-symbols-outlined text-sm">sync</span></button>' +
+        '<button onclick="deleteRepo(\'' + esc(repo.repo) + '\')" class="p-1.5 hover:text-error transition-colors" title="삭제"><span class="material-symbols-outlined text-sm">delete</span></button>' +
       '</div>';
 
   return '<div class="repo-card-dynamic bg-surface-container-high rounded-xl overflow-hidden flex flex-col transition-all hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40">' +
@@ -212,6 +212,58 @@ function renderRepositoriesView(repos, storageData) {
   renderStorageSection(storageData);
 }
 
+/** @returns {void} */
+function showAddRepositoryDialog() {
+  navigateTo('settings');
+  showProjectMessage('설정 페이지에서 프로젝트를 추가할 수 있습니다.', 'success');
+}
+
+/** @returns {void} */
+function cleanOldData() {
+  showConfirm(
+    t('cleanData') || '오래된 데이터 정리',
+    t('cleanDataDesc') || '30일 이상 된 완료/실패 작업 데이터를 삭제합니다.'
+  ).then(function(ok) {
+    if (!ok) return;
+    apiFetch('/api/jobs?status=archived', { method: 'DELETE' })
+      .then(function() { loadRepositories(); })
+      .catch(function() {});
+  });
+}
+
+/** @param {string} repo */
+function deleteRepo(repo) {
+  showConfirm(
+    t('deleteRepo') || '저장소 삭제',
+    repo + ' 저장소를 삭제하시겠습니까?'
+  ).then(function(ok) {
+    if (!ok) return;
+    apiFetch('/api/projects/' + encodeURIComponent(repo), { method: 'DELETE' })
+      .then(function(r) {
+        if (r.ok) loadRepositories();
+      })
+      .catch(function() {});
+  });
+}
+
+/** @param {string} repo */
+function syncRepo(repo) {
+  showProjectMessage(repo + ' 동기화 중...', 'success');
+  // Sync triggers a reload of repository data
+  loadRepositories();
+}
+
+/** @param {string} repo */
+function openRepoTerminal(repo) {
+  showProjectMessage('터미널 기능은 준비 중입니다.', 'success');
+}
+
+/** @param {string} repo */
+function relinkRepo(repo) {
+  navigateTo('settings');
+  showProjectMessage(repo + ' 경로를 설정 페이지에서 수정하세요.', 'success');
+}
+
 // Hook into navigateTo for repositories view
 document.addEventListener('DOMContentLoaded', function() {
   var orig = window.navigateTo;
@@ -224,6 +276,13 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 });
+
+window.showAddRepositoryDialog = showAddRepositoryDialog;
+window.cleanOldData = cleanOldData;
+window.deleteRepo = deleteRepo;
+window.syncRepo = syncRepo;
+window.openRepoTerminal = openRepoTerminal;
+window.relinkRepo = relinkRepo;
 
 /* ══════════════════════════════════════════════════════════════
    Responsive Activity Log Handler

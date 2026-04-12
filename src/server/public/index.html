@@ -310,8 +310,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <header class="sticky top-0 z-50 flex justify-between items-center px-6 h-16 w-full bg-[#0d1117] dark:bg-[#0d1117] border-b border-[#30363d]">
   <div class="flex items-center gap-8">
     <span class="font-headline font-bold text-primary-container text-lg uppercase tracking-wider">AI Quartermaster</span>
-    <span id="instance-label" class="hidden font-mono text-xs text-outline uppercase tracking-widest opacity-70 border border-outline-variant/30 px-2 py-0.5 rounded"></span>
-    <span id="instance-owners" class="hidden font-mono text-xs text-outline tracking-wide opacity-70 px-2 py-0.5"></span>
+
     <nav class="hidden md:flex gap-6">
       <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer" data-nav="dashboard" data-i18n="dashboard">Dashboard</a>
       <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer" data-nav="logs" data-i18n="logs">Logs</a>
@@ -360,7 +359,9 @@ if (localStorage.getItem('aqm-theme') === 'light') {
   <div class="mb-6 px-2">
     <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60" data-i18n="commandHQ">Command HQ</div>
     <div class="text-[10px] font-mono text-outline uppercase">AQM</div>
-    <div id="claude-profile-label" class="text-[9px] font-mono text-outline/50 uppercase"></div>
+    <div id="claude-profile-label" class="text-[10px] font-mono text-on-surface/60 uppercase mt-0.5"></div>
+    <div id="instance-label" class="hidden text-[10px] font-mono text-primary/80 uppercase mt-1 px-1.5 py-0.5 bg-primary/10 rounded w-fit"></div>
+    <div id="instance-owners" class="hidden text-[10px] font-mono text-on-surface/60 mt-0.5 leading-relaxed"></div>
   </div>
   <nav class="flex-1 space-y-1" id="sidebar-nav">
     <a class="nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer" data-nav="dashboard">

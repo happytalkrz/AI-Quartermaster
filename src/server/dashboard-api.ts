@@ -553,7 +553,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ projects: [] });
       }
 
-      return c.json({ projects: config.projects });
+      const projects = config.projects.map(project => ({
+        ...project,
+        errorState: queue.getProjectStatus(project.repo),
+      }));
+
+      return c.json({ projects });
     } catch (error: unknown) {
       const logger = getLogger();
       logger.error(`Failed to load projects: ${getErrorMessage(error)}`);
@@ -726,6 +731,74 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       });
     } catch (error: unknown) {
       return c.json({ error: `Failed to update project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Get project error state
+  api.get("/api/projects/:repo/error-state", (c) => {
+    try {
+      const repo = decodeURIComponent(c.req.param("repo"));
+
+      if (!repo || repo.trim() === "") {
+        return c.json({ error: "repo parameter is required" }, 400);
+      }
+
+      const errorState = queue.getProjectStatus(repo);
+      return c.json({ repo, errorState });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to get error state: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Manually pause a project
+  api.post("/api/projects/:repo/pause", async (c) => {
+    try {
+      const repo = decodeURIComponent(c.req.param("repo"));
+
+      if (!repo || repo.trim() === "") {
+        return c.json({ error: "repo parameter is required" }, 400);
+      }
+
+      let durationMs: number | undefined;
+      try {
+        const body = await c.req.json() as Record<string, unknown>;
+        if (body.durationMs !== undefined) {
+          if (typeof body.durationMs !== "number" || body.durationMs <= 0) {
+            return c.json({ error: "durationMs must be a positive number" }, 400);
+          }
+          durationMs = body.durationMs;
+        }
+      } catch {
+        // No body or invalid JSON — use default
+      }
+
+      // Default: 30 minutes
+      const effectiveDuration = durationMs ?? 30 * 60 * 1000;
+      queue.pauseProject(repo, effectiveDuration);
+
+      return c.json({
+        message: `Project "${repo}" paused for ${Math.round(effectiveDuration / 1000)}s`,
+        repo,
+        pausedUntil: Date.now() + effectiveDuration,
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to pause project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Manually resume a paused project
+  api.post("/api/projects/:repo/resume", (c) => {
+    try {
+      const repo = decodeURIComponent(c.req.param("repo"));
+
+      if (!repo || repo.trim() === "") {
+        return c.json({ error: "repo parameter is required" }, 400);
+      }
+
+      queue.resumeProject(repo);
+      return c.json({ message: `Project "${repo}" resumed`, repo });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to resume project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

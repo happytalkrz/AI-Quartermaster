@@ -3,6 +3,8 @@ import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
+import { ConfigError } from "../types/errors.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
 import { parseEnvVars } from "./env-parser.js";
@@ -105,13 +107,13 @@ export function deepMerge<T = Record<string, unknown>>(target: unknown, source: 
  */
 export function validateProjectRoot(projectRoot: string): void {
   if (!isAbsolute(projectRoot)) {
-    throw new Error(`projectRoot must be an absolute path: ${projectRoot}`);
+    throw new ConfigError('CONFIG_INVALID_PATH', `projectRoot must be an absolute path: ${projectRoot}`);
   }
 
   // raw 입력에서 ".." 컴포넌트 검사 (resolve 전에 체크해야 탈출 탐지 가능)
   const rawParts = projectRoot.split(/[/\\]/);
   if (rawParts.includes('..')) {
-    throw new Error(`projectRoot contains path traversal characters: ${projectRoot}`);
+    throw new ConfigError('CONFIG_PATH_TRAVERSAL', `projectRoot contains path traversal characters: ${projectRoot}`);
   }
 
   const normalized = resolve(projectRoot);
@@ -120,7 +122,7 @@ export function validateProjectRoot(projectRoot: string): void {
   if (existsSync(projectRoot)) {
     const realPath = realpathSync(projectRoot);
     if (realPath !== normalized) {
-      throw new Error(`projectRoot resolves via symlink to an unexpected location: ${projectRoot} -> ${realPath}`);
+      throw new ConfigError('CONFIG_SYMLINK_DETECTED', `projectRoot resolves via symlink to an unexpected location: ${projectRoot} -> ${realPath}`);
     }
   }
 }
@@ -142,7 +144,7 @@ export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQ
   let config = structuredClone(DEFAULT_CONFIG);
 
   if (!existsSync(baseConfigPath)) {
-    throw new Error(`config.yml not found at ${baseConfigPath}`);
+    throw new ConfigError('CONFIG_NOT_FOUND', `config.yml not found at ${baseConfigPath}`);
   }
 
   // 1. Load and merge user-level config from home directory if exists (skip in test environment)
@@ -186,7 +188,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
       config: null,
       error: {
         type: 'validation',
-        message: err instanceof Error ? err.message : String(err)
+        message: getErrorMessage(err)
       }
     };
   }
@@ -217,7 +219,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
         config: null,
         error: {
           type: 'yaml_syntax',
-          message: `Failed to parse user config: ${err instanceof Error ? err.message : 'Unknown error'}`
+          message: `Failed to parse user config: ${getErrorMessage(err)}`
         }
       };
     }
@@ -232,7 +234,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
       config: null,
       error: {
         type: 'yaml_syntax',
-        message: `Failed to parse config.yml: ${err instanceof Error ? err.message : 'Unknown error'}`
+        message: `Failed to parse config.yml: ${getErrorMessage(err)}`
       }
     };
   }
@@ -247,7 +249,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
         config: null,
         error: {
           type: 'yaml_syntax',
-          message: `Failed to parse config.local.yml: ${err instanceof Error ? err.message : 'Unknown error'}`
+          message: `Failed to parse config.local.yml: ${getErrorMessage(err)}`
         }
       };
     }
@@ -263,7 +265,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
         config: null,
         error: {
           type: 'validation',
-          message: `Failed to parse environment variables: ${err instanceof Error ? err.message : 'Unknown error'}`
+          message: `Failed to parse environment variables: ${getErrorMessage(err)}`
         }
       };
     }
@@ -278,7 +280,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
         config: null,
         error: {
           type: 'validation',
-          message: `Failed to apply config overrides: ${err instanceof Error ? err.message : 'Unknown error'}`
+          message: `Failed to apply config overrides: ${getErrorMessage(err)}`
         }
       };
     }
@@ -289,7 +291,7 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
     const validatedConfig = validateConfig(config);
     return { config: validatedConfig };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown validation error';
+    const message = getErrorMessage(err);
     const lines = message.split('\n');
     const details = lines.length > 1
       ? lines.slice(1).filter(line => line.trim())
@@ -357,7 +359,7 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
 
     return { repo, baseBranch };
   } catch (error: unknown) {
-    return { error: `Git 정보 감지 실패: ${error instanceof Error ? error.message : String(error)}` };
+    return { error: `Git 정보 감지 실패: ${getErrorMessage(error)}` };
   }
 }
 
@@ -628,7 +630,7 @@ export async function initProject(aqRoot: string, options: InitCommandOptions = 
     } catch (error: unknown) {
       if (error instanceof Error && error.message.includes('config.yml not found')) {
         // loadConfig 실패 시 파일은 있지만 유효하지 않음
-        throw new Error('config.yml 파일이 손상되었습니다. 수동으로 수정하거나 백업 후 다시 생성하세요.');
+        throw new ConfigError('CONFIG_CORRUPTED', 'config.yml 파일이 손상되었습니다. 수동으로 수정하거나 백업 후 다시 생성하세요.');
       }
       throw error;
     }
@@ -647,7 +649,7 @@ export function updateConfigSection(projectRoot: string, updates: Partial<AQConf
   const configPath = `${projectRoot}/config.yml`;
 
   if (!existsSync(configPath)) {
-    throw new Error(`config.yml not found at ${configPath}`);
+    throw new ConfigError('CONFIG_NOT_FOUND', `config.yml not found at ${configPath}`);
   }
 
   const currentRaw = parseYamlSafely(readFileSync(configPath, "utf-8"), configPath);

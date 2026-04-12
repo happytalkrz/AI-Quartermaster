@@ -1,3 +1,5 @@
+import { getErrorMessage } from "../../utils/error-utils.js";
+
 export interface CliSourceOptions {
   configOverrides?: Record<string, unknown>;
 }
@@ -22,7 +24,7 @@ export function loadCliSource(options: CliSourceOptions = {}): CliSourceResult {
       config: {},
       error: {
         type: 'validation',
-        message: `Failed to apply config overrides: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Failed to apply config overrides: ${getErrorMessage(error)}`
       }
     };
   }

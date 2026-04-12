@@ -1,4 +1,5 @@
 import { parseEnvVars } from "../env-parser.js";
+import { getErrorMessage } from "../../utils/error-utils.js";
 
 export interface EnvSourceOptions {
   envVars?: Record<string, string | undefined>;
@@ -25,7 +26,7 @@ export function loadEnvSource(options: EnvSourceOptions = {}): EnvSourceResult {
       config: {},
       error: {
         type: 'parsing',
-        message: `Failed to parse environment variables: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Failed to parse environment variables: ${getErrorMessage(error)}`
       }
     };
   }

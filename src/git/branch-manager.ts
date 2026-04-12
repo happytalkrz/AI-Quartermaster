@@ -4,6 +4,7 @@ import { renderTemplate } from "../prompt/template-renderer.js";
 import type { GitConfig } from "../types/config.js";
 import { getLogger } from "../utils/logger.js";
 import { sanitizeGitError } from "../utils/error-sanitizer.js";
+import { GitError } from "../types/errors.js";
 
 const logger = getLogger();
 
@@ -31,7 +32,7 @@ export async function syncBaseBranch(
 
   const result = await runCli(gitConfig.gitPath, fetchArgs, { cwd: options.cwd });
   if (result.exitCode !== 0) {
-    throw new Error(sanitizeGitError(result.stderr, "fetch"));
+    throw new GitError("GIT_FETCH_FAILED", sanitizeGitError(result.stderr, "fetch"));
   }
   logger.info(`Synced ${gitConfig.defaultBaseBranch} from ${gitConfig.remoteAlias}`);
 }
@@ -84,7 +85,7 @@ export async function createWorkBranch(
     { cwd: options.cwd }
   );
   if (createResult.exitCode !== 0) {
-    throw new Error(`Failed to create branch ${workBranch}: ${sanitizeGitError(createResult.stderr, "branch create")}`);
+    throw new GitError("GIT_BRANCH_CREATE_FAILED", `Failed to create branch ${workBranch}: ${sanitizeGitError(createResult.stderr, "branch create")}`, { branch: workBranch });
   }
 
   logger.info(`Created branch ${workBranch} from ${baseRef}`);
@@ -194,7 +195,7 @@ export async function deleteRemoteBranch(
     { cwd: options.cwd }
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to delete remote branch ${branchName}: ${sanitizeGitError(result.stderr, "push --delete")}`);
+    throw new GitError("GIT_PUSH_DELETE_FAILED", `Failed to delete remote branch ${branchName}: ${sanitizeGitError(result.stderr, "push --delete")}`, { branch: branchName });
   }
   logger.info(`Deleted remote branch ${branchName} from ${gitConfig.remoteAlias}`);
 }
@@ -213,7 +214,7 @@ export async function pushBranch(
     { cwd: options.cwd }
   );
   if (result.exitCode !== 0) {
-    throw new Error(`Failed to push branch ${branchName}: ${sanitizeGitError(result.stderr, "push")}`);
+    throw new GitError("GIT_PUSH_FAILED", `Failed to push branch ${branchName}: ${sanitizeGitError(result.stderr, "push")}`, { branch: branchName });
   }
   logger.info(`Pushed branch ${branchName} to ${gitConfig.remoteAlias}`);
 }

@@ -40,7 +40,10 @@ function renderJobListItem(job, isSelected) {
     '</div>' +
     '<div class="flex justify-between items-center">' +
       '<span class="text-xs text-outline font-mono">' + esc(job.id).substring(0, 16) + '</span>' +
-      '<span class="text-[10px] text-outline">' + (dur ? dur : relative) + '</span>' +
+      '<div class="flex items-center gap-2">' +
+        (job.triggerReason ? '<span class="material-symbols-outlined text-[11px] text-outline/60" title="Trigger: ' + esc(job.triggerReason) + '">label</span>' : '') +
+        '<span class="text-[10px] text-outline">' + (dur ? dur : relative) + '</span>' +
+      '</div>' +
     '</div>' +
   '</div>';
 }
@@ -155,6 +158,11 @@ function renderJobDetail(job) {
     html += '<button onclick="deleteJob(\'' + esc(job.id) + '\')" class="px-4 py-2 bg-surface-container-high text-outline text-sm font-bold rounded-lg border border-outline-variant/30 hover:bg-surface-bright transition-colors whitespace-nowrap">' + t('delete') + '</button>';
   }
   html += '</div></div>';
+
+  // Trigger reason badge
+  if (job.triggerReason) {
+    html += '<div class="mt-3 flex items-center gap-2"><span class="material-symbols-outlined text-sm text-outline">label</span><span class="text-xs font-mono bg-surface-container px-2 py-1 rounded text-outline ring-1 ring-outline-variant/20">Trigger: ' + esc(job.triggerReason) + '</span></div>';
+  }
 
   // Phase progress bar
   html += renderPhaseProgress(job);

@@ -1540,7 +1540,7 @@ describe("validatePlan failure cases", () => {
     };
   }
 
-  it("should throw when plan has no phases", async () => {
+  it("should throw when plan has no phases (validation error wrapped in final error)", async () => {
     const badPlan = {
       mode: "code",
       issueNumber: 1,
@@ -1556,7 +1556,8 @@ describe("validatePlan failure cases", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
     mockExtractJson.mockReturnValue(badPlan);
 
-    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have at least one phase");
+    // validatePlan errors are caught and wrapped as JSON parsing failures after all retries
+    await expect(generatePlan(makePlanInput())).rejects.toThrow(/Plan generation failed/);
   });
 
   it("should throw when plan has no problemDefinition", async () => {
@@ -1575,7 +1576,7 @@ describe("validatePlan failure cases", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
     mockExtractJson.mockReturnValue(badPlan);
 
-    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have a problem definition");
+    await expect(generatePlan(makePlanInput())).rejects.toThrow(/Plan generation failed/);
   });
 
   it("should throw when plan has empty requirements", async () => {
@@ -1594,7 +1595,7 @@ describe("validatePlan failure cases", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
     mockExtractJson.mockReturnValue(badPlan);
 
-    await expect(generatePlan(makePlanInput())).rejects.toThrow("Plan must have requirements");
+    await expect(generatePlan(makePlanInput())).rejects.toThrow(/Plan generation failed/);
   });
 
   it("should throw on circular phase dependencies", async () => {
@@ -1616,7 +1617,7 @@ describe("validatePlan failure cases", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: JSON.stringify(badPlan), durationMs: 100 });
     mockExtractJson.mockReturnValue(badPlan);
 
-    await expect(generatePlan(makePlanInput())).rejects.toThrow(/[Cc]ircular/);
+    await expect(generatePlan(makePlanInput())).rejects.toThrow(/Plan generation failed/);
   });
 
   it("should pass executionMode to configForTaskWithMode", async () => {

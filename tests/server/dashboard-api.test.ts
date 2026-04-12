@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Hono } from "hono";
 import { EventEmitter } from "events";
-import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources, getSSEClientCount } from "../../src/server/dashboard-api.js";
+import { createDashboardRoutes, stopPeriodicCleanup, cleanupAllSSEClients, cleanupDashboardResources, getSSEClientCount, applyConfigChanges } from "../../src/server/dashboard-api.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { JobQueue } from "../../src/queue/job-queue.js";
 
@@ -80,6 +80,9 @@ const mockReadFileSync = vi.mocked(await import("fs")).readFileSync;
 const mockExistsSync = vi.mocked(await import("fs")).existsSync;
 const mockStatSync = vi.mocked(await import("fs")).statSync;
 const mockRunCli = vi.mocked(await import("../../src/utils/cli-runner.js")).runCli;
+const mockGetJobStats = vi.mocked(await import("../../src/store/queries.js")).getJobStats;
+const mockGetCostStats = vi.mocked(await import("../../src/store/queries.js")).getCostStats;
+const mockGetProjectSummary = vi.mocked(await import("../../src/store/queries.js")).getProjectSummary;
 
 // Mock JobStore and JobQueue with EventEmitter functionality
 const globalEmitter = new EventEmitter();

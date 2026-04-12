@@ -6,6 +6,7 @@ import { exceedsTokenLimit, getEffectiveTokenLimit } from "./token-estimator.js"
 import { splitDiffByFiles, groupFilesByTokenBudget, combineBatchDiffs } from "./diff-splitter.js";
 import { mergeReviewResults } from "./result-merger.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { resolve } from "path";
 import type { ReviewConfig, ReviewRound, ClaudeCliConfig, ExecutionMode } from "../types/config.js";
 import type { ReviewResult, ReviewPipelineResult, SplitReviewResult, UnifiedReviewResult, UnifiedReviewPerspective, ReviewFinding } from "../types/review.js";
@@ -232,7 +233,7 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
       model: claudeConfig.model,
     };
   } catch (err: unknown) {
-    logger.error(`Failed to parse unified review JSON response: ${err}`);
+    logger.error(`Failed to parse unified review JSON response: ${getErrorMessage(err)}`);
     const output = result.output.toLowerCase();
     const verdict = output.includes('"pass"') || output.includes("verdict: pass") ? "PASS" : "FAIL";
 

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { AQMTask, TaskStatus, type AQMTaskSummary, type BaseTaskOptions } from "./aqm-task.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import {
   syncBaseBranch,
   createWorkBranch,
@@ -143,7 +144,7 @@ export class GitTask implements AQMTask {
         success: false,
         operation: this._options.operation,
         durationMs,
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       };
 
       // 실패 시 롤백 시도
@@ -260,7 +261,7 @@ export class GitTask implements AQMTask {
       try {
         await deleteRemoteBranch(gitConfig, this._state.remotePushed, { cwd });
         logger.info(`Rolled back remote branch: ${this._state.remotePushed}`);
-      } catch (err) {
+      } catch (err: unknown) {
         logger.warn(`Failed to rollback remote branch ${this._state.remotePushed}:`, err);
       }
     }
@@ -275,7 +276,7 @@ export class GitTask implements AQMTask {
         } else {
           logger.warn(`Failed to rollback commit: ${result.stderr}`);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         logger.warn(`Failed to rollback commit ${this._state.commitHash}:`, err);
       }
     }
@@ -296,7 +297,7 @@ export class GitTask implements AQMTask {
         } else {
           logger.warn(`Cannot delete current branch ${this._state.branchCreated}, manual cleanup required`);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         logger.warn(`Failed to rollback local branch ${this._state.branchCreated}:`, err);
       }
     }

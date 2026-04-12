@@ -741,6 +741,7 @@ Server:
   aqm start                                       웹훅 서버 시작 (포그라운드)
   aqm start --daemon                              백그라운드 실행
   aqm start --mode polling [--interval <sec>]     폴링 모드 (webhook 불필요)
+  aqm start --mode hybrid [--interval <sec>]      하이브리드 모드 (webhook + 폴링 병행)
   aqm start --port <n>                            포트 지정 (기본: 3000)
   aqm stop                                        서버 중지
   aqm restart                                     서버 재시작
@@ -772,7 +773,7 @@ Options:
   --issue <number>    이슈 번호
   --repo <owner/repo> GitHub 저장소
   --port <number>     서버 포트 (기본: 3000)
-  --mode <mode>       시작 모드: webhook (기본) / polling
+  --mode <mode>       시작 모드: webhook (기본) / polling / hybrid
   --interval <sec>    폴링 간격 (초, 기본: 60)
   --daemon, -d        백그라운드 실행
   --dry-run           외부 작업 스킵 (push, PR 생성)

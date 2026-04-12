@@ -803,38 +803,34 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
    Repositories View
    ══════════════════════════════════════════════════════════════ */
 
-var MOCK_REPOS = [
-  {
-    repo: 'myorg/api-service',
-    path: '/home/user/workspace/api-service',
-    baseBranch: 'main',
-    totalJobs: 23,
-    successRate: 87,
-    totalCostUsd: 4.32,
-    worktreeCount: 2,
-    lastActiveAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    isActive: true,
-    health: 'stable'
-  },
-  {
-    repo: 'myorg/frontend',
-    path: '/home/user/workspace/frontend',
-    baseBranch: 'develop',
-    totalJobs: 8,
-    successRate: 100,
-    totalCostUsd: 1.20,
-    worktreeCount: 1,
-    lastActiveAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    isActive: false,
-    health: 'local-missing'
-  }
-];
-
-var MOCK_STORAGE = {
-  dbSizeBytes: 1288490188,
-  logSizeBytes: 471859200,
-  retentionPct: 65
-};
+function loadRepositories() {
+  apiFetch('/api/repositories')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var repos = (data.repositories || []).map(function(item) {
+        var localPathStatus = item.health && item.health.localPath ? item.health.localPath.status : 'ok';
+        var health = localPathStatus === 'error' ? 'local-missing' : (item.status === 'healthy' ? 'stable' : item.status);
+        var stats = item.stats || {};
+        var lastActivity = stats.lastActivity || null;
+        var isActive = lastActivity !== null && (Date.now() - new Date(lastActivity).getTime()) < 7 * 24 * 60 * 60 * 1000;
+        return {
+          repo: item.repository || item.name,
+          path: item.path,
+          totalJobs: stats.totalJobs || 0,
+          successRate: stats.successRate,
+          totalCostUsd: stats.totalCostUsd || 0,
+          worktreeCount: item.worktreeCount || 0,
+          lastActiveAt: lastActivity,
+          isActive: isActive,
+          health: health
+        };
+      });
+      renderRepositoriesView(repos, {});
+    })
+    .catch(function() {
+      renderRepositoriesView([], {});
+    });
+}
 
 function fmtBytes(bytes) {
   if (bytes === null || bytes === undefined) return '—';
@@ -995,14 +991,14 @@ function renderRepositoriesView(repos, storageData) {
   renderStorageSection(storageData);
 }
 
-// Hook into navigateTo for repositories view (mock data until API is connected)
+// Hook into navigateTo for repositories view
 document.addEventListener('DOMContentLoaded', function() {
   var orig = window.navigateTo;
   if (typeof orig === 'function') {
     window.navigateTo = function(view) {
       orig(view);
       if (view === 'repositories') {
-        renderRepositoriesView(MOCK_REPOS, MOCK_STORAGE);
+        loadRepositories();
       }
     };
   }

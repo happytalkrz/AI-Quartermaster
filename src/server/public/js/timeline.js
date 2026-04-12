@@ -168,7 +168,7 @@ function renderGanttPhaseRow(phase, epochStart, fallbackStartMs, totalDurationMs
   if (isSuccess) labelClass = 'text-on-surface-variant';
   else if (isFailed) labelClass = 'text-[#f85149]';
   else if (hasDuration) labelClass = 'text-primary';
-  else labelClass = 'text-on-surface-variant opacity-40';
+  else labelClass = 'text-on-surface-variant opacity-70';
 
   var html = '<div class="flex items-center group">';
 

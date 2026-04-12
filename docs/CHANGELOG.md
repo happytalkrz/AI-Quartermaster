@@ -5,6 +5,45 @@
 - 소스 48개 / 테스트 21개 (104 tests) / typecheck clean
 - GitHub: https://github.com/happytalkrz/AI-Quartermaster
 
+## 마이그레이션 가이드
+
+### v0.3.x → v0.4.0: 기본 라벨명 변경 (`ai-quartermaster` → `aqm`)
+
+기본 인스턴스 라벨이 `ai-quartermaster`에서 `aqm`으로 변경되었습니다.
+
+#### 영향 범위
+
+`config.yml`에서 `label`을 명시하지 않은 경우, 기본값이 변경됩니다.
+
+| 항목 | 이전 | 이후 |
+|------|------|------|
+| 기본 `label` 값 | `ai-quartermaster` | `aqm` |
+
+#### 기존 사용자 대응
+
+**방법 1 (권장):** GitHub 리포지토리에서 라벨명을 `aqm`으로 변경
+
+```bash
+# 기존 라벨 삭제 후 새 라벨 생성
+gh label delete "ai-quartermaster" --repo <owner>/<repo>
+gh label create "aqm" --color "#0075ca" --repo <owner>/<repo>
+```
+
+**방법 2:** `config.yml`에 기존 라벨명을 명시하여 유지
+
+```yaml
+# config.yml
+label: ai-quartermaster  # 기존 라벨명 유지
+```
+
+#### 확인 방법
+
+```bash
+aqm config show  # 현재 설정의 label 값 확인
+```
+
+---
+
 ## 커밋 히스토리
 
 ```

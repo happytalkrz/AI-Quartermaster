@@ -83,6 +83,7 @@ export interface CoreLoopResult {
   success: boolean;
   totalCostUsd?: number;
   totalUsage?: import("../../types/pipeline.js").UsageInfo;
+  baseline?: BaselineErrors;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
@@ -196,6 +197,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: 0,
       totalUsage: undefined,
+      baseline: ctx.baseline,
     };
   }
 
@@ -236,6 +238,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: planCostUsd ?? 0,
       totalUsage: planUsage,
+      baseline: ctx.baseline,
     };
   }
 
@@ -377,7 +380,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
         const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
         const totalUsage = sumUsage(allUsages);
-        return { plan, phaseResults, success: false, totalCostUsd, totalUsage };
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, baseline: ctx.baseline };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -402,5 +405,5 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
   }
 
-  return { plan, phaseResults, success: true, totalCostUsd, totalUsage };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, baseline: ctx.baseline };
 }

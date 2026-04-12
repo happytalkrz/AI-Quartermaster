@@ -1,19 +1,31 @@
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
    State
    ══════════════════════════════════════════════════════════════ */
+/** @type {Job[]} */
 var currentJobs = [];
+/** @type {string} */
 var currentFilter = 'all';
+/** @type {string|null} */
 var selectedJobId = null;
+/** @type {boolean} */
 var hideArchived = localStorage.getItem('aqm-hide-archived') === 'true';
+/** @type {string} */
 var currentProject = localStorage.getItem('aqm-current-project') || 'all';
+/** @type {ProjectConfig[]} */
 var allProjects = [];
+/** @type {string} */
 var currentAutomationsView = localStorage.getItem('aqm-automations-view') || 'list';
 
 /* ══════════════════════════════════════════════════════════════
    Filter
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job[]} jobs
+ * @returns {Job[]}
+ */
 function filterJobs(jobs) {
   var filtered = jobs;
 
@@ -32,40 +44,48 @@ function filterJobs(jobs) {
   return filtered.filter(function(j) { return j.status === currentFilter; });
 }
 
+/**
+ * @param {string} f
+ * @returns {void}
+ */
 function setFilter(f) {
   currentFilter = f;
   document.querySelectorAll('.filter-btn').forEach(function(btn) {
-    var isActive = btn.dataset.filter === f;
+    var el = /** @type {HTMLElement} */ (btn);
+    var isActive = el.dataset.filter === f;
     if (isActive) {
-      btn.className = 'filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary';
+      el.className = 'filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary';
     } else {
-      btn.className = 'filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface';
+      el.className = 'filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface';
     }
   });
   renderFromState();
 }
 
+/** @returns {void} */
 function toggleArchived() {
   hideArchived = !hideArchived;
-  localStorage.setItem('aqm-hide-archived', hideArchived);
+  localStorage.setItem('aqm-hide-archived', String(hideArchived));
   var btn = document.getElementById('hide-archived-toggle');
   if (btn) {
     btn.setAttribute('aria-checked', String(hideArchived));
+    var span = /** @type {HTMLElement} */ (btn.querySelector('span'));
     if (hideArchived) {
       btn.classList.remove('bg-surface-container-high');
       btn.classList.add('bg-primary');
-      btn.querySelector('span').classList.remove('translate-x-0.5');
-      btn.querySelector('span').classList.add('translate-x-5');
+      span.classList.remove('translate-x-0.5');
+      span.classList.add('translate-x-5');
     } else {
       btn.classList.add('bg-surface-container-high');
       btn.classList.remove('bg-primary');
-      btn.querySelector('span').classList.add('translate-x-0.5');
-      btn.querySelector('span').classList.remove('translate-x-5');
+      span.classList.add('translate-x-0.5');
+      span.classList.remove('translate-x-5');
     }
   }
   renderFromState();
 }
 
+/** @returns {void} */
 function initArchivedToggle() {
   var btn = document.getElementById('hide-archived-toggle');
   if (!btn) return;
@@ -73,11 +93,16 @@ function initArchivedToggle() {
   if (hideArchived) {
     btn.classList.remove('bg-surface-container-high');
     btn.classList.add('bg-primary');
-    btn.querySelector('span').classList.remove('translate-x-0.5');
-    btn.querySelector('span').classList.add('translate-x-5');
+    var span = /** @type {HTMLElement} */ (btn.querySelector('span'));
+    span.classList.remove('translate-x-0.5');
+    span.classList.add('translate-x-5');
   }
 }
 
+/**
+ * @param {string} projectRepo
+ * @returns {void}
+ */
 function setProject(projectRepo) {
   currentProject = projectRepo;
   localStorage.setItem('aqm-current-project', projectRepo);
@@ -91,19 +116,22 @@ function setProject(projectRepo) {
     connectSSE();
   }
 
-  // Close dropdown
+  // Close dropdowns
   var dropdown = document.getElementById('project-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
+  var jobDropdown = document.getElementById('job-project-dropdown');
+  if (jobDropdown) jobDropdown.classList.add('hidden');
 }
 
+/** @returns {void} */
 function updateProjectDropdownUI() {
-  var label = document.getElementById('current-project-label');
-  if (!label) return;
+  var labelText = currentProject === 'all'
+    ? 'All Projects'
+    : (allProjects.find(function(p) { return p.repo === currentProject; }) || { repo: currentProject }).repo;
 
-  if (currentProject === 'all') {
-    label.textContent = 'All Projects';
-  } else {
-    var project = allProjects.find(function(p) { return p.repo === currentProject; });
-    label.textContent = project ? project.repo : currentProject;
-  }
+  var label = document.getElementById('current-project-label');
+  if (label) label.textContent = labelText;
+
+  var jobLabel = document.getElementById('job-project-filter-label');
+  if (jobLabel) jobLabel.textContent = labelText;
 }

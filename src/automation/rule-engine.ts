@@ -74,6 +74,17 @@ export async function executeAction(
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
+/**
+ * 키워드 매칭 전 텍스트를 정규화합니다.
+ * 제어 문자 제거 + NFKC 유니코드 정규화로 우회 패턴을 차단합니다.
+ */
+function sanitizeForKeywordMatch(text: string): string {
+  return text
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .normalize("NFKC");
+}
+
 function matchesTrigger(trigger: Trigger, context: RuleContext): boolean {
   switch (trigger.type) {
     case "issue-labeled": {
@@ -113,10 +124,11 @@ function matchesCondition(condition: Condition, context: RuleContext): boolean {
     }
     case "keyword-match": {
       const fields = condition.fields ?? ["title", "body"];
-      const text = fields
-        .map((f) => (f === "title" ? context.issue.title : context.issue.body))
-        .join(" ")
-        .toLowerCase();
+      const text = sanitizeForKeywordMatch(
+        fields
+          .map((f) => (f === "title" ? context.issue.title : context.issue.body))
+          .join(" ")
+      ).toLowerCase();
       const operator = condition.operator ?? "or";
       return operator === "and"
         ? condition.keywords.every((kw) => text.includes(kw.toLowerCase()))

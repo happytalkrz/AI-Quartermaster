@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { spawn, type ChildProcess } from "child_process";
 import { AQMTask, TaskStatus, type AQMTaskSummary, type BaseTaskOptions } from "./aqm-task.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import {
   parseTscOutput,
   parseVitestOutput,
@@ -73,7 +74,7 @@ export class ValidationTask implements AQMTask {
         success: false,
         exitCode: 1,
         stdout: "",
-        stderr: err instanceof Error ? err.message : String(err),
+        stderr: getErrorMessage(err),
         durationMs,
         parsed: this._parseOutput("", ""),
       };

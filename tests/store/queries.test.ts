@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { AQDatabase, type DatabaseJob } from "../../src/store/database.js";
-import { getJobStats, getCostStats, getProjectSummary } from "../../src/store/queries.js";
+import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../../src/store/queries.js";
 import { rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -27,7 +27,7 @@ describe("queries", () => {
   let db: AQDatabase;
 
   beforeEach(() => {
-    dataDir = join(tmpdir(), `aq-queries-test-${Date.now()}`);
+    dataDir = join(tmpdir(), `aq-queries-test-${Date.now()}-${process.pid}`);
     dbPath = join(dataDir, "test.db");
     db = new AQDatabase(dbPath);
   });
@@ -404,6 +404,140 @@ describe("queries", () => {
 
       const result = getProjectSummary(db);
       expect(result[0].totalCostUsd).toBe(0);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // getProjectStatsWithTimeRange
+  // ────────────────────────────────────────────────────────────
+  describe("getProjectStatsWithTimeRange", () => {
+    it("returns empty projects array for empty db", () => {
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      expect(result.timeRange).toBe("all");
+      expect(result.projects).toHaveLength(0);
+    });
+
+    it("groups jobs by repo and returns one entry per project", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success" }));
+      db.createJob(makeJob({ id: "j2", repo: "org/alpha", status: "failure" }));
+      db.createJob(makeJob({ id: "j3", repo: "org/beta", status: "success" }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      expect(result.projects).toHaveLength(2);
+    });
+
+    it("calculates successCount, failureCount, total per project", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success" }));
+      db.createJob(makeJob({ id: "j2", repo: "org/alpha", status: "success" }));
+      db.createJob(makeJob({ id: "j3", repo: "org/alpha", status: "failure" }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.total).toBe(3);
+      expect(alpha?.successCount).toBe(2);
+      expect(alpha?.failureCount).toBe(1);
+    });
+
+    it("calculates successRate per project", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success" }));
+      db.createJob(makeJob({ id: "j2", repo: "org/alpha", status: "failure" }));
+      db.createJob(makeJob({ id: "j3", repo: "org/alpha", status: "failure" }));
+      db.createJob(makeJob({ id: "j4", repo: "org/alpha", status: "failure" }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.successRate).toBe(25);
+    });
+
+    it("calculates avgDurationMs per project", () => {
+      const startedAt = new Date("2024-01-01T10:00:00.000Z").toISOString();
+      const completedAt = new Date("2024-01-01T10:00:04.000Z").toISOString(); // +4000ms
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success", startedAt, completedAt }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.avgDurationMs).toBeCloseTo(4000, -1);
+    });
+
+    it("sets avgDurationMs to 0 for jobs without completedAt", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "running", startedAt: new Date().toISOString() }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.avgDurationMs).toBe(0);
+    });
+
+    it("aggregates totalCostUsd and calculates avgCostUsd per project", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success", totalCostUsd: 1.0 }));
+      db.createJob(makeJob({ id: "j2", repo: "org/alpha", status: "success", totalCostUsd: 3.0 }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.totalCostUsd).toBeCloseTo(4.0);
+      expect(alpha?.avgCostUsd).toBeCloseTo(2.0);
+    });
+
+    it("treats jobs with no cost as 0 in totalCostUsd", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/alpha", status: "success" })); // no totalCostUsd
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      const alpha = result.projects.find(p => p.project === "org/alpha");
+      expect(alpha?.totalCostUsd).toBe(0);
+      expect(alpha?.avgCostUsd).toBe(0);
+    });
+
+    it("orders projects by total DESC", () => {
+      db.createJob(makeJob({ id: "j1", repo: "org/beta", status: "success" }));
+      db.createJob(makeJob({ id: "j2", repo: "org/alpha", status: "success" }));
+      db.createJob(makeJob({ id: "j3", repo: "org/alpha", status: "failure" }));
+      db.createJob(makeJob({ id: "j4", repo: "org/alpha", status: "failure" }));
+
+      const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+      expect(result.projects[0].project).toBe("org/alpha");
+      expect(result.projects[1].project).toBe("org/beta");
+    });
+
+    describe("timeRange filter", () => {
+      beforeEach(() => {
+        db.createJob(makeJob({ id: "j-12h", repo: "org/alpha", status: "success", createdAt: daysAgo(0.5) }));
+        db.createJob(makeJob({ id: "j-3d", repo: "org/alpha", status: "success", createdAt: daysAgo(3) }));
+        db.createJob(makeJob({ id: "j-10d", repo: "org/beta", status: "success", createdAt: daysAgo(10) }));
+        db.createJob(makeJob({ id: "j-35d", repo: "org/beta", status: "failure", createdAt: daysAgo(35) }));
+      });
+
+      it("timeRange=24h returns only projects with recent jobs", () => {
+        const result = getProjectStatsWithTimeRange(db, { timeRange: "24h" });
+        expect(result.projects).toHaveLength(1);
+        expect(result.projects[0].project).toBe("org/alpha");
+        expect(result.projects[0].total).toBe(1);
+      });
+
+      it("timeRange=7d returns jobs within 7 days across projects", () => {
+        const result = getProjectStatsWithTimeRange(db, { timeRange: "7d" });
+        expect(result.projects).toHaveLength(1);
+        expect(result.projects[0].project).toBe("org/alpha");
+        expect(result.projects[0].total).toBe(2);
+      });
+
+      it("timeRange=30d excludes jobs older than 30 days", () => {
+        const result = getProjectStatsWithTimeRange(db, { timeRange: "30d" });
+        // org/alpha: 2 jobs (0.5d + 3d), org/beta: 1 job (10d)
+        expect(result.projects).toHaveLength(2);
+        const beta = result.projects.find(p => p.project === "org/beta");
+        expect(beta?.total).toBe(1);
+      });
+
+      it("timeRange=all returns all projects", () => {
+        const result = getProjectStatsWithTimeRange(db, { timeRange: "all" });
+        expect(result.projects).toHaveLength(2);
+        const beta = result.projects.find(p => p.project === "org/beta");
+        expect(beta?.total).toBe(2);
+      });
+
+      it("includes timeRange in response", () => {
+        const result = getProjectStatsWithTimeRange(db, { timeRange: "7d" });
+        expect(result.timeRange).toBe("7d");
+      });
     });
   });
 });

@@ -1,8 +1,13 @@
+// @ts-check
 'use strict';
 
 /* ══════════════════════════════════════════════════════════════
    Utility Functions
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {unknown} str
+ * @returns {string}
+ */
 function esc(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -12,11 +17,15 @@ function esc(str) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * @param {Job} job
+ * @returns {string | null}
+ */
 function fmtDuration(job) {
   if (!job.startedAt) return null;
   var start = new Date(job.startedAt);
   var end = job.completedAt ? new Date(job.completedAt) : new Date();
-  var ms = end - start;
+  var ms = end.getTime() - start.getTime();
   if (ms < 1000) return ms + 'ms';
   if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
   var m = Math.floor(ms / 60000);
@@ -24,8 +33,12 @@ function fmtDuration(job) {
   return m + 'm ' + s + 's';
 }
 
+/**
+ * @param {number | null | undefined} ms
+ * @returns {string}
+ */
 function fmtDurationMs(ms) {
-  if (!ms && ms !== 0) return '--:--';
+  if (ms == null) return '--:--';
   if (ms < 1000) return ms + 'ms';
   if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
   var m = Math.floor(ms / 60000);
@@ -33,11 +46,19 @@ function fmtDurationMs(ms) {
   return m + 'm ' + s + 's';
 }
 
+/**
+ * @param {number | null | undefined} usd
+ * @returns {string}
+ */
 function fmtCost(usd) {
   if (usd === undefined || usd === null) return '';
   return '$' + Number(usd).toFixed(4);
 }
 
+/**
+ * @param {string | null | undefined} iso
+ * @returns {string}
+ */
 function relativeTime(iso) {
   if (!iso) return '';
   var diff = Date.now() - new Date(iso).getTime();
@@ -51,6 +72,10 @@ function relativeTime(iso) {
   return d + '일 전';
 }
 
+/**
+ * @param {string | null | undefined} iso
+ * @returns {string}
+ */
 function fmtTime(iso) {
   if (!iso) return '—';
   var d = new Date(iso);
@@ -62,15 +87,26 @@ function fmtTime(iso) {
          d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
+/**
+ * @param {string} s
+ * @param {Job} [job]
+ * @returns {string}
+ */
 function statusLabel(s, job) {
-  if (s === 'queued' && job && job.progress > 0) {
+  if (s === 'queued' && job && job.progress !== undefined && job.progress > 0) {
     return currentLang === 'ko' ? '재개 대기' : 'Resuming';
   }
+  /** @type {Record<string, string>} */
   var map = { queued: 'Queued', running: 'Running', success: 'Success', failure: 'Failed', cancelled: 'Cancelled' };
   return map[s] || s;
 }
 
+/**
+ * @param {string} s
+ * @returns {string}
+ */
 function statusColor(s) {
+  /** @type {Record<string, string>} */
   var map = {
     success: '#3fb950',
     failure: '#f85149',
@@ -81,19 +117,28 @@ function statusColor(s) {
   return map[s] || '#8b949e';
 }
 
+/**
+ * @param {Job[]} jobs
+ * @returns {Job[]}
+ */
 function sortJobs(jobs) {
+  /** @type {{[key: string]: number | undefined}} */
   var order = { running: 0, queued: 1, failure: 2, success: 3, cancelled: 4 };
-  return [].concat(jobs).sort(function(a, b) {
-    var oa = order[a.status] !== undefined ? order[a.status] : 9;
-    var ob = order[b.status] !== undefined ? order[b.status] : 9;
+  return jobs.slice().sort(function(a, b) {
+    var oa = order[a.status] !== undefined ? /** @type {number} */ (order[a.status]) : 9;
+    var ob = order[b.status] !== undefined ? /** @type {number} */ (order[b.status]) : 9;
     if (oa !== ob) return oa - ob;
-    return new Date(b.createdAt) - new Date(a.createdAt);
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 }
 
 /* ══════════════════════════════════════════════════════════════
    Log Colorizer
    ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {string} line
+ * @returns {string}
+ */
 function colorizeLogLine(line) {
   var escaped = esc(line);
 
@@ -102,6 +147,7 @@ function colorizeLogLine(line) {
   var tsMatch = line.match(tsPattern);
 
   // Tag colors
+  /** @type {Record<string, string>} */
   var tagMap = {
     '[HEARTBEAT]': '#58a6ff',
     '[INFO]':      '#3fb950',

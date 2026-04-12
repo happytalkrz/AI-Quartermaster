@@ -437,6 +437,21 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         <span data-i18n="recentOps">Operations</span>
       </h2>
       <div class="flex-1"></div>
+      <!-- Inline project filter -->
+      <div class="relative">
+        <button id="job-project-filter" onclick="toggleJobProjectDropdown()" class="flex items-center gap-2 text-xs text-outline hover:text-on-surface transition-colors px-2 py-1.5 rounded-md hover:bg-surface-container-high ring-1 ring-outline-variant/10 bg-surface-container">
+          <span class="material-symbols-outlined text-sm">account_tree</span>
+          <span id="job-project-filter-label" data-i18n="allProjects">All Projects</span>
+          <span class="material-symbols-outlined text-sm">expand_more</span>
+        </button>
+        <div id="job-project-dropdown" class="absolute right-0 top-full mt-1 bg-surface-container-lowest border border-outline-variant/20 rounded-lg shadow-lg min-w-[200px] max-w-[300px] z-50 hidden">
+          <div class="p-2">
+            <div id="job-project-dropdown-content">
+              <!-- Project options will be populated here -->
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="flex gap-1 bg-surface-container rounded-lg p-1 ring-1 ring-outline-variant/10">
         <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary" data-filter="all" onclick="setFilter('all')"><span data-i18n="filter.all">전체</span> <span id="cnt-all" class="font-mono">0</span></button>
         <button class="filter-btn px-3 py-1 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface" data-filter="running" onclick="setFilter('running')"><span data-i18n="filter.running">진행중</span> <span id="cnt-running" class="font-mono">0</span></button>

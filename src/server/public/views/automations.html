@@ -1,0 +1,70 @@
+  <!-- ============ Automations View ============ -->
+  <div id="view-automations" class="view-panel">
+
+    <!-- Header with View Toggle -->
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
+        <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+        <span data-i18n="automations">Automations</span>
+      </h2>
+      <div class="flex items-center gap-1 bg-surface-container-high rounded-lg p-1 ring-1 ring-outline-variant/10">
+        <button id="btn-automations-list" onclick="setAutomationsView('list')" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors bg-primary/10 text-primary">
+          <span class="material-symbols-outlined text-sm">view_list</span>
+          <span>List</span>
+        </button>
+        <button id="btn-automations-kanban" onclick="setAutomationsView('kanban')" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface">
+          <span class="material-symbols-outlined text-sm">view_kanban</span>
+          <span>Kanban</span>
+        </button>
+        <button id="btn-automations-rules" onclick="setAutomationsView('rules')" class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition-colors text-outline hover:text-on-surface">
+          <span class="material-symbols-outlined text-sm">smart_toy</span>
+          <span>Rules</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- List View -->
+    <div id="automations-list-view">
+      <div class="grid grid-cols-12 gap-8">
+        <!-- Left: Job List Column -->
+        <div class="col-span-4 space-y-4">
+          <div id="automations-job-list" class="space-y-3 overflow-y-auto max-h-[calc(100vh-300px)] pr-2 custom-scrollbar">
+            <!-- Jobs rendered here dynamically -->
+          </div>
+          <div id="automations-empty-state" class="hidden flex-col items-center justify-center py-16 text-center">
+            <span class="material-symbols-outlined text-5xl text-outline/30 mb-4">inbox</span>
+            <p class="text-sm font-bold text-on-surface mb-1">아직 작업이 없습니다</p>
+            <p class="text-xs text-outline">GitHub 이슈에 <code class="font-mono text-[10px] bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/20">/aq implement</code> 명령을 남기면 자동으로 파이프라인이 시작됩니다.</p>
+          </div>
+        </div>
+        <!-- Right: Job Detail Column -->
+        <div class="col-span-8">
+          <div id="automations-job-detail" class="bg-surface-container p-8 rounded-2xl ring-1 ring-outline-variant/20 flex flex-col gap-8 min-h-[400px]">
+            <div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kanban View -->
+    <div id="automations-kanban-view" class="hidden">
+      <div id="kanban-board" class="flex gap-6 overflow-x-auto custom-scrollbar pb-4" style="min-height: 60vh;">
+        <!-- Columns populated by renderKanban() -->
+      </div>
+    </div>
+
+    <!-- Rules View -->
+    <div id="automations-rules-view" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <p class="text-xs text-outline">이벤트 발생 시 자동으로 실행되는 규칙을 관리합니다.</p>
+        <button onclick="showAddRuleModal()" class="flex items-center gap-2 px-3 py-1.5 bg-primary text-on-primary rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors">
+          <span class="material-symbols-outlined text-sm">add</span>
+          <span>규칙 추가</span>
+        </button>
+      </div>
+      <div id="rules-container">
+        <!-- Rules rendered by loadAutomationRules() -->
+      </div>
+    </div>
+
+  </div>

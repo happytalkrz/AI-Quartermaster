@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { dirname } from "path";
 import { mkdirSync } from "fs";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 
 export function writePidFile(pidPath: string): void {
   const dir = dirname(pidPath);
@@ -64,17 +64,22 @@ export function removePidFile(pidPath: string): void {
 /**
  * Find process PID that is listening on the specified port using lsof.
  * Returns the PID if found and running, null otherwise.
+ * spawnSync을 사용하여 포트 번호가 셸에 의해 해석되지 않도록 한다.
  */
 export function findProcessByPort(port: number): number | null {
   try {
-    // Execute lsof -ti :PORT to find process listening on port
-    const output = execSync(`lsof -ti :${port}`, {
+    // spawnSync으로 lsof 실행 — 인자 배열 방식이므로 셸 주입 불가
+    const result = spawnSync("lsof", ["-ti", `:${port}`], {
       encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"]
+      stdio: ["ignore", "pipe", "ignore"],
     });
 
+    if (result.status !== 0 || result.stdout === null) {
+      return null;
+    }
+
     // Get first PID from output (equivalent to head -n1)
-    const lines = output.trim().split("\n");
+    const lines = result.stdout.trim().split("\n");
     if (lines.length === 0 || lines[0] === "") {
       return null;
     }

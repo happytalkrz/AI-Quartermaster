@@ -116,6 +116,20 @@ export function dispatchEvent(
     }
   }
 
+  // Check for active (queued/running) job to prevent duplicate webhook dispatch
+  if (store) {
+    const activeJob = store.findAnyByIssue(payload.issue.number, repo);
+    if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) {
+      logger.debug(
+        `Skipping dispatch for issue #${payload.issue.number} in ${repo} — active job ${activeJob.id} (${activeJob.status})`
+      );
+      return {
+        shouldProcess: false,
+        reason: `Active job already exists for issue #${payload.issue.number} (${activeJob.status})`,
+      };
+    }
+  }
+
   logger.info(`Dispatching pipeline for issue #${payload.issue.number} in ${repo}`);
 
   return {

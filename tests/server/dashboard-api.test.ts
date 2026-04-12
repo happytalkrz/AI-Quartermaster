@@ -1164,7 +1164,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("path is required and must be a string");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "path")).toBe(true);
     });
 
     it("should return 400 for invalid mode value", async () => {
@@ -1186,7 +1188,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toContain("mode must be 'code', 'content', or null");
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
+      expect(result.details.some((d: { field: string }) => d.field === "mode")).toBe(true);
     });
 
     it("should return 400 when no valid fields to update", async () => {
@@ -1208,7 +1212,9 @@ describe("Dashboard API - Projects Management", () => {
 
       expect(response.status).toBe(400);
       const result = await response.json();
-      expect(result.error).toBe("No valid fields to update");
+      // UpdateProjectRequestSchema는 .strict()이므로 알 수 없는 필드는 Zod 에러로 처리됨
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeInstanceOf(Array);
     });
 
     it("should return 401 without proper authentication", async () => {
@@ -1597,13 +1603,19 @@ describe("Dashboard API - Version Management", () => {
 
       describe("GET /api/jobs with project filter", () => {
         it("should return jobs filtered by project", async () => {
-          const mockJobs = [
+          const allMockJobs = [
             { id: "job-1", repo: "test/repo1", status: "completed" },
             { id: "job-2", repo: "test/repo2", status: "completed" },
             { id: "job-3", repo: "test/repo1", status: "failed" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          // DB 레벨 필터링 시뮬레이션: repo 옵션에 따라 필터링
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) {
+              return allMockJobs.filter(j => j.repo === opts.repo);
+            }
+            return allMockJobs;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1");
           expect(response.status).toBe(200);
@@ -1626,6 +1638,82 @@ describe("Dashboard API - Version Management", () => {
 
           const result = await response.json();
           expect(result.jobs).toHaveLength(2);
+        });
+
+        it("should return empty array when no jobs match project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) return mockJobs.filter(j => j.repo === opts.repo);
+            return mockJobs;
+          });
+
+          const response = await app.request("/api/jobs?project=test/nonexistent");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(0);
+          expect(result.pagination.total).toBe(0);
+        });
+
+        it("should filter by project and status combined", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; status?: string }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.status) filtered = filtered.filter(j => j.status === opts.status);
+            return filtered;
+          });
+
+          const response = await app.request("/api/jobs?project=test/repo1&status=completed");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(1);
+          expect(result.jobs[0].id).toBe("job-1");
+          expect(result.jobs[0].repo).toBe("test/repo1");
+        });
+
+        it("should report correct pagination total when filtered by project", async () => {
+          const mockJobs = [
+            { id: "job-1", repo: "test/repo1", status: "success" },
+            { id: "job-2", repo: "test/repo1", status: "running" },
+            { id: "job-3", repo: "test/repo1", status: "queued" },
+            { id: "job-4", repo: "test/repo2", status: "success" }
+          ];
+
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; limit?: number }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.limit) filtered = filtered.slice(0, opts.limit);
+            return filtered;
+          });
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=2");
+          expect(response.status).toBe(200);
+
+          const result = await response.json();
+          expect(result.jobs).toHaveLength(2);
+          expect(result.pagination.total).toBe(3);
+          expect(result.pagination.hasMore).toBe(true);
+        });
+
+        it("should return 400 for invalid limit query param", async () => {
+          mockJobStore.list.mockReturnValue([]);
+
+          const response = await app.request("/api/jobs?project=test/repo1&limit=notanumber");
+          expect(response.status).toBe(400);
+
+          const result = await response.json();
+          expect(result.error).toBe("Invalid query parameters");
         });
       });
 
@@ -2897,5 +2985,424 @@ describe("Dashboard API - GET /api/projects/health warning branch", () => {
     const result = await response.json();
     expect(result.projects[0].status).toBe("warning");
     expect(result.summary.warning).toBe(1);
+  });
+});
+
+describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should return errorState null when project has no error state", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(null),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/error-state");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repo).toBe("owner/repo");
+    expect(result.errorState).toBeNull();
+    expect(localQueue.getProjectStatus).toHaveBeenCalledWith("owner/repo");
+  });
+
+  it("should return errorState with failure info when project has errors", async () => {
+    const lastFailureAt = Date.now() - 1000;
+    const errorState = {
+      consecutiveFailures: 2,
+      pausedUntil: null,
+      lastFailureAt,
+    };
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(errorState),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/error-state");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repo).toBe("owner/repo");
+    expect(result.errorState.consecutiveFailures).toBe(2);
+    expect(result.errorState.pausedUntil).toBeNull();
+    expect(result.errorState.lastFailureAt).toBe(lastFailureAt);
+  });
+
+  it("should return errorState with pausedUntil when project is paused", async () => {
+    const pausedUntil = Date.now() + 60000;
+    const errorState = {
+      consecutiveFailures: 3,
+      pausedUntil,
+      lastFailureAt: Date.now() - 1000,
+    };
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(errorState),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/error-state");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repo).toBe("owner/repo");
+    expect(result.errorState.pausedUntil).toBe(pausedUntil);
+    expect(result.errorState.consecutiveFailures).toBe(3);
+  });
+
+  it("should decode URL-encoded repo parameter", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(null),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    await app.request("/api/projects/my-org%2Fmy-repo/error-state");
+    expect(localQueue.getProjectStatus).toHaveBeenCalledWith("my-org/my-repo");
+  });
+
+  it("should return 500 when getProjectStatus throws", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockImplementation(() => {
+        throw new Error("Internal queue error");
+      }),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/error-state");
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toContain("Failed to get error state");
+  });
+});
+
+describe("Dashboard API - POST /api/projects/:repo/pause", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should pause a project with default duration (30 minutes)", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const before = Date.now();
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+    });
+    const after = Date.now();
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repo).toBe("owner/repo");
+    expect(result.message).toContain("owner/repo");
+    expect(result.message).toContain("1800s");
+    expect(result.pausedUntil).toBeGreaterThanOrEqual(before + 30 * 60 * 1000);
+    expect(result.pausedUntil).toBeLessThanOrEqual(after + 30 * 60 * 1000);
+    expect(localQueue.pauseProject).toHaveBeenCalledWith("owner/repo", 30 * 60 * 1000);
+  });
+
+  it("should pause a project with custom durationMs", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ durationMs: 60000 }),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.message).toContain("60s");
+    expect(localQueue.pauseProject).toHaveBeenCalledWith("owner/repo", 60000);
+  });
+
+  it("should return 400 for negative durationMs", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ durationMs: -1000 }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toContain("durationMs");
+    expect(localQueue.pauseProject).not.toHaveBeenCalled();
+  });
+
+  it("should return 400 for zero durationMs", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ durationMs: 0 }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toContain("durationMs");
+    expect(localQueue.pauseProject).not.toHaveBeenCalled();
+  });
+
+  it("should return 400 for non-numeric durationMs", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ durationMs: "not-a-number" }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toContain("durationMs");
+    expect(localQueue.pauseProject).not.toHaveBeenCalled();
+  });
+
+  it("should use default duration when body is empty (no Content-Type)", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    expect(localQueue.pauseProject).toHaveBeenCalledWith("owner/repo", 30 * 60 * 1000);
+  });
+
+  it("should return 500 when pauseProject throws", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      pauseProject: vi.fn().mockImplementation(() => {
+        throw new Error("Queue internal error");
+      }),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/pause", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toContain("Failed to pause project");
+  });
+});
+
+describe("Dashboard API - POST /api/projects/:repo/resume", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should resume a paused project", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      resumeProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/resume", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repo).toBe("owner/repo");
+    expect(result.message).toContain("owner/repo");
+    expect(localQueue.resumeProject).toHaveBeenCalledWith("owner/repo");
+  });
+
+  it("should decode URL-encoded repo parameter on resume", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      resumeProject: vi.fn(),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    await app.request("/api/projects/my-org%2Fmy-repo/resume", { method: "POST" });
+    expect(localQueue.resumeProject).toHaveBeenCalledWith("my-org/my-repo");
+  });
+
+  it("should return 500 when resumeProject throws", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      resumeProject: vi.fn().mockImplementation(() => {
+        throw new Error("Queue internal error");
+      }),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    const response = await app.request("/api/projects/owner%2Frepo/resume", {
+      method: "POST",
+    });
+
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toContain("Failed to resume project");
+  });
+});
+
+describe("Dashboard API - GET /api/projects includes errorState", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should include errorState in each project entry", async () => {
+    const errorState = {
+      consecutiveFailures: 1,
+      pausedUntil: null,
+      lastFailureAt: Date.now() - 5000,
+    };
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(errorState),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    mockLoadConfig.mockReturnValue({
+      projects: [
+        { repo: "org/repo1", path: "./repo1" },
+        { repo: "org/repo2", path: "./repo2" },
+      ],
+    } as any);
+
+    const response = await app.request("/api/projects");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(2);
+    expect(result.projects[0].errorState).toEqual(errorState);
+    expect(result.projects[1].errorState).toEqual(errorState);
+    expect(localQueue.getProjectStatus).toHaveBeenCalledWith("org/repo1");
+    expect(localQueue.getProjectStatus).toHaveBeenCalledWith("org/repo2");
+  });
+
+  it("should include null errorState when project has no errors", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(null),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+    } as any);
+
+    const response = await app.request("/api/projects");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects[0].errorState).toBeNull();
+    expect(result.projects[0].repo).toBe("org/repo1");
+  });
+
+  it("should return empty list when no projects configured", async () => {
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(null),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    mockLoadConfig.mockReturnValue({ projects: [] } as any);
+
+    const response = await app.request("/api/projects");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toEqual([]);
+  });
+
+  it("should include paused errorState for project that is paused", async () => {
+    const pausedUntil = Date.now() + 30 * 60 * 1000;
+    const pausedErrorState = {
+      consecutiveFailures: 3,
+      pausedUntil,
+      lastFailureAt: Date.now() - 2000,
+    };
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+      getProjectStatus: vi.fn().mockReturnValue(pausedErrorState),
+    } as any;
+    app = createDashboardRoutes(mockJobStore, localQueue);
+
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/paused-repo", path: "./paused-repo" }],
+    } as any);
+
+    const response = await app.request("/api/projects");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects[0].errorState.pausedUntil).toBe(pausedUntil);
+    expect(result.projects[0].errorState.consecutiveFailures).toBe(3);
   });
 });

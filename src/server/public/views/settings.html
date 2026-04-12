@@ -1,0 +1,98 @@
+  <div id="view-settings" class="view-panel">
+    <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
+      <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+      <span data-i18n="settings">Settings</span>
+    </h2>
+
+    <!-- Projects Section -->
+    <section class="mb-12">
+      <div class="flex items-baseline justify-between mb-6">
+        <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface" data-i18n="projects">Projects</h2>
+        <span class="font-mono text-xs text-primary/60 uppercase tracking-widest" data-i18n="activeOrchestration">Active Orchestration</span>
+      </div>
+
+      <!-- Project Cards Grid + Add Form -->
+      <div id="settings-content" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <!-- Project cards rendered here by renderSettingsView -->
+      </div>
+
+      <!-- Add Project Form (Stitch style) -->
+      <div class="bg-surface-container-lowest border-2 border-dashed border-outline-variant/20 p-5 rounded-xl max-w-md">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="material-symbols-outlined text-primary-container">add_circle</span>
+          <span class="font-bold text-sm uppercase tracking-wider" data-i18n="addProject">프로젝트 추가</span>
+        </div>
+        <form id="add-project-form" class="space-y-3">
+          <input
+            type="text"
+            name="repo"
+            class="w-full bg-surface-container-highest/20 border-0 border-b-2 border-outline-variant/30 py-2 text-sm text-on-surface placeholder:text-outline/50 transition-all focus:bg-surface-container-highest/40 outline-none"
+            placeholder="owner/repo"
+            required
+          />
+          <input
+            type="text"
+            name="path"
+            class="w-full bg-surface-container-highest/20 border-0 border-b-2 border-outline-variant/30 py-2 text-sm text-on-surface placeholder:text-outline/50 transition-all focus:bg-surface-container-highest/40 outline-none"
+            data-i18n-placeholder="repositoryPlaceholder"
+            placeholder="예: /home/user/my-project"
+            required
+          />
+          <div class="flex justify-end pt-1">
+            <button
+              type="submit"
+              class="bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold px-4 py-2 rounded text-xs transition-transform active:scale-95 flex items-center gap-1.5"
+            >
+              <span class="material-symbols-outlined text-sm">add</span>
+              <span data-i18n="add">추가</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Global Configuration Section -->
+    <section>
+      <div class="flex items-baseline justify-between mb-6">
+        <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface" data-i18n="globalConfig">Global Configuration</h2>
+      </div>
+
+    <!-- Settings Tab Navigation -->
+    <nav class="flex gap-2 bg-surface-container-low p-1 rounded-lg mb-8 w-fit">
+      <button class="settings-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"
+              data-tab="general" onclick="setSettingsTab('general')">
+        <span data-i18n="settings.general">General</span>
+      </button>
+      <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+              data-tab="safety" onclick="setSettingsTab('safety')">
+        <span data-i18n="settings.safety">Safety</span>
+      </button>
+      <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+              data-tab="review" onclick="setSettingsTab('review')">
+        <span data-i18n="settings.review">Review</span>
+      </button>
+    </nav>
+
+    <!-- Settings Tab Panels -->
+    <div class="settings-tab-content">
+      <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
+        <div id="general-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+      </div>
+      <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
+        <div id="safety-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+      </div>
+      <div id="settings-tab-review" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
+        <div id="review-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="flex justify-end mt-8 pt-6 border-t border-outline-variant/30">
+      <button id="save-settings-btn" onclick="saveSettings()"
+              class="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold text-sm rounded-lg hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+        <span class="material-symbols-outlined text-base">save</span>
+        <span data-i18n="save">Save</span>
+      </button>
+    </div>
+    </section>
+  </div>

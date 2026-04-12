@@ -427,6 +427,47 @@ describe("JobQueue", () => {
       expect(updatedJob?.status).toBe("success");
       expect(updatedJob?.error).toBeUndefined();
     });
+
+    it("should preserve phaseResults from failed job when retrying", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("phase failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      const initialJob = queue.enqueue(300, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(initialJob!.id)?.status).toBe("failure");
+
+      // Simulate partially completed pipeline: set phaseResults on failed job
+      const mockPhaseResults = [
+        {
+          name: "Phase 1",
+          success: true,
+          durationMs: 5000,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:05.000Z",
+          costUsd: 0.25,
+        },
+      ];
+      store.update(initialJob!.id, { phaseResults: mockPhaseResults });
+
+      // Retry - new job should inherit phaseResults from failed job
+      const retryJob = queue.retryJob(initialJob!.id);
+      expect(retryJob).toBeDefined();
+      expect(retryJob?.isRetry).toBe(true);
+
+      const newJob = store.get(retryJob!.id);
+      expect(newJob?.phaseResults).toHaveLength(1);
+      expect(newJob?.phaseResults?.[0].name).toBe("Phase 1");
+      expect(newJob?.phaseResults?.[0].success).toBe(true);
+      expect(newJob?.phaseResults?.[0].startedAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(newJob?.phaseResults?.[0].completedAt).toBe("2026-01-01T00:00:05.000Z");
+      expect(newJob?.phaseResults?.[0].costUsd).toBe(0.25);
+
+      // Original job should be archived
+      expect(store.get(initialJob!.id)?.status).toBe("archived");
+    });
   });
 
   describe("Worktree cleanup on failure job re-enqueue", () => {
@@ -1781,6 +1822,159 @@ describe("JobQueue", () => {
       expect(handler).toHaveBeenCalledTimes(3);
       // Should maintain FIFO order for same priority
       expect(executionOrder).toEqual([1, 2, 3]);
+    });
+  });
+
+  describe("Round-robin slot distribution", () => {
+    it("프로젝트 A가 10개 대기, B가 2개 대기 시 슬롯이 공정하게 분배된다", async () => {
+      const startedByRepo: Record<string, number> = {};
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        // 시작 시 동기적으로 기록 (첫 번째 await 이전)
+        startedByRepo[job.repo] = (startedByRepo[job.repo] || 0) + 1;
+        await new Promise(r => setTimeout(r, 100));
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // concurrency=0으로 시작하여 모든 잡을 먼저 pending 큐에 쌓음
+      // (A 잡들이 슬롯을 독점하기 전에 B 잡도 큐에 있어야 라운드 로빈이 동작)
+      const queue = new JobQueue(store, 0, handler);
+
+      // A: 10개 대기
+      for (let i = 1; i <= 10; i++) {
+        queue.enqueue(i, "project/A");
+      }
+      // B: 2개 대기
+      queue.enqueue(11, "project/B");
+      queue.enqueue(12, "project/B");
+
+      // concurrency=3으로 확장 → processNext가 전체 pending 기반으로 라운드 로빈 적용
+      queue.setConcurrency(3);
+      await new Promise(r => setTimeout(r, 30));
+
+      // 두 프로젝트 모두 슬롯을 확보해야 함
+      expect(startedByRepo["project/A"]).toBeGreaterThanOrEqual(1);
+      expect(startedByRepo["project/B"]).toBeGreaterThanOrEqual(1);
+
+      // A가 전체 3슬롯을 독점해서는 안 됨 (라운드 로빈으로 B가 최소 1슬롯 확보)
+      expect(startedByRepo["project/A"]).toBeLessThanOrEqual(2);
+
+      // 모든 잡 완료 대기 (12개 × 100ms, concurrency=3 → ~4파 × 100ms = 400ms)
+      await new Promise(r => setTimeout(r, 600));
+      expect(handler).toHaveBeenCalledTimes(12);
+    });
+
+    it("라운드 로빈은 프로젝트 간에 번갈아가며 잡을 선택한다", async () => {
+      const executionOrder: string[] = [];
+      let firstJobBlocking = true;
+      let resolveFirst: (() => void) | null = null;
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.repo);
+
+        if (firstJobBlocking) {
+          firstJobBlocking = false;
+          // 첫 번째 잡이 실행 중인 동안 다른 잡들이 큐에 쌓일 수 있도록 블록
+          return new Promise<{ prUrl: string }>((resolve) => {
+            resolveFirst = () => resolve({ prUrl: "https://test-pr" });
+          });
+        }
+
+        await new Promise(r => setTimeout(r, 10));
+        return { prUrl: "https://test-pr" };
+      });
+
+      // concurrency=1: 순차 실행으로 라운드 로빈 순서 정확히 관찰
+      const queue = new JobQueue(store, 1, handler);
+
+      // A[1] 먼저 시작
+      queue.enqueue(1, "project/A");
+      await new Promise(r => setTimeout(r, 20));
+
+      // A가 실행 중인 동안 나머지 잡들 큐에 추가
+      queue.enqueue(2, "project/A");
+      queue.enqueue(3, "project/A");
+      queue.enqueue(4, "project/B");
+      queue.enqueue(5, "project/B");
+
+      await new Promise(r => setTimeout(r, 20));
+
+      // 첫 번째 잡 해제
+      if (resolveFirst) resolveFirst();
+
+      await new Promise(r => setTimeout(r, 250));
+
+      // A[1]이 끝나면 lastServedRepo=A → 다음은 B → A → B → A 순으로 순환
+      expect(executionOrder).toEqual([
+        "project/A", // A[1]
+        "project/B", // B[4] (A 다음은 B)
+        "project/A", // A[2]
+        "project/B", // B[5]
+        "project/A", // A[3]
+      ]);
+    });
+
+    it("단일 프로젝트만 있을 경우 라운드 로빈은 FIFO로 동작한다", async () => {
+      const executionOrder: number[] = [];
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        executionOrder.push(job.issueNumber);
+        await new Promise(r => setTimeout(r, 20));
+        return { prUrl: "https://test-pr" };
+      });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      queue.enqueue(1, "project/A");
+      queue.enqueue(2, "project/A");
+      queue.enqueue(3, "project/A");
+
+      await new Promise(r => setTimeout(r, 150));
+
+      // 단일 프로젝트는 FIFO 순서 유지
+      expect(executionOrder).toEqual([1, 2, 3]);
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+
+    it("프로젝트별 concurrency 제한과 라운드 로빈이 함께 동작한다", async () => {
+      const startedByRepo: Record<string, number> = {};
+      const runningByRepo: Record<string, number> = {};
+      const maxByRepo: Record<string, number> = {};
+
+      const handler: JobHandler = vi.fn().mockImplementation(async (job) => {
+        startedByRepo[job.repo] = (startedByRepo[job.repo] || 0) + 1;
+        runningByRepo[job.repo] = (runningByRepo[job.repo] || 0) + 1;
+        maxByRepo[job.repo] = Math.max(maxByRepo[job.repo] || 0, runningByRepo[job.repo]);
+        await new Promise(r => setTimeout(r, 100));
+        runningByRepo[job.repo]--;
+        return { prUrl: `https://pr/${job.issueNumber}` };
+      });
+
+      // 전체 슬롯 4개, A는 최대 1개, B는 최대 2개
+      // concurrency=0으로 시작하여 모든 잡을 큐에 쌓은 뒤 라운드 로빈 적용
+      const projectConcurrency = { "project/A": 1, "project/B": 2 };
+      const queue = new JobQueue(store, 0, handler, 600000, projectConcurrency);
+
+      for (let i = 1; i <= 5; i++) {
+        queue.enqueue(i, "project/A");
+      }
+      for (let i = 6; i <= 10; i++) {
+        queue.enqueue(i, "project/B");
+      }
+
+      queue.setConcurrency(4);
+      await new Promise(r => setTimeout(r, 50));
+
+      // 프로젝트별 concurrency 제한이 지켜져야 함
+      expect(maxByRepo["project/A"] || 0).toBeLessThanOrEqual(1);
+      expect(maxByRepo["project/B"] || 0).toBeLessThanOrEqual(2);
+
+      // 라운드 로빈으로 A와 B 모두 잡을 시작했어야 함
+      expect(startedByRepo["project/A"] || 0).toBeGreaterThanOrEqual(1);
+      expect(startedByRepo["project/B"] || 0).toBeGreaterThanOrEqual(1);
+
+      await new Promise(r => setTimeout(r, 700));
+      expect(handler).toHaveBeenCalledTimes(10);
     });
   });
 

@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob } from "../types/pipeline.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -108,6 +108,7 @@ export class JobQueue {
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
+  private lastServedRepo: string | null = null; // round-robin: last repo that was served
   private taskFactory?: TaskFactory;
   private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
 
@@ -308,7 +309,7 @@ export class JobQueue {
   /**
    * Enqueues a new job. Returns the job or undefined if duplicate.
    */
-  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority): Job | undefined {
+  enqueue(issueNumber: number, repo: string, dependencies?: number[], isRetry?: boolean, priority?: import("../types/pipeline.js").JobPriority, initialPhaseResults?: PhaseResultInfo[]): Job | undefined {
     if (this.shuttingDown) {
       logger.warn(`Job for issue #${issueNumber} (${repo}) rejected — queue is shutting down`);
       return undefined;
@@ -335,7 +336,7 @@ export class JobQueue {
       }
     }
 
-    const job = this.store.create(issueNumber, repo, dependencies, isRetry, undefined, priority);
+    const job = this.store.create(issueNumber, repo, dependencies, isRetry, initialPhaseResults, priority);
     // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
     this.pending.push(job.id);
@@ -377,10 +378,10 @@ export class JobQueue {
       return undefined;
     }
 
-    const { issueNumber, repo } = oldJob;
+    const { issueNumber, repo, phaseResults } = oldJob;
     this.cleanupFailedJobArtifacts(issueNumber);
     this.store.archive(jobId);
-    return this.enqueue(issueNumber, repo, undefined, true);
+    return this.enqueue(issueNumber, repo, undefined, true, undefined, phaseResults);
   }
 
   /**
@@ -650,6 +651,80 @@ export class JobQueue {
     return null;
   }
 
+  /**
+   * Gets the next job using round-robin scheduling across projects.
+   * Cycles through repos starting after lastServedRepo, and within each repo
+   * selects the highest-priority job (FIFO within same priority).
+   */
+  private getNextRoundRobinJob(): string | null {
+    if (this.pending.length === 0) return null;
+
+    // Build ordered repo list and group jobs by repo (preserving insertion order)
+    const repoOrder: string[] = [];
+    const jobsByRepo = new Map<string, string[]>();
+    for (const jobId of this.pending) {
+      const job = this.store.get(jobId);
+      if (!job) continue;
+      if (!jobsByRepo.has(job.repo)) {
+        repoOrder.push(job.repo);
+        jobsByRepo.set(job.repo, []);
+      }
+      jobsByRepo.get(job.repo)!.push(jobId);
+    }
+
+    if (repoOrder.length === 0) return null;
+
+    // Determine starting index: one after lastServedRepo
+    let startIndex = 0;
+    if (this.lastServedRepo !== null) {
+      const lastIdx = repoOrder.indexOf(this.lastServedRepo);
+      if (lastIdx >= 0) {
+        startIndex = (lastIdx + 1) % repoOrder.length;
+      }
+    }
+
+    // Cycle through repos to find the next one with eligible jobs
+    for (let i = 0; i < repoOrder.length; i++) {
+      const repo = repoOrder[(startIndex + i) % repoOrder.length];
+      const repoJobs = jobsByRepo.get(repo);
+      if (!repoJobs || repoJobs.length === 0) continue;
+
+      // Select highest-priority job within this repo (FIFO within same priority)
+      let bestIndex = -1;
+      let bestPriorityValue = 3;
+      let bestCreatedAt = '';
+
+      for (let j = 0; j < repoJobs.length; j++) {
+        const jobId = repoJobs[j];
+        const job = this.store.get(jobId);
+        if (!job) continue;
+
+        const priority = job.priority ?? 'normal';
+        const priorityValue = priority === 'high' ? 0 : priority === 'normal' ? 1 : 2;
+
+        if (bestIndex === -1 ||
+            priorityValue < bestPriorityValue ||
+            (priorityValue === bestPriorityValue && job.createdAt < bestCreatedAt)) {
+          bestIndex = j;
+          bestPriorityValue = priorityValue;
+          bestCreatedAt = job.createdAt;
+        }
+      }
+
+      if (bestIndex >= 0) {
+        const selectedJobId = repoJobs[bestIndex];
+        const pendingIdx = this.pending.indexOf(selectedJobId);
+        if (pendingIdx >= 0) {
+          this.pending.splice(pendingIdx, 1);
+        }
+        this.lastServedRepo = repo;
+        return selectedJobId;
+      }
+    }
+
+    return null;
+  }
+
   private async processNext(): Promise<void> {
     // Prevent re-entrancy
     if (this.isProcessing) {
@@ -665,7 +740,7 @@ export class JobQueue {
       const deferred: string[] = [];
 
       while (this.running.size < this.concurrency && this.pending.length > 0) {
-        const jobId = this.getNextPriorityJob();
+        const jobId = this.getNextRoundRobinJob();
         if (!jobId) break; // No valid jobs available
 
         // Track job as being processed

@@ -259,16 +259,16 @@ describe("E2E: polling integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2b. Success jobs do NOT block — re-labeling triggers re-processing
+  // 2b. Success jobs block re-pickup from pollProjectLabel (스팸 방지)
   // -------------------------------------------------------------------------
-  it("allows re-pickup of success jobs (re-label triggers new processing)", async () => {
-    // Issue #10 has a success job — re-labeling should trigger new processing
+  it("skips re-pickup of success jobs in pollProjectLabel (spam prevention)", async () => {
+    // Issue #10 has a success job — pollProjectLabel should skip it to prevent spam
     const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "success" }]);
     const queue = makeJobQueue(store);
 
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
-        { number: 10, title: "Add feature A" }, // has success job - should be re-enqueued
+        { number: 10, title: "Add feature A" }, // has success job - should be skipped
       ]),
       stderr: "",
       exitCode: 0,
@@ -277,26 +277,26 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // The success issue should be re-enqueued (success does not block re-pickup)
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(10, "test/repo");
+    // pollProjectLabel should NOT re-enqueue - success job blocks re-pickup
+    expect(queue.enqueue).not.toHaveBeenCalledWith(10, "test/repo");
 
-    // Original success job should be archived
+    // Original success job should remain unchanged (not archived by poller)
     const originalJob = store.get("aq-10-0");
-    expect(originalJob?.status).toBe("archived");
+    expect(originalJob?.status).toBe("success");
   });
 
   // -------------------------------------------------------------------------
-  // 3. Failed jobs should allow re-pickup (do not block)
+  // 3. Failed jobs block re-pickup from pollProjectLabel (스팸 방지)
   // -------------------------------------------------------------------------
-  it("allows re-pickup of issues with failed jobs", async () => {
-    // Issue #10 has a failed job - should allow re-pickup
+  it("skips re-pickup of issues with failed jobs in pollProjectLabel (spam prevention)", async () => {
+    // Issue #10 has a failed job — pollProjectLabel should skip it to prevent spam
+    // (retry is handled by pollFailedJobs separately with 10-minute delay)
     const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "failure" }]);
     const queue = makeJobQueue(store);
 
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
-        { number: 10, title: "Add feature A" }, // has failed job - should be re-enqueued
+        { number: 10, title: "Add feature A" }, // has failed job - should be skipped
       ]),
       stderr: "",
       exitCode: 0,
@@ -305,9 +305,8 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // The failed issue should be re-enqueued
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(10, "test/repo");
+    // pollProjectLabel should NOT re-enqueue - failure job blocks re-pickup
+    expect(queue.enqueue).not.toHaveBeenCalledWith(10, "test/repo");
   });
 
   // -------------------------------------------------------------------------
@@ -384,28 +383,14 @@ describe("E2E: polling integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 6. Full integration scenario: failed job → re-polling → auto-archive → new job → cleanup
+  // 6. pollProjectLabel은 failure job 있는 이슈를 스킵한다 (스팸 방지)
   // -------------------------------------------------------------------------
-  it("handles full re-pickup scenario: failed job → polling → auto-archive → new job creation", async () => {
+  it("skips failed job issues in pollProjectLabel (no auto-archive, no new job from poller)", async () => {
     // Start with a failed job for issue #20
     const store = makeJobStore([{ issueNumber: 20, repo: "test/repo", status: "failure" }]);
     const queue = makeJobQueue(store);
 
-    // Mock checkpoint with worktree to simulate cleanup scenario
-    mockLoadCheckpoint.mockReturnValue({
-      jobId: "aq-20-0",
-      issueNumber: 20,
-      repo: "test/repo",
-      state: "failed",
-      worktreePath: "/tmp/test-worktree-20",
-      branchName: "aq/20-fix-critical-bug",
-      projectRoot: "/tmp/project",
-      phaseResults: [],
-      mode: "auto",
-      savedAt: new Date().toISOString(),
-    });
-
-    // Mock GitHub returning the same issue again (simulating re-pickup)
+    // Mock GitHub returning the same issue again
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
         { number: 20, title: "Fix critical bug", labels: ["aq-task"] },
@@ -415,73 +400,31 @@ describe("E2E: polling integration", () => {
     });
 
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
-
-    // Manually trigger one poll cycle
     await (poller as any).poll();
 
-    // Verify the workflow:
-    // 1. Queue.enqueue should have been called (re-pickup detected)
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(20, "test/repo");
+    // pollProjectLabel should NOT enqueue - failure job blocks re-pickup
+    expect(queue.enqueue).not.toHaveBeenCalledWith(20, "test/repo");
 
-    // 2. Checkpoint should be loaded to check for worktree
-    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 20);
+    // No cleanup should be triggered from pollProjectLabel
+    expect(mockLoadCheckpoint).not.toHaveBeenCalled();
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+    expect(mockRemoveCheckpoint).not.toHaveBeenCalled();
 
-    // 3. Worktree cleanup should have been triggered
-    expect(mockRemoveWorktree).toHaveBeenCalledWith(
-      expect.any(Object), // gitConfig
-      "/tmp/test-worktree-20",
-      expect.objectContaining({ force: true })
-    );
-
-    // 4. Checkpoint removal should have been triggered
-    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 20);
-
-    // 5. Original failed job should be archived
-    const originalJob = store.get("aq-20-0"); // First job created in makeJobStore
-    expect(originalJob?.status).toBe("archived");
-
-    // 6. New job should be created
-    expect(store.create).toHaveBeenCalledWith(20, "test/repo");
+    // Original failed job should remain unchanged
+    const originalJob = store.get("aq-20-0");
+    expect(originalJob?.status).toBe("failure");
   });
 
   // -------------------------------------------------------------------------
-  // 7. Cleanup verification: checkpoint removal is called for failed jobs during re-pickup
+  // 7. pollProjectLabel은 failure/cancelled job 있는 이슈를 모두 스킵한다
   // -------------------------------------------------------------------------
-  it("ensures worktree/branch cleanup occurs during failed job re-pickup", async () => {
-    // Start with multiple failed jobs
+  it("skips all issues with failure or cancelled jobs in pollProjectLabel", async () => {
+    // Start with multiple failed/cancelled jobs
     const store = makeJobStore([
       { issueNumber: 30, repo: "test/repo", status: "failure" },
       { issueNumber: 31, repo: "test/repo", status: "cancelled" },
     ]);
     const queue = makeJobQueue(store);
-
-    // Mock checkpoints with worktrees for both issues
-    mockLoadCheckpoint
-      .mockReturnValueOnce({
-        jobId: "aq-30-0",
-        issueNumber: 30,
-        repo: "test/repo",
-        state: "failed",
-        worktreePath: "/tmp/test-worktree-30",
-        branchName: "aq/30-failed-feature-a",
-        projectRoot: "/tmp/project",
-        phaseResults: [],
-        mode: "auto",
-        savedAt: new Date().toISOString(),
-      })
-      .mockReturnValueOnce({
-        jobId: "aq-31-1",
-        issueNumber: 31,
-        repo: "test/repo",
-        state: "cancelled",
-        worktreePath: "/tmp/test-worktree-31",
-        branchName: "aq/31-cancelled-feature-b",
-        projectRoot: "/tmp/project",
-        phaseResults: [],
-        mode: "auto",
-        savedAt: new Date().toISOString(),
-      });
 
     // Mock GitHub returning both issues again
     mockRunCli.mockResolvedValue({
@@ -496,49 +439,30 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // Both issues should trigger re-pickup
-    expect(queue.enqueue).toHaveBeenCalledTimes(2);
-    expect(queue.enqueue).toHaveBeenCalledWith(30, "test/repo");
-    expect(queue.enqueue).toHaveBeenCalledWith(31, "test/repo");
+    // Neither issue should be re-enqueued from pollProjectLabel
+    expect(queue.enqueue).not.toHaveBeenCalledWith(30, "test/repo");
+    expect(queue.enqueue).not.toHaveBeenCalledWith(31, "test/repo");
 
-    // Checkpoint should be loaded for both issues
-    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 30);
-    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 31);
+    // No cleanup triggered from pollProjectLabel
+    expect(mockLoadCheckpoint).not.toHaveBeenCalled();
+    expect(mockRemoveWorktree).not.toHaveBeenCalled();
+    expect(mockRemoveCheckpoint).not.toHaveBeenCalled();
 
-    // Worktree cleanup should be called for both failed jobs
-    expect(mockRemoveWorktree).toHaveBeenCalledTimes(2);
-    expect(mockRemoveWorktree).toHaveBeenCalledWith(
-      expect.any(Object),
-      "/tmp/test-worktree-30",
-      expect.objectContaining({ force: true })
-    );
-    expect(mockRemoveWorktree).toHaveBeenCalledWith(
-      expect.any(Object),
-      "/tmp/test-worktree-31",
-      expect.objectContaining({ force: true })
-    );
-
-    // Checkpoint removal should be called twice (once per failed job)
-    expect(mockRemoveCheckpoint).toHaveBeenCalledTimes(2);
-    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 30);
-    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 31);
-
-    // Both original jobs should be archived
+    // Original jobs should remain unchanged
     const failedJob = store.get("aq-30-0");
     const cancelledJob = store.get("aq-31-1");
-    expect(failedJob?.status).toBe("archived");
-    expect(cancelledJob?.status).toBe("archived");
+    expect(failedJob?.status).toBe("failure");
+    expect(cancelledJob?.status).toBe("cancelled");
   });
 
   // -------------------------------------------------------------------------
-  // 8. Verifies that worktree cleanup is not called when no checkpoint or worktree exists
+  // 8. failure job 있는 이슈는 pollProjectLabel에서 스킵됨 (cleanup 없음)
   // -------------------------------------------------------------------------
-  it("skips worktree cleanup when no checkpoint or worktree path exists", async () => {
-    // Start with a failed job but no checkpoint/worktree
+  it("does not trigger checkpoint or worktree cleanup from pollProjectLabel for failed jobs", async () => {
+    // Start with a failed job
     const store = makeJobStore([{ issueNumber: 40, repo: "test/repo", status: "failure" }]);
     const queue = makeJobQueue(store);
 
-    // Mock loadCheckpoint to return null (no checkpoint found)
     mockLoadCheckpoint.mockReturnValue(null);
 
     // Mock GitHub returning the issue again
@@ -553,39 +477,33 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // Issue should trigger re-pickup
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(40, "test/repo");
+    // Issue should be SKIPPED - no re-pickup from pollProjectLabel
+    expect(queue.enqueue).not.toHaveBeenCalledWith(40, "test/repo");
 
-    // Checkpoint should be loaded
-    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 40);
-
-    // Worktree cleanup should NOT be called since no checkpoint was found
+    // No cleanup triggered
+    expect(mockLoadCheckpoint).not.toHaveBeenCalled();
     expect(mockRemoveWorktree).not.toHaveBeenCalled();
+    expect(mockRemoveCheckpoint).not.toHaveBeenCalled();
 
-    // Checkpoint removal should still be called (even if no checkpoint exists)
-    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 40);
-
-    // Original job should be archived
+    // Original job should remain as failure
     const failedJob = store.get("aq-40-0");
-    expect(failedJob?.status).toBe("archived");
+    expect(failedJob?.status).toBe("failure");
   });
 
   // -------------------------------------------------------------------------
-  // 9. Verifies that worktree cleanup is not called when checkpoint exists but has no worktree path
+  // 9. failure job 있는 이슈는 worktree 유무와 관계없이 스킵됨
   // -------------------------------------------------------------------------
-  it("skips worktree cleanup when checkpoint exists but has no worktree path", async () => {
+  it("skips failed job issue regardless of checkpoint state", async () => {
     // Start with a failed job
     const store = makeJobStore([{ issueNumber: 50, repo: "test/repo", status: "failure" }]);
     const queue = makeJobQueue(store);
 
-    // Mock checkpoint without worktree path
+    // Even if checkpoint exists, pollProjectLabel should not trigger cleanup
     mockLoadCheckpoint.mockReturnValue({
       jobId: "aq-50-0",
       issueNumber: 50,
       repo: "test/repo",
       state: "failed",
-      // No worktreePath field
       branchName: "aq/50-no-worktree",
       projectRoot: "/tmp/project",
       phaseResults: [],
@@ -605,22 +523,17 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // Issue should trigger re-pickup
-    expect(queue.enqueue).toHaveBeenCalledTimes(1);
-    expect(queue.enqueue).toHaveBeenCalledWith(50, "test/repo");
+    // Issue should be SKIPPED - no re-pickup from pollProjectLabel
+    expect(queue.enqueue).not.toHaveBeenCalledWith(50, "test/repo");
 
-    // Checkpoint should be loaded
-    expect(mockLoadCheckpoint).toHaveBeenCalledWith(expect.any(String), 50);
-
-    // Worktree cleanup should NOT be called since checkpoint has no worktree path
+    // pollProjectLabel does not touch checkpoint/worktree
+    expect(mockLoadCheckpoint).not.toHaveBeenCalled();
     expect(mockRemoveWorktree).not.toHaveBeenCalled();
+    expect(mockRemoveCheckpoint).not.toHaveBeenCalled();
 
-    // Checkpoint removal should still be called
-    expect(mockRemoveCheckpoint).toHaveBeenCalledWith(expect.any(String), 50);
-
-    // Original job should be archived
+    // Original job should remain as failure
     const failedJob = store.get("aq-50-0");
-    expect(failedJob?.status).toBe("archived");
+    expect(failedJob?.status).toBe("failure");
   });
 
   // -------------------------------------------------------------------------

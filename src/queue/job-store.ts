@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { calculateCacheHitRatio } from "../claude/token-pricing.js";
 import { AQDatabase, DatabaseJob, DatabasePhase, DatabaseLog, ListJobsFilter } from "../store/database.js";
 import { JsonMigrator } from "./json-migrator.js";
 import type {
@@ -33,6 +34,9 @@ export type {
 
 export interface ListJobsOptions {
   status?: JobStatus;
+  statuses?: JobStatus[];
+  excludeStatus?: JobStatus;
+  repo?: string;
   limit?: number;
   offset?: number;
 }
@@ -66,15 +70,13 @@ export class JobStore extends EventEmitter {
    */
   private loadActiveJobsToCache(): void {
     try {
-      const allDbJobs = this.db.listJobs();
+      const activeDbJobs = this.db.listJobsWithFilter({ statuses: ["queued", "running"] });
       let loadedCount = 0;
 
-      for (const dbJob of allDbJobs) {
-        if (dbJob.status === "queued" || dbJob.status === "running") {
-          const job = this.dbJobToJob(dbJob);
-          this.cache.set(job.id, job);
-          loadedCount++;
-        }
+      for (const dbJob of activeDbJobs) {
+        const job = this.dbJobToJob(dbJob);
+        this.cache.set(job.id, job);
+        loadedCount++;
       }
 
       if (loadedCount > 0) {
@@ -173,7 +175,10 @@ export class JobStore extends EventEmitter {
       isRetry: dbJob.isRetry,
       costUsd: dbJob.costUsd,
       totalCostUsd: dbJob.totalCostUsd,
-      totalUsage: dbJob.totalUsage as UsageStats | undefined
+      totalUsage: dbJob.totalUsage as UsageStats | undefined,
+      cacheHitRatio: dbJob.totalUsage
+        ? calculateCacheHitRatio(dbJob.totalUsage as UsageStats)
+        : undefined
     };
 
     // Phase 결과를 phaseResults 배열로 변환
@@ -327,6 +332,8 @@ export class JobStore extends EventEmitter {
           success: phaseResult.success,
           commitHash: phaseResult.commit,
           durationMs: phaseResult.durationMs,
+          startedAt: phaseResult.startedAt,
+          completedAt: phaseResult.completedAt,
           error: phaseResult.error,
           costUsd: phaseResult.costUsd,
           inputTokens: phaseResult.usage?.input_tokens,
@@ -345,8 +352,7 @@ export class JobStore extends EventEmitter {
     this.emit('jobCreated', job);
 
     // Auto-prune if needed
-    const allJobs = this.db.listJobs();
-    if (allJobs.length > this.maxJobs) {
+    if (this.db.countJobs() > this.maxJobs) {
       const pruned = this.prune(this.maxJobs);
       if (pruned > 0) {
         logger.info(`Auto-pruned ${pruned} jobs due to cache size limit (${this.maxJobs})`);
@@ -544,6 +550,8 @@ export class JobStore extends EventEmitter {
           success: phaseResult.success,
           commitHash: phaseResult.commit,
           durationMs: phaseResult.durationMs,
+          startedAt: phaseResult.startedAt,
+          completedAt: phaseResult.completedAt,
           error: phaseResult.error,
           costUsd: phaseResult.costUsd,
           inputTokens: phaseResult.usage?.input_tokens,
@@ -581,7 +589,14 @@ export class JobStore extends EventEmitter {
   }
 
   list(options?: ListJobsOptions): Job[] {
-    const hasFilter = options && (options.status !== undefined || options.limit !== undefined || options.offset !== undefined);
+    const hasFilter = options && (
+      options.status !== undefined ||
+      options.statuses !== undefined ||
+      options.excludeStatus !== undefined ||
+      options.repo !== undefined ||
+      options.limit !== undefined ||
+      options.offset !== undefined
+    );
 
     if (!hasFilter) {
       // 옵션 없음: 기존 동작 유지 (전체 로드 + 캐시 머지)
@@ -603,6 +618,9 @@ export class JobStore extends EventEmitter {
     // 옵션 있음: DB 레벨 필터링 사용
     const filter: ListJobsFilter = {};
     if (options.status !== undefined) filter.status = options.status;
+    if (options.statuses !== undefined) filter.statuses = options.statuses as ListJobsFilter["statuses"];
+    if (options.excludeStatus !== undefined) filter.excludeStatus = options.excludeStatus;
+    if (options.repo !== undefined) filter.repo = options.repo;
     if (options.limit !== undefined) filter.limit = options.limit;
     if (options.offset !== undefined) filter.offset = options.offset;
 
@@ -667,20 +685,11 @@ export class JobStore extends EventEmitter {
   }
 
   findFailedJobsForRetry(): Job[] {
-    const now = Date.now();
     const RETRY_DELAY_MS = 10 * 60 * 1000; // 10분 대기 후 재시도
+    const cutoffIso = new Date(Date.now() - RETRY_DELAY_MS).toISOString();
 
-    const allJobs = this.list();
-    return allJobs.filter(job => {
-      // failed 상태이고 retry가 아닌 job만
-      if (job.status !== "failure" || job.isRetry === true) {
-        return false;
-      }
-
-      // 최근 실패한 job은 제외 (10분 대기)
-      const completedAt = job.completedAt ? new Date(job.completedAt).getTime() : 0;
-      return completedAt > 0 && (now - completedAt) > RETRY_DELAY_MS;
-    });
+    const dbJobs = this.db.findFailedJobsForRetry(cutoffIso);
+    return dbJobs.map(dbJob => this.dbJobToJob(dbJob));
   }
 
   archive(id: string): boolean {
@@ -699,40 +708,20 @@ export class JobStore extends EventEmitter {
   }
 
   prune(maxJobs: number): number {
-    const allJobs = this.list();
-    if (allJobs.length <= maxJobs) return 0;
+    const totalCount = this.db.countJobs();
+    if (totalCount <= maxJobs) return 0;
 
-    const completed = allJobs
-      .filter(j => j.status === "success" || j.status === "failure" || j.status === "cancelled")
-      .sort((a, b) => {
-        // LRU: lastUpdatedAt 기준, 없으면 completedAt → createdAt 순으로 fallback
-        const ta = a.lastUpdatedAt
-          ? new Date(a.lastUpdatedAt).getTime()
-          : a.completedAt
-            ? new Date(a.completedAt).getTime()
-            : new Date(a.createdAt).getTime();
-        const tb = b.lastUpdatedAt
-          ? new Date(b.lastUpdatedAt).getTime()
-          : b.completedAt
-            ? new Date(b.completedAt).getTime()
-            : new Date(b.createdAt).getTime();
-
-        // 동일한 timestamp인 경우 createdAt로 tie-break (더 오래된 것 먼저)
-        if (ta === tb) {
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        }
-        return ta - tb; // LRU: 가장 오래전에 사용된 것 먼저
-      });
-
-    const excess = allJobs.length - maxJobs;
+    // DB 레벨에서 완료 job LRU 정렬 조회 (success/failure/cancelled)
+    const completed = this.db.listCompletedJobsForPrune();
+    const excess = totalCount - maxJobs;
     const toDelete = completed.slice(0, excess);
 
-    for (const job of toDelete) {
-      this.remove(job.id);
+    for (const dbJob of toDelete) {
+      this.remove(dbJob.id);
     }
 
     if (toDelete.length > 0) {
-      logger.info(`Job pruning: ${toDelete.length}개 완료 작업 삭제 (총 ${allJobs.length} → ${allJobs.length - toDelete.length})`);
+      logger.info(`Job pruning: ${toDelete.length}개 완료 작업 삭제 (총 ${totalCount} → ${totalCount - toDelete.length})`);
     }
 
     return toDelete.length;
@@ -761,9 +750,9 @@ export class JobStore extends EventEmitter {
     jobCount: number;
     topExpensiveJobs: Array<{ id: string; issueNumber: number; totalCostUsd: number; repo: string }>;
   } {
-    const allJobs = this.list();
-    const filteredJobs = repo ? allJobs.filter(job => job.repo === repo) : allJobs;
-    const jobsWithCost = filteredJobs.filter(job => job.totalCostUsd != null && job.totalCostUsd > 0);
+    // DB 레벨에서 repo 필터링 적용
+    const dbJobs = this.db.listJobsWithFilter(repo ? { repo } : {});
+    const jobsWithCost = dbJobs.filter(job => job.totalCostUsd != null && job.totalCostUsd > 0);
 
     const round = (val: number) => Math.round(val * 100) / 100;
 

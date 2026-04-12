@@ -282,4 +282,292 @@ describe("Project Override Integration Tests", () => {
       expect(resolved.review).toEqual(DEFAULT_CONFIG.review);
     });
   });
+
+  describe("cross-project isolation", () => {
+    it("should not leak project A overrides into project B", () => {
+      const baseConfig: AQConfig = {
+        ...structuredClone(DEFAULT_CONFIG),
+        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+        projects: [
+          {
+            repo: "myorg/project-a",
+            path: "/home/user/project-a",
+            commands: {
+              test: "yarn test",
+              claudeCli: { model: "claude-haiku-4-5-20251001" },
+            },
+          },
+          {
+            repo: "myorg/project-b",
+            path: "/home/user/project-b",
+            safety: {
+              maxPhases: 3,
+              allowedLabels: ["b-label"],
+            },
+          },
+        ],
+      };
+
+      const resolvedA = resolveProject("myorg/project-a", baseConfig);
+      const resolvedB = resolveProject("myorg/project-b", baseConfig);
+
+      // A's overrides are applied to A
+      expect(resolvedA.commands.test).toBe("yarn test");
+      expect(resolvedA.commands.claudeCli.model).toBe("claude-haiku-4-5-20251001");
+
+      // A's overrides do NOT appear in B
+      expect(resolvedB.commands.test).toBe(DEFAULT_CONFIG.commands.test);
+      expect(resolvedB.commands.claudeCli.model).toBe(DEFAULT_CONFIG.commands.claudeCli.model);
+
+      // B's overrides are applied to B
+      expect(resolvedB.safety.maxPhases).toBe(3);
+      expect(resolvedB.safety.allowedLabels).toEqual(["b-label"]);
+
+      // B's overrides do NOT appear in A
+      expect(resolvedA.safety.maxPhases).toBe(DEFAULT_CONFIG.safety.maxPhases);
+      expect(resolvedA.safety.allowedLabels).toEqual(DEFAULT_CONFIG.safety.allowedLabels);
+    });
+
+    it("should produce independent result objects for each project", () => {
+      const baseConfig: AQConfig = {
+        ...structuredClone(DEFAULT_CONFIG),
+        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+        projects: [
+          { repo: "myorg/proj-x", path: "/home/user/proj-x", commands: { test: "jest" } },
+          { repo: "myorg/proj-y", path: "/home/user/proj-y", commands: { test: "mocha" } },
+        ],
+      };
+
+      const resolvedX = resolveProject("myorg/proj-x", baseConfig);
+      const resolvedY = resolveProject("myorg/proj-y", baseConfig);
+
+      expect(resolvedX.commands.test).toBe("jest");
+      expect(resolvedY.commands.test).toBe("mocha");
+
+      // Mutating one result does not affect the other
+      resolvedX.commands.test = "mutated";
+      expect(resolvedY.commands.test).toBe("mocha");
+    });
+  });
+
+  describe("global fallback", () => {
+    const createFallbackConfig = (repo: string): AQConfig => ({
+      ...structuredClone(DEFAULT_CONFIG),
+      general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: "/home/user/fallback" },
+      git: { ...DEFAULT_CONFIG.git, allowedRepos: [repo] },
+      projects: [],
+    });
+
+    it("should return global config for repo in allowedRepos but not in projects", () => {
+      const config = createFallbackConfig("myorg/fallback-repo");
+      const resolved = resolveProject("myorg/fallback-repo", config);
+
+      expect(resolved.commands).toEqual(DEFAULT_CONFIG.commands);
+      expect(resolved.safety).toEqual(DEFAULT_CONFIG.safety);
+      expect(resolved.review).toEqual(DEFAULT_CONFIG.review);
+      expect(resolved.pr).toEqual(DEFAULT_CONFIG.pr);
+    });
+
+    it("should use global git config for baseBranch and branchTemplate on fallback", () => {
+      const config = createFallbackConfig("myorg/fallback-repo");
+      const resolved = resolveProject("myorg/fallback-repo", config);
+
+      expect(resolved.baseBranch).toBe(DEFAULT_CONFIG.git.defaultBaseBranch);
+      expect(resolved.branchTemplate).toBe(DEFAULT_CONFIG.git.branchTemplate);
+    });
+
+    it("should throw when repo is not in projects or allowedRepos", () => {
+      const config: AQConfig = {
+        ...structuredClone(DEFAULT_CONFIG),
+        general: { ...DEFAULT_CONFIG.general, projectName: "test" },
+        git: { ...DEFAULT_CONFIG.git, allowedRepos: [] },
+        projects: [],
+      };
+
+      expect(() => resolveProject("myorg/unknown-repo", config)).toThrow(
+        "myorg/unknown-repo"
+      );
+    });
+
+    it("should throw when fallback path is not configured", () => {
+      const config: AQConfig = {
+        ...structuredClone(DEFAULT_CONFIG),
+        general: { ...DEFAULT_CONFIG.general, projectName: "test", targetRoot: undefined },
+        git: { ...DEFAULT_CONFIG.git, allowedRepos: ["myorg/no-path-repo"] },
+        projects: [],
+      };
+
+      expect(() => resolveProject("myorg/no-path-repo", config)).toThrow(
+        "myorg/no-path-repo"
+      );
+    });
+  });
+
+  describe("PR override", () => {
+    it("should override specific pr settings while preserving others", () => {
+      const config = createTestConfig("myorg/pr-override", "/home/user/pr-override", {
+        pr: {
+          draft: false,
+          labels: ["feature", "auto-pr"],
+          mergeMethod: "merge",
+        },
+      });
+
+      const resolved = resolveProject("myorg/pr-override", config);
+
+      // Overridden fields
+      expect(resolved.pr.draft).toBe(false);
+      expect(resolved.pr.labels).toEqual(["feature", "auto-pr"]);
+      expect(resolved.pr.mergeMethod).toBe("merge");
+
+      // Inherited fields
+      expect(resolved.pr.targetBranch).toBe(DEFAULT_CONFIG.pr.targetBranch);
+      expect(resolved.pr.titleTemplate).toBe(DEFAULT_CONFIG.pr.titleTemplate);
+      expect(resolved.pr.bodyTemplate).toBe(DEFAULT_CONFIG.pr.bodyTemplate);
+      expect(resolved.pr.assignees).toEqual(DEFAULT_CONFIG.pr.assignees);
+      expect(resolved.pr.reviewers).toEqual(DEFAULT_CONFIG.pr.reviewers);
+      expect(resolved.pr.linkIssue).toBe(DEFAULT_CONFIG.pr.linkIssue);
+      expect(resolved.pr.autoMerge).toBe(DEFAULT_CONFIG.pr.autoMerge);
+    });
+
+    it("should merge pr override with all fields specified", () => {
+      const config = createTestConfig("myorg/full-pr-override", "/home/user/full-pr-override", {
+        pr: {
+          targetBranch: "develop",
+          draft: true,
+          titleTemplate: "[CUSTOM] {{title}}",
+          bodyTemplate: "## Custom Body\n\n{summary}",
+          labels: ["custom"],
+          assignees: ["dev1"],
+          reviewers: ["reviewer1"],
+          linkIssue: false,
+          autoMerge: true,
+          mergeMethod: "rebase",
+        },
+      });
+
+      const resolved = resolveProject("myorg/full-pr-override", config);
+
+      expect(resolved.pr.targetBranch).toBe("develop");
+      expect(resolved.pr.draft).toBe(true);
+      expect(resolved.pr.titleTemplate).toBe("[CUSTOM] {{title}}");
+      expect(resolved.pr.bodyTemplate).toBe("## Custom Body\n\n{summary}");
+      expect(resolved.pr.labels).toEqual(["custom"]);
+      expect(resolved.pr.assignees).toEqual(["dev1"]);
+      expect(resolved.pr.reviewers).toEqual(["reviewer1"]);
+      expect(resolved.pr.linkIssue).toBe(false);
+      expect(resolved.pr.autoMerge).toBe(true);
+      expect(resolved.pr.mergeMethod).toBe("rebase");
+    });
+  });
+
+  describe("deepMerge edge cases", () => {
+    it("should replace array fields (not concat) when overridden", () => {
+      const config = createTestConfig("myorg/array-replace", "/home/user/array-replace", {
+        commands: {
+          claudeCli: {
+            additionalArgs: ["--new-flag"],
+          },
+        },
+        safety: {
+          sensitivePaths: [".env.local"],
+        },
+      });
+
+      const resolved = resolveProject("myorg/array-replace", config);
+
+      // Arrays are replaced, not concatenated
+      expect(resolved.commands.claudeCli.additionalArgs).toEqual(["--new-flag"]);
+      expect(resolved.commands.claudeCli.additionalArgs).not.toContain(
+        ...(DEFAULT_CONFIG.commands.claudeCli.additionalArgs.length > 0
+          ? [DEFAULT_CONFIG.commands.claudeCli.additionalArgs[0]]
+          : ["__never__"])
+      );
+
+      expect(resolved.safety.sensitivePaths).toEqual([".env.local"]);
+      expect(resolved.safety.sensitivePaths).not.toEqual(
+        expect.arrayContaining(DEFAULT_CONFIG.safety.sensitivePaths)
+      );
+    });
+
+    it("should replace empty array override (not keep defaults)", () => {
+      const config = createTestConfig("myorg/empty-array", "/home/user/empty-array", {
+        safety: {
+          allowedLabels: [],
+          sensitivePaths: [],
+        },
+      });
+
+      const resolved = resolveProject("myorg/empty-array", config);
+
+      expect(resolved.safety.allowedLabels).toEqual([]);
+      expect(resolved.safety.sensitivePaths).toEqual([]);
+    });
+
+    it("should handle project with undefined optional fields gracefully", () => {
+      const config = createTestConfig("myorg/undefined-fields", "/home/user/undefined-fields", {
+        commands: {
+          claudeCli: {
+            retry: undefined,
+          },
+        },
+      });
+
+      // Should not throw
+      expect(() => resolveProject("myorg/undefined-fields", config)).not.toThrow();
+
+      const resolved = resolveProject("myorg/undefined-fields", config);
+      // Other commands fields are still inherited
+      expect(resolved.commands.claudeCli.path).toBe(DEFAULT_CONFIG.commands.claudeCli.path);
+      expect(resolved.commands.claudeCli.maxTurns).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurns);
+    });
+  });
+
+  describe("DEFAULT_CONFIG immutability", () => {
+    it("should not mutate DEFAULT_CONFIG after resolveProject with overrides", () => {
+      const snapshot = structuredClone(DEFAULT_CONFIG);
+
+      const config = createTestConfig("myorg/mutation-check", "/home/user/mutation-check", {
+        commands: {
+          test: "yarn test",
+          claudeCli: {
+            model: "claude-haiku-4-5-20251001",
+            additionalArgs: ["--injected"],
+          },
+        },
+        safety: {
+          maxPhases: 99,
+          sensitivePaths: ["injected/**"],
+        },
+        review: {
+          enabled: false,
+          rounds: [],
+        },
+        pr: {
+          draft: false,
+          labels: ["mutated"],
+        },
+      });
+
+      resolveProject("myorg/mutation-check", config);
+
+      expect(DEFAULT_CONFIG).toEqual(snapshot);
+    });
+
+    it("should not mutate DEFAULT_CONFIG after multiple resolveProject calls", () => {
+      const snapshot = structuredClone(DEFAULT_CONFIG);
+
+      for (let i = 0; i < 3; i++) {
+        const config = createTestConfig(`myorg/multi-call-${i}`, `/home/user/multi-call-${i}`, {
+          commands: { test: `run-${i}` },
+          safety: { maxPhases: i + 1 },
+        });
+        resolveProject(`myorg/multi-call-${i}`, config);
+      }
+
+      expect(DEFAULT_CONFIG).toEqual(snapshot);
+    });
+  });
 });

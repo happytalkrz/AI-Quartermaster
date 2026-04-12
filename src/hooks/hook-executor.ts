@@ -25,7 +25,8 @@ export class HookExecutor {
 
   async executeHook(hook: HookDefinition): Promise<HookResult> {
     const startTime = Date.now();
-    const substitutedCommand = this.substituteVariables(hook.command);
+    // Shell injection 방지: 변수 값을 환경변수로 분리하고 명령에는 참조만 삽입
+    const { command: substitutedCommand, env: hookEnv } = this.substituteVariables(hook.command);
     const timeout = hook.timeout || this.defaultTimeout;
 
     logger.debug(`Executing hook: ${substitutedCommand}`);
@@ -34,6 +35,7 @@ export class HookExecutor {
       const { stdout, stderr } = await execAsync(substitutedCommand, {
         timeout,
         encoding: "utf8",
+        env: { ...process.env, ...hookEnv },
       });
 
       const duration = Date.now() - startTime;
@@ -78,16 +80,28 @@ export class HookExecutor {
     this.variables = { ...this.variables, ...newVariables };
   }
 
-  private substituteVariables(command: string): string {
+  /**
+   * {{varName}} 패턴을 환경변수 참조로 대체하고, 실제 값은 환경변수로 분리한다.
+   * 이를 통해 변수 값에 포함된 셸 메타문자(; | & $ ` 등)가 셸에 의해 해석되지 않는다.
+   * 예: {{issue_title}} → "$HOOK_ISSUE_TITLE" (env: HOOK_ISSUE_TITLE=<actual value>)
+   */
+  private substituteVariables(command: string): { command: string; env: Record<string, string> } {
     let substituted = command;
+    const hookEnv: Record<string, string> = {};
 
-    // Replace {{variable}} patterns
     for (const [key, value] of Object.entries(this.variables)) {
+      const envVarName = this.toEnvVarName(key);
       const pattern = new RegExp(`\\{\\{${this.escapeRegExp(key)}\\}\\}`, 'g');
-      substituted = substituted.replace(pattern, value);
+      substituted = substituted.replace(pattern, `"$${envVarName}"`);
+      hookEnv[envVarName] = value;
     }
 
-    return substituted;
+    return { command: substituted, env: hookEnv };
+  }
+
+  /** 변수 키를 안전한 환경변수 이름으로 변환: foo.bar → HOOK_FOO_BAR */
+  private toEnvVarName(key: string): string {
+    return "HOOK_" + key.toUpperCase().replace(/[^A-Z0-9]/g, "_");
   }
 
   private escapeRegExp(string: string): string {

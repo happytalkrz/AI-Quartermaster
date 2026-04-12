@@ -56,6 +56,41 @@ describe('Error Sanitizer', () => {
       const result = sanitizeErrorMessage(message);
       expect(result).toBe('Error: File not found');
     });
+
+    it('should sanitize stack trace absolute paths', () => {
+      const message = 'Error: something failed\n    at Object.<anonymous> (/home/user/project/src/index.ts:10:5)';
+      const result = sanitizeErrorMessage(message);
+      expect(result).not.toContain('/home/user/project/src/index.ts');
+      expect(result).toContain('[REDACTED]');
+    });
+
+    it('should sanitize /root/ paths', () => {
+      const message = 'Error: config not found at /root/.config/app/settings.json';
+      const result = sanitizeErrorMessage(message);
+      expect(result).not.toContain('/root/.config/app/settings.json');
+      expect(result).toContain('[REDACTED]');
+    });
+
+    it('should sanitize /var/ paths', () => {
+      const message = 'Error: log file /var/log/app/error.log is missing';
+      const result = sanitizeErrorMessage(message);
+      expect(result).not.toContain('/var/log/app/error.log');
+      expect(result).toContain('[REDACTED]');
+    });
+
+    it('should sanitize /tmp/ paths', () => {
+      const message = 'Error: temp file /tmp/aqm-work-abc123/output not found';
+      const result = sanitizeErrorMessage(message);
+      expect(result).not.toContain('/tmp/aqm-work-abc123/output');
+      expect(result).toContain('[REDACTED]');
+    });
+
+    it('should sanitize Windows absolute paths', () => {
+      const message = 'Error: file not found C:\\Users\\username\\project\\src\\main.ts';
+      const result = sanitizeErrorMessage(message);
+      expect(result).not.toContain('C:\\Users\\username\\project');
+      expect(result).toContain('[REDACTED]');
+    });
   });
 
   describe('sanitizeCliError', () => {

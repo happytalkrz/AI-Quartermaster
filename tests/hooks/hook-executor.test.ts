@@ -213,7 +213,7 @@ describe("HookExecutor", () => {
   });
 
   describe("variable substitution", () => {
-    it("should substitute single variables", async () => {
+    it("should substitute single variables via env-var injection", async () => {
       const { exec } = await import("child_process");
       const mockExec = vi.mocked(exec);
 
@@ -230,14 +230,20 @@ describe("HookExecutor", () => {
 
       await executor.executeHook(hook);
 
+      // 변수 값은 환경변수로 전달되고 명령에는 참조만 삽입됨
       expect(mockExec).toHaveBeenCalledWith(
-        "echo test-project 123",
-        expect.any(Object),
+        'echo "$HOOK_PROJECTNAME" "$HOOK_ISSUENUMBER"',
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOOK_PROJECTNAME: "test-project",
+            HOOK_ISSUENUMBER: "123",
+          }),
+        }),
         expect.any(Function)
       );
     });
 
-    it("should substitute nested path variables", async () => {
+    it("should substitute nested path variables via env-var injection", async () => {
       const { exec } = await import("child_process");
       const mockExec = vi.mocked(exec);
 
@@ -255,13 +261,18 @@ describe("HookExecutor", () => {
       await executor.executeHook(hook);
 
       expect(mockExec).toHaveBeenCalledWith(
-        "ls -la src/components/test-project",
-        expect.any(Object),
+        'ls -la "$HOOK_NESTED_PATH"/"$HOOK_PROJECTNAME"',
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOOK_NESTED_PATH: "src/components",
+            HOOK_PROJECTNAME: "test-project",
+          }),
+        }),
         expect.any(Function)
       );
     });
 
-    it("should handle missing variables", async () => {
+    it("should handle missing variables — unknown placeholders unchanged", async () => {
       const { exec } = await import("child_process");
       const mockExec = vi.mocked(exec);
 
@@ -278,10 +289,12 @@ describe("HookExecutor", () => {
 
       await executor.executeHook(hook);
 
-      // Missing variables should remain as-is
+      // 미등록 변수는 그대로 유지; 등록된 변수만 env-var 참조로 대체
       expect(mockExec).toHaveBeenCalledWith(
-        "echo {{missingVariable}} test-project",
-        expect.any(Object),
+        'echo {{missingVariable}} "$HOOK_PROJECTNAME"',
+        expect.objectContaining({
+          env: expect.objectContaining({ HOOK_PROJECTNAME: "test-project" }),
+        }),
         expect.any(Function)
       );
     });
@@ -304,8 +317,10 @@ describe("HookExecutor", () => {
       await executor.executeHook(hook);
 
       expect(mockExec).toHaveBeenCalledWith(
-        "echo test-project and test-project again",
-        expect.any(Object),
+        'echo "$HOOK_PROJECTNAME" and "$HOOK_PROJECTNAME" again',
+        expect.objectContaining({
+          env: expect.objectContaining({ HOOK_PROJECTNAME: "test-project" }),
+        }),
         expect.any(Function)
       );
     });
@@ -325,16 +340,52 @@ describe("HookExecutor", () => {
       });
 
       const hook: HookDefinition = {
-        command: "echo '{{emptyVar}}' {{normalVar}}"
+        command: "echo {{emptyVar}} {{normalVar}}"
       };
 
       await executorWithEmpty.executeHook(hook);
 
       expect(mockExec).toHaveBeenCalledWith(
-        "echo '' value",
-        expect.any(Object),
+        'echo "$HOOK_EMPTYVAR" "$HOOK_NORMALVAR"',
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOOK_EMPTYVAR: "",
+            HOOK_NORMALVAR: "value",
+          }),
+        }),
         expect.any(Function)
       );
+    });
+
+    it("should prevent shell injection via malicious variable values", async () => {
+      const maliciousExecutor = new HookExecutor({
+        title: "'; rm -rf /tmp/pwned; echo '",
+      });
+
+      const { exec } = await import("child_process");
+      const mockExec = vi.mocked(exec);
+
+      mockExec.mockImplementation((command, options, callback) => {
+        if (callback) callback(null, "success", "");
+        return {} as any;
+      });
+
+      const hook: HookDefinition = { command: "notify.sh {{title}}" };
+      await maliciousExecutor.executeHook(hook);
+
+      // 악성 값이 명령 문자열에 직접 포함되지 않고 환경변수로만 전달됨
+      expect(mockExec).toHaveBeenCalledWith(
+        'notify.sh "$HOOK_TITLE"',
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOOK_TITLE: "'; rm -rf /tmp/pwned; echo '",
+          }),
+        }),
+        expect.any(Function)
+      );
+      // 명령 문자열에 rm -rf가 포함되지 않았음을 명시적으로 확인
+      const calledCommand = mockExec.mock.calls[0][0] as string;
+      expect(calledCommand).not.toContain("rm -rf");
     });
   });
 
@@ -364,8 +415,13 @@ describe("HookExecutor", () => {
 
       return executor.executeHook(hook).then(() => {
         expect(mockExec).toHaveBeenCalledWith(
-          "echo newValue updated-project",
-          expect.any(Object),
+          'echo "$HOOK_NEWVAR" "$HOOK_PROJECTNAME"',
+          expect.objectContaining({
+            env: expect.objectContaining({
+              HOOK_NEWVAR: "newValue",
+              HOOK_PROJECTNAME: "updated-project",
+            }),
+          }),
           expect.any(Function)
         );
       });

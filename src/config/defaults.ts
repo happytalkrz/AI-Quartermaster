@@ -3,7 +3,7 @@ import { AQConfig } from "../types/config.js";
 export const DEFAULT_CONFIG: AQConfig = {
   general: {
     projectName: "ai-quartermaster",
-    instanceLabel: "ai-quartermaster",
+    instanceLabel: "aqm",
     logLevel: "info",
     logDir: "logs",
     dryRun: false,

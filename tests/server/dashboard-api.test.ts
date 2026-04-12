@@ -1603,13 +1603,19 @@ describe("Dashboard API - Version Management", () => {
 
       describe("GET /api/jobs with project filter", () => {
         it("should return jobs filtered by project", async () => {
-          const mockJobs = [
+          const allMockJobs = [
             { id: "job-1", repo: "test/repo1", status: "completed" },
             { id: "job-2", repo: "test/repo2", status: "completed" },
             { id: "job-3", repo: "test/repo1", status: "failed" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          // DB 레벨 필터링 시뮬레이션: repo 옵션에 따라 필터링
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) {
+              return allMockJobs.filter(j => j.repo === opts.repo);
+            }
+            return allMockJobs;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1");
           expect(response.status).toBe(200);

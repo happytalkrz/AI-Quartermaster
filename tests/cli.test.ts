@@ -10,7 +10,7 @@ import { IssuePoller } from "../src/polling/issue-poller.js";
 import { createWebhookApp, startServer } from "../src/server/webhook-server.js";
 import { createDashboardRoutes } from "../src/server/dashboard-api.js";
 import { createHealthRoutes } from "../src/server/health.js";
-import { cleanupStalePid, writePidFile } from "../src/server/pid-manager.js";
+import { cleanupStalePid, writePidFile, readPidFile } from "../src/server/pid-manager.js";
 import { ConfigWatcher } from "../src/config/config-watcher.js";
 
 vi.mock("../src/config/loader.js", () => ({
@@ -497,5 +497,175 @@ describe("startCommand — IssuePoller 항상 시작", () => {
     await startCommand({});
 
     expect(callOrder.indexOf("IssuePoller")).toBeLessThan(callOrder.indexOf("startServer"));
+  });
+});
+
+describe("startCommand — pre-flight 검증", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  const mockConfigWithProject = {
+    ...mockBaseConfig,
+    projects: [{ repo: "owner/repo", path: "/tmp", baseBranch: "main" }],
+  } as unknown as ReturnType<typeof loadConfig>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.mocked(IssuePoller).mockImplementation(() => ({
+      start: vi.fn(),
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+    } as unknown as IssuePoller));
+
+    vi.mocked(JobStore).mockImplementation(() => ({
+      prune: vi.fn(),
+      list: vi.fn().mockReturnValue([]),
+    } as unknown as JobStore));
+
+    vi.mocked(JobQueue).mockImplementation(() => ({
+      recover: vi.fn(),
+      shutdown: vi.fn(),
+      enqueue: vi.fn(),
+    } as unknown as JobQueue));
+
+    vi.mocked(createWebhookApp).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createWebhookApp>);
+    vi.mocked(createDashboardRoutes).mockReturnValue({} as unknown as ReturnType<typeof createDashboardRoutes>);
+    vi.mocked(createHealthRoutes).mockReturnValue({} as unknown as ReturnType<typeof createHealthRoutes>);
+    vi.mocked(cleanupStalePid).mockReturnValue(true);
+
+    vi.mocked(ConfigWatcher).mockImplementation(() => ({
+      on: vi.fn(),
+      startWatching: vi.fn(),
+      stopWatching: vi.fn(),
+    } as unknown as ConfigWatcher));
+
+    vi.mocked(runCli).mockResolvedValue({ stdout: "0\n", stderr: "", exitCode: 0 });
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.restoreAllMocks();
+  });
+
+  it("projects가 없으면 process.exit(1)", async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...mockBaseConfig, projects: [] } as unknown as ReturnType<typeof loadConfig>);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("repo가 기본값이면 process.exit(1)", async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...mockBaseConfig,
+      projects: [{ repo: "owner/repo-name", path: "/tmp", baseBranch: "main" }],
+    } as unknown as ReturnType<typeof loadConfig>);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("path가 기본값이면 process.exit(1)", async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...mockBaseConfig,
+      projects: [{ repo: "owner/repo", path: "/path/to/local/clone", baseBranch: "main" }],
+    } as unknown as ReturnType<typeof loadConfig>);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("path가 존재하지 않으면 process.exit(1)", async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...mockBaseConfig,
+      projects: [{ repo: "owner/repo", path: "/nonexistent-path-aqm-test-xyz", baseBranch: "main" }],
+    } as unknown as ReturnType<typeof loadConfig>);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("--interval이 10초 미만이면 process.exit(1)", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+    await expect(startCommand({ interval: 5 })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("webhook 모드에서 GITHUB_WEBHOOK_SECRET 없으면 process.exit(1)", async () => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("PID 충돌(canStart=false)이면 process.exit(1)", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+    vi.mocked(cleanupStalePid).mockReturnValue(false);
+    vi.mocked(readPidFile).mockReturnValue(12345);
+    await expect(startCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("dryRun=true이면 effectiveConfig.general.dryRun=true로 시작됨", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+
+    let capturedDryRun: boolean | undefined;
+    vi.mocked(JobQueue).mockImplementation((_store, _conc, handler) => {
+      // capture what config is used via closure — check via IssuePoller constructor arg
+      return { recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() } as unknown as JobQueue;
+    });
+    vi.mocked(IssuePoller).mockImplementation((cfg) => {
+      capturedDryRun = (cfg as { general?: { dryRun?: boolean } }).general?.dryRun;
+      return { start: vi.fn(), stop: vi.fn(), isRunning: vi.fn().mockReturnValue(false) } as unknown as IssuePoller;
+    });
+
+    await startCommand({ dryRun: true });
+
+    expect(capturedDryRun).toBe(true);
+  });
+});
+
+describe("runCommand — 추가 분기", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("--target 지정 시 해당 경로가 projectRoot로 전달됨", async () => {
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+    await expect(runCommand({ issue: 42, repo: "owner/repo", target: "/custom/target" })).rejects.toThrow();
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: expect.stringContaining("custom/target") })
+    );
+  });
+});
+
+describe("versionCommand — 에러 분기", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("package.json 읽기 실패 시 process.exit(1)", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // readFileSync는 실제 호출 — 존재하지 않는 cwd로 유도하기 위해 process.cwd를 mock
+    vi.spyOn(process, "cwd").mockReturnValue("/nonexistent-dir-aqm-xyz");
+    await expect(versionCommand()).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

@@ -228,6 +228,10 @@ export class JobQueue {
    * Running jobs are reset to queued and re-enqueued.
    */
   recover(): number {
+    // 재시작 시 메모리 상태 초기화 — pause 상태 자동 해제
+    this.projectErrorState.clear();
+    logger.info("재시작: projectErrorState 초기화 완료 (project pause 해제)");
+
     const jobs = this.store.list();
     let recovered = 0;
 

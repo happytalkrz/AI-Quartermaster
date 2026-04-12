@@ -1,0 +1,37 @@
+
+</main>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/api.js"></script>
+<script src="js/state.js"></script>
+<script src="js/modal.js"></script>
+<script src="js/render.js"></script>
+<script src="js/kanban.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/automations.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Confirm Modal -->
+<div id="confirm-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+  <div class="relative w-full max-w-[400px] bg-surface-container rounded-2xl shadow-[0_24px_48px_-12px_rgba(0,0,0,0.5)] ring-1 ring-white/10 animate-[fadeIn_0.3s_ease-out]">
+    <div class="p-8 flex flex-col items-center text-center">
+      <div class="mb-6 flex items-center justify-center w-14 h-14 rounded-full bg-tertiary-fixed-dim/10 ring-1 ring-tertiary-fixed-dim/20">
+        <span class="material-symbols-outlined text-3xl text-tertiary" style="font-variation-settings: 'FILL' 1;">warning</span>
+      </div>
+      <h3 id="confirm-title" class="text-xl font-bold font-headline text-on-surface tracking-tight mb-3"></h3>
+      <p id="confirm-desc" class="text-sm leading-relaxed text-outline font-body px-4"></p>
+    </div>
+    <div class="flex gap-3 p-6 pt-0">
+      <button onclick="closeConfirm(false)" class="flex-1 px-4 py-3 text-sm font-semibold text-on-surface bg-surface-container-high border border-outline-variant/30 rounded-xl hover:bg-surface-bright transition-all duration-200 active:scale-[0.98]" data-i18n="cancel">취소</button>
+      <button onclick="closeConfirm(true)" class="flex-1 px-4 py-3 text-sm font-bold text-white bg-gradient-to-r from-[#f85149] to-[#da3633] rounded-xl shadow-lg shadow-[#f85149]/20 hover:brightness-110 transition-all duration-200 active:scale-[0.98]" data-i18n="confirm">확인</button>
+    </div>
+    <div class="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#f85149]/40 to-transparent"></div>
+  </div>
+</div>
+
+<!-- Timeline Modal -->
+<div id="timeline-modal-root"></div>
+</body>
+</html>

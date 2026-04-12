@@ -1,0 +1,37 @@
+<div class="flex min-h-[calc(100vh-64px)]">
+<!-- SideNavBar -->
+<aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d]">
+  <div class="mb-6 px-2">
+    <div class="text-xs font-headline font-bold text-primary tracking-widest uppercase opacity-60" data-i18n="commandHQ">Command HQ</div>
+    <div class="text-[10px] font-mono text-outline uppercase">AQM</div>
+    <div id="claude-profile-label" class="text-[9px] font-mono text-outline/50 uppercase"></div>
+  </div>
+  <nav class="flex-1 space-y-1" id="sidebar-nav">
+    <a class="nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer" data-nav="dashboard">
+      <span class="material-symbols-outlined">dashboard</span>
+      <span data-i18n="dashboard">Dashboard</span>
+    </a>
+    <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="logs">
+      <span class="material-symbols-outlined">terminal</span>
+      <span data-i18n="logs">Logs</span>
+    </a>
+    <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="repositories">
+      <span class="material-symbols-outlined">inventory_2</span>
+      <span data-i18n="repositories">Repositories</span>
+    </a>
+    <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="automations">
+      <span class="material-symbols-outlined">precision_manufacturing</span>
+      <span data-i18n="automations">Automations</span>
+    </a>
+    <a class="flex items-center gap-3 text-slate-400 hover:bg-slate-800 hover:text-slate-200 px-4 py-3 my-1 rounded-md transition-all font-headline text-sm cursor-pointer" data-nav="settings">
+      <span class="material-symbols-outlined">settings</span>
+      <span data-i18n="settings">Settings</span>
+    </a>
+  </nav>
+  <div class="mt-auto pt-4 border-t border-outline-variant/30">
+    <div class="text-[10px] text-outline text-center py-2">Powered by backwater.dev</div>
+  </div>
+</aside>
+
+<!-- Main Content Area -->
+<main class="flex-1 ml-[280px] p-8 space-y-8">

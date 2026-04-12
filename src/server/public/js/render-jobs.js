@@ -457,13 +457,15 @@ function renderLogsView(job) {
   var html = '<div class="mb-4 text-sm text-on-surface font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + ' — ' + statusLabel(job.status, job) + '</div>';
 
   job.logs.forEach(function(line) {
-    html += colorizeLogLine(line);
+    html += '<div class="log-line" data-log-text="' + esc(line) + '">' + colorizeLogLine(line) + '</div>';
   });
 
   // @ts-ignore
   container.innerHTML = html;
-  // @ts-ignore
-  container.scrollTop = container.scrollHeight;
+  if (logTailEnabled) {
+    // @ts-ignore
+    container.scrollTop = container.scrollHeight;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -667,4 +669,38 @@ function fetchStats() {
       if (stats.failed !== undefined) document.getElementById('stat-failed').textContent = stats.failed;
     })
     .catch(function() {});
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Log Utils
+   ══════════════════════════════════════════════════════════════ */
+/** @type {boolean} */
+var logTailEnabled = true;
+
+/** @returns {void} */
+function toggleLogTail() {
+  logTailEnabled = !logTailEnabled;
+  var btn = document.getElementById('log-tail-btn');
+  if (btn) {
+    btn.className = logTailEnabled
+      ? 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors bg-primary/10 text-primary'
+      : 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high';
+  }
+  if (logTailEnabled) {
+    var container = document.getElementById('logs-detail');
+    if (container) container.scrollTop = container.scrollHeight;
+  }
+}
+
+/** @returns {void} */
+function filterLogs() {
+  var input = document.getElementById('log-search');
+  // @ts-ignore
+  var query = input ? input.value.toLowerCase() : '';
+  var lines = document.querySelectorAll('#logs-detail .log-line');
+  lines.forEach(function(el) {
+    var text = el.getAttribute('data-log-text') || '';
+    // @ts-ignore
+    el.style.display = (!query || text.toLowerCase().includes(query)) ? '' : 'none';
+  });
 }

@@ -21,12 +21,14 @@ export interface SafetyContext {
 
 /**
  * Pre-pipeline validation: check labels and repo allowance.
+ * instanceLabel, if set, is treated as an implicit allowed label.
  */
 export function validateIssue(
   issue: GitHubIssue,
-  safetyConfig: SafetyConfig
+  safetyConfig: SafetyConfig,
+  instanceLabel?: string
 ): void {
-  if (!isAllowedLabel(issue.labels, safetyConfig.allowedLabels)) {
+  if (!isAllowedLabel(issue.labels, safetyConfig.allowedLabels, instanceLabel)) {
     throw new SafetyViolationError(
       "LabelFilter",
       `Issue labels [${issue.labels.join(", ")}] do not match allowed labels [${safetyConfig.allowedLabels.join(", ")}]`

@@ -284,7 +284,7 @@ describe("fetchAndValidateIssue", () => {
       ghPath: "gh",
       timeout: 10000,
     });
-    expect(mockValidateIssue).toHaveBeenCalledWith(makeIssue(), project.safety);
+    expect(mockValidateIssue).toHaveBeenCalledWith(makeIssue(), project.safety, undefined);
     expect(mockDetectModeFromLabels).toHaveBeenCalledWith(["bug"], "code");
     expect(mockDetectExecutionModeFromLabels).toHaveBeenCalledWith(["bug"], "standard");
     expect(mockSaveCheckpoint).toHaveBeenCalled();

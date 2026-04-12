@@ -1,15 +1,22 @@
 /**
  * Checks if the issue has at least one allowed label.
  * Returns true if allowedLabels is empty (all labels allowed).
+ * instanceLabel, if set, is implicitly treated as an allowed label.
  */
 export function isAllowedLabel(
   issueLabels: string[],
-  allowedLabels: string[]
+  allowedLabels: string[],
+  instanceLabel?: string
 ): boolean {
-  if (allowedLabels.length === 0) {
+  const effectiveAllowed =
+    instanceLabel !== undefined && instanceLabel !== ""
+      ? [...allowedLabels, instanceLabel]
+      : allowedLabels;
+
+  if (effectiveAllowed.length === 0) {
     return true;
   }
-  return issueLabels.some(label => allowedLabels.includes(label));
+  return issueLabels.some(label => effectiveAllowed.includes(label));
 }
 
 /**

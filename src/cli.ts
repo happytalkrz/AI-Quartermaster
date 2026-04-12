@@ -368,8 +368,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
       queue.enqueue(issueNumber, repo, []);
     },
     pauseProject: async (repo: string, reason?: string) => {
-      logger.info(`[AutomationScheduler] 프로젝트 일시정지: ${repo} ${reason ? `(${reason})` : ''}`);
-      // TODO: 프로젝트 일시정지 로직
+      logger.warn(`[AutomationScheduler] pauseProject 액션은 현재 미지원입니다 — 구현 예정: ${repo}${reason ? ` (${reason})` : ''}`);
     }
   };
 

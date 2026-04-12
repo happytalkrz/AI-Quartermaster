@@ -183,6 +183,8 @@ export interface PublishPhaseContext {
   dryRun: boolean;
   jl?: import("../queue/job-logger.js").JobLogger;
   totalUsage?: UsageInfo;
+  totalCostUsd?: number;
+  costBreakdown?: CostBreakdown;
 }
 
 export interface CleanupContext {
@@ -463,6 +465,8 @@ export interface JobBase {
   totalUsage?: UsageStats;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** phase/model별 비용 세분화 */
+  costBreakdown?: CostBreakdown;
 }
 
 /**

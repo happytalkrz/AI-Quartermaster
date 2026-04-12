@@ -1,4 +1,4 @@
-import type { Job, UsageInfo, PhaseResultInfo } from "../types/pipeline.js";
+import type { Job, UsageInfo, PhaseResultInfo, CostBreakdown } from "../types/pipeline.js";
 import { JobStore } from "./job-store.js";
 import { calculateCacheHitRatio } from "../claude/token-pricing.js";
 
@@ -33,10 +33,13 @@ export class JobLogger {
     this.store.update(this.jobId, { progress: Math.round(progress) });
   }
 
-  setCosts(totalCostUsd: number, totalUsage?: UsageInfo): void {
+  setCosts(totalCostUsd: number, totalUsage?: UsageInfo, costBreakdown?: CostBreakdown): void {
     const updates: Partial<Job> = { totalCostUsd, totalUsage };
     if (totalUsage) {
       updates.cacheHitRatio = calculateCacheHitRatio(totalUsage);
+    }
+    if (costBreakdown) {
+      updates.costBreakdown = costBreakdown;
     }
     this.store.update(this.jobId, updates);
   }

@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync } from "fs";
 import { getLogger } from "../utils/logger.js";
 import { AQM_HOME } from "../config/project-resolver.js";
-import type { JobPriority } from "../types/pipeline.js";
+import type { JobPriority, CostBreakdown } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -31,6 +31,7 @@ interface JobRow {
   total_cache_read_input_tokens: number | null;
   cache_hit_ratio: number | null;
   priority: string | null;
+  cost_breakdown: string | null;
 }
 
 interface PhaseRow {
@@ -84,6 +85,8 @@ export interface DatabaseJob {
   priority?: JobPriority;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** phase/model별 비용 세분화 */
+  costBreakdown?: CostBreakdown;
 }
 
 export interface DatabasePhase {
@@ -162,7 +165,8 @@ export class AQDatabase {
         total_cache_creation_input_tokens INTEGER CHECK (total_cache_creation_input_tokens >= 0),
         total_cache_read_input_tokens INTEGER CHECK (total_cache_read_input_tokens >= 0),
         cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1),
-        priority TEXT CHECK (priority IN ('high', 'normal', 'low'))
+        priority TEXT CHECK (priority IN ('high', 'normal', 'low')),
+        cost_breakdown TEXT
       )
     `);
 
@@ -249,6 +253,13 @@ export class AQDatabase {
       this.db.exec(`ALTER TABLE jobs ADD COLUMN cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1)`);
       logger.info("Migration: added cache_hit_ratio column to jobs table");
     }
+
+    // jobs 테이블에 cost_breakdown 컬럼 추가 (기존 DB 마이그레이션)
+    const hasCostBreakdown = jobColumns.some(col => col.name === "cost_breakdown");
+    if (!hasCostBreakdown) {
+      this.db.exec(`ALTER TABLE jobs ADD COLUMN cost_breakdown TEXT`);
+      logger.info("Migration: added cost_breakdown column to jobs table");
+    }
   }
 
   // === Job CRUD ===
@@ -259,15 +270,17 @@ export class AQDatabase {
         id, issue_number, repo, status, created_at, started_at, completed_at,
         pr_url, error, last_updated_at, current_step, dependencies, progress,
         is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
-        total_cache_creation_input_tokens, total_cache_read_input_tokens, cache_hit_ratio, priority
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_cache_creation_input_tokens, total_cache_read_input_tokens, cache_hit_ratio, priority,
+        cost_breakdown
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
     stmt.run(
       params[0], params[1], params[2], params[3], params[4], params[5], params[6],
       params[7], params[8], params[9], params[10], params[11], params[12], params[13],
-      params[14], params[15], params[16], params[17], params[18], params[19], params[20], params[21]
+      params[14], params[15], params[16], params[17], params[18], params[19], params[20], params[21],
+      params[22]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -292,7 +305,8 @@ export class AQDatabase {
         last_updated_at = ?, current_step = ?, dependencies = ?,
         progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
         total_input_tokens = ?, total_output_tokens = ?, total_cache_creation_input_tokens = ?,
-        total_cache_read_input_tokens = ?, cache_hit_ratio = ?, priority = ?
+        total_cache_read_input_tokens = ?, cache_hit_ratio = ?, priority = ?,
+        cost_breakdown = ?
       WHERE id = ?
     `);
 
@@ -300,7 +314,8 @@ export class AQDatabase {
     const changes = stmt.run(
       params[1], params[2], params[3], params[4], params[5], params[6], params[7],
       params[8], params[9], params[10], params[11], params[12], params[13], params[14],
-      params[15], params[16], params[17], params[18], params[19], params[20], params[21], id
+      params[15], params[16], params[17], params[18], params[19], params[20], params[21],
+      params[22], id
     ).changes;
 
     if (changes > 0) {
@@ -572,7 +587,8 @@ export class AQDatabase {
       job.totalUsage?.cache_creation_input_tokens || null,
       job.totalUsage?.cache_read_input_tokens || null,
       job.cacheHitRatio ?? null,
-      job.priority || null
+      job.priority || null,
+      job.costBreakdown ? JSON.stringify(job.costBreakdown) : null
     ];
   }
 
@@ -601,7 +617,8 @@ export class AQDatabase {
         cache_read_input_tokens: row.total_cache_read_input_tokens ?? undefined
       } : undefined,
       priority: (row.priority as JobPriority | null) ?? undefined,
-      cacheHitRatio: row.cache_hit_ratio ?? undefined
+      cacheHitRatio: row.cache_hit_ratio ?? undefined,
+      costBreakdown: row.cost_breakdown ? (JSON.parse(row.cost_breakdown) as CostBreakdown) : undefined
     };
   }
 

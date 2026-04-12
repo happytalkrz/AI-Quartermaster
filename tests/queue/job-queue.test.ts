@@ -179,7 +179,7 @@ describe("JobQueue", () => {
     expect(completedNewJob?.status).toBe("success");
   });
 
-  it("should prevent re-enqueue when successful job exists", async () => {
+  it("should auto-archive success job and allow re-enqueue", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
     const queue = new JobQueue(store, 1, handler);
 
@@ -189,9 +189,14 @@ describe("JobQueue", () => {
     const completed = store.get(successJob!.id);
     expect(completed?.status).toBe("success");
 
-    // Try to re-enqueue same issue - should be blocked
-    const blockedJob = queue.enqueue(789, "test/repo");
-    expect(blockedJob).toBeUndefined();
+    // Re-enqueue same issue - success job should be archived and new job created
+    const newJob = queue.enqueue(789, "test/repo");
+    expect(newJob).toBeDefined();
+    expect(newJob!.id).not.toBe(successJob!.id);
+
+    // Original success job should now be archived
+    const archivedJob = store.get(successJob!.id);
+    expect(archivedJob?.status).toBe("archived");
   });
 
   it("should cancel a pending job", () => {

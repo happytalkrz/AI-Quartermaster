@@ -317,11 +317,9 @@ export class JobQueue {
     const existing = this.store.findAnyByIssue(issueNumber, repo);
     if (existing) {
       if (isSuccessJob(existing)) {
-        logger.warn(`Job for issue #${issueNumber} (${repo}) already completed successfully: ${existing.id}`);
-        return undefined;
-      }
-
-      if (isFailureJob(existing) || isCancelledJob(existing)) {
+        logger.info(`Auto-archiving existing success job ${existing.id} for issue #${issueNumber} (${repo})`);
+        this.store.archive(existing.id);
+      } else if (isFailureJob(existing) || isCancelledJob(existing)) {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
         this.cleanupFailedJobArtifacts(issueNumber);
         this.store.archive(existing.id);

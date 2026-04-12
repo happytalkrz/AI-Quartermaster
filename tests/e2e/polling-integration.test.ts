@@ -63,7 +63,11 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string; s
       return jobs.find(j => j.issueNumber === issueNumber && j.repo === repo && j.status !== "archived");
     }),
     shouldBlockRepickup: vi.fn((issueNumber: number, repo: string): boolean => {
-      return jobs.some(j => j.issueNumber === issueNumber && j.repo === repo && j.status === "success");
+      // success는 재라벨 재처리를 허용하기 위해 차단하지 않음 — queued/running만 차단
+      return jobs.some(
+        j => j.issueNumber === issueNumber && j.repo === repo &&
+          (j.status === "queued" || j.status === "running"),
+      );
     }),
     findFailedJobsForRetry: vi.fn((): Job[] => {
       const now = Date.now();
@@ -108,44 +112,39 @@ function makeJobStore(existingJobs: Array<{ issueNumber: number; repo: string; s
 function makeJobQueue(store: ReturnType<typeof makeJobStore>) {
   return {
     enqueue: vi.fn((issueNumber: number, repo: string): Job | undefined => {
-      // Check if success job exists (should block repickup)
-      if (store.shouldBlockRepickup(issueNumber, repo)) {
-        return undefined;
-      }
-
-      // Check for existing failed/cancelled jobs and auto-archive them
       const existing = store.findAnyByIssue(issueNumber, repo);
-      if (existing && (existing.status === "failure" || existing.status === "cancelled")) {
-        // Simulate the actual JobQueue logic for worktree cleanup
-        const dataDir = "/tmp/test-data"; // Mock data directory
+      if (existing) {
+        if (existing.status === "success") {
+          // 재라벨 시 success job auto-archive (checkpoint 정리 불필요)
+          store.archive(existing.id);
+        } else if (existing.status === "failure" || existing.status === "cancelled") {
+          // failed/cancelled: checkpoint 정리 후 archive
+          const dataDir = "/tmp/test-data";
 
-        try {
-          // Load checkpoint to check for worktree before removing
-          const checkpoint = mockLoadCheckpoint(dataDir, issueNumber);
-          if (checkpoint?.worktreePath) {
-            // Simulate worktree removal call
-            mockRemoveWorktree(
-              { gitPath: "git" }, // Mock git config
-              checkpoint.worktreePath,
-              { cwd: "/tmp/project", force: true }
-            );
+          try {
+            const checkpoint = mockLoadCheckpoint(dataDir, issueNumber);
+            if (checkpoint?.worktreePath) {
+              mockRemoveWorktree(
+                { gitPath: "git" },
+                checkpoint.worktreePath,
+                { cwd: "/tmp/project", force: true }
+              );
+            }
+          } catch (_checkpointErr) {
+            // error handling
           }
-        } catch (checkpointErr) {
-          // Simulate error handling
-        }
 
-        try {
-          // Remove checkpoint
-          mockRemoveCheckpoint(dataDir, issueNumber);
-        } catch (err) {
-          // Simulate error handling
-        }
+          try {
+            mockRemoveCheckpoint(dataDir, issueNumber);
+          } catch (_err) {
+            // error handling
+          }
 
-        // Archive the existing job
-        store.archive(existing.id);
-      } else if (existing) {
-        // Other statuses (queued, running) should still block
-        return undefined;
+          store.archive(existing.id);
+        } else {
+          // queued/running: 차단
+          return undefined;
+        }
       }
 
       return store.create(issueNumber, repo);
@@ -233,16 +232,16 @@ describe("E2E: polling integration", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Skips issues that have successful jobs (shouldBlockRepickup)
+  // 2. Skips issues with active (queued/running) jobs — shouldBlockRepickup
   // -------------------------------------------------------------------------
-  it("skips issues that already exist in the job store", async () => {
-    // Issue #10 already has a successful job
-    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "success" }]);
+  it("skips issues with queued or running jobs (active processing blocks re-pickup)", async () => {
+    // Issue #10 already has a queued job (active processing — should block)
+    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "queued" }]);
     const queue = makeJobQueue(store);
 
     mockRunCli.mockResolvedValue({
       stdout: makeGhIssueListResponse([
-        { number: 10, title: "Add feature A" }, // has successful job - should be blocked
+        { number: 10, title: "Add feature A" }, // has queued job - should be blocked
         { number: 12, title: "New issue C" },    // new - should be enqueued
       ]),
       stderr: "",
@@ -252,10 +251,38 @@ describe("E2E: polling integration", () => {
     poller = new IssuePoller(makeConfig(), store as any, queue as any);
     await (poller as any).poll();
 
-    // Only the new issue should be enqueued
+    // Only the new issue should be enqueued (queued/running blocks re-pickup)
     expect(queue.enqueue).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).toHaveBeenCalledWith(12, "test/repo");
     expect(queue.enqueue).not.toHaveBeenCalledWith(10, expect.anything());
+  });
+
+  // -------------------------------------------------------------------------
+  // 2b. Success jobs do NOT block — re-labeling triggers re-processing
+  // -------------------------------------------------------------------------
+  it("allows re-pickup of success jobs (re-label triggers new processing)", async () => {
+    // Issue #10 has a success job — re-labeling should trigger new processing
+    const store = makeJobStore([{ issueNumber: 10, repo: "test/repo", status: "success" }]);
+    const queue = makeJobQueue(store);
+
+    mockRunCli.mockResolvedValue({
+      stdout: makeGhIssueListResponse([
+        { number: 10, title: "Add feature A" }, // has success job - should be re-enqueued
+      ]),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    poller = new IssuePoller(makeConfig(), store as any, queue as any);
+    await (poller as any).poll();
+
+    // The success issue should be re-enqueued (success does not block re-pickup)
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
+    expect(queue.enqueue).toHaveBeenCalledWith(10, "test/repo");
+
+    // Original success job should be archived
+    const originalJob = store.get("aq-10-0");
+    expect(originalJob?.status).toBe("archived");
   });
 
   // -------------------------------------------------------------------------

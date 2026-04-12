@@ -14,8 +14,7 @@ import { PROGRESS_PLAN_GENERATED, phaseStart } from "./progress-tracker.js";
 import { createWorktree, removeWorktree } from "../git/worktree-manager.js";
 import { createCheckpoint } from "../safety/rollback-manager.js";
 import { createSlug } from "../utils/slug.js";
-import { buildBaseLayer, buildProjectLayer, buildStaticContent, loadTemplate } from "../prompt/template-renderer.js";
-import { createHash } from "crypto";
+import { buildBaseLayer, buildProjectLayer, buildStaticContent, loadTemplate, computeLayerCacheKey } from "../prompt/template-renderer.js";
 import { resolve } from "path";
 
 const logger = getLogger();
@@ -84,7 +83,13 @@ export interface CoreLoopResult {
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
-  // Step 0: Build and cache static prompt layers (Base + Project) if not already cached
+  // Step 0: 정적 레이어(Base + Project) 1회 조립 및 캐시
+  // 5계층 구조:
+  //   [정적] Layer 1 (Base)    — 역할, 규칙, 출력 형식 (파이프라인 시작 시 1회)
+  //   [정적] Layer 2 (Project) — 프로젝트 컨벤션, 구조, 명령어 (파이프라인 시작 시 1회)
+  //   [동적] Layer 3 (Issue)   — 이슈 번호·제목·본문 (Phase 실행마다 phase-executor에서 갱신)
+  //   [동적] Layer 4 (Phase)   — Phase 인덱스·대상 파일·이전 결과 (Phase 실행마다 갱신)
+  //   [동적] Layer 5 (Learning)— 과거 실패 패턴·학습 데이터 (Phase 실행마다 갱신)
   if (!ctx.cachedLayers) {
     logger.info("Building and caching static prompt layers (Base + Project)...");
 
@@ -101,14 +106,14 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       lintCommand: ctx.config.commands.lint,
     });
 
-    // Generate cache key based on project and conventions
-    const cacheKey = createHash("sha256")
-      .update(ctx.cwd + (ctx.projectConventions || "") + ctx.repoStructure)
-      .digest("hex")
-      .substring(0, 16);
+    // Base+Project 내용 기반 캐시 키 (computeLayerCacheKey로 정규화)
+    const cacheKey = computeLayerCacheKey({
+      cwd: ctx.cwd,
+      conventions: ctx.projectConventions || "",
+      structure: ctx.repoStructure,
+    });
 
-    // Load static template parts for caching
-    const planTemplatePath = resolve(ctx.promptsDir, "plan-generation.md");
+    // Phase 템플릿 로드 (동적 레이어 조립 시 재사용)
     const phaseTemplatePath = resolve(ctx.promptsDir, "phase-implementation.md");
 
     try {

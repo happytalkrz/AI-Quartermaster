@@ -3,7 +3,8 @@ import { rollbackToCheckpoint as doRollback } from "../../safety/rollback-manage
 import { saveResult, transitionState } from "../core/pipeline-context.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { getLogger } from "../../utils/logger.js";
-import { getErrorMessage } from "../../utils/error-utils.js";
+import { getErrorMessage, isAQMError } from "../../utils/error-utils.js";
+import { PipelineError, SafetyViolationError, TimeoutError } from "../../types/errors.js";
 import { handlePipelineFailure } from "../phases/pipeline-publish.js";
 import type { PipelineState } from "../../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
@@ -228,8 +229,7 @@ export async function routeError(
   const errorMessage = getErrorMessage(error);
 
   // Check if this is a skipped issue due to feasibility check
-  const isFeasibilitySkip = errorMessage.startsWith("FEASIBILITY_SKIP:");
-  if (isFeasibilitySkip) {
+  if (errorMessage.startsWith("FEASIBILITY_SKIP:")) {
     return handleFeasibilitySkipError({
       issueNumber: context.input.issueNumber,
       repo: context.input.repo,
@@ -239,11 +239,24 @@ export async function routeError(
   }
 
   // Check if this is a core loop failure with detailed results
-  const errorWithReport = error as Error & { failureResult?: OrchestratorResult };
-  if (errorWithReport.failureResult) {
-    // Core loop failure already handled by handleCoreLoopFailure
-    transitionState(context.runtime, "FAILED");
-    return errorWithReport.failureResult;
+  if (error instanceof Error && 'failureResult' in error) {
+    const failureResult = (error as Error & { failureResult?: OrchestratorResult }).failureResult;
+    if (failureResult) {
+      // Core loop failure already handled by handleCoreLoopFailure
+      transitionState(context.runtime, "FAILED");
+      return failureResult;
+    }
+  }
+
+  // AQMError 서브클래스별 분기 처리
+  if (isAQMError(error)) {
+    if (error instanceof SafetyViolationError) {
+      logger.error(`Safety violation in pipeline [${error.guard}]: ${error.message}`);
+    } else if (error instanceof TimeoutError) {
+      logger.error(`Pipeline timeout in ${error.stage} after ${error.timeoutMs}ms`);
+    } else if (error instanceof PipelineError) {
+      logger.error(`Pipeline error [${error.code}]: ${error.message}`);
+    }
   }
 
   // General pipeline failure

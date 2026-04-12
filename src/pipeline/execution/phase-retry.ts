@@ -4,6 +4,7 @@ import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
 import { configForTask } from "../../claude/model-router.js";
 import { runShell } from "../../utils/cli-runner.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { PipelineError } from "../../types/errors.js";
 import type { ClaudeCliConfig, GitConfig, WorktreeConfig } from "../../types/config.js";
 import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry } from "../../types/pipeline.js";
 import { classifyError } from "../errors/error-classifier.js";
@@ -180,7 +181,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     });
 
     if (!claudeResult.success) {
-      throw new Error(`Phase retry failed: ${claudeResult.output}`);
+      throw new PipelineError("PHASE_RETRY_FAILED", `Phase retry failed: ${claudeResult.output}`);
     }
 
     // Auto-commit if needed
@@ -199,7 +200,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       logger.info(`Running verification after retry for phase ${ctx.phase.index + 1}`);
       const testResult = await runShell(ctx.testCommand, { cwd: ctx.cwd, timeout: 120000 });
       if (testResult.exitCode !== 0) {
-        throw new Error(`Tests failed after retry:\n${testResult.stdout}\n${testResult.stderr}`);
+        throw new PipelineError("VERIFICATION_FAILED", `Tests failed after retry:\n${testResult.stdout}\n${testResult.stderr}`);
       }
     }
 

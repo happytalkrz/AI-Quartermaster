@@ -155,6 +155,35 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
 - `404` - 작업을 찾을 수 없음
 - `400` - 실패/취소되지 않은 작업은 재시도 불가
 
+### PUT /api/jobs/:id/priority
+작업 우선순위를 변경합니다.
+
+**요청 본문:**
+```json
+{
+  "priority": "high"
+}
+```
+
+**우선순위 값:** `high`, `normal`, `low`
+
+**응답:**
+```json
+{
+  "id": "job-uuid",
+  "issueNumber": 123,
+  "repo": "owner/repo",
+  "status": "queued",
+  "priority": "high",
+  "createdAt": "2026-04-04T10:00:00Z"
+}
+```
+
+**에러:**
+- `400` - 유효하지 않은 우선순위 값 또는 요청 본문
+- `404` - 작업을 찾을 수 없음
+- `500` - 우선순위 업데이트 실패
+
 ### DELETE /api/jobs/:id
 완료된 작업을 삭제합니다.
 
@@ -369,6 +398,40 @@ const eventSource = new EventSource('/api/events?token=uuid-session-token');
   "timeRange": "30d"
 }
 ```
+
+---
+
+## Claude Profile API
+
+### GET /api/claude-profile
+Claude CLI 프로파일 및 모델 설정 정보를 조회합니다.
+
+**응답:**
+```json
+{
+  "profile": "default",
+  "configDir": "/home/user/.claude-default",
+  "cliVersion": "1.0.0",
+  "model": "claude-sonnet-4-5",
+  "models": {
+    "plan": "claude-opus-4-5",
+    "phase": "claude-sonnet-4-5",
+    "review": "claude-sonnet-4-5",
+    "fallback": "claude-haiku-4-5"
+  },
+  "maxTurns": 60,
+  "timeout": 180000
+}
+```
+
+**필드 설명:**
+- `profile` - Claude 프로파일 이름 (`CLAUDE_CONFIG_DIR` 환경변수 기반)
+- `configDir` - Claude 설정 디렉토리 경로
+- `cliVersion` - 설치된 Claude CLI 버전
+- `model` - 기본 모델
+- `models` - 단계별 모델 설정 (plan/phase/review/fallback)
+- `maxTurns` - Claude CLI 최대 턴 수
+- `timeout` - Claude CLI 타임아웃 (ms)
 
 ---
 

@@ -80,6 +80,7 @@ export interface CoreLoopResult {
   success: boolean;
   totalCostUsd?: number;
   totalUsage?: import("../../types/pipeline.js").UsageInfo;
+  costBreakdown?: import("../../types/pipeline.js").CostBreakdown;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {

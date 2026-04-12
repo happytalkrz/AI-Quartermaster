@@ -108,9 +108,80 @@ function renderTabForm(tabName, data) {
 
 /** @type {Record<string, string>} */
 var FIELD_DISPLAY_LABELS = {
+  // general
+  'general.projectName': 'Project Name',
   'general.instanceLabel': 'Instance Label',
   'general.instanceOwners': 'Instance Owners',
+  'general.logLevel': 'Log Level',
+  'general.logDir': 'Log Directory',
+  'general.dryRun': 'Dry Run',
+  'general.locale': 'Locale',
+  'general.concurrency': 'Concurrency',
+  'general.targetRoot': 'Target Root',
+  'general.stuckTimeoutMs': 'Stuck Timeout (ms)',
+  'general.pollingIntervalMs': 'Polling Interval (ms)',
+  'general.maxJobs': 'Max Jobs',
+  'general.autoUpdate': 'Auto Update',
+  // safety
+  'safety.sensitivePaths': 'Sensitive Paths',
+  'safety.maxPhases': 'Max Phases',
+  'safety.maxRetries': 'Max Retries',
+  'safety.maxTotalDurationMs': 'Max Total Duration (ms)',
+  'safety.maxFileChanges': 'Max File Changes',
+  'safety.maxInsertions': 'Max Insertions',
+  'safety.maxDeletions': 'Max Deletions',
+  'safety.requireTests': 'Require Tests',
+  'safety.blockDirectBasePush': 'Block Direct Base Push',
+  'safety.timeouts': 'Timeouts',
+  'safety.stopConditions': 'Stop Conditions',
+  'safety.allowedLabels': 'Allowed Labels',
+  'safety.rollbackStrategy': 'Rollback Strategy',
+  'safety.feasibilityCheck': 'Feasibility Check',
+  'safety.strict': 'Strict Mode',
+  'safety.rules': 'Rules',
+  // review
+  'review.enabled': 'Enabled',
+  'review.rounds': 'Review Rounds',
+  'review.simplify': 'Simplify',
+  'review.unifiedMode': 'Unified Mode',
 };
+
+/** @type {Record<string, string>} */
+var FIELD_DESCRIPTIONS = {
+  'general.projectName': '이 AQM 인스턴스의 프로젝트 이름',
+  'general.instanceLabel': '대시보드에 표시될 인스턴스 식별 레이블',
+  'general.instanceOwners': '이 인스턴스를 소유한 GitHub 사용자 목록',
+  'general.logLevel': '로그 출력 레벨 (debug, info, warn, error)',
+  'general.logDir': '로그 파일이 저장될 디렉토리 경로',
+  'general.dryRun': '활성화 시 실제 변경 없이 파이프라인을 시뮬레이션',
+  'general.locale': 'UI 및 메시지에 사용할 언어 (ko, en)',
+  'general.concurrency': '동시에 실행할 수 있는 최대 작업 수',
+  'general.stuckTimeoutMs': '작업이 멈춘 것으로 판단하기까지의 대기 시간',
+  'general.pollingIntervalMs': '이슈 폴링 주기 (밀리초)',
+  'general.maxJobs': '큐에 허용되는 최대 잡 수',
+  'general.autoUpdate': '새 버전이 있을 때 자동으로 업데이트',
+  'safety.maxPhases': '파이프라인 내 최대 허용 Phase 수',
+  'safety.maxRetries': '실패 시 최대 재시도 횟수',
+  'safety.maxTotalDurationMs': '전체 파이프라인 최대 허용 실행 시간',
+  'safety.maxFileChanges': '한 번에 변경 가능한 최대 파일 수',
+  'safety.maxInsertions': '한 번에 허용되는 최대 줄 추가 수',
+  'safety.maxDeletions': '한 번에 허용되는 최대 줄 삭제 수',
+  'safety.requireTests': '활성화 시 테스트 없는 PR 차단',
+  'safety.blockDirectBasePush': '베이스 브랜치 직접 푸시 차단',
+  'safety.strict': '엄격 모드 — 모든 안전 규칙을 필수로 적용',
+  'safety.rollbackStrategy': '실패 시 롤백 전략 (none, all, failed-only)',
+  'review.enabled': '코드 리뷰 단계 활성화 여부',
+  'review.unifiedMode': '활성화 시 1회 호출로 3가지 관점 통합 평가',
+};
+
+/**
+ * camelCase 키를 Title Case 문자열로 변환
+ * @param {string} str
+ * @returns {string}
+ */
+function camelToTitle(str) {
+  return str.replace(/([A-Z])/g, ' $1').replace(/^./, function(s) { return s.toUpperCase(); }).trim();
+}
 
 /**
  * @param {string} key
@@ -122,10 +193,16 @@ function renderFormField(key, value, configPath) {
   var fieldId = 'field-' + configPath.replace(/\./g, '-');
   var isMasked = typeof value === 'string' && value.includes('********');
   var isReadonly = isMasked;
-  var displayLabel = FIELD_DISPLAY_LABELS[configPath] || key;
+  var displayLabel = FIELD_DISPLAY_LABELS[configPath] || camelToTitle(key);
+  var description = FIELD_DESCRIPTIONS[configPath] || '';
 
   var html = '<label class="block">';
-  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">' + esc(displayLabel) + '</span>';
+  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">' + esc(displayLabel) + '</span>';
+  if (description) {
+    html += '<span class="text-[10px] text-outline block mb-2">' + esc(description) + '</span>';
+  } else {
+    html += '<span class="block mb-2"></span>';
+  }
 
   if (typeof value === 'boolean') {
     html += renderCheckboxInput(fieldId, value, configPath, isReadonly);

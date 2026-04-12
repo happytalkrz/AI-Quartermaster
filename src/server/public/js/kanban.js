@@ -251,8 +251,9 @@ function optimisticUpdatePriority(jobId, newPriority) {
   if (currentJobs) {
     var job = currentJobs.find(function(j) { return j.id === jobId; });
     if (job) {
-      var oldPriority = job.priority;
-      job.priority = newPriority;
+      var capturedJob = /** @type {Job} */ (job);
+      var oldPriority = capturedJob.priority;
+      capturedJob.priority = newPriority;
 
       // Re-render kanban with updated data
       var container = document.getElementById('kanban-container');
@@ -265,7 +266,7 @@ function optimisticUpdatePriority(jobId, newPriority) {
       updateJobPriority(jobId, newPriority).catch(function(error) {
         console.error('Failed to update job priority:', error);
         // Rollback
-        job.priority = oldPriority;
+        capturedJob.priority = oldPriority;
         var rollbackContainer = document.getElementById('kanban-container');
         if (rollbackContainer) {
           rollbackContainer.innerHTML = renderKanban(currentJobs);

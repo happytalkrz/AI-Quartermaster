@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { createHash } from "crypto";
+import { resolve } from "path";
 import type {
   BaseLayer,
   ProjectLayer,
@@ -101,7 +102,21 @@ export function sanitizeIssueBody(body: string): string {
     .replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;");
 }
 
-export function loadTemplate(templatePath: string): string {
+export function loadTemplate(templatePath: string, allowedDir?: string): string {
+  // Path Traversal 방어: allowedDir 지정 시 resolve 후 prefix 검증
+  if (allowedDir) {
+    const resolvedAllowedDir = resolve(allowedDir);
+    const resolvedTemplatePath = resolve(templatePath);
+    const prefix = resolvedAllowedDir.endsWith("/")
+      ? resolvedAllowedDir
+      : resolvedAllowedDir + "/";
+    if (
+      !resolvedTemplatePath.startsWith(prefix) &&
+      resolvedTemplatePath !== resolvedAllowedDir
+    ) {
+      throw new Error("Template path is outside the allowed directory");
+    }
+  }
   try {
     return readFileSync(templatePath, "utf-8");
   } catch (err: unknown) {

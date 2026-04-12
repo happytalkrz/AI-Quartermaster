@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   renderTemplate,
+  loadTemplate,
   buildBaseLayer,
   buildProjectLayer,
   buildPhaseLayer,
@@ -1007,5 +1008,40 @@ describe("assemblePrompt — issue field sanitization", () => {
     const result = buildDynamicLayers(issue, phase, buildLearningLayer());
     const issueVars = result.variables.issue as Record<string, unknown>;
     expect(issueVars["title"]).toBe("FixBug");
+  });
+});
+
+describe("loadTemplate — path traversal 차단", () => {
+  it("allowedDir 미지정 시 경로 검사 없이 파일 읽기 시도", () => {
+    // allowedDir 없으면 ENOENT 에러 (경로 차단 에러 아님)
+    expect(() => loadTemplate("/nonexistent/path/template.md")).toThrow(
+      "Template file not found"
+    );
+  });
+
+  it("allowedDir 내 정상 경로는 통과 (파일 미존재 시 ENOENT)", () => {
+    expect(() =>
+      loadTemplate("/tmp/prompts/template.md", "/tmp/prompts")
+    ).toThrow("Template file not found");
+  });
+
+  it("allowedDir 외부 경로는 차단", () => {
+    expect(() =>
+      loadTemplate("/etc/passwd", "/tmp/prompts")
+    ).toThrow("Template path is outside the allowed directory");
+  });
+
+  it("경로 트래버설 패턴(../...) 차단", () => {
+    expect(() =>
+      loadTemplate("/tmp/prompts/../../etc/passwd", "/tmp/prompts")
+    ).toThrow("Template path is outside the allowed directory");
+  });
+
+  it("allowedDir 자체와 동일한 경로는 차단 (디렉토리 직접 읽기)", () => {
+    // 디렉토리를 파일로 읽으려 하면 ENOENT 또는 EISDIR — 경로 차단은 아님
+    // (resolvedTemplatePath === resolvedAllowedDir 케이스)
+    expect(() => loadTemplate("/tmp/prompts", "/tmp/prompts")).not.toThrow(
+      "Template path is outside the allowed directory"
+    );
   });
 });

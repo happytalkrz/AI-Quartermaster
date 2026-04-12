@@ -27,6 +27,15 @@ export function sanitizeErrorMessage(message: string): string {
   // 파일 시스템 경로 (홈 디렉토리)
   sanitized = sanitized.replace(/\/home\/[^/\s]+/g, '[REDACTED]');
 
+  // 스택 트레이스 내 절대 경로 (at Func (/abs/path:line:col) 패턴)
+  sanitized = sanitized.replace(/\(\/[^)]+:\d+:\d+\)/g, '([REDACTED])');
+
+  // 시스템 절대 경로 (/root/, /var/, /tmp/, /usr/, /opt/)
+  sanitized = sanitized.replace(/\/(root|var|tmp|usr|opt)\/[^\s)]+/g, '[REDACTED]');
+
+  // Windows 절대 경로 (C:\Users\... 형태)
+  sanitized = sanitized.replace(/[A-Z]:\\[^\s]+/g, '[REDACTED]');
+
   // 이메일 주소
   sanitized = sanitized.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[REDACTED]');
 

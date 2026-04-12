@@ -3,6 +3,7 @@ import type { AQConfig } from "../types/config.js";
 import type { AutomationRule, RuleContext, RuleEngineHandlers } from "../types/automation.js";
 import { evaluateRule, executeAction } from "./rule-engine.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 

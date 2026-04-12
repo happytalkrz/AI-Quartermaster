@@ -2,6 +2,7 @@ import { watch, FSWatcher, existsSync } from "fs";
 import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 
 const logger = getLogger();
 

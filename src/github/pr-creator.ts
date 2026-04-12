@@ -2,6 +2,7 @@ import { resolve } from "path";
 import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
 import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus, UsageInfo } from "../types/pipeline.js";
 

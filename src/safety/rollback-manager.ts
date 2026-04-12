@@ -1,5 +1,6 @@
 import { runCli } from "../utils/cli-runner.js";
 import { getLogger } from "../utils/logger.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { RollbackError } from "../types/errors.js";
 import type { GitConfig, WorktreeConfig } from "../types/config.js";
 import type { WorktreeInfo } from "../git/worktree-manager.js";
@@ -106,8 +107,8 @@ export async function ensureCleanState(
       path: options.worktreePath,
       branch: options.branchName
     };
-  } catch (rollbackError) {
-    logger.warn(`Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+  } catch (rollbackError: unknown) {
+    logger.warn(`Rollback failed: ${getErrorMessage(rollbackError)}`);
     logger.warn("Falling back to worktree recreation for clean state...");
 
     try {
@@ -131,8 +132,8 @@ export async function ensureCleanState(
 
       logger.info(`Clean state restored via worktree recreation at ${newWorktreeInfo.path}`);
       return newWorktreeInfo;
-    } catch (worktreeError) {
-      const errorMsg = `Failed to ensure clean state. Rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}. Worktree recreation failed: ${worktreeError instanceof Error ? worktreeError.message : String(worktreeError)}`;
+    } catch (worktreeError: unknown) {
+      const errorMsg = `Failed to ensure clean state. Rollback failed: ${getErrorMessage(rollbackError)}. Worktree recreation failed: ${getErrorMessage(worktreeError)}`;
       throw new RollbackError(hash, errorMsg);
     }
   }

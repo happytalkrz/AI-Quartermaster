@@ -427,6 +427,47 @@ describe("JobQueue", () => {
       expect(updatedJob?.status).toBe("success");
       expect(updatedJob?.error).toBeUndefined();
     });
+
+    it("should preserve phaseResults from failed job when retrying", async () => {
+      const handler: JobHandler = vi.fn()
+        .mockRejectedValueOnce(new Error("phase failure"))
+        .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
+
+      const queue = new JobQueue(store, 1, handler);
+
+      const initialJob = queue.enqueue(300, "test/repo");
+      await new Promise(r => setTimeout(r, 50));
+      expect(store.get(initialJob!.id)?.status).toBe("failure");
+
+      // Simulate partially completed pipeline: set phaseResults on failed job
+      const mockPhaseResults = [
+        {
+          name: "Phase 1",
+          success: true,
+          durationMs: 5000,
+          startedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: "2026-01-01T00:00:05.000Z",
+          costUsd: 0.25,
+        },
+      ];
+      store.update(initialJob!.id, { phaseResults: mockPhaseResults });
+
+      // Retry - new job should inherit phaseResults from failed job
+      const retryJob = queue.retryJob(initialJob!.id);
+      expect(retryJob).toBeDefined();
+      expect(retryJob?.isRetry).toBe(true);
+
+      const newJob = store.get(retryJob!.id);
+      expect(newJob?.phaseResults).toHaveLength(1);
+      expect(newJob?.phaseResults?.[0].name).toBe("Phase 1");
+      expect(newJob?.phaseResults?.[0].success).toBe(true);
+      expect(newJob?.phaseResults?.[0].startedAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(newJob?.phaseResults?.[0].completedAt).toBe("2026-01-01T00:00:05.000Z");
+      expect(newJob?.phaseResults?.[0].costUsd).toBe(0.25);
+
+      // Original job should be archived
+      expect(store.get(initialJob!.id)?.status).toBe("archived");
+    });
   });
 
   describe("Worktree cleanup on failure job re-enqueue", () => {

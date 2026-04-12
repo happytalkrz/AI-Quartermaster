@@ -35,20 +35,20 @@
 <!-- TopNavBar -->
 <header class="sticky top-0 z-50 flex justify-between items-center px-6 h-16 w-full bg-[#0d1117] dark:bg-[#0d1117] border-b border-[#30363d]">
   <div class="flex items-center gap-8">
-    <span class="font-headline font-bold text-primary-container text-lg uppercase tracking-wider">AI Quartermaster</span>
-    <span id="instance-label" class="hidden font-mono text-xs text-outline uppercase tracking-widest opacity-70 border border-outline-variant/30 px-2 py-0.5 rounded"></span>
-    <span id="instance-owners" class="hidden font-mono text-xs text-outline tracking-wide opacity-70 px-2 py-0.5"></span>
-    <nav class="hidden md:flex gap-6">
-      <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer" data-nav="dashboard" data-i18n="dashboard">Dashboard</a>
-      <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer" data-nav="logs" data-i18n="logs">Logs</a>
+    <span class="font-headline font-bold text-primary-container text-lg uppercase tracking-wider whitespace-nowrap">AI Quartermaster</span>
+    <span id="instance-label" class="hidden font-mono text-xs text-outline uppercase tracking-widest opacity-70 border border-outline-variant/30 px-2 py-0.5 rounded whitespace-nowrap"></span>
+    <span id="instance-owners" class="hidden font-mono text-xs text-outline tracking-wide opacity-70 px-2 py-0.5 whitespace-nowrap"></span>
+    <nav class="hidden gap-6">
+      <a class="font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer whitespace-nowrap" data-nav="dashboard" data-i18n="dashboard">Dashboard</a>
+      <a class="font-body font-bold tracking-tight text-sm text-slate-400 hover:text-slate-200 transition-colors py-5 cursor-pointer whitespace-nowrap" data-nav="logs" data-i18n="logs">Logs</a>
     </nav>
   </div>
   <div class="flex items-center gap-4">
     <!-- Project selector -->
     <div class="relative">
-      <button id="project-selector" onclick="toggleProjectDropdown()" class="flex items-center gap-2 text-xs text-outline hover:text-on-surface transition-colors px-2 py-1.5 rounded-md hover:bg-surface-container-high">
+      <button id="project-selector" onclick="toggleProjectDropdown()" class="flex items-center gap-2 text-xs text-outline hover:text-on-surface transition-colors px-2 py-1.5 rounded-md hover:bg-surface-container-high whitespace-nowrap">
         <span class="material-symbols-outlined text-sm">account_tree</span>
-        <span id="current-project-label" data-i18n="allProjects">All Projects</span>
+        <span id="current-project-label" data-i18n="allProjects" class="whitespace-nowrap">All Projects</span>
         <span class="material-symbols-outlined text-sm">expand_more</span>
       </button>
       <div id="project-dropdown" class="absolute right-0 top-full mt-1 bg-surface-container-lowest border border-outline-variant/20 rounded-lg shadow-lg min-w-[200px] max-w-[300px] z-50 hidden">
@@ -60,18 +60,18 @@
       </div>
     </div>
     <!-- Version info -->
-    <div class="flex items-center gap-2 text-xs text-outline">
+    <div class="flex items-center gap-2 text-xs text-outline whitespace-nowrap">
       <span class="material-symbols-outlined text-sm">info</span>
       <span id="version-label">v0.0.0</span>
-      <span id="version-hash" class="font-mono text-[10px] opacity-60"></span>
+      <span id="version-hash" class="font-mono text-[10px] opacity-80"></span>
     </div>
     <!-- Connection status -->
-    <div class="flex items-center gap-2 text-xs text-outline">
+    <div class="flex items-center gap-2 text-xs text-outline whitespace-nowrap">
       <span id="conn-dot" class="w-2 h-2 rounded-full bg-tertiary animate-pulse"></span>
       <span id="conn-label">연결 중...</span>
     </div>
     <!-- Language toggle -->
-    <button onclick="toggleLang()" class="flex items-center gap-1 text-slate-400 hover:bg-slate-800/50 px-2 py-1.5 rounded-md transition-all active:scale-95">
+    <button onclick="toggleLang()" class="flex items-center gap-1 text-slate-400 hover:bg-slate-800/50 px-2 py-1.5 rounded-md transition-all active:scale-95 whitespace-nowrap">
       <span class="material-symbols-outlined text-base">translate</span>
       <span class="text-xs font-bold" id="lang-label">KO</span>
     </button>

@@ -18,24 +18,24 @@ const makePayload = (action: string, labels: string[]) => ({
 
 describe("dispatchEvent", () => {
   it("should process issues.labeled with matching label", () => {
-    const result = dispatchEvent("issues", makePayload("labeled", ["ai-quartermaster"]), ["ai-quartermaster"]);
+    const result = dispatchEvent("issues", makePayload("labeled", ["aqm"]), ["aqm"]);
     expect(result.shouldProcess).toBe(true);
     expect(result.issueNumber).toBe(42);
     expect(result.repo).toBe("test/repo");
   });
 
   it("should ignore non-issues events", () => {
-    const result = dispatchEvent("push", makePayload("labeled", ["ai-quartermaster"]), ["ai-quartermaster"]);
+    const result = dispatchEvent("push", makePayload("labeled", ["aqm"]), ["aqm"]);
     expect(result.shouldProcess).toBe(false);
   });
 
   it("should ignore non-labeled actions", () => {
-    const result = dispatchEvent("issues", makePayload("opened", ["ai-quartermaster"]), ["ai-quartermaster"]);
+    const result = dispatchEvent("issues", makePayload("opened", ["aqm"]), ["aqm"]);
     expect(result.shouldProcess).toBe(false);
   });
 
   it("should ignore when no matching label", () => {
-    const result = dispatchEvent("issues", makePayload("labeled", ["bug"]), ["ai-quartermaster"]);
+    const result = dispatchEvent("issues", makePayload("labeled", ["bug"]), ["aqm"]);
     expect(result.shouldProcess).toBe(false);
   });
 

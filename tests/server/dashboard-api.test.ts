@@ -2207,6 +2207,61 @@ describe("Dashboard API - SSE Connection Management", () => {
       cleanupAllSSEClients();
       expect(getSSEClientCount()).toBe(0);
     });
+
+    it("should remove client when stream is cancelled by reader", async () => {
+      const response = await app.request("/api/events");
+      expect(getSSEClientCount()).toBe(1);
+
+      // Cancel the stream reader to trigger the ReadableStream cancel() callback
+      const reader = response.body!.getReader();
+      await reader.cancel();
+
+      expect(getSSEClientCount()).toBe(0);
+    });
+  });
+
+  describe("error handling and timeout", () => {
+    it("should handle sendInitialState error gracefully when stream is closed", async () => {
+      // Make store.list throw to trigger the catch block in sendInitialState
+      const errorApp = makeMockApp();
+      const emitter = new EventEmitter();
+      const throwingStore = {
+        list: vi.fn().mockImplementation(() => { throw new Error("DB error"); }),
+        get: vi.fn(),
+        set: vi.fn(),
+        remove: vi.fn(),
+        on: emitter.on.bind(emitter),
+        emit: emitter.emit.bind(emitter),
+        getAqDb: vi.fn().mockReturnValue({}),
+      } as any;
+      const throwingQueue = {
+        getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+        cancel: vi.fn(),
+        retryJob: vi.fn(),
+      } as any;
+      const appWithError = createDashboardRoutes(throwingStore, throwingQueue);
+
+      // Should not throw even when store.list() throws inside the stream
+      const response = await appWithError.request("/api/events");
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("text/event-stream");
+    });
+
+    it("should auto-close SSE stream after 5 minutes via setTimeout", async () => {
+      vi.useFakeTimers();
+      try {
+        const response = await app.request("/api/events");
+        expect(getSSEClientCount()).toBe(1);
+
+        // Advance past the 5-minute auto-close timeout
+        await vi.advanceTimersByTimeAsync(300001);
+
+        // Client should have been removed by the timeout callback
+        expect(getSSEClientCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });
 
@@ -2438,5 +2493,409 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
       const result = await response.json();
       expect(result.priority).toBe("high");
     });
+  });
+});
+
+describe("Dashboard API - GET /api/repositories", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string, args?: string[]) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      if (Array.isArray(args) && args.includes("worktree")) {
+        return { exitCode: 0, stdout: "worktree /path/to/repo\nHEAD abc123\nbranch refs/heads/main\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    mockGetProjectSummary.mockReturnValue([]);
+  });
+
+  it("should return empty repositories when no projects configured", async () => {
+    mockLoadConfig.mockReturnValue({ projects: [], git: {} } as any);
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(0);
+    expect(result.summary.total).toBe(0);
+    expect(result.summary.healthy).toBe(0);
+    expect(result.summary.totalJobs).toBe(0);
+  });
+
+  it("should return empty repositories when projects field is undefined", async () => {
+    mockLoadConfig.mockReturnValue({ git: {} } as any);
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(0);
+  });
+
+  it("should return healthy repositories for passing projects", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [
+        { repo: "org/repo1", path: "./repo1" },
+        { repo: "org/repo2", path: "./repo2" },
+      ],
+      git: { gitPath: "git" },
+    } as any);
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(2);
+    expect(result.summary.total).toBe(2);
+    expect(result.summary.healthy).toBe(2);
+    expect(result.summary.error).toBe(0);
+    expect(result.summary.warning).toBe(0);
+    expect(result.summary.checkedAt).toBeDefined();
+
+    const repo1 = result.repositories.find((r: { repository: string }) => r.repository === "org/repo1");
+    expect(repo1).toBeDefined();
+    expect(repo1.status).toBe("healthy");
+    expect(repo1.health.gitRemoteAccess.status).toBe("ok");
+    expect(repo1.health.localPath.status).toBe("ok");
+    expect(repo1.worktreeCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("should report error status when git remote access fails", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string, args?: string[]) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      if (Array.isArray(args) && args.includes("worktree")) {
+        return { exitCode: 128, stdout: "", stderr: "fatal: not a git repository" };
+      }
+      return { exitCode: 128, stdout: "", stderr: "fatal: repository not found" };
+    });
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories).toHaveLength(1);
+    expect(result.repositories[0].status).toBe("error");
+    expect(result.summary.error).toBe(1);
+  });
+
+  it("should report warning status when disk space is low", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string, args?: string[]) => {
+      if (cmd === "df") {
+        // Available < 1GB triggers warning
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 199500000000 500000000 99% /\n", stderr: "" };
+      }
+      if (Array.isArray(args) && args.includes("worktree")) {
+        return { exitCode: 0, stdout: "worktree /path/to/repo\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].status).toBe("warning");
+    expect(result.summary.warning).toBe(1);
+  });
+
+  it("should merge stats from getProjectSummary", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockGetProjectSummary.mockReturnValue([
+      {
+        repo: "org/repo1",
+        total: 20,
+        successCount: 15,
+        failureCount: 5,
+        successRate: 75,
+        totalCostUsd: 2.5,
+        lastActivity: "2026-04-01T00:00:00Z",
+      } as any,
+    ]);
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].stats.totalJobs).toBe(20);
+    expect(result.repositories[0].stats.successJobs).toBe(15);
+    expect(result.repositories[0].stats.failedJobs).toBe(5);
+    expect(result.repositories[0].stats.successRate).toBe(75);
+    expect(result.repositories[0].stats.totalCostUsd).toBe(2.5);
+    expect(result.summary.totalJobs).toBe(20);
+  });
+
+  it("should use default stats when project not in getProjectSummary", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockGetProjectSummary.mockReturnValue([]);
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.repositories[0].stats.totalJobs).toBe(0);
+    expect(result.repositories[0].stats.successJobs).toBe(0);
+    expect(result.repositories[0].stats.lastActivity).toBeNull();
+  });
+
+  it("should return 500 when loadConfig throws", async () => {
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Config load failed");
+    });
+
+    const response = await app.request("/api/repositories");
+    expect(response.status).toBe(500);
+    const result = await response.json();
+    expect(result.error).toBe("Failed to fetch repositories");
+  });
+});
+
+describe("Dashboard API - GET /api/claude-profile", () => {
+  let app: Hono;
+
+  const mockClaudeConfig = {
+    commands: {
+      claudeCli: {
+        path: "claude",
+        model: "claude-sonnet-4-5",
+        models: {
+          plan: "claude-opus-4-5",
+          phase: "claude-sonnet-4-5",
+          review: "claude-sonnet-4-5",
+          fallback: "claude-haiku-4-5",
+        },
+        maxTurns: 10,
+        timeout: 300000,
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    mockLoadConfig.mockReturnValue(mockClaudeConfig as any);
+  });
+
+  it("should return claude profile info", async () => {
+    mockRunCli.mockResolvedValue({ exitCode: 0, stdout: "1.0.0", stderr: "" });
+
+    const response = await app.request("/api/claude-profile");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.profile).toBeDefined();
+    expect(result.cliVersion).toBe("1.0.0");
+    expect(result.model).toBe("claude-sonnet-4-5");
+    expect(result.models.plan).toBe("claude-opus-4-5");
+    expect(result.models.phase).toBe("claude-sonnet-4-5");
+    expect(result.models.review).toBe("claude-sonnet-4-5");
+    expect(result.models.fallback).toBe("claude-haiku-4-5");
+    expect(result.maxTurns).toBe(10);
+    expect(result.timeout).toBe(300000);
+  });
+
+  it("should return unknown cliVersion when CLI fails", async () => {
+    mockRunCli.mockRejectedValue(new Error("CLI not found"));
+
+    const response = await app.request("/api/claude-profile");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.cliVersion).toBe("unknown");
+  });
+
+  it("should return unknown cliVersion when CLI exits non-zero", async () => {
+    mockRunCli.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "error" });
+
+    const response = await app.request("/api/claude-profile");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.cliVersion).toBe("unknown");
+  });
+
+  it("should use default profile when CLAUDE_CONFIG_DIR is not set", async () => {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    mockRunCli.mockResolvedValue({ exitCode: 0, stdout: "1.0.0", stderr: "" });
+
+    const response = await app.request("/api/claude-profile");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.profile).toBe("default");
+    expect(result.configDir).toBe("");
+  });
+
+  it("should extract profile name from CLAUDE_CONFIG_DIR", async () => {
+    process.env.CLAUDE_CONFIG_DIR = "/home/user/.claude-myprofile";
+    mockRunCli.mockResolvedValue({ exitCode: 0, stdout: "1.0.0", stderr: "" });
+
+    const response = await app.request("/api/claude-profile");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.profile).toBe("myprofile");
+    expect(result.configDir).toBe("/home/user/.claude-myprofile");
+
+    delete process.env.CLAUDE_CONFIG_DIR;
+  });
+});
+
+describe("Dashboard API - GET /api/jobs/:id/logs/stream", () => {
+  let app: Hono;
+  let localStore: JobStore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const emitter = new EventEmitter();
+    localStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      update: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+      getAqDb: vi.fn().mockReturnValue({}),
+    } as any;
+
+    const localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    } as any;
+
+    app = createDashboardRoutes(localStore, localQueue);
+  });
+
+  it("should return SSE stream with correct headers", async () => {
+    vi.mocked(localStore.get).mockReturnValue({
+      id: "job-1",
+      status: "running",
+      logs: [],
+    } as any);
+
+    const response = await app.request("/api/jobs/job-1/logs/stream");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+    expect(response.headers.get("cache-control")).toBe("no-cache");
+  });
+
+  it("should send error event when job not found", async () => {
+    vi.mocked(localStore.get).mockReturnValue(undefined);
+
+    const response = await app.request("/api/jobs/nonexistent/logs/stream");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/event-stream");
+
+    const reader = response.body!.getReader();
+    const { value } = await reader.read();
+    const text = new TextDecoder().decode(value);
+    expect(text).toContain("event: error");
+    expect(text).toContain("Job not found");
+    reader.cancel();
+  });
+
+  it("should send done event when job is already completed", async () => {
+    vi.mocked(localStore.get).mockReturnValue({
+      id: "job-1",
+      status: "success",
+      logs: ["line1", "line2"],
+    } as any);
+
+    const response = await app.request("/api/jobs/job-1/logs/stream");
+    expect(response.status).toBe(200);
+
+    const reader = response.body!.getReader();
+    const chunks: Uint8Array[] = [];
+    let done = false;
+    while (!done) {
+      const { value, done: d } = await reader.read();
+      if (value) chunks.push(value);
+      done = d;
+    }
+    const text = chunks.map(c => new TextDecoder().decode(c)).join("");
+    expect(text).toContain("event: done");
+    expect(text).toContain('"status":"success"');
+  });
+});
+
+describe("Dashboard API - GET /api/projects/health warning branch", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+    mockGetProjectSummary.mockReturnValue([]);
+  });
+
+  it("should report warning when disk space is low for a project", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        // Available = 500MB < 1GB → warning
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 199500000000 500000000 99% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0].status).toBe("warning");
+    expect(result.summary.warning).toBe(1);
+    expect(result.summary.healthy).toBe(0);
+  });
+
+  it("should report warning when dependencies are not installed", async () => {
+    mockLoadConfig.mockReturnValue({
+      projects: [{ repo: "org/repo1", path: "./repo1" }],
+      git: { gitPath: "git" },
+    } as any);
+
+    mockRunCli.mockImplementation(async (cmd: string) => {
+      if (cmd === "df") {
+        return { exitCode: 0, stdout: "Filesystem 1B-blocks Used Available Use% Mounted on\n/dev/sda1 200000000000 100000000000 100000000000 50% /\n", stderr: "" };
+      }
+      return { exitCode: 0, stdout: "abc123\trefs/heads/main\n", stderr: "" };
+    });
+
+    // Make node_modules not exist (package.json exists, but node_modules doesn't)
+    mockExistsSync.mockImplementation((p: string) => {
+      if (typeof p === "string" && p.includes("node_modules")) return false;
+      return true;
+    });
+
+    const response = await app.request("/api/projects/health");
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.projects[0].status).toBe("warning");
+    expect(result.summary.warning).toBe(1);
   });
 });

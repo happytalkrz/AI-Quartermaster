@@ -1,5 +1,5 @@
 import type { AQDatabase } from "./database.js";
-import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry } from "../types/api.js";
+import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse } from "../types/api.js";
 
 // SQLite row types for query results
 interface StatsRow {
@@ -203,6 +203,55 @@ export function getCostStats(aqDb: AQDatabase, query: GetCostsQuery): CostsRespo
         : 0,
     },
     breakdown,
+  };
+}
+
+interface ProjectStatsRow {
+  repo: string;
+  total: number;
+  success_count: number;
+  failure_count: number;
+  avg_duration_ms: number | null;
+  total_cost_usd: number;
+}
+
+export function getProjectStatsWithTimeRange(aqDb: AQDatabase, query: GetProjectStatsQuery): ProjectStatsResponse {
+  const { timeRange } = query;
+  const cutoff = getTimeRangeCutoff(timeRange);
+  const { sql: whereClause, params } = buildWhereClause(undefined, cutoff);
+
+  const db = aqDb.getDb();
+
+  const rows = db.prepare(`
+    SELECT
+      repo,
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+      SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) as failure_count,
+      AVG(CASE
+        WHEN completed_at IS NOT NULL AND started_at IS NOT NULL
+        THEN (julianday(completed_at) - julianday(started_at)) * 86400000.0
+        ELSE NULL
+      END) as avg_duration_ms,
+      COALESCE(SUM(total_cost_usd), 0) as total_cost_usd
+    FROM jobs
+    ${whereClause}
+    GROUP BY repo
+    ORDER BY total DESC
+  `).all(...params) as ProjectStatsRow[];
+
+  return {
+    timeRange,
+    projects: rows.map(row => ({
+      project: row.repo,
+      total: row.total,
+      successCount: row.success_count,
+      failureCount: row.failure_count,
+      successRate: row.total > 0 ? Math.round((row.success_count / row.total) * 100) : 0,
+      avgDurationMs: row.avg_duration_ms != null ? Math.round(row.avg_duration_ms) : 0,
+      totalCostUsd: row.total_cost_usd,
+      avgCostUsd: row.total > 0 ? row.total_cost_usd / row.total : 0,
+    })),
   };
 }
 

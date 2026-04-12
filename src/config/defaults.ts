@@ -132,7 +132,7 @@ export const DEFAULT_CONFIG: AQConfig = {
       prCreation: 60000,
     },
     stopConditions: ["STOP", "ABORT", "SAFETY_VIOLATION"],
-    allowedLabels: [],
+    allowedLabels: ["aqm"],
     rollbackStrategy: "failed-only",
     feasibilityCheck: {
       enabled: true,

@@ -65,6 +65,26 @@ export type ErrorCategory =
   | "PROMPT_TOO_LONG"
   | "UNKNOWN";
 
+/**
+ * Claude 기반 파이프라인 실패 진단 리포트
+ */
+export interface DiagnosisReport {
+  /** 실패 원인 분석 요약 */
+  rootCause: string;
+  /** 추천 액션 목록 (우선순위 순) */
+  recommendedActions: string[];
+  /** 자동 재시도 가능 여부 */
+  canAutoRetry: boolean;
+  /** 자동 재시도 가능 시 예상 전략 설명 */
+  retryStrategy?: string;
+  /** 에러 카테고리 분류 */
+  errorCategory: ErrorCategory;
+  /** 진단 신뢰도 (high | medium | low) */
+  confidence: "high" | "medium" | "low";
+  /** 진단 생성 시각 (ISO 8601) */
+  generatedAt: string;
+}
+
 export type MergeStateStatus =
   | "CLEAN"
   | "DIRTY"
@@ -436,6 +456,8 @@ export interface JobBase {
   totalUsage?: UsageStats;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
 }
 
 /**

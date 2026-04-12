@@ -422,13 +422,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const maskedConfig = maskSensitiveConfig(config);
       return c.json({ config: maskedConfig });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      return c.json({ error: `Failed to load configuration: ${message}` }, 500);
+      return c.json({ error: `Failed to load configuration: ${getErrorMessage(error)}` }, 500);
     }
   });
-
-  const getErrorMessage = (error: unknown): string =>
-    error instanceof Error ? error.message : "Unknown error";
 
   const projectRoot = process.cwd();
   const configPath = `${projectRoot}/config.yml`;
@@ -484,14 +480,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         } catch (runtimeError: unknown) {
           // Log runtime application error but don't fail the request
           const logger = getLogger();
-          const errMsg = runtimeError instanceof Error ? runtimeError.message : "Unknown error";
-          logger.warn(`Failed to apply runtime config changes: ${errMsg}`);
+          logger.warn(`Failed to apply runtime config changes: ${getErrorMessage(runtimeError)}`);
         }
       }
 
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
+      const message = getErrorMessage(error);
       const isValidationError = message.includes("validation") || message.includes("Invalid") || message.includes("not found");
       const status = isValidationError ? 400 : 500;
       const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
@@ -1019,7 +1014,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           hasUpdates: updateInfo.hasUpdates,
           packageLockChanged: updateInfo.packageLockChanged,
         });
-      } catch (updateError) {
+      } catch (updateError: unknown) {
         getLogger().warn(`업데이트 확인 실패: ${getErrorMessage(updateError)}`);
         return c.json({
           currentVersion,

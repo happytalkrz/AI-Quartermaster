@@ -23,6 +23,13 @@ export interface CliRunOptions {
   stdin?: string;
 }
 
+/**
+ * sh -c로 명령 문자열을 실행한다.
+ * 보안 감사 결과: 현재 모든 호출처(final-validator, phase-executor, phase-retry,
+ * dependency-installer, simplify-runner)는 프로젝트 설정(config)에서 온 명령만 전달하며
+ * GitHub 이슈 본문·제목 등 외부 사용자 입력이 이 함수로 흘러오지 않음을 확인.
+ * 주의: 외부 입력을 command에 포함하면 셸 주입이 발생하므로 절대 금지.
+ */
 export async function runShell(command: string, options: CliRunOptions = {}): Promise<CliRunResult> {
   return runCli("sh", ["-c", command], options);
 }

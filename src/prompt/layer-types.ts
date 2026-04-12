@@ -47,6 +47,8 @@ export interface ProjectLayer {
   structure: string;
   /** 스킬 컨텍스트 (선택) */
   skillsContext?: string;
+  /** 과거 실패 사례 요약 (선택) */
+  pastFailures?: string;
   /** 테스트 실행 명령어 */
   testCommand: string;
   /** 린트 실행 명령어 */
@@ -95,6 +97,19 @@ export interface IssueLayer {
  * Phase 레이어 — 현재 실행 중인 Phase의 컨텍스트. 매 Phase마다 동적으로 생성된다.
  */
 export interface PhaseLayer {
+  /** 이슈 정보 */
+  issue: {
+    /** 이슈 번호 */
+    number: number;
+    /** 이슈 제목 */
+    title: string;
+    /** 이슈 본문 */
+    body: string;
+    /** 이슈 라벨 목록 */
+    labels: string[];
+  };
+  /** 전체 계획 요약 */
+  planSummary: string;
   /** 현재 Phase 정보 */
   currentPhase: {
     /** 1-based Phase 인덱스 */
@@ -110,6 +125,17 @@ export interface PhaseLayer {
   };
   /** 이전 Phase 결과 요약 (없으면 빈 문자열) */
   previousResults: string;
+  /** 저장소 정보 */
+  repository: {
+    /** 저장소 소유자 */
+    owner: string;
+    /** 저장소 이름 */
+    name: string;
+    /** 베이스 브랜치 */
+    baseBranch: string;
+    /** 작업 브랜치 */
+    workBranch: string;
+  };
   /** 로케일 (선택, 기본값 ko) */
   locale?: string;
 }

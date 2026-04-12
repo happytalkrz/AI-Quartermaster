@@ -10,8 +10,8 @@ import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, UpdateJobPriorityRequestSchema, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats, getProjectSummary } from "../store/queries.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, UpdateJobPriorityRequestSchema, type HealthCheckResponse } from "../types/api.js";
+import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -415,6 +415,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/jobs/*", bearerAuth);
     api.use("/api/stats", bearerAuth);
     api.use("/api/stats/costs", bearerAuth);
+    api.use("/api/stats/projects", bearerAuth);
     api.use("/api/config", bearerAuth);
     api.use("/api/projects", bearerAuth);
     api.use("/api/projects/*", bearerAuth);
@@ -872,6 +873,28 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(costs);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch cost stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Project stats (success rate + cost per project)
+  api.get("/api/stats/projects", (c) => {
+    try {
+      const queryParams = {
+        timeRange: c.req.query("timeRange") || "7d",
+      };
+
+      const parseResult = GetProjectStatsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: parseResult.error
+        }, 400);
+      }
+
+      const stats = getProjectStatsWithTimeRange(store.getAqDb(), parseResult.data);
+      return c.json(stats);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch project stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

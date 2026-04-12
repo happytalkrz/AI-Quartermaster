@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html class="dark" lang="ko" id="html-root">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Quartermaster | Command HQ</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "on-secondary": "#2b3138",
+                    "on-surface-variant": "#c0c7d4",
+                    "secondary-fixed": "#dde3ec",
+                    "secondary-fixed-dim": "#c1c7d0",
+                    "surface-container-low": "#181c22",
+                    "tertiary-fixed-dim": "#ffba42",
+                    "surface-tint": "#a2c9ff",
+                    "on-tertiary": "#432c00",
+                    "on-primary-container": "#003a6b",
+                    "background": "#10141a",
+                    "secondary": "#c1c7d0",
+                    "on-surface": "#dfe2eb",
+                    "tertiary": "#ffba42",
+                    "surface-variant": "#31353c",
+                    "primary-fixed": "#d3e4ff",
+                    "inverse-surface": "#dfe2eb",
+                    "on-tertiary-container": "#4f3400",
+                    "on-error-container": "#ffdad6",
+                    "on-secondary-container": "#b0b5be",
+                    "primary-fixed-dim": "#a2c9ff",
+                    "on-error": "#690005",
+                    "on-tertiary-fixed": "#281800",
+                    "outline": "#8b919d",
+                    "inverse-primary": "#0060aa",
+                    "surface-container": "#1c2026",
+                    "surface-dim": "#10141a",
+                    "on-secondary-fixed": "#161c23",
+                    "on-background": "#dfe2eb",
+                    "surface-container-lowest": "#0a0e14",
+                    "tertiary-container": "#da9600",
+                    "surface-bright": "#353940",
+                    "secondary-container": "#41474f",
+                    "on-secondary-fixed-variant": "#41474f",
+                    "primary": "#a2c9ff",
+                    "inverse-on-surface": "#2d3137",
+                    "tertiary-fixed": "#ffddaf",
+                    "primary-container": "#58a6ff",
+                    "outline-variant": "#414752",
+                    "on-primary-fixed": "#001c38",
+                    "on-primary": "#00315c",
+                    "surface-container-high": "#262a31",
+                    "on-tertiary-fixed-variant": "#614000",
+                    "surface-container-highest": "#31353c",
+                    "on-primary-fixed-variant": "#004882",
+                    "surface": "#10141a",
+                    "error": "#ffb4ab",
+                    "error-container": "#93000a",
+                    /* light mode overrides applied via JS */
+                    "light-bg": "#f8f9fb",
+                    "light-surface": "#ffffff",
+                    "light-surface-container": "#f0f2f5",
+                    "light-text": "#1f2328",
+                    "light-text-secondary": "#656d76",
+                    "light-border": "#d0d7de"
+                },
+                fontFamily: {
+                    "headline": ["Space Grotesk"],
+                    "body": ["Inter"],
+                    "label": ["Inter"],
+                    "mono": ["JetBrains Mono"]
+                },
+                borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" },
+            },
+        },
+    }
+</script>
+<!-- Theme restoration script - prevents FOUC by applying theme before render -->
+<script>
+if (localStorage.getItem('aqm-theme') === 'light') {
+  document.documentElement.classList.remove('dark');
+}
+</script>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        vertical-align: middle;
+    }
+    .pulse-ring {
+        animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    @keyframes pulse-ring {
+        0% { transform: scale(0.8); opacity: 0.5; }
+        50% { transform: scale(1.2); opacity: 0.3; }
+        100% { transform: scale(0.8); opacity: 0.5; }
+    }
+    @keyframes shimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    .shimmer-bar {
+        background: linear-gradient(90deg, transparent 25%, rgba(88,166,255,0.3) 50%, transparent 75%);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+    }
+    /* custom scrollbar */
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #414752; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #8b919d; }
+
+    /* light mode overrides */
+    html:not(.dark) body { background: #f8f9fb; color: #1f2328; }
+    html:not(.dark) header { background: #ffffff !important; border-color: #d0d7de !important; }
+    html:not(.dark) aside { background: #f0f2f5 !important; border-color: #d0d7de !important; }
+    html:not(.dark) .bg-surface-container { background: #ffffff !important; }
+    html:not(.dark) .bg-surface-container-high { background: #f0f2f5 !important; }
+    html:not(.dark) .bg-surface-container-low { background: #f8f9fb !important; }
+    html:not(.dark) .bg-surface-container-lowest { background: #ffffff !important; }
+    html:not(.dark) .bg-background { background: #f8f9fb !important; }
+    html:not(.dark) .text-on-surface { color: #1f2328 !important; }
+    html:not(.dark) .text-outline { color: #656d76 !important; }
+    html:not(.dark) .ring-outline-variant\/10 { --tw-ring-color: rgba(208,215,222,0.3) !important; }
+    html:not(.dark) .ring-outline-variant\/20 { --tw-ring-color: rgba(208,215,222,0.4) !important; }
+    html:not(.dark) .border-outline-variant\/30 { border-color: rgba(208,215,222,0.5) !important; }
+    html:not(.dark) .text-slate-400 { color: #656d76 !important; }
+    html:not(.dark) .hover\:bg-slate-800:hover { background: #e1e4e8 !important; }
+    html:not(.dark) .bg-\[\#0d1117\] { background: #ffffff !important; }
+    html:not(.dark) .bg-\[\#161b22\] { background: #f0f2f5 !important; }
+    html:not(.dark) .bg-\[\#1c2026\] { background: #e8eaed !important; }
+    html:not(.dark) .border-\[\#30363d\] { border-color: #d0d7de !important; }
+    html:not(.dark) .text-on-surface\/80 { color: rgba(31,35,40,0.8) !important; }
+    html:not(.dark) .text-outline\/40 { color: rgba(101,109,118,0.4) !important; }
+
+    /* nav item active in sidebar */
+    .nav-item-active {
+        background: #1c2026;
+        color: #58a6ff;
+        border-left: 3px solid #58a6ff;
+    }
+    html:not(.dark) .nav-item-active {
+        background: #e8eaed;
+        color: #0969da;
+        border-left: 3px solid #0969da;
+    }
+
+    /* hide views by default */
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* hide settings tab panels by default */
+    .settings-tab-panel { display: block; }
+    .settings-tab-panel.hidden { display: none; }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: scale(0.95) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* Responsive Sidebar — DISABLED: 태블릿 모드 디자인 미완성으로 비활성화 */
+    /* @media (max-width: 1080px) { */
+    @media (max-width: 0px) { /* effectively disabled */
+        /* Sidebar rail mode */
+        aside {
+            width: 56px !important;
+            transition: width 0.3s ease;
+            overflow: hidden;
+        }
+
+        /* Expand sidebar on hover */
+        aside:hover {
+            width: 240px !important;
+            overflow: visible;
+        }
+
+        /* Hide text in rail mode, show on hover */
+        aside nav a span:not(.material-symbols-outlined) {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover nav a span:not(.material-symbols-outlined) {
+            opacity: 1;
+        }
+
+        /* Hide header text in rail mode */
+        aside .mb-6 {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover .mb-6 {
+            opacity: 1;
+        }
+
+        /* Hide footer in rail mode */
+        aside .mt-auto {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        aside:hover .mt-auto {
+            opacity: 1;
+        }
+
+        /* Adjust main content margin */
+        main {
+            margin-left: 56px !important;
+            transition: margin-left 0.3s ease;
+        }
+
+        /* Center icons in rail mode */
+        aside nav a {
+            justify-content: center;
+            padding: 0 16px !important;
+        }
+
+        aside:hover nav a {
+            justify-content: flex-start;
+        }
+
+        /* Stats grid responsive: 2 columns on 1080px and below */
+        section.grid.grid-cols-1.md\\:grid-cols-4 {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+
+        /* Dashboard layout responsive: vertical stack on narrow screens */
+        .grid.grid-cols-12 {
+            grid-template-columns: 1fr !important;
+            gap: 1.5rem !important;
+        }
+
+        /* Job list full width in vertical layout */
+        .col-span-4 {
+            grid-column: 1 / -1 !important;
+        }
+
+        /* Hide separate job-detail column — accordion replaces it */
+        .col-span-8 {
+            display: none !important;
+        }
+
+        /* Job list: no max-height, full scroll */
+        #job-list {
+            max-height: none !important;
+        }
+
+        /* Accordion detail panel styling */
+        .accordion-detail {
+            background: #262a31;
+            border-left: 3px solid #58a6ff;
+            border-radius: 0 0 0.75rem 0.75rem;
+            margin-top: -0.25rem;
+            padding: 1.5rem;
+            animation: accordionOpen 0.2s ease-out;
+        }
+        @keyframes accordionOpen {
+            from { opacity: 0; max-height: 0; }
+            to { opacity: 1; max-height: 600px; }
+        }
+
+        /* Active job row in accordion mode */
+        .job-row-expanded {
+            background: #262a31 !important;
+            border-left: 3px solid #58a6ff;
+            border-radius: 0.75rem 0.75rem 0 0 !important;
+        }
+    }
+</style>
+</head>

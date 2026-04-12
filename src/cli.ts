@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
+import { assembleHtml } from "./server/html-assembler.js";
 import { fileURLToPath } from "url";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
 import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
@@ -178,9 +179,9 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   // === Cache dashboard HTML and JS at startup (fix #15) ===
-  const htmlPath = resolve(aqRoot, "src/server/public/index.html");
+  const publicDir = resolve(aqRoot, "src/server/public");
   let dashboardHtml: string;
-  try { dashboardHtml = readFileSync(htmlPath, "utf-8"); } catch { dashboardHtml = ""; }
+  try { dashboardHtml = assembleHtml(publicDir); } catch { dashboardHtml = ""; }
 
   // Cache dashboard JS files at startup
   const jsDir = resolve(aqRoot, "src/server/public/js");

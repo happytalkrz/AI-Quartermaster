@@ -1,7 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { resolve, normalize } from "path";
+import { resolve, normalize, basename } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -1033,6 +1033,35 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     } catch (error: unknown) {
       return c.json({ error: `버전 정보 조회 실패: ${getErrorMessage(error)}` }, 500);
     }
+  });
+
+  // Claude profile
+  api.get("/api/claude-profile", async (c) => {
+    const configDir = process.env.CLAUDE_CONFIG_DIR || "";
+    const profile = configDir ? basename(configDir).replace(/^\.claude-?/, "") || "default" : "default";
+    const config = loadConfig(projectRoot);
+    const models = config.commands.claudeCli.models;
+
+    let cliVersion = "unknown";
+    try {
+      const result = await runCli(config.commands.claudeCli.path, ["--version"], { timeout: 5000 });
+      if (result.exitCode === 0) cliVersion = result.stdout.trim();
+    } catch { /* ignore */ }
+
+    return c.json({
+      profile,
+      configDir,
+      cliVersion,
+      model: config.commands.claudeCli.model,
+      models: {
+        plan: models?.plan,
+        phase: models?.phase,
+        review: models?.review,
+        fallback: models?.fallback,
+      },
+      maxTurns: config.commands.claudeCli.maxTurns,
+      timeout: config.commands.claudeCli.timeout,
+    });
   });
 
   // Perform self-update

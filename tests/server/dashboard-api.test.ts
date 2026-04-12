@@ -1646,7 +1646,10 @@ describe("Dashboard API - Version Management", () => {
             { id: "job-2", repo: "test/repo2", status: "success" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          mockJobStore.list.mockImplementation((opts?: { repo?: string }) => {
+            if (opts?.repo) return mockJobs.filter(j => j.repo === opts.repo);
+            return mockJobs;
+          });
 
           const response = await app.request("/api/jobs?project=test/nonexistent");
           expect(response.status).toBe(200);
@@ -1663,7 +1666,12 @@ describe("Dashboard API - Version Management", () => {
             { id: "job-3", repo: "test/repo2", status: "success" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; status?: string }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.status) filtered = filtered.filter(j => j.status === opts.status);
+            return filtered;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1&status=completed");
           expect(response.status).toBe(200);
@@ -1682,7 +1690,12 @@ describe("Dashboard API - Version Management", () => {
             { id: "job-4", repo: "test/repo2", status: "success" }
           ];
 
-          mockJobStore.list.mockReturnValue(mockJobs);
+          mockJobStore.list.mockImplementation((opts?: { repo?: string; limit?: number }) => {
+            let filtered = mockJobs;
+            if (opts?.repo) filtered = filtered.filter(j => j.repo === opts.repo);
+            if (opts?.limit) filtered = filtered.slice(0, opts.limit);
+            return filtered;
+          });
 
           const response = await app.request("/api/jobs?project=test/repo1&limit=2");
           expect(response.status).toBe(200);

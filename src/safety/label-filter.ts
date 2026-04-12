@@ -20,6 +20,14 @@ export function isAllowedLabel(
 }
 
 /**
+ * Checks if instanceOwners is configured (non-empty).
+ * Returns false if instanceOwners is empty or undefined, meaning no owners are set.
+ */
+export function hasInstanceOwnersConfigured(instanceOwners: string[]): boolean {
+  return instanceOwners.length > 0;
+}
+
+/**
  * Checks if the issue author is an allowed owner.
  * Returns true if instanceOwners is empty (all owners allowed).
  */

@@ -550,6 +550,7 @@ export async function executePostProcessingPhases(
     dryRun: config.general.dryRun,
     jl,
     totalUsage: coreResult.totalUsage,
+    totalCostUsd: coreResult.totalCostUsd,
   };
 
   const publishResult = await pushAndCreatePR(publishContext);

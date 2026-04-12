@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedLabel, isAllowedOwner, getTriggerLabels } from "../../src/safety/label-filter.js";
+import { isAllowedLabel, isAllowedOwner, getTriggerLabels, hasInstanceOwnersConfigured } from "../../src/safety/label-filter.js";
 
 describe("isAllowedLabel", () => {
   it("should return true when allowedLabels is empty", () => {
@@ -45,6 +45,17 @@ describe("isAllowedLabel", () => {
   it("should ignore instanceLabel when it is empty string", () => {
     expect(isAllowedLabel(["bug"], [], "")).toBe(true); // empty allowedLabels → allow all
     expect(isAllowedLabel(["bug"], ["feature"], "")).toBe(false);
+  });
+});
+
+describe("hasInstanceOwnersConfigured", () => {
+  it("should return false when instanceOwners is empty", () => {
+    expect(hasInstanceOwnersConfigured([])).toBe(false);
+  });
+
+  it("should return true when instanceOwners has entries", () => {
+    expect(hasInstanceOwnersConfigured(["alice"])).toBe(true);
+    expect(hasInstanceOwnersConfigured(["alice", "bob"])).toBe(true);
   });
 });
 

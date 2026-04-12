@@ -35,6 +35,7 @@ const mockQueue = {
 function makeConfig(overrides: Partial<AQConfig> = {}): AQConfig {
   const config = structuredClone(DEFAULT_CONFIG);
   config.general.pollingIntervalMs = 50; // fast for tests
+  config.general.instanceOwners = ["test-user"]; // poll() 차단 방지용 기본값
   config.projects = [
     {
       repo: "test/repo",
@@ -42,7 +43,12 @@ function makeConfig(overrides: Partial<AQConfig> = {}): AQConfig {
       baseBranch: "master",
     },
   ];
-  return Object.assign(config, overrides);
+  // general은 shallow merge로 처리 (Object.assign이 general 전체를 덮어쓰는 것을 방지)
+  const { general: generalOverride, ...rest } = overrides;
+  if (generalOverride) {
+    Object.assign(config.general, generalOverride);
+  }
+  return Object.assign(config, rest);
 }
 
 describe("IssuePoller - PR 충돌 체크 통합", () => {
@@ -902,6 +908,67 @@ describe("IssuePoller - PR 충돌 체크 통합", () => {
       expect(labelArgs).toContain("bug");
       expect(labelArgs).toContain("feature");
       expect(labelArgs).not.toContain("aqm");
+    });
+  });
+
+  describe("instanceOwners 미설정 시 폴링 차단", () => {
+    it("instanceOwners가 빈 배열이면 poll()이 조기 종료되고 이슈 조회를 하지 않는다", async () => {
+      const config = makeConfig();
+      config.general.instanceOwners = [];
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      await (poller as any).poll();
+
+      expect(mockRunCli).not.toHaveBeenCalled();
+      expect(mockListOpenPrs).not.toHaveBeenCalled();
+    });
+
+    it("instanceOwners가 빈 배열이면 경고 로그를 최초 1회만 출력한다", async () => {
+      const config = makeConfig();
+      config.general.instanceOwners = [];
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // poll()을 3번 호출해도 경고는 1번만 발생해야 함
+      await (poller as any).poll();
+      await (poller as any).poll();
+      await (poller as any).poll();
+
+      // hasWarnedNoOwners 플래그가 true로 세팅되어 있어야 함
+      expect((poller as any).hasWarnedNoOwners).toBe(true);
+      // 이슈 조회는 한 번도 호출되지 않아야 함
+      expect(mockRunCli).not.toHaveBeenCalled();
+    });
+
+    it("instanceOwners가 설정되면 정상 폴링이 진행된다", async () => {
+      const config = makeConfig();
+      config.general.instanceOwners = ["user1"];
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockListOpenPrs.mockResolvedValue([]);
+      mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });
+
+      await (poller as any).poll();
+
+      expect(mockRunCli).toHaveBeenCalled();
+    });
+
+    it("instanceOwners가 설정되면 hasWarnedNoOwners 플래그가 초기화된다", async () => {
+      const config = makeConfig();
+      config.general.instanceOwners = [];
+      poller = new IssuePoller(config, mockStore as any, mockQueue as any);
+
+      // 먼저 빈 owners로 경고 발생
+      await (poller as any).poll();
+      expect((poller as any).hasWarnedNoOwners).toBe(true);
+
+      // owners를 설정하면 플래그가 리셋되어야 함
+      config.general.instanceOwners = ["user1"];
+      mockStore.shouldBlockRepickup.mockReturnValue(false);
+      mockListOpenPrs.mockResolvedValue([]);
+      mockRunCli.mockResolvedValue({ stdout: "[]", stderr: "", exitCode: 0 });
+
+      await (poller as any).poll();
+      expect((poller as any).hasWarnedNoOwners).toBe(false);
     });
   });
 });

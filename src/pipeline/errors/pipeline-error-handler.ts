@@ -1,3 +1,4 @@
+import { resolve } from "path";
 import { formatResult, printResult } from "../reporting/result-reporter.js";
 import { rollbackToCheckpoint as doRollback } from "../../safety/rollback-manager.js";
 import { saveResult, transitionState } from "../core/pipeline-context.js";
@@ -6,7 +7,8 @@ import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage, isAQMError } from "../../utils/error-utils.js";
 import { PipelineError, SafetyViolationError, TimeoutError } from "../../types/errors.js";
 import { handlePipelineFailure } from "../phases/pipeline-publish.js";
-import type { PipelineState } from "../../types/pipeline.js";
+import { runDiagnosis } from "./diagnosis-runner.js";
+import type { PipelineState, ErrorHistoryEntry } from "../../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import type { PipelineReport } from "../reporting/result-reporter.js";
@@ -32,6 +34,12 @@ export interface CoreLoopFailureContext {
   patternStore: PatternStore;
   jl?: JobLogger;
   checkpoint: (overrides?: Partial<PipelineCheckpoint>) => void;
+  /** 이슈 제목 (진단 컨텍스트용, 없으면 Issue #N으로 대체) */
+  issueTitle?: string;
+  /** 최근 로그 라인 배열 (진단 컨텍스트용) */
+  recentLogs?: string[];
+  /** 에러 히스토리 (진단 컨텍스트용) */
+  errorHistory?: ErrorHistoryEntry[];
 }
 
 export interface CoreLoopFailureResult {
@@ -60,6 +68,9 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
     patternStore,
     jl,
     checkpoint,
+    issueTitle,
+    recentLogs,
+    errorHistory,
   } = context;
 
   const state: PipelineState = "FAILED";
@@ -113,6 +124,31 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
   }
 
   const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+
+  // 진단 runner 호출 (non-fatal, claudeCli 설정이 없으면 건너뜀)
+  const claudeCliConfig = config.commands?.claudeCli;
+  if (claudeCliConfig) {
+    const diagnosis = await runDiagnosis({
+      input: {
+        issueNumber,
+        issueTitle: issueTitle ?? `Issue #${issueNumber}`,
+        repo,
+        state: "FAILED",
+        failedPhase,
+        plan: coreResult.plan,
+        recentLogs: recentLogs ?? [],
+        errorHistory: errorHistory ?? [],
+      },
+      claudeConfig: claudeCliConfig,
+      promptsDir: resolve(aqRoot, "prompts"),
+      cwd: worktreePath ?? projectRoot,
+    });
+    if (diagnosis) {
+      report.diagnosis = diagnosis;
+      logger.info(`진단 완료: ${diagnosis.rootCause.slice(0, 120)}`);
+    }
+  }
+
   printResult(report);
   saveResult(config, aqRoot ?? projectRoot, issueNumber, report);
 
@@ -159,13 +195,19 @@ export interface GeneralPipelineFailureContext {
   input: { issueNumber: number; repo: string; jobLogger?: JobLogger };
   config: AQConfig;
   startTime: number;
+  /** 이슈 제목 (진단 컨텍스트용, 없으면 Issue #N으로 대체) */
+  issueTitle?: string;
+  /** 최근 로그 라인 배열 (진단 컨텍스트용) */
+  recentLogs?: string[];
+  /** 에러 히스토리 (진단 컨텍스트용) */
+  errorHistory?: ErrorHistoryEntry[];
 }
 
 /**
  * Handle general pipeline failure with proper context and cleanup
  */
 export async function handleGeneralPipelineError(context: GeneralPipelineFailureContext): Promise<OrchestratorResult> {
-  const { error, runtime, input, config, startTime } = context;
+  const { error, runtime, input, config, startTime, issueTitle, recentLogs, errorHistory } = context;
   const { issueNumber, repo } = input;
 
   // General pipeline failure
@@ -188,6 +230,28 @@ export async function handleGeneralPipelineError(context: GeneralPipelineFailure
   // Generate a basic report for failed pipelines
   const basicPlan = createBasicPlan(issueNumber, "Pipeline failed", "Pipeline execution failed");
   const report = formatResult(issueNumber, repo, basicPlan, [], startTime);
+
+  // 진단 runner 호출 (non-fatal, claudeCli 설정이 없으면 건너뜀)
+  const generalClaudeConfig = config.commands?.claudeCli;
+  if (generalClaudeConfig) {
+    const diagnosis = await runDiagnosis({
+      input: {
+        issueNumber,
+        issueTitle: issueTitle ?? `Issue #${issueNumber}`,
+        repo,
+        state: runtime.state,
+        recentLogs: recentLogs ?? [],
+        errorHistory: errorHistory ?? [],
+      },
+      claudeConfig: generalClaudeConfig,
+      promptsDir: runtime.promptsDir,
+      cwd: runtime.worktreePath ?? runtime.projectRoot,
+    });
+    if (diagnosis) {
+      report.diagnosis = diagnosis;
+      logger.info(`진단 완료: ${diagnosis.rootCause.slice(0, 120)}`);
+    }
+  }
 
   return {
     success: false,

@@ -108,6 +108,14 @@ export interface DatabaseLog {
   timestamp: string;
 }
 
+export interface ListJobsFilter {
+  status?: DatabaseJob["status"];
+  statuses?: DatabaseJob["status"][];
+  excludeStatus?: DatabaseJob["status"];
+  limit?: number;
+  offset?: number;
+}
+
 export class AQDatabase {
   private db: SQLite.Database;
 
@@ -300,6 +308,66 @@ export class AQDatabase {
 
     const rows = stmt.all() as JobRow[];
     return rows.map(row => this.mapRowToJob(row));
+  }
+
+  listJobsWithFilter(filter: ListJobsFilter): DatabaseJob[] {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (filter.status) {
+      conditions.push("status = ?");
+      params.push(filter.status);
+    } else if (filter.statuses && filter.statuses.length > 0) {
+      const placeholders = filter.statuses.map(() => "?").join(", ");
+      conditions.push(`status IN (${placeholders})`);
+      for (const s of filter.statuses) params.push(s);
+    }
+
+    if (filter.excludeStatus) {
+      conditions.push("status != ?");
+      params.push(filter.excludeStatus);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limitPart = filter.limit !== undefined ? "LIMIT ?" : "";
+    const offsetPart = filter.offset !== undefined ? "OFFSET ?" : "";
+
+    if (filter.limit !== undefined) params.push(filter.limit);
+    if (filter.offset !== undefined) params.push(filter.offset);
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      ${whereClause}
+      ORDER BY created_at DESC
+      ${limitPart} ${offsetPart}
+    `);
+
+    const rows = stmt.all(...params) as JobRow[];
+    return rows.map(row => this.mapRowToJob(row));
+  }
+
+  findJobByIssueWithStatus(issueNumber: number, repo: string, status: DatabaseJob["status"]): DatabaseJob | undefined {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE issue_number = ? AND repo = ? AND status = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(issueNumber, repo, status) as JobRow | undefined;
+    return row ? this.mapRowToJob(row) : undefined;
+  }
+
+  findJobByIssueExcludingStatus(issueNumber: number, repo: string, excludeStatus: DatabaseJob["status"]): DatabaseJob | undefined {
+    const stmt = this.db.prepare(`
+      SELECT * FROM jobs
+      WHERE issue_number = ? AND repo = ? AND status != ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `);
+
+    const row = stmt.get(issueNumber, repo, excludeStatus) as JobRow | undefined;
+    return row ? this.mapRowToJob(row) : undefined;
   }
 
   findJobByIssue(issueNumber: number, repo: string): DatabaseJob | undefined {

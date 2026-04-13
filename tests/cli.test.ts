@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand } from "../src/cli.js";
+import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
 import { runPipeline } from "../src/pipeline/core/orchestrator.js";
 import { JobStore } from "../src/queue/job-store.js";
@@ -12,6 +12,12 @@ import { createDashboardRoutes } from "../src/server/dashboard-api.js";
 import { createHealthRoutes } from "../src/server/health.js";
 import { cleanupStalePid, writePidFile, readPidFile } from "../src/server/pid-manager.js";
 import { ConfigWatcher } from "../src/config/config-watcher.js";
+import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
+
+vi.mock("../src/pipeline/errors/checkpoint.js", () => ({
+  loadCheckpoint: vi.fn(),
+  saveCheckpoint: vi.fn(),
+}));
 
 vi.mock("../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
@@ -970,5 +976,93 @@ describe("versionCommand — 에러 분기", () => {
     vi.spyOn(process, "cwd").mockReturnValue("/nonexistent-dir-aqm-xyz");
     await expect(versionCommand()).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("resumeCommand", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("--job도 --issue+repo도 없으면 process.exit(1)", async () => {
+    await expect(resumeCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("--job으로 조회했는데 job이 없으면 process.exit(1)", async () => {
+    vi.mocked(JobStore).mockImplementation(() => ({
+      get: vi.fn().mockReturnValue(undefined),
+    } as unknown as JobStore));
+    await expect(resumeCommand({ job: "job-not-found" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("--issue+repo 경로에서 checkpoint 없으면 process.exit(1)", async () => {
+    vi.mocked(loadCheckpoint).mockReturnValue(null);
+    await expect(resumeCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("checkpoint 있고 pipeline 성공 시 process.exit(0)", async () => {
+    vi.mocked(loadCheckpoint).mockReturnValue({ state: "plan", issueNumber: 42 } as ReturnType<typeof loadCheckpoint>);
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+    await expect(resumeCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(0)");
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("checkpoint 있고 pipeline 실패 시 process.exit(1)", async () => {
+    vi.mocked(loadCheckpoint).mockReturnValue({ state: "plan", issueNumber: 42 } as ReturnType<typeof loadCheckpoint>);
+    vi.mocked(runPipeline).mockResolvedValue({ success: false });
+    await expect(resumeCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("--job으로 job 조회 후 checkpoint 있으면 runPipeline 호출", async () => {
+    const mockJob = { id: "job-abc", issueNumber: 99, repo: "owner/test" };
+    vi.mocked(JobStore).mockImplementation(() => ({
+      get: vi.fn().mockReturnValue(mockJob),
+    } as unknown as JobStore));
+    vi.mocked(loadCheckpoint).mockReturnValue({ state: "implement", issueNumber: 99 } as ReturnType<typeof loadCheckpoint>);
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+
+    await expect(resumeCommand({ job: "job-abc" })).rejects.toThrow("process.exit(0)");
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ issueNumber: 99, repo: "owner/test" })
+    );
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("--job으로 job 조회 후 checkpoint 없으면 process.exit(1)", async () => {
+    const mockJob = { id: "job-abc", issueNumber: 55, repo: "owner/test" };
+    vi.mocked(JobStore).mockImplementation(() => ({
+      get: vi.fn().mockReturnValue(mockJob),
+    } as unknown as JobStore));
+    vi.mocked(loadCheckpoint).mockReturnValue(null);
+
+    await expect(resumeCommand({ job: "job-abc" })).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("resumeFrom이 checkpoint와 함께 runPipeline에 전달됨", async () => {
+    const checkpoint = { state: "review", issueNumber: 42 } as ReturnType<typeof loadCheckpoint>;
+    vi.mocked(loadCheckpoint).mockReturnValue(checkpoint);
+    vi.mocked(runPipeline).mockResolvedValue({ success: true });
+
+    await expect(resumeCommand({ issue: 42, repo: "owner/repo" })).rejects.toThrow("process.exit(0)");
+    expect(runPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ resumeFrom: checkpoint })
+    );
   });
 });

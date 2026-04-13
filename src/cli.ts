@@ -622,7 +622,7 @@ async function statsCommand(args: CliArgs): Promise<void> {
   console.log();
 }
 
-async function resumeCommand(args: CliArgs): Promise<void> {
+export async function resumeCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
 

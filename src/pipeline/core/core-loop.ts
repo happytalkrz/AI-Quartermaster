@@ -43,7 +43,9 @@ export function buildCostBreakdown(
   phaseResults: PhaseResult[],
   reviewCostUsd: number = 0,
 ): CostBreakdown {
-  const phaseCosts = phaseResults.map(r => ({
+  // pseudo-phase(phaseIndex < 0)는 비용 집계에서 제외한다.
+  // 이미 planCostUsd 등 별도 항목으로 추적되므로 이중 계산 방지.
+  const phaseCosts = phaseResults.filter(r => r.phaseIndex >= 0).map(r => ({
     phaseIndex: r.phaseIndex,
     phaseName: r.phaseName,
     costUsd: r.costUsd ?? 0,
@@ -433,7 +435,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       if (!result.success) {
         logger.error(`Phase ${phase.index + 1} failed after retries: ${result.error}`);
         jl?.log(`Phase ${phase.index + 1} 최종 실패: ${result.error}`);
-        const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
+        const totalCostUsd = phaseResults.filter(r => r.phaseIndex >= 0).reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
         const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
         const totalUsage = sumUsage(allUsages);
         return { plan, phaseResults, success: false, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults) };
@@ -448,8 +450,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Level ${group.level} completed: ${remainingPhases.length} phases executed`);
   }
 
-  // Calculate total cost from phase results and plan generation
-  const phasesTotalCost = phaseResults.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
+  // Calculate total cost from phase results and plan generation (pseudo-phase 제외)
+  const phasesTotalCost = phaseResults.filter(r => r.phaseIndex >= 0).reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
   const totalCostUsd = phasesTotalCost + (planCostUsd ?? 0);
 
   // Calculate total usage from plan and phase results

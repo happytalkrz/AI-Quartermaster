@@ -1,5 +1,7 @@
-import type { Plan, PhaseResult, ErrorCategory } from "../../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport } from "../../types/pipeline.js";
 import { getLogger } from "../../utils/logger.js";
+
+export type { DiagnosisReport };
 
 const logger = getLogger();
 
@@ -18,11 +20,15 @@ export interface PipelineReport {
     durationMs: number;
     error?: string;
     errorCategory?: ErrorCategory;
+    costUsd?: number;
+    retryCostUsd?: number;
   }>;
   totalDurationMs: number;
   prUrl?: string;
   errorCategory?: ErrorCategory;
   errorSummary?: string;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
 }
 
 /**
@@ -52,6 +58,8 @@ export function formatResult(
       durationMs: r.durationMs,
       error: r.error,
       errorCategory: r.errorCategory,
+      costUsd: r.costUsd,
+      retryCostUsd: r.retryCostUsd,
     })),
     totalDurationMs: Date.now() - startTime,
     prUrl,
@@ -75,11 +83,40 @@ export function printResult(report: PipelineReport): void {
   for (const phase of report.phases) {
     const status = phase.success ? "PASS" : "FAIL";
     const commit = phase.commit ? ` [${phase.commit}]` : "";
-    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s)`);
+    const cost = phase.costUsd !== undefined ? ` $${phase.costUsd.toFixed(4)}` : "";
+    const retryCost = phase.retryCostUsd ? ` +retry $${phase.retryCostUsd.toFixed(4)}` : "";
+    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s${cost}${retryCost})`);
   }
 
   if (report.prUrl) {
     console.log(`\nPR: ${report.prUrl}`);
   }
+
+  if (report.diagnosis) {
+    printDiagnosisReport(report.diagnosis);
+  }
+
   console.log("");
+}
+
+/**
+ * Prints a Claude diagnosis report in a structured box format.
+ */
+export function printDiagnosisReport(diagnosis: DiagnosisReport): void {
+  const BORDER = "═".repeat(50);
+  console.log(`\n╔${BORDER}╗`);
+  console.log(`║  Claude 진단 리포트${" ".repeat(31)}║`);
+  console.log(`╚${BORDER}╝`);
+  console.log(`에러 카테고리 : ${diagnosis.errorCategory}`);
+  console.log(`신뢰도       : ${diagnosis.confidence}`);
+  console.log(`자동 재시도   : ${diagnosis.canAutoRetry ? "가능" : "불가"}`);
+  if (diagnosis.retryStrategy) {
+    console.log(`재시도 전략  : ${diagnosis.retryStrategy}`);
+  }
+  console.log(`\n원인 분석:\n  ${diagnosis.rootCause}`);
+  console.log(`\n추천 액션:`);
+  diagnosis.recommendedActions.forEach((action, i) => {
+    console.log(`  ${i + 1}. ${action}`);
+  });
+  console.log(`\n생성 시각: ${diagnosis.generatedAt}`);
 }

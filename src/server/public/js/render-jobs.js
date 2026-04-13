@@ -40,7 +40,10 @@ function renderJobListItem(job, isSelected) {
     '</div>' +
     '<div class="flex justify-between items-center">' +
       '<span class="text-xs text-outline font-mono">' + esc(job.id).substring(0, 16) + '</span>' +
-      '<span class="text-[10px] text-outline">' + (dur ? dur : relative) + '</span>' +
+      '<div class="flex items-center gap-2">' +
+        (job.triggerReason ? '<span class="material-symbols-outlined text-[11px] text-outline/60" title="Trigger: ' + esc(job.triggerReason) + '">label</span>' : '') +
+        '<span class="text-[10px] text-outline">' + (dur ? dur : relative) + '</span>' +
+      '</div>' +
     '</div>' +
   '</div>';
 }
@@ -156,11 +159,19 @@ function renderJobDetail(job) {
   }
   html += '</div></div>';
 
+  // Trigger reason badge
+  if (job.triggerReason) {
+    html += '<div class="mt-3 flex items-center gap-2"><span class="material-symbols-outlined text-sm text-outline">label</span><span class="text-xs font-mono bg-surface-container px-2 py-1 rounded text-outline ring-1 ring-outline-variant/20">Trigger: ' + esc(job.triggerReason) + '</span></div>';
+  }
+
   // Phase progress bar
   html += renderPhaseProgress(job);
 
   // Phase list
   html += renderPhaseList(job);
+
+  // Cost breakdown
+  html += renderCostBreakdown(job);
 
   // PR link
   if (job.prUrl) {
@@ -296,6 +307,95 @@ function renderPhaseList(job) {
   phases.forEach(function(phase, i) {
     html += renderPhaseItem(phase, i, job);
   });
+  html += '</div>';
+  return html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Cost Breakdown Section
+   ══════════════════════════════════════════════════════════════ */
+/**
+ * @param {Job} job
+ * @returns {string}
+ */
+function renderCostBreakdown(job) {
+  var cb = job.costBreakdown;
+  if (!cb) return '';
+
+  var html = '<div class="space-y-4 mt-6">';
+  html += '<h3 class="text-xs font-headline font-bold text-outline uppercase tracking-widest">Cost Breakdown</h3>';
+
+  // Phase cost table
+  if (cb.phaseCosts && cb.phaseCosts.length > 0) {
+    html += '<div class="bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant/10">';
+    html += '<table class="w-full text-xs">';
+    html += '<thead><tr class="border-b border-outline-variant/10">';
+    html += '<th class="text-left p-3 text-outline font-bold uppercase tracking-wider">Phase</th>';
+    html += '<th class="text-right p-3 text-outline font-bold uppercase tracking-wider">비용</th>';
+    html += '<th class="text-right p-3 text-outline font-bold uppercase tracking-wider">재시도</th>';
+    html += '<th class="text-right p-3 text-outline font-bold uppercase tracking-wider">재시도 비용</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+
+    // Plan row
+    if (cb.planCostUsd > 0) {
+      html += '<tr class="border-b border-outline-variant/5">';
+      html += '<td class="p-3 text-on-surface/70 font-mono">Plan</td>';
+      html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.planCostUsd) + '</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '</tr>';
+    }
+
+    // Phase rows
+    cb.phaseCosts.forEach(function(phase) {
+      html += '<tr class="border-b border-outline-variant/5">';
+      html += '<td class="p-3 text-on-surface/80 font-mono">P' + (phase.phaseIndex + 1) + ' ' + esc(phase.phaseName) + '</td>';
+      html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(phase.costUsd) + '</td>';
+      html += '<td class="p-3 text-right font-mono text-outline">' + (phase.retryCount > 0 ? phase.retryCount + '회' : '—') + '</td>';
+      html += '<td class="p-3 text-right font-mono ' + (phase.retryCostUsd > 0 ? 'text-[#d29922]' : 'text-outline') + '">' + (phase.retryCostUsd > 0 ? fmtCost(phase.retryCostUsd) : '—') + '</td>';
+      html += '</tr>';
+    });
+
+    // Review row
+    if (cb.reviewCostUsd > 0) {
+      html += '<tr class="border-b border-outline-variant/5">';
+      html += '<td class="p-3 text-on-surface/70 font-mono">Review</td>';
+      html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.reviewCostUsd) + '</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '</tr>';
+    }
+
+    // Total row
+    html += '<tr class="bg-surface-container">';
+    html += '<td class="p-3 font-bold text-on-surface">합계</td>';
+    html += '<td class="p-3 text-right font-bold font-mono text-primary" colspan="3">' + fmtCost(cb.totalCostUsd) + '</td>';
+    html += '</tr>';
+
+    html += '</tbody></table></div>';
+  }
+
+  // Model summary bar
+  if (cb.modelSummary && cb.modelSummary.length > 0) {
+    var total = cb.totalCostUsd || 1;
+    html += '<div class="space-y-2">';
+    html += '<div class="text-[10px] text-outline font-bold uppercase tracking-wider">모델별 비용</div>';
+    cb.modelSummary.forEach(function(entry) {
+      var pct = total > 0 ? Math.round((entry.costUsd / total) * 100) : 0;
+      html += '<div class="space-y-1">';
+      html += '<div class="flex justify-between text-xs">';
+      html += '<span class="font-mono text-on-surface/80">' + esc(entry.model) + '</span>';
+      html += '<span class="font-mono text-tertiary">' + fmtCost(entry.costUsd) + ' <span class="text-outline">(' + pct + '%)</span></span>';
+      html += '</div>';
+      html += '<div class="h-1.5 bg-surface-variant rounded-full overflow-hidden">';
+      html += '<div class="h-full bg-primary/70 rounded-full" style="width:' + pct + '%"></div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
   html += '</div>';
   return html;
 }

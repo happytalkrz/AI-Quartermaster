@@ -46,6 +46,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
       testsPassed: true,
       rolledBack: false,
       summary: "Claude invocation failed",
+      costUsd: result.costUsd,
     };
   }
 
@@ -65,6 +66,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
       testsPassed: true,
       rolledBack: false,
       summary: "No changes needed",
+      costUsd: result.costUsd,
     };
   }
 
@@ -83,6 +85,7 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
       testsPassed: false,
       rolledBack: true,
       summary: "Simplification rolled back due to test failure",
+      costUsd: result.costUsd,
     };
   }
 
@@ -102,5 +105,6 @@ export async function runSimplify(ctx: SimplifyContext): Promise<SimplifyResult>
     testsPassed: true,
     rolledBack: false,
     summary: `Simplified ${filesModified.length} files (+${linesAdded} -${linesRemoved})`,
+    costUsd: result.costUsd,
   };
 }

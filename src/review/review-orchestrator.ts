@@ -210,6 +210,7 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
       overallSummary: `Unified review failed due to Claude error: ${result.output}`,
       durationMs: Date.now() - startTime,
       model: claudeConfig.model,
+      costUsd: result.costUsd,
     };
   }
 
@@ -231,6 +232,7 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
       overallSummary: parsed.overall.summary || "",
       durationMs,
       model: claudeConfig.model,
+      costUsd: result.costUsd,
     };
   } catch (err: unknown) {
     logger.error(`Failed to parse unified review JSON response: ${getErrorMessage(err)}`);
@@ -243,6 +245,7 @@ async function runUnifiedReview(ctx: ReviewOrchestratorContext): Promise<Unified
       overallSummary: `JSON parsing failed. Raw output: ${result.output.slice(0, 500)}`,
       durationMs: Date.now() - startTime,
       model: claudeConfig.model,
+      costUsd: result.costUsd,
     };
   }
 }
@@ -270,12 +273,14 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
     return {
       rounds: convertedRounds,
       allPassed: unifiedResult.overallVerdict === "PASS",
+      costUsd: unifiedResult.costUsd,
     };
   }
 
   // 기존 라운드별 순차 리뷰 방식
   const results: ReviewResult[] = [];
   let allPassed = true;
+  let totalCostUsd = 0;
 
   // Limit rounds based on ExecutionModePreset
   const roundsToExecute = ctx.maxRounds !== undefined
@@ -336,12 +341,13 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
 
     if (!result) continue;
     results.push(result);
+    totalCostUsd += result.costUsd ?? 0;
 
     if (result.verdict === "FAIL") {
       switch (round.failAction) {
         case "block":
           logger.error(`Review "${round.name}" FAILED with block action. Pipeline halted.`);
-          return { rounds: results, allPassed: false };
+          return { rounds: results, allPassed: false, costUsd: totalCostUsd || undefined };
         case "warn":
           logger.warn(`Review "${round.name}" FAILED with warn action. Continuing.`);
           break;
@@ -349,10 +355,10 @@ export async function runReviews(ctx: ReviewOrchestratorContext): Promise<Review
           // Already retried above, if still failing it's a block
           logger.error(`Review "${round.name}" FAILED after ${maxAttempts} attempts.`);
           allPassed = false;
-          return { rounds: results, allPassed: false };
+          return { rounds: results, allPassed: false, costUsd: totalCostUsd || undefined };
       }
     }
   }
 
-  return { rounds: results, allPassed };
+  return { rounds: results, allPassed, costUsd: totalCostUsd || undefined };
 }

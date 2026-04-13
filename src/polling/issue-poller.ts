@@ -256,13 +256,27 @@ export class IssuePoller {
       if (existingJob) {
         if (existingJob.status === "running" || existingJob.status === "queued") {
           logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 처리 중), 건너뜀`);
+          this.store.addSkipEvent(
+            issue.number,
+            repo,
+            "active_job_exists",
+            `재픽업 차단: ${existingJob.status} 상태 잡 처리 중 (job: ${existingJob.id})`,
+            "polling"
+          );
         } else {
           logger.debug(`이슈 #${issue.number} (${repo}) — 재픽업 차단 (${existingJob.status} 상태 잡 존재), 건너뜀`);
+          this.store.addSkipEvent(
+            issue.number,
+            repo,
+            "job_already_exists",
+            `재픽업 차단: ${existingJob.status} 상태 잡 존재 (job: ${existingJob.id})`,
+            "polling"
+          );
         }
         continue;
       }
       logger.info(`새 이슈 발견 — #${issue.number} "${issue.title}" (${repo}), 큐에 추가`);
-      this.queue.enqueue(issue.number, repo);
+      this.queue.enqueue(issue.number, repo, undefined, undefined, undefined, undefined, `폴링 감지 — 라벨 "${label}"`);
       newIssuesFound++;
     }
 

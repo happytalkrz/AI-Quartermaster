@@ -40,6 +40,35 @@
  */
 
 /**
+ * Model별 비용 항목
+ * @typedef {Object} ModelCostEntry
+ * @property {string} model
+ * @property {number} costUsd
+ * @property {UsageStats} usage
+ */
+
+/**
+ * Phase별 비용 항목
+ * @typedef {Object} PhaseCostInfo
+ * @property {number} phaseIndex
+ * @property {string} phaseName
+ * @property {number} costUsd
+ * @property {number} retryCostUsd
+ * @property {number} retryCount
+ * @property {ModelCostEntry[]} modelCosts
+ */
+
+/**
+ * 비용 breakdown (phase별, model별, review 포함)
+ * @typedef {Object} CostBreakdown
+ * @property {number} planCostUsd
+ * @property {PhaseCostInfo[]} phaseCosts
+ * @property {number} reviewCostUsd
+ * @property {number} totalCostUsd
+ * @property {ModelCostEntry[]} modelSummary
+ */
+
+/**
  * 파이프라인 Job (API 응답 형태)
  * @typedef {Object} Job
  * @property {string} id
@@ -65,6 +94,20 @@
  * @property {string} [issueTitle]
  * @property {number} [cacheHitRatio]
  * @property {string} [branchName]
+ * @property {CostBreakdown} [costBreakdown]
+ * @property {string} [triggerReason]
+ */
+
+/**
+ * 스킵된 이벤트 기록
+ * @typedef {Object} SkipEvent
+ * @property {number} [id]
+ * @property {number} issueNumber
+ * @property {string} repo
+ * @property {string} reasonCode
+ * @property {string} reasonMessage
+ * @property {'webhook'|'polling'} source
+ * @property {string} createdAt
  */
 
 /**

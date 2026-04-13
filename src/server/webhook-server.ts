@@ -13,7 +13,7 @@ export interface WebhookServerOptions {
   config: AQConfig;
   webhookSecret: string;
   port?: number;
-  onPipelineTrigger: (issueNumber: number, repo: string, dependencies?: number[]) => void;
+  onPipelineTrigger: (issueNumber: number, repo: string, dependencies?: number[], triggerReason?: string) => void;
   store?: JobStore;  // for dependency validation
 }
 
@@ -55,12 +55,23 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
     );
 
     if (result.shouldProcess && result.issueNumber && result.repo) {
-      options.onPipelineTrigger(result.issueNumber, result.repo, result.dependencies);
+      options.onPipelineTrigger(result.issueNumber, result.repo, result.dependencies, result.reason);
       return c.json({
         status: "accepted",
         issueNumber: result.issueNumber,
         repo: result.repo,
       }, 202);
+    }
+
+    // 스킵 이벤트 기록 (이슈 번호가 식별 가능한 경우에만)
+    if (options.store && result.reasonCode && payload.issue?.number && payload.repository?.full_name) {
+      options.store.addSkipEvent(
+        payload.issue.number,
+        payload.repository.full_name,
+        result.reasonCode,
+        result.reason ?? result.reasonCode,
+        "webhook"
+      );
     }
 
     return c.json({ status: "ignored", reason: result.reason }, 200);

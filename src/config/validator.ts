@@ -188,6 +188,16 @@ const localeSchema = z.enum(["ko", "en"]);
 const reviewFailActionSchema = z.enum(["block", "warn", "retry"]);
 const mergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
 
+const stuckThresholdConfigSchema = z.object({
+  defaultMs: z.number().int().min(60000),
+  planGenerationMs: z.number().int().min(60000),
+  implementationMs: z.number().int().min(60000),
+  reviewMs: z.number().int().min(60000),
+  verificationMs: z.number().int().min(60000),
+  publishMs: z.number().int().min(60000),
+  activityThresholdMs: z.number().int().min(60000),
+});
+
 const generalConfigSchema = z.object({
   projectName: z.string().min(1, "projectName must be a non-empty string"),
   instanceLabel: z.string().optional(),
@@ -199,6 +209,7 @@ const generalConfigSchema = z.object({
   concurrency: z.number().int().positive(),
   targetRoot: z.string().optional(),
   stuckTimeoutMs: z.number().int().min(60000),
+  stuckThresholds: stuckThresholdConfigSchema,
   pollingIntervalMs: z.number().int().min(10000),
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean().default(false),

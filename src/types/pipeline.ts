@@ -24,6 +24,27 @@ export interface UsageInfo {
   cache_read_input_tokens?: number;
 }
 
+export interface ModelCostEntry {
+  model: string;
+  costUsd: number;
+  usage: UsageInfo;
+}
+
+export interface CostBreakdown {
+  planCostUsd: number;
+  phaseCosts: {
+    phaseIndex: number;
+    phaseName: string;
+    costUsd: number;
+    retryCostUsd: number;
+    retryCount: number;
+    modelCosts: ModelCostEntry[];
+  }[];
+  reviewCostUsd: number;
+  totalCostUsd: number;
+  modelSummary: ModelCostEntry[];
+}
+
 export interface Plan {
   mode?: "code" | "content";
   issueNumber: number;
@@ -65,6 +86,26 @@ export type ErrorCategory =
   | "PROMPT_TOO_LONG"
   | "UNKNOWN";
 
+/**
+ * Claude 기반 파이프라인 실패 진단 리포트
+ */
+export interface DiagnosisReport {
+  /** 실패 원인 분석 요약 */
+  rootCause: string;
+  /** 추천 액션 목록 (우선순위 순) */
+  recommendedActions: string[];
+  /** 자동 재시도 가능 여부 */
+  canAutoRetry: boolean;
+  /** 자동 재시도 가능 시 예상 전략 설명 */
+  retryStrategy?: string;
+  /** 에러 카테고리 분류 */
+  errorCategory: ErrorCategory;
+  /** 진단 신뢰도 (high | medium | low) */
+  confidence: "high" | "medium" | "low";
+  /** 진단 생성 시각 (ISO 8601) */
+  generatedAt: string;
+}
+
 export type MergeStateStatus =
   | "CLEAN"
   | "DIRTY"
@@ -104,6 +145,9 @@ export interface PhaseResult {
   completedAt?: string;
   costUsd?: number;
   usage?: UsageInfo;
+  retryCostUsd?: number;
+  retryCount?: number;
+  modelCosts?: ModelCostEntry[];
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
   failedFiles?: string[];
   /** 성공적으로 처리된 파일 목록 (partial=true일 때 유효) */
@@ -160,6 +204,8 @@ export interface PublishPhaseContext {
   dryRun: boolean;
   jl?: import("../queue/job-logger.js").JobLogger;
   totalUsage?: UsageInfo;
+  totalCostUsd?: number;
+  costBreakdown?: CostBreakdown;
 }
 
 export interface CleanupContext {
@@ -414,6 +460,9 @@ export interface PhaseResultInfo {
   error?: string;
   costUsd?: number;
   usage?: UsageStats;
+  retryCostUsd?: number;
+  retryCount?: number;
+  modelCosts?: ModelCostEntry[];
 }
 
 /**
@@ -437,6 +486,28 @@ export interface JobBase {
   totalUsage?: UsageStats;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** phase/model별 비용 세분화 */
+  costBreakdown?: CostBreakdown;
+  /** 이슈가 처리된 사유 (트리거 원인) */
+  triggerReason?: string;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
+}
+
+/**
+ * 스킵된 이벤트 기록
+ */
+export interface SkipEvent {
+  id?: number;
+  issueNumber: number;
+  repo: string;
+  /** 스킵 사유 코드 (예: ALREADY_RUNNING, LABEL_MISMATCH, SAFETY_VIOLATION) */
+  reasonCode: string;
+  /** 스킵 사유 상세 메시지 */
+  reasonMessage: string;
+  /** 이벤트 소스 */
+  source: "webhook" | "polling";
+  createdAt: string;
 }
 
 /**

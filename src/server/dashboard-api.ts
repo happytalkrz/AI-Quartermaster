@@ -384,7 +384,7 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, readOnly?: boolean): Hono {
   const api = new Hono();
 
   // Subscribe to JobStore events for real-time broadcasts
@@ -454,7 +454,24 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   } else {
     // apiKey 미설정: 바인드 호스트에 따라 로그 레벨 분기
     const isLocalBind = !hostname || hostname === "127.0.0.1" || hostname === "localhost";
-    if (isLocalBind) {
+    if (readOnly) {
+      // readOnly 모드: write 엔드포인트에 403 반환
+      const readOnlyGuard = async (c: Context, next: Next) => {
+        if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+          return c.json({ error: "Forbidden: dashboard is in read-only mode" }, 403);
+        }
+        await next();
+      };
+      api.use("/api/config", readOnlyGuard);
+      api.use("/api/projects", readOnlyGuard);
+      api.use("/api/projects/*", readOnlyGuard);
+      api.use("/api/jobs/*", readOnlyGuard);
+      api.use("/api/update", readOnlyGuard);
+      getLogger().info(
+        "Dashboard is running in read-only mode. Write endpoints are disabled." +
+        (!isLocalBind ? " Non-local bind is permitted in read-only mode." : "")
+      );
+    } else if (isLocalBind) {
       getLogger().info(
         "Dashboard API key is not configured. All endpoints are accessible without authentication."
       );

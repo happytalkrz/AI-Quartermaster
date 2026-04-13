@@ -406,13 +406,16 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
   }
-  const wslReadOnly = !isLocalBind && !apiKey && isWSL;
-  if (wslReadOnly) {
+  const wslReadOnly = !isLocalBind && !apiKey && (isWSL || insecureAllowed);
+  if (!isLocalBind && !apiKey && isWSL) {
     logger.warn(
       `WSL 환경 감지: 대시보드를 ${host}:${port}에 read-only 모드로 바인딩합니다. ` +
       `쓰기 작업(config 수정, 잡 취소 등)은 차단됩니다. ` +
       `full access가 필요하면 DASHBOARD_API_KEY를 설정하세요.`
     );
+  }
+  if (!isLocalBind && !apiKey && insecureAllowed) {
+    console.error('⚠ insecure 모드 허용 — dashboard가 read-only로 강제됩니다');
   }
 
   const patternStore = new PatternStore(dataDir);

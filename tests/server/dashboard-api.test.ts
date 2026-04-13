@@ -3406,3 +3406,75 @@ describe("Dashboard API - GET /api/projects includes errorState", () => {
     expect(result.projects[0].errorState.consecutiveFailures).toBe(3);
   });
 });
+
+describe("Dashboard API - stale config 회귀 테스트 (configWatcher.current())", () => {
+  let app: Hono;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("configWatcher 전달 시 매 요청마다 configWatcher.current()가 호출되어야 한다", async () => {
+    const mockConfig = {
+      general: { projectName: "test-project", logLevel: "info" },
+    };
+    const mockCurrent = vi.fn().mockReturnValue(mockConfig);
+    const mockConfigWatcher = { current: mockCurrent } as any;
+    mockMaskSensitiveConfig.mockReturnValue(mockConfig as any);
+
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, mockConfigWatcher);
+
+    await app.request("/api/config");
+    await app.request("/api/config");
+    await app.request("/api/config");
+
+    expect(mockCurrent).toHaveBeenCalledTimes(3);
+    expect(mockLoadConfig).not.toHaveBeenCalled();
+  });
+
+  it("config 변경 후 다음 요청에 새 config가 반영되어야 한다", async () => {
+    const oldConfig = {
+      general: { projectName: "old-project", logLevel: "info" },
+    };
+    const newConfig = {
+      general: { projectName: "new-project", logLevel: "debug" },
+    };
+
+    const mockCurrent = vi.fn()
+      .mockReturnValueOnce(oldConfig)
+      .mockReturnValueOnce(newConfig);
+    const mockConfigWatcher = { current: mockCurrent } as any;
+    mockMaskSensitiveConfig.mockImplementation((c) => c as any);
+
+    app = createDashboardRoutes(mockJobStore, mockJobQueue, mockConfigWatcher);
+
+    const res1 = await app.request("/api/config");
+    const result1 = await res1.json() as { config: { general: { projectName: string } } };
+    expect(result1.config.general.projectName).toBe("old-project");
+
+    const res2 = await app.request("/api/config");
+    const result2 = await res2.json() as { config: { general: { projectName: string } } };
+    expect(result2.config.general.projectName).toBe("new-project");
+
+    expect(mockCurrent).toHaveBeenCalledTimes(2);
+  });
+
+  it("configWatcher 미전달 시 loadConfig() 폴백이 사용되어야 한다", async () => {
+    const mockConfig = {
+      general: { projectName: "fallback-project", logLevel: "info" },
+    };
+    mockLoadConfig.mockReturnValue(mockConfig as any);
+    mockMaskSensitiveConfig.mockReturnValue(mockConfig as any);
+
+    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+
+    const response = await app.request("/api/config");
+
+    expect(response.status).toBe(200);
+    expect(mockLoadConfig).toHaveBeenCalledWith(process.cwd());
+  });
+});

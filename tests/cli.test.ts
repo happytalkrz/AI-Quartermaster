@@ -84,6 +84,9 @@ vi.mock("../src/learning/pattern-store.js", () => ({
 vi.mock("../src/git/worktree-cleaner.js", () => ({
   cleanOldWorktrees: vi.fn(),
 }));
+vi.mock("../src/claude/claude-runner.js", () => ({
+  killAllActiveProcesses: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("hono", () => ({
   Hono: class MockHono {
     route() { return this; }
@@ -1309,7 +1312,10 @@ describe("startCommand — gracefulShutdown", () => {
     vi.mocked(JobStore).mockImplementation(() => ({
       prune: vi.fn(),
       list: vi.fn().mockReturnValue([]),
+      close: vi.fn(),
     } as unknown as JobStore));
+
+    vi.mocked(startServer).mockReturnValue({ close: vi.fn() });
 
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),

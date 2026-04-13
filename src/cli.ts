@@ -13,6 +13,7 @@ import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
+import { killAllActiveProcesses } from "./claude/claude-runner.js";
 import { createDashboardRoutes, cleanupDashboardResources } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
 import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
@@ -464,7 +465,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  startServer(app, port, host);
+  const server = startServer(app, port, host);
   initDispatcher(scheduler);
   scheduler.start();
   writePidFile(pidPath);
@@ -472,14 +473,34 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const cleanup = () => removePidFile(pidPath);
   process.on("exit", cleanup);
 
+  let isShuttingDown = false;
   const gracefulShutdown = async (signal: string) => {
-    logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.info(`${signal} received — shutting down gracefully...`);
+
+    logger.info("[shutdown] 1/6 poller/scheduler 중지 중...");
     poller?.stop();
     scheduler.stop();
     configWatcher.stopWatching();
-    cleanupDashboardResources();
+
+    logger.info("[shutdown] 2/6 HTTP 서버 종료 중 (새 요청 차단)...");
+    server.close();
+
+    logger.info("[shutdown] 3/6 실행 중인 job 완료 대기 중 (최대 30초)...");
     await queue.shutdown(30000);
+
+    logger.info("[shutdown] 4/6 남은 Claude 서브프로세스 정리 중...");
+    await killAllActiveProcesses();
+
+    logger.info("[shutdown] 5/6 JobStore 종료 중...");
+    store.close();
+
+    logger.info("[shutdown] 6/6 대시보드 리소스 정리 및 PID 파일 제거...");
+    cleanupDashboardResources();
     cleanup();
+
+    logger.info("Shutdown complete.");
     process.exit(0);
   };
 

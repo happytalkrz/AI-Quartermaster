@@ -384,7 +384,7 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string): Hono {
   const api = new Hono();
 
   // Subscribe to JobStore events for real-time broadcasts
@@ -452,10 +452,18 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/events", sseTokenAuth);
     api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
   } else {
-    // apiKey 미설정: 로컬 환경에서는 모든 API 허용
-    getLogger().info(
-      "Dashboard API key is not configured. All endpoints are accessible without authentication."
-    );
+    // apiKey 미설정: 바인드 호스트에 따라 로그 레벨 분기
+    const isLocalBind = !hostname || hostname === "127.0.0.1" || hostname === "localhost";
+    if (isLocalBind) {
+      getLogger().info(
+        "Dashboard API key is not configured. All endpoints are accessible without authentication."
+      );
+    } else {
+      getLogger().warn(
+        "Dashboard API key is not configured. All endpoints are accessible without authentication. " +
+        "Non-local bind without API key is a security risk."
+      );
+    }
   }
 
   // Get configuration (masked for security)

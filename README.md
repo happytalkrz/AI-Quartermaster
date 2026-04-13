@@ -342,6 +342,7 @@ DASHBOARD_API_KEY=your-secret-key-here
    aqm start --host 0.0.0.0
    ```
    > `DASHBOARD_ALLOW_INSECURE=true`는 테스트/내부망 환경 전용입니다. 인터넷에 노출된 서버에서는 절대 사용하지 마세요.
+   > 이 모드에서는 dashboard가 read-only로 강제되어 config 수정, 잡 취소 등 쓰기 작업이 차단됩니다.
 
 ## 이슈 의존성
 
@@ -398,7 +399,7 @@ Dashboard API는 기본적으로 `127.0.0.1`에만 바인딩되어 외부 접근
 |------|--------|------|
 | `--host` | `127.0.0.1` | 바인드 주소. localhost 이외 설정 시 API 키 강제 |
 | `DASHBOARD_API_KEY` | (없음) | Bearer 토큰 인증. non-local bind 시 필수 |
-| `DASHBOARD_ALLOW_INSECURE` | `false` | `true`로 설정 시 API 키 없이 non-local bind 허용 (비권장) |
+| `DASHBOARD_ALLOW_INSECURE` | `false` | `true`로 설정 시 API 키 없이 non-local bind 허용하되 dashboard는 read-only로 강제됨 (비권장) |
 
 - non-local bind(`0.0.0.0`, 특정 IP 등)에서 `DASHBOARD_API_KEY`가 없으면 서버가 시작되지 않습니다
 - `DASHBOARD_ALLOW_INSECURE=true`는 폐쇄망/테스트 환경 전용이며 인터넷 노출 환경에서는 절대 사용하지 마세요

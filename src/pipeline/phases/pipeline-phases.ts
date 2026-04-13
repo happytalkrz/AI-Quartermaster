@@ -11,6 +11,7 @@ import { runValidationPhase } from "../setup/pipeline-validation.js";
 import { pushAndCreatePR, cleanupOnSuccess } from "./pipeline-publish.js";
 import { setupGitEnvironment, prepareWorkEnvironment } from "../setup/pipeline-git-setup.js";
 import { resolveResolvedProject, checkDuplicatePR, fetchAndValidateIssue } from "../setup/pipeline-setup.js";
+import { createPseudoPhaseResult, PSEUDO_PHASE_NAMES } from "../reporting/phase-result-helper.js";
 import { PipelineTimer } from "../../safety/timeout-manager.js";
 import { formatResult } from "../reporting/result-reporter.js";
 import { saveResult, transitionState, isPastState, type PipelineRuntime } from "../core/pipeline-context.js";
@@ -118,8 +119,10 @@ export async function executeInitialSetupPhases(
 ): Promise<InitialSetupResult> {
   const { issueNumber, repo } = input;
   const jl = input.jobLogger;
+  const phaseResults: PhaseResult[] = [];
 
   // Phase 1: Resolve project setup
+  const projectStart = new Date();
   const setupResult = resolveResolvedProject(
     repo,
     config,
@@ -127,6 +130,7 @@ export async function executeInitialSetupPhases(
     input.resumeFrom?.projectRoot,
     aqRoot
   );
+  phaseResults.push(createPseudoPhaseResult(PSEUDO_PHASE_NAMES.SETUP_PROJECT, projectStart, true));
 
   const { projectRoot, promptsDir, gitConfig } = setupResult;
 
@@ -154,11 +158,16 @@ export async function executeInitialSetupPhases(
       dataDir,
       timer,
       duplicatePRUrl: duplicateResult.prUrl,
+<<<<<<< Updated upstream
       phaseResults: []
+=======
+      phaseResults,
+>>>>>>> Stashed changes
     };
   }
 
   // Phase 3: Fetch and validate issue
+  const validationStart = new Date();
   const issueResult = await fetchAndValidateIssue(
     repo,
     issueNumber,
@@ -175,6 +184,7 @@ export async function executeInitialSetupPhases(
     },
     config.general.instanceLabel
   );
+  phaseResults.push(createPseudoPhaseResult(PSEUDO_PHASE_NAMES.SETUP_VALIDATION, validationStart, true));
 
   const { issue, checkpoint } = issueResult;
   const mode = issueResult.mode;
@@ -196,7 +206,11 @@ export async function executeInitialSetupPhases(
     mode,
     executionMode,
     checkpoint,
+<<<<<<< Updated upstream
     phaseResults: []
+=======
+    phaseResults,
+>>>>>>> Stashed changes
   };
 }
 
@@ -218,8 +232,12 @@ export async function executeEnvironmentSetup(
   const phaseResults: PhaseResult[] = [];
 
   // Setup Git Environment
+<<<<<<< Updated upstream
   const worktreeStartedAt = nowIso();
   const worktreeStart = Date.now();
+=======
+  const gitStart = new Date();
+>>>>>>> Stashed changes
   const gitSetupResult = await setupGitEnvironment({
     issueNumber,
     issueTitle: issue.title,
@@ -231,10 +249,14 @@ export async function executeEnvironmentSetup(
     isRetry: input.isRetry || false,
     jl,
   });
+<<<<<<< Updated upstream
   phaseResults.push(makePseudoPhaseSuccess("setup:worktree", Date.now() - worktreeStart, {
     startedAt: worktreeStartedAt,
     completedAt: nowIso(),
   }));
+=======
+  phaseResults.push(createPseudoPhaseResult(PSEUDO_PHASE_NAMES.SETUP_GIT, gitStart, true));
+>>>>>>> Stashed changes
 
   transitionState(runtime, gitSetupResult.state, {
     branchName: gitSetupResult.branchName,
@@ -250,6 +272,7 @@ export async function executeEnvironmentSetup(
   const rollbackStrategy = project.safety.rollbackStrategy;
   let envPrepResult: EnvironmentPrepResult;
 
+  const depStart = new Date();
   if (runtime.worktreePath) {
     const depStartedAt = nowIso();
     const depStart = Date.now();
@@ -273,6 +296,7 @@ export async function executeEnvironmentSetup(
       repoStructure: "",
     };
   }
+  phaseResults.push(createPseudoPhaseResult(PSEUDO_PHASE_NAMES.SETUP_DEPENDENCY, depStart, true));
 
   return {
     projectConventions: envPrepResult.projectConventions,
@@ -466,6 +490,7 @@ export async function executePostProcessingPhases(
     checkpoint
   };
 
+<<<<<<< Updated upstream
   const reviewStartedAt = nowIso();
   const reviewStartMs = Date.now();
   const reviewResult = await runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState);
@@ -491,6 +516,19 @@ export async function executePostProcessingPhases(
       );
     }
   }
+=======
+  const reviewStart = new Date();
+  const reviewResult = await runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState);
+  coreResult.phaseResults.push({
+    ...createPseudoPhaseResult(
+      PSEUDO_PHASE_NAMES.REVIEW_CODE,
+      reviewStart,
+      reviewResult.success,
+      { error: reviewResult.error }
+    ),
+    ...(reviewResult.costUsd !== undefined && { costUsd: reviewResult.costUsd }),
+  });
+>>>>>>> Stashed changes
 
   if (!reviewResult.success) {
     const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -522,6 +560,7 @@ export async function executePostProcessingPhases(
       checkpoint
     };
 
+<<<<<<< Updated upstream
     const simplifyStartedAt = nowIso();
     const simplifyStartMs = Date.now();
     const simplifyResult = await runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState);
@@ -547,6 +586,19 @@ export async function executePostProcessingPhases(
         );
       }
     }
+=======
+    const simplifyStart = new Date();
+    const simplifyResult = await runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState);
+    coreResult.phaseResults.push({
+      ...createPseudoPhaseResult(
+        PSEUDO_PHASE_NAMES.REVIEW_SIMPLIFY,
+        simplifyStart,
+        simplifyResult.success,
+        { error: simplifyResult.error }
+      ),
+      ...(simplifyResult.costUsd !== undefined && { costUsd: simplifyResult.costUsd }),
+    });
+>>>>>>> Stashed changes
 
     if (!simplifyResult.success) {
       const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -572,8 +624,12 @@ export async function executePostProcessingPhases(
     baseline: coreResult.baseline,
   };
 
+<<<<<<< Updated upstream
   const validationStartedAt = nowIso();
   const validationStartMs = Date.now();
+=======
+  const validationStart = new Date();
+>>>>>>> Stashed changes
   const validationResult = await runValidationPhase(
     validationContext,
     timer,
@@ -589,6 +645,7 @@ export async function executePostProcessingPhases(
     aqRoot,
     runtime.projectRoot
   );
+<<<<<<< Updated upstream
   const validationDurationMs = Date.now() - validationStartMs;
   const validationCompletedAt = nowIso();
 
@@ -609,6 +666,16 @@ export async function executePostProcessingPhases(
       );
     }
   }
+=======
+  coreResult.phaseResults.push(
+    createPseudoPhaseResult(
+      PSEUDO_PHASE_NAMES.REVIEW_VALIDATION,
+      validationStart,
+      validationResult.success,
+      { error: validationResult.error }
+    )
+  );
+>>>>>>> Stashed changes
 
   if (!validationResult.success) {
     throw new Error(validationResult.error || "Validation phase failed");
@@ -654,6 +721,7 @@ export async function executePostProcessingPhases(
     costBreakdown: coreResult.costBreakdown,
   };
 
+<<<<<<< Updated upstream
   const publishStartedAt = nowIso();
   const publishStartMs = Date.now();
   const publishResult = await pushAndCreatePR(publishContext);
@@ -677,6 +745,18 @@ export async function executePostProcessingPhases(
       );
     }
   }
+=======
+  const publishStart = new Date();
+  const publishResult = await pushAndCreatePR(publishContext);
+  coreResult.phaseResults.push(
+    createPseudoPhaseResult(
+      PSEUDO_PHASE_NAMES.PUBLISH_PR,
+      publishStart,
+      publishResult.success,
+      { error: publishResult.error }
+    )
+  );
+>>>>>>> Stashed changes
 
   if (!publishResult.success) {
     throw new Error(publishResult.error || "Publish phase failed");

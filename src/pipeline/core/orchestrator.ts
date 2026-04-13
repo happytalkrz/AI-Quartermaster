@@ -66,7 +66,12 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       checkpointFn
     );
 
+<<<<<<< Updated upstream
     checkpointFn({ plan: undefined, phaseResults: [...accumulatedPhaseResults] });
+=======
+    const setupPhaseResults = [...setupResult.phaseResults, ...envResult.phaseResults];
+    checkpointFn({ plan: undefined, phaseResults: setupPhaseResults });
+>>>>>>> Stashed changes
 
     // Phase 3: Core Loop Execution (Plan generation + Phase execution)
     const coreResult = await executeCoreLoopPhase(

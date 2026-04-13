@@ -11,7 +11,11 @@ import { getErrorMessage } from "../../utils/error-utils.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
+<<<<<<< Updated upstream
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
+=======
+import { createPseudoPhaseResult, PSEUDO_PHASE_NAMES } from "../reporting/phase-result-helper.js";
+>>>>>>> Stashed changes
 import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
 import { createCheckpoint } from "../../safety/rollback-manager.js";
 import { createSlug } from "../../utils/slug.js";
@@ -211,8 +215,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   let plan: Plan;
   let planCostUsd: number | undefined;
   let planUsage: import("../../types/pipeline.js").UsageInfo | undefined;
+<<<<<<< Updated upstream
   const planStartedAt = nowIso();
   const planStartMs = Date.now();
+=======
+  let planPhaseResult: PhaseResult;
+  const planStartedAt = new Date();
+>>>>>>> Stashed changes
   try {
     const planResult = await generatePlan({
       issue: ctx.issue,
@@ -232,6 +241,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     planCostUsd = planResult.costUsd;
     planUsage = planResult.usage;
 
+    planPhaseResult = {
+      ...createPseudoPhaseResult(PSEUDO_PHASE_NAMES.PLAN_GENERATE, planStartedAt, true),
+      costUsd: planCostUsd,
+      usage: planUsage,
+    };
     logger.info(`Plan generated: ${plan.phases.length} phases`);
     ctx.jobLogger?.log(`Plan 생성 완료: ${plan.phases.length}개 Phase`);
   } catch (planError: unknown) {
@@ -246,6 +260,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     });
 
     // Plan 생성 실패 시 빈 결과 반환 (상위에서 적절한 실패 처리)
+    const failedPlanPhaseResult = createPseudoPhaseResult(
+      PSEUDO_PHASE_NAMES.PLAN_GENERATE,
+      planStartedAt,
+      false,
+      { error: errorMessage },
+    );
     return {
       plan: {
         mode: "code",
@@ -259,7 +279,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         verificationPoints: [],
         stopConditions: [],
       },
+<<<<<<< Updated upstream
       phaseResults: [planFailResult],
+=======
+      phaseResults: [failedPlanPhaseResult],
+>>>>>>> Stashed changes
       success: false,
       totalCostUsd: 0,
       totalUsage: undefined,
@@ -280,7 +304,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   // Step 2: Execute phases sequentially with retry
   const jl = ctx.jobLogger;
   jl?.setProgress(PROGRESS_PLAN_GENERATED);
+<<<<<<< Updated upstream
   const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? []), planGenerateResult];
+=======
+  const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? [])];
+  phaseResults.unshift(planPhaseResult);
+>>>>>>> Stashed changes
   const maxRetries = ctx.config.safety.maxRetries;
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
 

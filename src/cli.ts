@@ -7,6 +7,7 @@ import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
 import { runPipeline } from "./pipeline/core/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
+import { detectWSL } from "./utils/detect-wsl.js";
 import { runCli } from "./utils/cli-runner.js";
 import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
@@ -129,15 +130,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const logger = getLogger();
   const port = args.port ?? 3000;
-  const isWSL = ((): boolean => {
-    if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
-    try {
-      const release = readFileSync("/proc/sys/kernel/osrelease", "utf-8").toLowerCase();
-      return release.includes("microsoft") || release.includes("wsl");
-    } catch {
-      return false;
-    }
-  })();
+  const isWSL = detectWSL();
   const host = args.host ?? (isWSL ? "0.0.0.0" : "127.0.0.1");
 
   // === Pre-flight checks ===

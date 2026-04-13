@@ -13,8 +13,9 @@ import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/conf
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
+import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -381,7 +382,7 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, patternStore?: PatternStore, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean): Hono {
   const api = new Hono();
 
   // Initialize rate limiter from config (or defaults)
@@ -466,6 +467,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/health", bearerAuth);
     api.use("/api/skip-events", bearerAuth);
     api.use("/api/skip-events/*", bearerAuth);
+    api.use("/api/metrics/failure-reasons", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -1099,6 +1101,30 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(stats);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch project stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Failure reason top-N analysis
+  api.get("/api/metrics/failure-reasons", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window"),
+        top: c.req.query("top"),
+      };
+
+      const parseResult = GetFailureReasonsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const result = getFailureReasons(store.getAqDb(), parseResult.data, patternStore);
+      return c.json(result);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch failure reasons: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

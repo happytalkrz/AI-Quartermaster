@@ -129,7 +129,15 @@ export async function startCommand(args: CliArgs): Promise<void> {
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const logger = getLogger();
   const port = args.port ?? 3000;
-  const isWSL = !!process.env.WSL_DISTRO_NAME || !!process.env.WSL_INTEROP;
+  const isWSL = ((): boolean => {
+    if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+    try {
+      const release = readFileSync("/proc/sys/kernel/osrelease", "utf-8").toLowerCase();
+      return release.includes("microsoft") || release.includes("wsl");
+    } catch {
+      return false;
+    }
+  })();
   const host = args.host ?? (isWSL ? "0.0.0.0" : "127.0.0.1");
 
   // === Pre-flight checks ===

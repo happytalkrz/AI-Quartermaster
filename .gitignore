@@ -7,6 +7,10 @@ dist/
 # Test coverage
 coverage/
 
+# Playwright artifacts
+test-results/
+playwright-report/
+
 # Logs
 logs/
 !logs/.gitkeep

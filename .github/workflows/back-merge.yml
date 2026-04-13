@@ -1,0 +1,111 @@
+name: Back-merge main → develop
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  back-merge:
+    if: |
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'develop' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch develop
+        run: git fetch origin develop
+
+      - name: Attempt fast-forward merge
+        id: ff_merge
+        run: |
+          git checkout develop
+          if git merge --ff-only origin/main; then
+            echo "result=ff_success" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=ff_failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push develop (fast-forward)
+        if: steps.ff_merge.outputs.result == 'ff_success'
+        run: git push origin develop
+
+      - name: Attempt clean merge
+        id: clean_merge
+        if: steps.ff_merge.outputs.result == 'ff_failed'
+        run: |
+          if git merge --no-commit --no-edit origin/main; then
+            echo "result=clean_success" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push (clean merge)
+        if: |
+          steps.ff_merge.outputs.result == 'ff_failed' &&
+          steps.clean_merge.outputs.result == 'clean_success'
+        run: |
+          git commit -m "chore: sync main → develop"
+          git push origin develop
+
+      - name: Collect conflict files
+        id: conflict_files
+        if: |
+          steps.ff_merge.outputs.result == 'ff_failed' &&
+          steps.clean_merge.outputs.result == 'conflict'
+        run: |
+          git fetch origin develop
+          git checkout develop
+          git merge --no-commit --no-edit origin/main || true
+          CONFLICT_LIST=$(git diff --name-only --diff-filter=U | tr '\n' '\n')
+          git merge --abort
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CONFLICT_LIST" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create back-merge PR
+        if: |
+          steps.ff_merge.outputs.result == 'ff_failed' &&
+          steps.clean_merge.outputs.result == 'conflict'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="back-merge/main-to-develop-${{ github.run_number }}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+
+          BODY="## Back-merge: main → develop
+
+          Release PR #${{ github.event.pull_request.number }} 머지 후 자동 back-merge를 시도했으나 충돌이 발생했습니다.
+          충돌을 해소한 후 이 PR을 머지하세요.
+
+          ### 충돌 파일 목록
+
+          \`\`\`
+          ${{ steps.conflict_files.outputs.files }}
+          \`\`\`
+          "
+
+          gh pr create \
+            --title "chore: sync main → develop (충돌 해소 필요)" \
+            --body "$BODY" \
+            --base develop \
+            --head "$BRANCH" \
+            --label "back-merge"

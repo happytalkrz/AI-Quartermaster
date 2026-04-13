@@ -7,6 +7,7 @@ import { runSetup, setupWebhook } from "./setup/setup-wizard.js";
 import { runInitCommand, parseInitOptions, printInitHelp } from "./setup/init-command.js";
 import { runPipeline } from "./pipeline/core/orchestrator.js";
 import { getLogger, setGlobalLogLevel } from "./utils/logger.js";
+import { detectWSL } from "./utils/detect-wsl.js";
 import { runCli } from "./utils/cli-runner.js";
 import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
@@ -129,15 +130,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const logger = getLogger();
   const port = args.port ?? 3000;
-  const isWSL = ((): boolean => {
-    if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
-    try {
-      const release = readFileSync("/proc/sys/kernel/osrelease", "utf-8").toLowerCase();
-      return release.includes("microsoft") || release.includes("wsl");
-    } catch {
-      return false;
-    }
-  })();
+  const isWSL = detectWSL();
   const host = args.host ?? (isWSL ? "0.0.0.0" : "127.0.0.1");
 
   // === Pre-flight checks ===
@@ -413,14 +406,16 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
   }
-  if (!isLocalBind && !apiKey && isWSL) {
+  const wslReadOnly = !isLocalBind && !apiKey && isWSL;
+  if (wslReadOnly) {
     logger.warn(
-      `WSL 환경 감지: 대시보드를 ${host}:${port}에 인증 없이 바인딩합니다. ` +
-      `보안이 필요한 환경에서는 DASHBOARD_API_KEY를 설정하세요.`
+      `WSL 환경 감지: 대시보드를 ${host}:${port}에 read-only 모드로 바인딩합니다. ` +
+      `쓰기 작업(config 수정, 잡 취소 등)은 차단됩니다. ` +
+      `full access가 필요하면 DASHBOARD_API_KEY를 설정하세요.`
     );
   }
 
-  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host);
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, effectiveConfig.general.dashboardAuth, wslReadOnly);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;

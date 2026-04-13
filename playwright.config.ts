@@ -31,7 +31,7 @@ export default defineConfig({
       name: 'visual-desktop',
       testDir: './tests/visual',
       snapshotDir: './tests/visual/__snapshots__',
-      snapshotPathTemplate: '{snapshotDir}/{testFilePath}/{arg}{ext}',
+      snapshotPathTemplate: '{snapshotDir}/{projectName}/{testFilePath}/{arg}{ext}',
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1280, height: 800 },
@@ -42,7 +42,7 @@ export default defineConfig({
       name: 'visual-mobile',
       testDir: './tests/visual',
       snapshotDir: './tests/visual/__snapshots__',
-      snapshotPathTemplate: '{snapshotDir}/{testFilePath}/{arg}{ext}',
+      snapshotPathTemplate: '{snapshotDir}/{projectName}/{testFilePath}/{arg}{ext}',
       use: {
         ...devices['Pixel 5'],
         viewport: { width: 375, height: 800 },

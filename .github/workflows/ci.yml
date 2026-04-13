@@ -54,7 +54,15 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Seed test config.yml
-        run: cp config.reference.yml config.yml
+        run: |
+          cat > config.yml << EOF
+          projects:
+            - repo: "ai-quartermaster/visual-test"
+              path: "${GITHUB_WORKSPACE}"
+          general:
+            logLevel: "warn"
+            serverMode: "polling"
+          EOF
       - run: npx playwright test --project=visual-desktop --project=visual-mobile --update-snapshots
       - name: Upload baseline snapshots
         uses: actions/upload-artifact@v4
@@ -74,7 +82,15 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Seed test config.yml
-        run: cp config.reference.yml config.yml
+        run: |
+          cat > config.yml << EOF
+          projects:
+            - repo: "ai-quartermaster/visual-test"
+              path: "${GITHUB_WORKSPACE}"
+          general:
+            logLevel: "warn"
+            serverMode: "polling"
+          EOF
       - run: npx playwright test --project=visual-desktop --project=visual-mobile
       - name: Upload test artifacts
         if: failure()

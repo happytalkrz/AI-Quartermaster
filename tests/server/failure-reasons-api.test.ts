@@ -208,7 +208,7 @@ describe("Dashboard API - GET /api/metrics/failure-reasons", () => {
         formatForPrompt: vi.fn(),
       } as any;
 
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, undefined, undefined, mockPatternStore);
+      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, undefined, undefined, undefined, undefined, mockPatternStore);
 
       mockGetFailureReasons.mockReturnValue({
         reasons: [{ category: "TIMEOUT", count: 5, percentage: 100.0, recentErrors: [] }],

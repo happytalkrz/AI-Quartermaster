@@ -382,7 +382,7 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, patternStore?: PatternStore, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean, patternStore?: PatternStore): Hono {
   const api = new Hono();
 
   // Initialize rate limiter from config (or defaults)

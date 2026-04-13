@@ -357,6 +357,16 @@ function renderCostBreakdown(job) {
       html += '</tr>';
     });
 
+    // Setup row
+    if (cb.setupCostUsd > 0) {
+      html += '<tr class="border-b border-outline-variant/5">';
+      html += '<td class="p-3 text-on-surface/70 font-mono">Setup</td>';
+      html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.setupCostUsd) + '</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '</tr>';
+    }
+
     // Review row
     if (cb.reviewCostUsd > 0) {
       html += '<tr class="border-b border-outline-variant/5">';
@@ -367,10 +377,38 @@ function renderCostBreakdown(job) {
       html += '</tr>';
     }
 
-    // Total row
+    // Publish row
+    if (cb.publishCostUsd > 0) {
+      html += '<tr class="border-b border-outline-variant/5">';
+      html += '<td class="p-3 text-on-surface/70 font-mono">Publish</td>';
+      html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.publishCostUsd) + '</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '<td class="p-3 text-right text-outline">—</td>';
+      html += '</tr>';
+    }
+
+    // Total row with decomposition and mismatch check
+    var executorCost = cb.phaseCosts.reduce(function(sum, p) { return sum + p.costUsd; }, 0);
+    var sumOfParts = (cb.planCostUsd || 0) + executorCost + (cb.reviewCostUsd || 0) + (cb.setupCostUsd || 0) + (cb.publishCostUsd || 0) + (cb.overheadCostUsd || 0);
+    var hasMismatch = Math.abs((cb.totalCostUsd || 0) - sumOfParts) >= 0.0001;
+
+    var decomposeParts = [];
+    if (executorCost > 0) decomposeParts.push('executor ' + fmtCost(executorCost));
+    if (cb.planCostUsd > 0) decomposeParts.push('plan ' + fmtCost(cb.planCostUsd));
+    if (cb.reviewCostUsd > 0) decomposeParts.push('review ' + fmtCost(cb.reviewCostUsd));
+    if (cb.setupCostUsd > 0) decomposeParts.push('setup ' + fmtCost(cb.setupCostUsd));
+    if (cb.publishCostUsd > 0) decomposeParts.push('publish ' + fmtCost(cb.publishCostUsd));
+    if (cb.overheadCostUsd > 0) decomposeParts.push('overhead ' + fmtCost(cb.overheadCostUsd));
+    var decomposeHtml = decomposeParts.length > 1
+      ? '<span class="text-[10px] text-outline font-normal font-mono ml-2 opacity-70">= ' + decomposeParts.join(' + ') + '</span>'
+      : '';
+    var mismatchBadge = hasMismatch
+      ? '<span class="ml-2 text-[10px] bg-[#d29922]/10 text-[#d29922] border border-[#d29922]/30 px-1.5 py-0.5 rounded font-bold">⚠️ Mismatch</span>'
+      : '';
+
     html += '<tr class="bg-surface-container">';
     html += '<td class="p-3 font-bold text-on-surface">합계</td>';
-    html += '<td class="p-3 text-right font-bold font-mono text-primary" colspan="3">' + fmtCost(cb.totalCostUsd) + '</td>';
+    html += '<td class="p-3 text-right font-bold font-mono text-primary" colspan="3"><span class="inline-flex items-center flex-wrap gap-1 justify-end">' + fmtCost(cb.totalCostUsd) + decomposeHtml + mismatchBadge + '</span></td>';
     html += '</tr>';
 
     html += '</tbody></table></div>';
@@ -382,6 +420,7 @@ function renderCostBreakdown(job) {
     html += '<div class="space-y-2">';
     html += '<div class="text-[10px] text-outline font-bold uppercase tracking-wider">모델별 비용</div>';
     cb.modelSummary.forEach(function(entry) {
+      if (entry.costUsd === 0) return;
       var pct = total > 0 ? Math.round((entry.costUsd / total) * 100) : 0;
       html += '<div class="space-y-1">';
       html += '<div class="flex justify-between text-xs">';

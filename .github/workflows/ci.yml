@@ -66,8 +66,7 @@ jobs:
   visual-regression:
     name: visual-regression
     runs-on: ubuntu-latest
-    # TEMP: baseline 스냅샷이 레포에 커밋되기 전까지 비활성 (후속 이슈에서 baseline 생성 + 재활성)
-    if: false && github.event_name == 'pull_request' && github.base_ref == 'main'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

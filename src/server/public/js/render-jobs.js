@@ -358,7 +358,7 @@ function renderCostBreakdown(job) {
     });
 
     // Setup row
-    if (cb.setupCostUsd > 0) {
+    if (cb.setupCostUsd && cb.setupCostUsd > 0) {
       html += '<tr class="border-b border-outline-variant/5">';
       html += '<td class="p-3 text-on-surface/70 font-mono">Setup</td>';
       html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.setupCostUsd) + '</td>';
@@ -378,7 +378,7 @@ function renderCostBreakdown(job) {
     }
 
     // Publish row
-    if (cb.publishCostUsd > 0) {
+    if (cb.publishCostUsd && cb.publishCostUsd > 0) {
       html += '<tr class="border-b border-outline-variant/5">';
       html += '<td class="p-3 text-on-surface/70 font-mono">Publish</td>';
       html += '<td class="p-3 text-right font-mono text-tertiary">' + fmtCost(cb.publishCostUsd) + '</td>';
@@ -396,9 +396,9 @@ function renderCostBreakdown(job) {
     if (executorCost > 0) decomposeParts.push('executor ' + fmtCost(executorCost));
     if (cb.planCostUsd > 0) decomposeParts.push('plan ' + fmtCost(cb.planCostUsd));
     if (cb.reviewCostUsd > 0) decomposeParts.push('review ' + fmtCost(cb.reviewCostUsd));
-    if (cb.setupCostUsd > 0) decomposeParts.push('setup ' + fmtCost(cb.setupCostUsd));
-    if (cb.publishCostUsd > 0) decomposeParts.push('publish ' + fmtCost(cb.publishCostUsd));
-    if (cb.overheadCostUsd > 0) decomposeParts.push('overhead ' + fmtCost(cb.overheadCostUsd));
+    if (cb.setupCostUsd && cb.setupCostUsd > 0) decomposeParts.push('setup ' + fmtCost(cb.setupCostUsd));
+    if (cb.publishCostUsd && cb.publishCostUsd > 0) decomposeParts.push('publish ' + fmtCost(cb.publishCostUsd));
+    if (cb.overheadCostUsd && cb.overheadCostUsd > 0) decomposeParts.push('overhead ' + fmtCost(cb.overheadCostUsd));
     var decomposeHtml = decomposeParts.length > 1
       ? '<span class="text-[10px] text-outline font-normal font-mono ml-2 opacity-70">= ' + decomposeParts.join(' + ') + '</span>'
       : '';

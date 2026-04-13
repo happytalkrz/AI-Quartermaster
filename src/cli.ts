@@ -413,14 +413,16 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
   }
-  if (!isLocalBind && !apiKey && isWSL) {
+  const wslReadOnly = !isLocalBind && !apiKey && isWSL;
+  if (wslReadOnly) {
     logger.warn(
-      `WSL 환경 감지: 대시보드를 ${host}:${port}에 인증 없이 바인딩합니다. ` +
-      `보안이 필요한 환경에서는 DASHBOARD_API_KEY를 설정하세요.`
+      `WSL 환경 감지: 대시보드를 ${host}:${port}에 read-only 모드로 바인딩합니다. ` +
+      `쓰기 작업(config 수정, 잡 취소 등)은 차단됩니다. ` +
+      `full access가 필요하면 DASHBOARD_API_KEY를 설정하세요.`
     );
   }
 
-  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host);
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, wslReadOnly);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;

@@ -69,8 +69,8 @@ const MINIMATCH_OPTS = { dot: true };
  *
  * 파일별 독립 판정 매트릭스 (5단계):
  * 1. 민감 패턴 비매칭 → allowed (no-match)
- * 2. 이슈 본문 `## 관련 파일` 명시 경로 → allowed (related-file)
- * 3. `.github/workflows/**` + allow-ci 라벨 → allowed (allow-ci-label)
+ * 2. `.github/workflows/**` + allow-ci 라벨 + 관련파일 명시 → allowed (allow-ci-label)
+ * 3. 이슈 본문 `## 관련 파일` 명시 경로 → allowed (related-file)
  * 4. 그 외 민감 패턴 매칭 → blocked (sensitive-violation)
  * 5. 차단 파일 존재 시 SafetyViolationError (수정 가이드 포함)
  *
@@ -100,15 +100,15 @@ export function checkSensitivePaths(
       continue;
     }
 
-    // 2. 이슈 본문 관련 파일로 명시된 경우
-    if (relatedFiles.includes(file)) {
-      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "related-file" });
+    // 2. allow-ci 라벨 + 관련파일 명시 — .github/workflows/** 패턴에만 스코핑
+    if (hasAllowCi && relatedFiles.includes(file) && minimatch(file, WORKFLOW_PATTERN, MINIMATCH_OPTS)) {
+      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "allow-ci-label" });
       continue;
     }
 
-    // 3. allow-ci 라벨 — .github/workflows/** 패턴에만 스코핑
-    if (hasAllowCi && minimatch(file, WORKFLOW_PATTERN, MINIMATCH_OPTS)) {
-      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "allow-ci-label" });
+    // 3. 이슈 본문 관련 파일로 명시된 경우
+    if (relatedFiles.includes(file)) {
+      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "related-file" });
       continue;
     }
 

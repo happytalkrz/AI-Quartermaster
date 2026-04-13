@@ -61,11 +61,15 @@ describe("checkSensitivePaths", () => {
       expect(result[0].reason).toBe("related-file");
     });
 
-    it("케이스 3: sensitive workflow + allow-ci 라벨 → 통과 + 감사로그 allow-ci-label", () => {
+    it("케이스 3: sensitive workflow + allow-ci 라벨 + 관련파일 명시 → 통과 + 감사로그 allow-ci-label", () => {
+      const issueBody = [
+        "## 관련 파일",
+        "- `.github/workflows/deploy.yml`",
+      ].join("\n");
       const result = checkSensitivePaths(
         [".github/workflows/deploy.yml"],
         patterns,
-        { labels: ["allow-ci"] }
+        { labels: ["allow-ci"], issueBody }
       );
       expect(result).toHaveLength(1);
       expect(result[0].decision).toBe("allowed");
@@ -76,6 +80,12 @@ describe("checkSensitivePaths", () => {
     it("케이스 4: allow-ci 단독 (non-workflow sensitive 파일) → 차단", () => {
       expect(() =>
         checkSensitivePaths([".env.local"], patterns, { labels: ["allow-ci"] })
+      ).toThrow("SensitivePathGuard");
+    });
+
+    it("케이스 4-b: workflow + allow-ci 단독 (관련파일 미선언) → 차단", () => {
+      expect(() =>
+        checkSensitivePaths([".github/workflows/deploy.yml"], patterns, { labels: ["allow-ci"] })
       ).toThrow("SensitivePathGuard");
     });
 
@@ -120,10 +130,14 @@ describe("checkSensitivePaths", () => {
 
   describe("감사 로그 구조 검증", () => {
     it("allow-ci 경로의 auditLog는 file, matchedPattern, decision, reason을 모두 포함", () => {
+      const issueBody = [
+        "## 관련 파일",
+        "- `.github/workflows/release.yml`",
+      ].join("\n");
       const result = checkSensitivePaths(
         [".github/workflows/release.yml"],
         patterns,
-        { labels: ["allow-ci"] }
+        { labels: ["allow-ci"], issueBody }
       );
       const entry = result[0];
       expect(entry).toHaveProperty("file", ".github/workflows/release.yml");

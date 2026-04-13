@@ -277,7 +277,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
       });
       return { error: errorMsg };
     }
-  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined);
+  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined, undefined, effectiveConfig.general.stuckThresholds);
 
   // Recover jobs from previous session
   queue.recover();

@@ -415,7 +415,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     );
   }
 
-  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, wslReadOnly);
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, effectiveConfig.general.dashboardAuth, wslReadOnly);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;

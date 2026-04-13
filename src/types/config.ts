@@ -31,6 +31,15 @@ export interface StuckThresholdConfig {
   activityThresholdMs: number; // Claude 활동 기준 (300000 = 5분)
 }
 
+export interface DashboardAuthConfig {
+  rateLimit: {
+    maxAttempts: number;      // 기본 5
+    windowMs: number;         // 기본 900000 (15분)
+    blockDurationMs: number;  // 기본 900000 (15분)
+  };
+  sessionTtlMs: number;       // 기본 3600000 (1시간)
+}
+
 export interface GeneralConfig {
   projectName: string;
   instanceLabel?: string;
@@ -47,6 +56,7 @@ export interface GeneralConfig {
   maxJobs: number;
   autoUpdate: boolean;
   serverMode: ServerMode;
+  dashboardAuth?: DashboardAuthConfig;
 }
 
 export interface GitConfig {

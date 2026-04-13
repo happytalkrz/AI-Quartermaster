@@ -198,6 +198,15 @@ const stuckThresholdConfigSchema = z.object({
   activityThresholdMs: z.number().int().min(60000),
 });
 
+const dashboardAuthConfigSchema = z.object({
+  rateLimit: z.object({
+    maxAttempts: z.number().int().min(1),
+    windowMs: z.number().int().min(1000),
+    blockDurationMs: z.number().int().min(1000),
+  }),
+  sessionTtlMs: z.number().int().min(60000),
+});
+
 const generalConfigSchema = z.object({
   projectName: z.string().min(1, "projectName must be a non-empty string"),
   instanceLabel: z.string().optional(),
@@ -214,6 +223,7 @@ const generalConfigSchema = z.object({
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean().default(false),
   serverMode: z.enum(["polling", "webhook", "hybrid"]).default("hybrid"),
+  dashboardAuth: dashboardAuthConfigSchema.optional(),
 });
 
 const gitConfigSchema = z.object({

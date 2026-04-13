@@ -74,7 +74,7 @@ export async function createDraftPR(
         risks: ctx.plan.risks.join("\n- "),
       },
       phases: ctx.phaseResults.map(r =>
-        `- Phase ${r.phaseIndex}: ${r.phaseName} — ${r.success ? "SUCCESS" : "FAILED"} (${r.commitHash?.slice(0, 8) || "N/A"})`
+        `- Phase ${r.phaseIndex}: ${r.phaseName} — ${r.success ? "SUCCESS" : "FAILED"} (${r.commitHash?.slice(0, 8) || "-"})`
       ).join("\n"),
       branch: {
         base: ctx.baseBranch,

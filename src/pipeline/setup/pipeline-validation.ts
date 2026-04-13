@@ -249,7 +249,8 @@ export function saveResult(config: AQConfig, projectRoot: string, issueNumber: n
       resolve(logDir, `issue-${issueNumber}-result.json`),
       JSON.stringify(report, null, 2)
     );
-  } catch {
+  } catch (err: unknown) {
     // non-fatal
+    getLogger().debug(`saveResult 저장 실패 (무시): ${err instanceof Error ? err.message : String(err)}`);
   }
 }

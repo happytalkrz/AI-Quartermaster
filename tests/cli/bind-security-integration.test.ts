@@ -228,4 +228,35 @@ describe("bind security CLI integration", () => {
     },
     30000
   );
+
+  it(
+    "DASHBOARD_ALLOW_INSECURE=true + 0.0.0.0 + API key 없음 → 서버 listening + read-only 경고 출력",
+    async () => {
+      const { dir, cleanup } = createTestAqRoot();
+      try {
+        const result = await spawnCliUntilPattern(
+          [
+            "start",
+            "--host", "0.0.0.0",
+            "--port", "39203",
+            "--mode", "polling",
+            "--config", join(dir, "config.yml"),
+          ],
+          makeEnv({
+            DASHBOARD_API_KEY: undefined,
+            DASHBOARD_ALLOW_INSECURE: "true",
+            WSL_DISTRO_NAME: undefined,
+            WSL_INTEROP: undefined,
+          }),
+          "listening",
+          20000
+        );
+        expect(result.found).toBe(true);
+        expect(result.stderr).toContain("insecure 모드");
+      } finally {
+        cleanup();
+      }
+    },
+    30000
+  );
 });

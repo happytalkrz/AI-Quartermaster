@@ -444,7 +444,19 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     });
 
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
+    // Deny-by-default: all /api/* routes require auth except public and SSE paths
     const bearerAuth = async (c: Context, next: Next) => {
+      const path = c.req.path;
+      // Public routes — no auth required
+      if (path === "/api/auth" || path === "/api/health" || path === "/api/version") {
+        await next();
+        return;
+      }
+      // SSE routes — handled by sseTokenAuth below
+      if (path === "/api/events" || /^\/api\/jobs\/[^/]+\/logs\/stream$/.test(path)) {
+        await next();
+        return;
+      }
       const auth = c.req.header("Authorization");
       const expected = Buffer.from(`Bearer ${apiKey}`);
       const actual = Buffer.from(auth ?? "");
@@ -454,20 +466,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       await next();
     };
 
-    api.use("/api/jobs", bearerAuth);
-    api.use("/api/jobs/*", bearerAuth);
-    api.use("/api/stats", bearerAuth);
-    api.use("/api/stats/costs", bearerAuth);
-    api.use("/api/stats/projects", bearerAuth);
-    api.use("/api/config", bearerAuth);
-    api.use("/api/projects", bearerAuth);
-    api.use("/api/projects/*", bearerAuth);
-    api.use("/api/version", bearerAuth);
-    api.use("/api/update", bearerAuth);
-    api.use("/api/health", bearerAuth);
-    api.use("/api/skip-events", bearerAuth);
-    api.use("/api/skip-events/*", bearerAuth);
-    api.use("/api/metrics/failure-reasons", bearerAuth);
+    api.use("/api/*", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {

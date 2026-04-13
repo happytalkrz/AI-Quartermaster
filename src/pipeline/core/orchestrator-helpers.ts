@@ -12,6 +12,7 @@ import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import type { PipelineMode } from "../../types/config.js";
 import type { PipelineCheckpoint } from "../errors/checkpoint.js";
 import type { JobLogger } from "../../queue/job-logger.js";
+import type { PhaseResult } from "../../types/pipeline.js";
 
 /**
  * Handle duplicate PR check and return early result if needed
@@ -57,6 +58,7 @@ export function createPostProcessingContext(params: {
   runtime: PipelineRuntime;
   checkpointFn: (overrides?: Partial<PipelineCheckpoint>) => void;
   jobLogger?: JobLogger;
+  accumulatedPhaseResults?: PhaseResult[];
 }): PostProcessingContext {
   return {
     issue: params.issue,
@@ -69,6 +71,7 @@ export function createPostProcessingContext(params: {
     preset: params.preset,
     timer: params.setupResult.timer,
     checkpoint: params.checkpointFn,
-    jobLogger: params.jobLogger
+    jobLogger: params.jobLogger,
+    accumulatedPhaseResults: params.accumulatedPhaseResults,
   };
 }

@@ -32,6 +32,16 @@ export interface PipelineReport {
 }
 
 /**
+ * Renumbers phaseResults with sequential phaseIndex starting from 0,
+ * preserving their existing order.
+ * Useful when combining pseudo-phases (negative indices) with core-loop phases
+ * into a single array for reporting.
+ */
+export function reindexPhaseResults(results: PhaseResult[]): PhaseResult[] {
+  return results.map((r, i) => ({ ...r, phaseIndex: i }));
+}
+
+/**
  * Formats pipeline results into a structured report.
  */
 export function formatResult(

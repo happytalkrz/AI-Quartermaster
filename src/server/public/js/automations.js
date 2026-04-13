@@ -262,13 +262,17 @@ function openRuleModal(rule) {
       '</div>' +
       '<div>' +
         '<label class="' + labelCls + '">액션</label>' +
-        '<select id="rule-action-type" class="' + fieldCls + '">' +
+        '<select id="rule-action-type" onchange="onActionTypeChange()" class="' + fieldCls + '">' +
           '<option value="notify"' + (actionType === 'notify' ? ' selected' : '') + '>알림 (notify)</option>' +
           '<option value="pause"' + (actionType === 'pause' ? ' selected' : '') + '>일시정지 (pause)</option>' +
           '<option value="retry"' + (actionType === 'retry' ? ' selected' : '') + '>재시도 (retry)</option>' +
           '<option value="label"' + (actionType === 'label' ? ' selected' : '') + '>라벨 (label)</option>' +
           '<option value="close"' + (actionType === 'close' ? ' selected' : '') + '>종료 (close)</option>' +
         '</select>' +
+        '<div id="action-pause-warning" class="mt-1 text-xs text-[#f0883e] flex items-center gap-1' + (actionType === 'pause' ? '' : ' hidden') + '">' +
+          '<span class="material-symbols-outlined text-sm">warning</span>' +
+          '<span>일시정지(pause) 액션은 현재 미지원입니다. 저장은 가능하지만 실행되지 않습니다.</span>' +
+        '</div>' +
       '</div>' +
       '<div class="flex items-center gap-2">' +
         '<input id="rule-enabled" type="checkbox"' + (enabledVal ? ' checked' : '') + ' class="w-4 h-4 accent-primary">' +
@@ -301,6 +305,13 @@ function onTriggerTypeChange() {
   if (eventField) eventField.classList.toggle('hidden', type !== 'event');
   if (cronField) cronField.classList.toggle('hidden', type !== 'cron');
   if (thresholdField) thresholdField.classList.toggle('hidden', type !== 'rate-limit');
+}
+
+/** @returns {void} */
+function onActionTypeChange() {
+  var actionTypeEl = /** @type {HTMLSelectElement | null} */ (document.getElementById('rule-action-type'));
+  var warning = document.getElementById('action-pause-warning');
+  if (warning) warning.classList.toggle('hidden', !actionTypeEl || actionTypeEl.value !== 'pause');
 }
 
 /** @returns {void} */
@@ -364,3 +375,4 @@ window.showAddRuleModal     = showAddRuleModal;
 window.showEditRuleModal    = showEditRuleModal;
 window.closeRuleModal       = closeRuleModal;
 window.onTriggerTypeChange  = onTriggerTypeChange;
+window.onActionTypeChange   = onActionTypeChange;

@@ -59,6 +59,19 @@ vi.mock("../src/server/pid-manager.js", () => ({
 vi.mock("../src/config/config-watcher.js", () => ({
   ConfigWatcher: vi.fn(),
 }));
+vi.mock("hono", () => ({
+  Hono: class MockHono {
+    route() { return this; }
+    get() { return this; }
+    post() { return this; }
+    put() { return this; }
+    delete() { return this; }
+    use() { return this; }
+    fetch() { return Promise.resolve(new Response()); }
+    on() { return this; }
+    all() { return this; }
+  },
+}));
 // fs mock은 필요한 테스트에서만 개별적으로 처리
 
 describe("buildProjectConcurrency", () => {
@@ -645,6 +658,127 @@ describe("startCommand — pre-flight 검증", () => {
     await startCommand({ dryRun: true });
 
     expect(capturedDryRun).toBe(true);
+  });
+});
+
+describe("startCommand — 모드 분기 로직", () => {
+  let mockPollerStart: ReturnType<typeof vi.fn>;
+  let mockPollerConstructor: ReturnType<typeof vi.fn>;
+
+  const makeConfig = (serverMode: "polling" | "webhook" | "hybrid") =>
+    ({
+      ...mockBaseConfig,
+      general: { ...mockBaseConfig.general, serverMode },
+      projects: [{ repo: "owner/repo", path: "/tmp", baseBranch: "main" }],
+    }) as unknown as ReturnType<typeof loadConfig>;
+
+  beforeEach(() => {
+    mockPollerStart = vi.fn();
+    mockPollerConstructor = vi.fn().mockImplementation(() => ({
+      start: mockPollerStart,
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+    }));
+    vi.mocked(IssuePoller).mockImplementation(mockPollerConstructor);
+
+    vi.mocked(JobStore).mockImplementation(
+      () => ({ prune: vi.fn(), list: vi.fn().mockReturnValue([]) }) as unknown as JobStore
+    );
+    vi.mocked(JobQueue).mockImplementation(
+      () => ({ recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() }) as unknown as JobQueue
+    );
+    vi.mocked(createWebhookApp).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createWebhookApp>);
+    vi.mocked(createDashboardRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as ReturnType<typeof createDashboardRoutes>);
+    vi.mocked(createHealthRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createHealthRoutes>);
+    vi.mocked(cleanupStalePid).mockReturnValue(true);
+    vi.mocked(ConfigWatcher).mockImplementation(
+      () => ({ on: vi.fn(), startWatching: vi.fn(), stopWatching: vi.fn() }) as unknown as ConfigWatcher
+    );
+    vi.mocked(runCli).mockResolvedValue({ stdout: "0\n", stderr: "", exitCode: 0 });
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.restoreAllMocks();
+  });
+
+  // polling 모드
+  it("polling 모드: IssuePoller가 생성되고 start()가 호출됨", async () => {
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("polling"));
+    await startCommand({});
+    expect(mockPollerConstructor).toHaveBeenCalledOnce();
+    expect(mockPollerStart).toHaveBeenCalledOnce();
+  });
+
+  it("polling 모드: createWebhookApp이 호출되지 않음", async () => {
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("polling"));
+    await startCommand({});
+    expect(createWebhookApp).not.toHaveBeenCalled();
+  });
+
+  it("polling 모드: GITHUB_WEBHOOK_SECRET 없어도 정상 시작됨", async () => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("polling"));
+    await expect(startCommand({})).resolves.toBeUndefined();
+  });
+
+  // webhook 모드
+  it("webhook 모드: IssuePoller가 생성되지 않음", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("webhook"));
+    await startCommand({});
+    expect(mockPollerConstructor).not.toHaveBeenCalled();
+  });
+
+  it("webhook 모드: createWebhookApp이 호출됨", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("webhook"));
+    await startCommand({});
+    expect(createWebhookApp).toHaveBeenCalledOnce();
+  });
+
+  // hybrid 모드
+  it("hybrid 모드: IssuePoller가 생성되고 start()가 호출됨", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("hybrid"));
+    await startCommand({});
+    expect(mockPollerConstructor).toHaveBeenCalledOnce();
+    expect(mockPollerStart).toHaveBeenCalledOnce();
+  });
+
+  it("hybrid 모드: createWebhookApp이 호출됨", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("hybrid"));
+    await startCommand({});
+    expect(createWebhookApp).toHaveBeenCalledOnce();
+  });
+
+  // CLI --mode 우선순위
+  it("--mode polling이면 config serverMode=webhook이어도 polling으로 동작", async () => {
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("webhook"));
+    await startCommand({ mode: "polling" });
+    expect(createWebhookApp).not.toHaveBeenCalled();
+    expect(mockPollerStart).toHaveBeenCalledOnce();
+  });
+
+  it("--mode webhook이면 config serverMode=polling이어도 webhook으로 동작", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(makeConfig("polling"));
+    await startCommand({ mode: "webhook" });
+    expect(mockPollerConstructor).not.toHaveBeenCalled();
+    expect(createWebhookApp).toHaveBeenCalledOnce();
   });
 });
 

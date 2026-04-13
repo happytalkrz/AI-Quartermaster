@@ -58,10 +58,10 @@ src/
   cli.ts              # CLI 진입점
   pipeline/           # 상태머신 기반 파이프라인
     core/             # orchestrator, core-loop, pipeline-context
-    execution/        # phase-executor, phase-retry, phase-scheduler
-    phases/           # pipeline-phases, pipeline-review, plan-generator
-    setup/            # pipeline-setup, pipeline-git-setup, feasibility-checker
-    reporting/        # result-reporter, progress-tracker, verification-parser
+    execution/        # phase-executor, phase-retry, phase-scheduler, retry-with-fix
+    phases/           # pipeline-phases, pipeline-review, plan-generator, pipeline-publish
+    setup/            # pipeline-setup, pipeline-git-setup, feasibility-checker, dependency-installer, pipeline-validation
+    reporting/        # result-reporter, progress-tracker, verification-parser, final-validator, pipeline-result-validator
     errors/           # error-classifier, pipeline-error-handler, checkpoint
     automation/       # automation-dispatcher, ci-checker, issue-orchestrator
   queue/              # 잡 큐 (동시성, stuck 감지, JSON 영속화)
@@ -77,6 +77,10 @@ src/
   prompt/             # 템플릿 렌더러
   update/             # self-updater
   polling/            # 이슈 폴러
+  hooks/              # hook-executor, hook-registry (파이프라인 훅 시스템)
+  learning/           # pattern-store (실패 패턴 학습)
+  store/              # database, queries (SQLite 기반 잡 저장소)
+  tasks/              # aqm-task, claude-task, git-task, task-factory, validation-task (태스크 추상화)
   utils/              # CLI 러너, 로거, slug
   setup/              # 셋업 위자드
 tests/                # Vitest 테스트
@@ -94,7 +98,7 @@ docs/                 # 문서
 📖 `.claude/skills/guide/add-config/SKILL.md`
 
 ### 파이프라인 상태
-- orchestrator.ts는 thin orchestrator (139줄) — 실제 로직은 pipeline-phases.ts, pipeline-review.ts 등에 위임
+- orchestrator.ts는 thin orchestrator (155줄) — 실제 로직은 pipeline-phases.ts, pipeline-review.ts 등에 위임
 📖 `.claude/skills/guide/add-pipeline-state/SKILL.md`
 
 ---

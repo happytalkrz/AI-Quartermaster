@@ -10,6 +10,9 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
 
 import { createDraftPR, closeIssue, checkPrConflict, commentOnIssue, listOpenPrs, enableAutoMerge, addIssueComment } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
+import { loadTemplate } from "../../src/prompt/template-renderer.js";
+
+const mockLoadTemplate = vi.mocked(loadTemplate);
 
 const mockRunCli = vi.mocked(runCli);
 
@@ -96,6 +99,61 @@ describe("createDraftPR", () => {
     const labelArgs = args.filter((_, i) => args[i - 1] === "--label");
     // Only prConfig.labels entries should appear (no extra instanceLabel entry)
     expect(labelArgs).toEqual(prConfig.labels);
+  });
+
+  it("should use fallback body when template loading fails", async () => {
+    mockLoadTemplate.mockImplementationOnce(() => { throw new Error("Template file not found"); });
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/99", stderr: "", exitCode: 0 });
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toEqual({ url: "https://github.com/test/repo/pull/99", number: 99 });
+    const args = mockRunCli.mock.calls[0][1] as string[];
+    const bodyIdx = args.indexOf("--body");
+    const body = args[bodyIdx + 1];
+    expect(body).toContain("Resolves #42");
+    expect(body).toContain("## Summary");
+    expect(body).toContain("Login is broken");
+  });
+
+  it("should return number 0 for malformed PR URL without /pull/ segment", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "not-a-valid-url", stderr: "", exitCode: 0 });
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toEqual({ url: "not-a-valid-url", number: 0 });
+  });
+
+  it("should return null on auth failure", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "authentication required: not logged in", exitCode: 1 });
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toBe(null);
+  });
+
+  it("should return null on rate-limit error", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "", stderr: "rate limit exceeded for API", exitCode: 1 });
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toBe(null);
+  });
+
+  it("should auto-create labels and retry when label not found", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "label 'aqm' not found", exitCode: 1 })
+      .mockResolvedValue({ stdout: "https://github.com/test/repo/pull/7", stderr: "", exitCode: 0 });
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toEqual({ url: "https://github.com/test/repo/pull/7", number: 7 });
+    // Initial attempt + label create for "aqm" + retry
+    expect(mockRunCli).toHaveBeenCalledTimes(3);
+    expect(mockRunCli).toHaveBeenNthCalledWith(
+      2, "gh",
+      ["label", "create", "aqm", "--repo", "test/repo", "--force"],
+      expect.anything()
+    );
+  });
+
+  it("should return null when retry also fails after auto-creating labels", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "label 'aqm' not found", exitCode: 1 })
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // label create
+      .mockResolvedValueOnce({ stdout: "", stderr: "API error", exitCode: 1 }); // retry fails
+    const result = await createDraftPR(prConfig, ghConfig, ctx, options);
+    expect(result).toBe(null);
   });
 });
 
@@ -203,6 +261,39 @@ describe("checkPrConflict", () => {
     expect(result).toBe(null);
     expect(mockRunCli).not.toHaveBeenCalled();
   });
+
+  it("should return conflict info without files when diff command throws", async () => {
+    mockRunCli
+      .mockResolvedValueOnce({
+        stdout: JSON.stringify({ mergeStateStatus: "DIRTY", mergeable: false }),
+        stderr: "",
+        exitCode: 0,
+      })
+      .mockRejectedValueOnce(new Error("spawn ENOENT"));
+    const result = await checkPrConflict(123, "test/repo", {});
+    expect(result).toMatchObject({
+      prNumber: 123,
+      repo: "test/repo",
+      conflictFiles: [],
+      mergeStatus: "DIRTY",
+    });
+  });
+
+  it("should return null when gh pr view returns invalid JSON", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "not valid json {{", stderr: "", exitCode: 0 });
+    const result = await checkPrConflict(123, "test/repo", {});
+    expect(result).toBe(null);
+  });
+
+  it("should pass timeout to runCli when provided", async () => {
+    mockRunCli.mockResolvedValue({
+      stdout: JSON.stringify({ mergeStateStatus: "CLEAN", mergeable: true }),
+      stderr: "",
+      exitCode: 0,
+    });
+    await checkPrConflict(123, "test/repo", { timeout: 5000 });
+    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.any(Array), { timeout: 5000 });
+  });
 });
 
 describe("commentOnIssue", () => {
@@ -293,6 +384,18 @@ describe("listOpenPrs", () => {
     expect(mockRunCli).toHaveBeenCalledWith("/custom/gh", [
       "pr", "list", "--repo", "test/repo", "--state", "open", "--json", "number,title", "--limit", "100"
     ], {});
+  });
+
+  it("should return null when gh returns invalid JSON", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "not json content {{", stderr: "", exitCode: 0 });
+    const result = await listOpenPrs("test/repo", {});
+    expect(result).toBe(null);
+  });
+
+  it("should pass timeout to runCli when provided", async () => {
+    mockRunCli.mockResolvedValue({ stdout: JSON.stringify([]), stderr: "", exitCode: 0 });
+    await listOpenPrs("test/repo", { timeout: 8000 });
+    expect(mockRunCli).toHaveBeenCalledWith("gh", expect.any(Array), { timeout: 8000 });
   });
 });
 

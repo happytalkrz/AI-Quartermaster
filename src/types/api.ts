@@ -1,11 +1,21 @@
 import { z } from "zod";
 
+// 프로젝트별 commands 스키마 (test, typecheck, preInstall, build, lint만 허용)
+const projectCommandsSchema = z.object({
+  test: z.string().optional(),
+  typecheck: z.string().optional(),
+  preInstall: z.string().optional(),
+  build: z.string().optional(),
+  lint: z.string().optional(),
+});
+
 // CreateProject 요청 스키마 (POST /api/projects)
 export const CreateProjectRequestSchema = z.object({
   repo: z.string().min(1),
   path: z.string().min(1),
   baseBranch: z.string().optional(),
   mode: z.enum(["code", "content"]).optional(),
+  commands: projectCommandsSchema.optional(),
 }).strict();
 
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
@@ -316,6 +326,7 @@ export const UpdateProjectRequestSchema = z.object({
   path: z.string().min(1).optional(),
   baseBranch: z.string().nullable().optional(),
   mode: z.enum(["code", "content"]).nullable().optional(),
+  commands: projectCommandsSchema.optional(),
 }).strict();
 
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;

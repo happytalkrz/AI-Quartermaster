@@ -204,8 +204,7 @@ function renderRepositoriesView(repos, storageData) {
     );
   } else {
     repoList.forEach(function(repo) {
-      // @ts-ignore
-      grid.insertAdjacentHTML('beforeend', renderRepoCard(repo));
+      if (grid) grid.insertAdjacentHTML('beforeend', renderRepoCard(repo));
     });
   }
 

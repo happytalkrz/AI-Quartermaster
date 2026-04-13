@@ -9,8 +9,18 @@ interface ModelPricing {
 }
 
 /**
- * Claude 모델별 토큰 단가 테이블
- * 캐시: cache_read는 input의 10%, cache_creation은 input의 125%
+ * Claude 모델별 토큰 단가 테이블 (USD per 1M tokens)
+ *
+ * 공식 가격 출처: https://docs.anthropic.com/en/docs/about-claude/pricing
+ * 최종 업데이트: 2026-04-12
+ *
+ * | 모델            | Input    | Output   | Cache Write (5m) | Cache Read |
+ * |-----------------|----------|----------|------------------|------------|
+ * | Opus 4.6        | $5/MTok  | $25/MTok | $6.25/MTok       | $0.50/MTok |
+ * | Sonnet 4.6      | $3/MTok  | $15/MTok | $3.75/MTok       | $0.30/MTok |
+ * | Haiku 4.5       | $1/MTok  | $5/MTok  | $1.25/MTok       | $0.10/MTok |
+ *
+ * 캐시 배율: cache_read = input × 0.1, cache_write(5m) = input × 1.25
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
   sonnet: {
@@ -18,12 +28,12 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
     output: 15.0,
   },
   haiku: {
-    input: 0.25,
-    output: 1.25,
+    input: 1.0,
+    output: 5.0,
   },
   opus: {
-    input: 15.0,
-    output: 75.0,
+    input: 5.0,
+    output: 25.0,
   },
 } as const;
 

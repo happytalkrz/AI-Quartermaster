@@ -84,6 +84,89 @@ export function parseVitestOutput(output: string): VitestParseResult {
   };
 }
 
+/**
+ * Baseline snapshot of tsc + eslint errors for diffing against new runs.
+ */
+export interface BaselineErrors {
+  tsc: TscParseResult;
+  eslint: EslintParseResult;
+}
+
+/**
+ * Filters errorsByFile to only include files matching targetFiles.
+ * Matching logic mirrors scope-guard.ts checkFileScope(): exact match OR startsWith.
+ */
+export function filterErrorsByTargetFiles(
+  errorsByFile: Record<string, string[]>,
+  targetFiles: string[]
+): Record<string, string[]> {
+  if (targetFiles.length === 0) return errorsByFile;
+
+  const filtered: Record<string, string[]> = {};
+  for (const [file, errors] of Object.entries(errorsByFile)) {
+    if (targetFiles.some((target) => file === target || file.startsWith(target))) {
+      filtered[file] = errors;
+    }
+  }
+  return filtered;
+}
+
+/**
+ * Returns a TscParseResult containing only errors that are NOT in the baseline.
+ * An error is considered pre-existing if the same message already exists for that file.
+ */
+export function diffTscErrors(
+  baseline: TscParseResult,
+  current: TscParseResult
+): TscParseResult {
+  const errorsByFile: Record<string, string[]> = {};
+  let totalErrors = 0;
+
+  for (const [file, errors] of Object.entries(current.errorsByFile)) {
+    const baselineErrors = new Set(baseline.errorsByFile[file] ?? []);
+    const newErrors = errors.filter((e) => !baselineErrors.has(e));
+    if (newErrors.length > 0) {
+      errorsByFile[file] = newErrors;
+      totalErrors += newErrors.length;
+    }
+  }
+
+  return { errorsByFile, totalErrors, hasErrors: totalErrors > 0 };
+}
+
+/**
+ * Returns an EslintParseResult containing only errors/warnings that are NOT in the baseline.
+ */
+export function diffEslintErrors(
+  baseline: EslintParseResult,
+  current: EslintParseResult
+): EslintParseResult {
+  const errorsByFile: Record<string, string[]> = {};
+  const warningsByFile: Record<string, string[]> = {};
+  let totalErrors = 0;
+  let totalWarnings = 0;
+
+  for (const [file, errors] of Object.entries(current.errorsByFile)) {
+    const baselineErrors = new Set(baseline.errorsByFile[file] ?? []);
+    const newErrors = errors.filter((e) => !baselineErrors.has(e));
+    if (newErrors.length > 0) {
+      errorsByFile[file] = newErrors;
+      totalErrors += newErrors.length;
+    }
+  }
+
+  for (const [file, warnings] of Object.entries(current.warningsByFile)) {
+    const baselineWarnings = new Set(baseline.warningsByFile[file] ?? []);
+    const newWarnings = warnings.filter((w) => !baselineWarnings.has(w));
+    if (newWarnings.length > 0) {
+      warningsByFile[file] = newWarnings;
+      totalWarnings += newWarnings.length;
+    }
+  }
+
+  return { errorsByFile, warningsByFile, totalErrors, totalWarnings, hasErrors: totalErrors > 0 };
+}
+
 export interface EslintParseResult {
   /** Per-file error messages */
   errorsByFile: Record<string, string[]>;

@@ -157,6 +157,7 @@ export interface ValidationPhaseContext {
   plan: Plan;
   phaseResults: PhaseResult[];
   jl?: import("../queue/job-logger.js").JobLogger;
+  baseline?: import("../pipeline/reporting/verification-parser.js").BaselineErrors;
 }
 
 export interface PublishPhaseContext {

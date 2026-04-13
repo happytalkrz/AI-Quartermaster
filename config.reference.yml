@@ -37,7 +37,11 @@ general:                                 # [선택] 전체 설정 (모든 필드
   concurrency: 1                         # [선택] 동시 처리 수 (기본값: 1)
   # autoUpdate: false                    # [선택] 자동 업데이트 (git pull + 재시작) (기본값: false)
   # stuckTimeoutMs: 600000               # [선택] stuck job 감지 타임아웃 ms (기본값: 600000)
-  # pollingIntervalMs: 60000             # [선택] 폴링 간격 ms (기본값: 60000)
+  # serverMode: "webhook"                # [선택] 운영 모드: webhook | polling | hybrid (기본값: "webhook")
+                                        #   webhook: GitHub webhook 이벤트만 수신 (GITHUB_WEBHOOK_SECRET 필수)
+                                        #   polling: 주기적으로 GitHub API 폴링 (webhook 설정 불필요)
+                                        #   hybrid:  webhook + 폴링 병행 (missed events 보완, 중복 처리 자동 방지)
+  # pollingIntervalMs: 60000             # [선택] 폴링 간격 ms (기본값: 60000, polling/hybrid 모드에서 사용)
   # maxJobs: 500                         # [선택] 최대 job 보관 수 (기본값: 500)
 
 # 대상 프로젝트 목록
@@ -134,7 +138,7 @@ pr:                                      # [선택] PR 설정 (모든 필드에 
   titleTemplate: "[AQ-#{{issueNumber}}] {{title}}"  # [선택] PR 제목 템플릿
   bodyTemplate: "pr-body.md"             # [선택] PR 본문 템플릿
   labels:                                # [선택] PR 라벨 (기본값: [])
-    - "ai-quartermaster"
+    - "aqm"
   assignees: []                          # [선택] 담당자 목록 (기본값: [])
   reviewers: []                          # [선택] 리뷰어 목록 (기본값: [])
   linkIssue: true                        # [선택] 이슈 연결 여부 (기본값: true)
@@ -169,7 +173,7 @@ safety:                                  # [선택] 안전장치 설정 (모든 
     - "SECURITY_VIOLATION"
     - "BASE_BRANCH_MODIFIED"
   allowedLabels:                         # [선택] 허용된 라벨 목록 (기본값: [])
-    - "ai-quartermaster"
+    - "aqm"
   # Rollback strategy on pipeline failure:
   #   "none"        — no rollback (default)
   #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)

@@ -1,3 +1,9 @@
+/**
+ * @experimental 이 모듈은 실험적 기능입니다. production에서 사용되지 않으며,
+ * 향후 병렬 Claude CLI 실행 전략의 참조 구현으로 유지됩니다.
+ * API는 안정화 전까지 변경될 수 있습니다.
+ */
+
 import { WorkerPool, WorkerPoolOptions, WorkerTaskHandler } from "./worker-pool.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -32,6 +38,8 @@ export interface CoordinatorConfig {
 /**
  * Claude Worker Pool과 통합하여 태스크를 분배하고 결과를 수집하는 Coordinator.
  * 다중 Claude 인스턴스 간의 작업 분산을 담당한다.
+ *
+ * @experimental production에서 사용되지 않는 실험적 구현입니다.
  */
 export class Coordinator {
   private pool: WorkerPool<ClaudeTask, ClaudeTaskResult>;

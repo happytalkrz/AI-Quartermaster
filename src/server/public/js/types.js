@@ -126,6 +126,16 @@
  */
 
 /**
+ * 프로젝트별 commands 오버라이드
+ * @typedef {Object} ProjectCommands
+ * @property {string} [test]
+ * @property {string} [typecheck]
+ * @property {string} [preInstall]
+ * @property {string} [build]
+ * @property {string} [lint]
+ */
+
+/**
  * 프로젝트 설정
  * @typedef {Object} ProjectConfig
  * @property {string} repo
@@ -133,6 +143,7 @@
  * @property {string} [label]
  * @property {string} [baseBranch]
  * @property {string} [mode]
+ * @property {ProjectCommands} [commands]
  */
 
 /**

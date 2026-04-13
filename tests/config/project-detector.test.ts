@@ -114,22 +114,46 @@ describe("detectProjectCommands", () => {
   describe("Kotlin-Gradle 감지", () => {
     it("build.gradle.kts가 있으면 kotlin-gradle로 감지한다", () => {
       writeFileSync(join(testDir, "build.gradle.kts"), "");
+      writeFileSync(join(testDir, "gradlew"), "");
       const result = detectProjectCommands(testDir);
       expect(result.language).toBe("kotlin-gradle");
       expect(result.commands.test).toBe("./gradlew test");
       expect(result.commands.build).toBe("./gradlew build");
       expect(result.commands.typecheck).toBe("echo skip");
+      expect(result.confidence).toBe("high");
+    });
+
+    it("gradlew가 없으면 gradle fallback (medium confidence)", () => {
+      writeFileSync(join(testDir, "build.gradle.kts"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.language).toBe("kotlin-gradle");
+      expect(result.commands.test).toBe("gradle test");
+      expect(result.commands.build).toBe("gradle build");
+      expect(result.confidence).toBe("medium");
+      expect(result.fallbackReason).toBe("gradlew not found");
     });
   });
 
   describe("Java-Gradle 감지", () => {
     it("build.gradle가 있으면 java-gradle로 감지한다", () => {
       writeFileSync(join(testDir, "build.gradle"), "");
+      writeFileSync(join(testDir, "gradlew"), "");
       const result = detectProjectCommands(testDir);
       expect(result.language).toBe("java-gradle");
       expect(result.commands.test).toBe("./gradlew test");
       expect(result.commands.build).toBe("./gradlew build");
       expect(result.commands.typecheck).toBe("echo skip");
+      expect(result.confidence).toBe("high");
+    });
+
+    it("gradlew가 없으면 gradle fallback (medium confidence)", () => {
+      writeFileSync(join(testDir, "build.gradle"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.language).toBe("java-gradle");
+      expect(result.commands.test).toBe("gradle test");
+      expect(result.commands.build).toBe("gradle build");
+      expect(result.confidence).toBe("medium");
+      expect(result.fallbackReason).toBe("gradlew not found");
     });
   });
 
@@ -194,6 +218,119 @@ describe("detectProjectCommands", () => {
       const result = detectProjectCommands(testDir);
       expect(result.language).toBe("unknown");
       expect(result.commands.test).toBe("echo skip");
+    });
+  });
+
+  describe("lockfile 기반 패키지 매니저 감지", () => {
+    it("pnpm-lock.yaml이 있으면 pnpm으로 감지한다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "pnpm-lock.yaml"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("pnpm");
+      expect(result.confidence).toBe("high");
+      expect(result.fallbackReason).toBeUndefined();
+    });
+
+    it("pnpm-lock.yaml이 있으면 test 커맨드가 pnpm test이다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "pnpm-lock.yaml"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.test).toBe("pnpm test");
+    });
+
+    it("pnpm-lock.yaml이 있으면 lint/build 커맨드에 pnpm run을 사용한다", () => {
+      writeFileSync(
+        join(testDir, "package.json"),
+        JSON.stringify({ scripts: { test: "vitest run", lint: "eslint .", build: "tsc" } }),
+      );
+      writeFileSync(join(testDir, "pnpm-lock.yaml"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.lint).toBe("pnpm run lint");
+      expect(result.commands.build).toBe("pnpm run build");
+    });
+
+    it("yarn.lock이 있으면 yarn으로 감지한다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "yarn.lock"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("yarn");
+      expect(result.confidence).toBe("high");
+      expect(result.fallbackReason).toBeUndefined();
+    });
+
+    it("yarn.lock이 있으면 test 커맨드가 yarn test이다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "yarn.lock"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.test).toBe("yarn test");
+    });
+
+    it("yarn.lock이 있으면 lint/build 커맨드에 yarn을 사용한다", () => {
+      writeFileSync(
+        join(testDir, "package.json"),
+        JSON.stringify({ scripts: { test: "vitest run", lint: "eslint .", build: "tsc" } }),
+      );
+      writeFileSync(join(testDir, "yarn.lock"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.lint).toBe("yarn lint");
+      expect(result.commands.build).toBe("yarn build");
+    });
+
+    it("bun.lockb가 있으면 bun으로 감지한다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "bun.lockb"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("bun");
+      expect(result.confidence).toBe("high");
+      expect(result.fallbackReason).toBeUndefined();
+    });
+
+    it("bun.lockb가 있으면 test 커맨드가 bun test이다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "bun.lockb"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.test).toBe("bun test");
+    });
+
+    it("bun.lockb가 있으면 lint/build 커맨드에 bun run을 사용한다", () => {
+      writeFileSync(
+        join(testDir, "package.json"),
+        JSON.stringify({ scripts: { test: "vitest run", lint: "eslint .", build: "tsc" } }),
+      );
+      writeFileSync(join(testDir, "bun.lockb"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.lint).toBe("bun run lint");
+      expect(result.commands.build).toBe("bun run build");
+    });
+
+    it("lockfile이 없으면 npm fallback이고 confidence가 medium이다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("npm");
+      expect(result.confidence).toBe("medium");
+      expect(result.fallbackReason).toBe("lockfile 없음 — npm fallback");
+    });
+
+    it("lockfile이 없으면 test 커맨드가 npm test이다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      const result = detectProjectCommands(testDir);
+      expect(result.commands.test).toBe("npm test");
+    });
+
+    it("scripts.test가 없고 lockfile도 없으면 test는 echo skip이고 npm fallback", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: {} }));
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("npm");
+      expect(result.commands.test).toBe("echo skip");
+      expect(result.confidence).toBe("medium");
+    });
+
+    it("pnpm-lock.yaml과 yarn.lock이 함께 있으면 pnpm이 우선한다", () => {
+      writeFileSync(join(testDir, "package.json"), JSON.stringify({ scripts: { test: "vitest run" } }));
+      writeFileSync(join(testDir, "pnpm-lock.yaml"), "");
+      writeFileSync(join(testDir, "yarn.lock"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.packageManager).toBe("pnpm");
     });
   });
 

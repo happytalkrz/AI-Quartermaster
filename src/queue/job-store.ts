@@ -46,8 +46,13 @@ export class JobStore extends EventEmitter {
   private db: AQDatabase;
   private dataDir: string;
   private maxJobs: number;
+  private _closed = false;
   // 메모리 캐시: running/queued 상태의 job만 캐싱
   private cache: Map<string, Job> = new Map();
+
+  get isClosed(): boolean {
+    return this._closed;
+  }
 
   constructor(dataDir: string, maxJobs: number = 1000) {
     super();
@@ -836,6 +841,7 @@ export class JobStore extends EventEmitter {
    * 데이터베이스 연결 종료
    */
   close(): void {
+    this._closed = true;
     this.db.close();
   }
 }

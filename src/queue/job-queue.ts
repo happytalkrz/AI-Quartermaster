@@ -737,6 +737,9 @@ export class JobQueue {
   }
 
   private async processNext(): Promise<void> {
+    // Bail out if the store has been closed (e.g., during test teardown)
+    if (this.store.isClosed) return;
+
     // Prevent re-entrancy
     if (this.isProcessing) {
       this.needsReprocess = true;

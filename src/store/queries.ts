@@ -1,5 +1,6 @@
 import type { AQDatabase } from "./database.js";
-import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse } from "../types/api.js";
+import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse, GetFailureReasonsQuery, FailureReasonsResponse } from "../types/api.js";
+import { classifyError } from "../pipeline/errors/error-classifier.js";
 
 // SQLite row types for query results
 interface StatsRow {
@@ -252,6 +253,67 @@ export function getProjectStatsWithTimeRange(aqDb: AQDatabase, query: GetProject
       totalCostUsd: row.total_cost_usd,
       avgCostUsd: row.total > 0 ? row.total_cost_usd / row.total : 0,
     })),
+  };
+}
+
+interface FailureErrorRow {
+  error: string;
+}
+
+export function getFailureReasons(aqDb: AQDatabase, query: GetFailureReasonsQuery): FailureReasonsResponse {
+  const { project, window: timeWindow, top } = query;
+  const cutoff = getTimeRangeCutoff(timeWindow);
+  const { sql: whereBase, params } = buildWhereClause(project, cutoff);
+
+  const db = aqDb.getDb();
+
+  // status='failure' AND error IS NOT NULL 조건 추가
+  const failureCondition = "status = 'failure' AND error IS NOT NULL";
+  const whereClause = whereBase
+    ? `${whereBase} AND ${failureCondition}`
+    : `WHERE ${failureCondition}`;
+
+  const rows = db.prepare(`
+    SELECT error FROM jobs
+    ${whereClause}
+    ORDER BY created_at DESC
+  `).all(...params) as FailureErrorRow[];
+
+  // 카테고리별 집계
+  const categoryMap = new Map<string, { count: number; recentErrors: string[] }>();
+
+  for (const row of rows) {
+    const category = classifyError(row.error);
+    const entry = categoryMap.get(category);
+    if (entry) {
+      entry.count += 1;
+      if (entry.recentErrors.length < 3) {
+        entry.recentErrors.push(row.error);
+      }
+    } else {
+      categoryMap.set(category, { count: 1, recentErrors: [row.error] });
+    }
+  }
+
+  const total = rows.length;
+
+  // 내림차순 정렬 후 상위 top개
+  const sorted = Array.from(categoryMap.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, top);
+
+  const reasons = sorted.map(([category, { count, recentErrors }]) => ({
+    category,
+    count,
+    percentage: total > 0 ? Math.round((count / total) * 10000) / 100 : 0,
+    recentErrors,
+  }));
+
+  return {
+    reasons,
+    total,
+    window: timeWindow,
+    project: project ?? null,
   };
 }
 

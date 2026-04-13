@@ -523,7 +523,7 @@ export async function doctorCommand(args: CliArgs): Promise<void> {
   await runDoctor(result.config, aqRoot, result.error);
 }
 
-async function planCommand(args: CliArgs): Promise<void> {
+export async function planCommand(args: CliArgs): Promise<void> {
   if (!args.repo) {
     console.error("Usage: aqm plan --repo <owner/repo> [--execute]");
     process.exit(1);
@@ -571,7 +571,7 @@ async function planCommand(args: CliArgs): Promise<void> {
   }
 }
 
-async function statsCommand(args: CliArgs): Promise<void> {
+export async function statsCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
   const patternStore = new PatternStore(dataDir);
@@ -676,7 +676,7 @@ export async function resumeCommand(args: CliArgs): Promise<void> {
   process.exit(result.success ? 0 : 1);
 }
 
-async function cleanupCommand(args: CliArgs): Promise<void> {
+export async function cleanupCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const config = loadConfig(aqRoot);
   const logger = getLogger();

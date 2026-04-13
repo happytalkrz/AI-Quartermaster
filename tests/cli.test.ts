@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand } from "../src/cli.js";
+import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand, statsCommand, cleanupCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
 import { runPipeline } from "../src/pipeline/core/orchestrator.js";
 import { JobStore } from "../src/queue/job-store.js";
@@ -13,6 +13,8 @@ import { createHealthRoutes } from "../src/server/health.js";
 import { cleanupStalePid, writePidFile, readPidFile } from "../src/server/pid-manager.js";
 import { ConfigWatcher } from "../src/config/config-watcher.js";
 import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
+import { PatternStore } from "../src/learning/pattern-store.js";
+import { cleanOldWorktrees } from "../src/git/worktree-cleaner.js";
 
 vi.mock("../src/pipeline/errors/checkpoint.js", () => ({
   loadCheckpoint: vi.fn(),
@@ -64,6 +66,12 @@ vi.mock("../src/server/pid-manager.js", () => ({
 }));
 vi.mock("../src/config/config-watcher.js", () => ({
   ConfigWatcher: vi.fn(),
+}));
+vi.mock("../src/learning/pattern-store.js", () => ({
+  PatternStore: vi.fn(),
+}));
+vi.mock("../src/git/worktree-cleaner.js", () => ({
+  cleanOldWorktrees: vi.fn(),
 }));
 vi.mock("hono", () => ({
   Hono: class MockHono {
@@ -1064,5 +1072,115 @@ describe("resumeCommand", () => {
     expect(runPipeline).toHaveBeenCalledWith(
       expect.objectContaining({ resumeFrom: checkpoint })
     );
+  });
+});
+
+describe("statsCommand", () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("빈 데이터 시 success rate N/A 출력", async () => {
+    vi.mocked(PatternStore).mockImplementation(() => ({
+      getStats: vi.fn().mockReturnValue({ total: 0, successes: 0, failures: 0, byCategory: {} }),
+      list: vi.fn().mockReturnValue([]),
+    } as unknown as PatternStore));
+    vi.mocked(JobStore).mockImplementation(() => ({
+      getCostStats: vi.fn().mockReturnValue({ totalCostUsd: 0, avgCostUsd: 0, jobCount: 0, topExpensiveJobs: [] }),
+    } as unknown as JobStore));
+
+    await statsCommand({});
+
+    const output = consoleSpy.mock.calls.map(c => String(c[0])).join("\n");
+    expect(output).toContain("N/A%");
+    expect(output).toContain("Total runs   : 0");
+  });
+
+  it("실패 패턴·비용 통계 출력", async () => {
+    vi.mocked(PatternStore).mockImplementation(() => ({
+      getStats: vi.fn().mockReturnValue({
+        total: 10,
+        successes: 7,
+        failures: 3,
+        byCategory: { TYPE_ERROR: 2, BUILD_FAIL: 1 },
+      }),
+      list: vi.fn().mockReturnValue([
+        { timestamp: Date.now(), issueNumber: 5, repo: "owner/repo", errorCategory: "TYPE_ERROR", errorMessage: "타입 오류", phaseName: "implement" },
+      ]),
+    } as unknown as PatternStore));
+    vi.mocked(JobStore).mockImplementation(() => ({
+      getCostStats: vi.fn().mockReturnValue({
+        totalCostUsd: 1.5,
+        avgCostUsd: 0.15,
+        jobCount: 10,
+        topExpensiveJobs: [{ id: "job-1", issueNumber: 5, totalCostUsd: 0.5, repo: "owner/repo" }],
+      }),
+    } as unknown as JobStore));
+
+    await statsCommand({});
+
+    const output = consoleSpy.mock.calls.map(c => String(c[0])).join("\n");
+    expect(output).toContain("70.0%");
+    expect(output).toContain("Total runs   : 10");
+    expect(output).toContain("TYPE_ERROR");
+    expect(output).toContain("$1.50");
+    expect(output).toContain("Job count    : 10");
+  });
+
+  it("--repo 필터가 PatternStore·JobStore에 전달됨", async () => {
+    const mockGetStats = vi.fn().mockReturnValue({ total: 0, successes: 0, failures: 0, byCategory: {} });
+    const mockList = vi.fn().mockReturnValue([]);
+    const mockGetCostStats = vi.fn().mockReturnValue({ totalCostUsd: 0, avgCostUsd: 0, jobCount: 0, topExpensiveJobs: [] });
+
+    vi.mocked(PatternStore).mockImplementation(() => ({
+      getStats: mockGetStats,
+      list: mockList,
+    } as unknown as PatternStore));
+    vi.mocked(JobStore).mockImplementation(() => ({
+      getCostStats: mockGetCostStats,
+    } as unknown as JobStore));
+
+    await statsCommand({ repo: "owner/filtered" });
+
+    expect(mockGetStats).toHaveBeenCalledWith("owner/filtered");
+    expect(mockGetCostStats).toHaveBeenCalledWith("owner/filtered");
+
+    const output = consoleSpy.mock.calls.map(c => String(c[0])).join("\n");
+    expect(output).toContain("owner/filtered");
+  });
+});
+
+describe("cleanupCommand", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("cleanOldWorktrees 호출 및 결과 로깅", async () => {
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+    vi.mocked(cleanOldWorktrees).mockResolvedValue(["worktree-1", "worktree-2"]);
+
+    await cleanupCommand({});
+
+    expect(cleanOldWorktrees).toHaveBeenCalledWith(
+      mockBaseConfig.git,
+      mockBaseConfig.worktree,
+      expect.objectContaining({ cwd: expect.any(String) })
+    );
+  });
+
+  it("제거된 worktree 수가 0이어도 정상 완료", async () => {
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+    vi.mocked(cleanOldWorktrees).mockResolvedValue([]);
+
+    await cleanupCommand({});
+
+    expect(cleanOldWorktrees).toHaveBeenCalledTimes(1);
   });
 });

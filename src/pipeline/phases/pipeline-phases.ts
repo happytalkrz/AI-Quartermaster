@@ -629,11 +629,16 @@ export async function executePostProcessingPhases(
   }
 
   // Update costBreakdown with review costs collected during post-processing
-  const updatedTotalCostUsd = (coreResult.totalCostUsd ?? 0) + reviewCostUsd;
+  // totalCostUsd를 breakdown 구성요소(retryCostUsd + setup + publish 포함)에서 재산출하여 정합성 보장
   if (coreResult.costBreakdown) {
-    coreResult.costBreakdown.reviewCostUsd = reviewCostUsd;
-    coreResult.costBreakdown.totalCostUsd = updatedTotalCostUsd;
+    const cb = coreResult.costBreakdown;
+    cb.reviewCostUsd = reviewCostUsd;
+    const phasesTotal = cb.phaseCosts.reduce((sum, p) => sum + p.costUsd + p.retryCostUsd, 0);
+    cb.totalCostUsd = cb.planCostUsd + phasesTotal + reviewCostUsd
+      + (cb.setupCostUsd ?? 0) + (cb.publishCostUsd ?? 0);
+    cb.overheadCostUsd = undefined;
   }
+  const updatedTotalCostUsd = coreResult.costBreakdown?.totalCostUsd ?? (coreResult.totalCostUsd ?? 0) + reviewCostUsd;
 
   const publishContext = {
     issueNumber,

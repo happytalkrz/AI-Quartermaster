@@ -43,6 +43,12 @@ export interface CostBreakdown {
   reviewCostUsd: number;
   totalCostUsd: number;
   modelSummary: ModelCostEntry[];
+  /** setup 단계(worktree, dependency) 비용 합계 */
+  setupCostUsd?: number;
+  /** publish 단계(PR 생성) 비용 */
+  publishCostUsd?: number;
+  /** 분류되지 않은 잔여 비용 (totalCostUsd - 모든 분류 항목 합계) */
+  overheadCostUsd?: number;
 }
 
 export interface Plan {

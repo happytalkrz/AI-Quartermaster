@@ -1063,7 +1063,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const queryParams = {
         project: c.req.query("project"),
-        timeRange: c.req.query("timeRange") || "7d",
+        window: c.req.query("window") || "7d",
       };
 
       const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
@@ -1086,7 +1086,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const queryParams = {
         project: c.req.query("project"),
-        timeRange: c.req.query("timeRange") || "7d",
+        window: c.req.query("window") || "7d",
       };
 
       const parseResult = GetMetricsQuerySchema.safeParse(queryParams);

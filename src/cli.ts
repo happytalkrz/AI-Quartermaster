@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "fs";
 import { assembleHtml } from "./server/html-assembler.js";
 import { fileURLToPath } from "url";
 import { loadConfig, tryLoadConfig } from "./config/loader.js";
@@ -847,7 +847,8 @@ export function parseArgs(argv: string[]): CliArgs {
 
 // Only execute main() when this file is run directly (not when imported in tests)
 const __filename = fileURLToPath(import.meta.url);
-if (process.argv[1] === __filename) {
+const invokedPath = process.argv[1] ? (() => { try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; } })() : "";
+if (invokedPath === __filename) {
   main().catch((err: unknown) => {
     console.error("Fatal error:", getErrorMessage(err));
     process.exit(1);

@@ -310,6 +310,9 @@ describe("retryPhase", () => {
         startedAt: expect.any(String),
         completedAt: expect.any(String),
         costUsd: undefined,
+        retryCostUsd: undefined,
+        retryCount: 1,
+        modelCosts: undefined,
       });
     });
 
@@ -357,6 +360,9 @@ describe("retryPhase", () => {
         startedAt: expect.any(String),
         completedAt: expect.any(String),
         costUsd: undefined,
+        retryCostUsd: undefined,
+        retryCount: 1,
+        modelCosts: undefined,
       });
     });
 
@@ -383,6 +389,9 @@ describe("retryPhase", () => {
         startedAt: expect.any(String),
         completedAt: expect.any(String),
         costUsd: undefined,
+        retryCostUsd: undefined,
+        retryCount: 1,
+        modelCosts: undefined,
       });
     });
 

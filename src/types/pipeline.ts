@@ -24,6 +24,27 @@ export interface UsageInfo {
   cache_read_input_tokens?: number;
 }
 
+export interface ModelCostEntry {
+  model: string;
+  costUsd: number;
+  usage: UsageInfo;
+}
+
+export interface CostBreakdown {
+  planCostUsd: number;
+  phaseCosts: {
+    phaseIndex: number;
+    phaseName: string;
+    costUsd: number;
+    retryCostUsd: number;
+    retryCount: number;
+    modelCosts: ModelCostEntry[];
+  }[];
+  reviewCostUsd: number;
+  totalCostUsd: number;
+  modelSummary: ModelCostEntry[];
+}
+
 export interface Plan {
   mode?: "code" | "content";
   issueNumber: number;
@@ -124,6 +145,9 @@ export interface PhaseResult {
   completedAt?: string;
   costUsd?: number;
   usage?: UsageInfo;
+  retryCostUsd?: number;
+  retryCount?: number;
+  modelCosts?: ModelCostEntry[];
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
   failedFiles?: string[];
   /** 성공적으로 처리된 파일 목록 (partial=true일 때 유효) */
@@ -180,6 +204,8 @@ export interface PublishPhaseContext {
   dryRun: boolean;
   jl?: import("../queue/job-logger.js").JobLogger;
   totalUsage?: UsageInfo;
+  totalCostUsd?: number;
+  costBreakdown?: CostBreakdown;
 }
 
 export interface CleanupContext {
@@ -434,6 +460,9 @@ export interface PhaseResultInfo {
   error?: string;
   costUsd?: number;
   usage?: UsageStats;
+  retryCostUsd?: number;
+  retryCount?: number;
+  modelCosts?: ModelCostEntry[];
 }
 
 /**
@@ -457,6 +486,8 @@ export interface JobBase {
   totalUsage?: UsageStats;
   /** 캐시 히트 비율 (0~1). cache_read / (input + cache_read) */
   cacheHitRatio?: number;
+  /** phase/model별 비용 세분화 */
+  costBreakdown?: CostBreakdown;
   /** 이슈가 처리된 사유 (트리거 원인) */
   triggerReason?: string;
   /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */

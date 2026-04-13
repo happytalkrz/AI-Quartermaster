@@ -19,10 +19,13 @@ Resolves #{{issue.number}} — {{issue.title}}
 ## Pipeline Stats
 
 - **Instance**: `{{instanceLabel}}`
-- **Total Cost**: ${{stats.totalCostUsd}}
+- **Total Cost**: ${{stats.totalCostUsd}} (review: ${{stats.reviewCostUsd}})
 - **Phases**: {{stats.successCount}}/{{stats.phaseCount}} completed
 - **Branch**: `{{branch.work}}` → `{{branch.base}}`
-- **Tokens**: {{stats.inputTokens}} input, {{stats.outputTokens}} output{{#stats.cacheCreationTokens}}, {{stats.cacheCreationTokens}} cache creation{{/stats.cacheCreationTokens}}{{#stats.cacheReadTokens}}, {{stats.cacheReadTokens}} cache read{{/stats.cacheReadTokens}}
+- **Tokens**: {{stats.inputTokens}} input, {{stats.outputTokens}} output
+
+{{stats.phaseCostTable}}
+{{stats.modelSummary}}
 
 ---
 

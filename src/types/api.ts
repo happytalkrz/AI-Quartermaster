@@ -340,6 +340,39 @@ export const UpdateProjectRequestSchema = z.object({
 
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
 
+// CostBreakdownResponse — GET /api/jobs/:id 응답의 costBreakdown 필드 검증용
+export const UsageInfoSchema = z.object({
+  input_tokens: z.number().int().nonnegative(),
+  output_tokens: z.number().int().nonnegative(),
+  cache_creation_input_tokens: z.number().int().nonnegative().optional(),
+  cache_read_input_tokens: z.number().int().nonnegative().optional(),
+});
+
+export const ModelCostEntrySchema = z.object({
+  model: z.string(),
+  costUsd: z.number().nonnegative(),
+  usage: UsageInfoSchema,
+});
+
+export const PhaseCostEntrySchema = z.object({
+  phaseIndex: z.number().int().nonnegative(),
+  phaseName: z.string(),
+  costUsd: z.number().nonnegative(),
+  retryCostUsd: z.number().nonnegative(),
+  retryCount: z.number().int().nonnegative(),
+  modelCosts: z.array(ModelCostEntrySchema),
+});
+
+export const CostBreakdownResponseSchema = z.object({
+  planCostUsd: z.number().nonnegative(),
+  phaseCosts: z.array(PhaseCostEntrySchema),
+  reviewCostUsd: z.number().nonnegative(),
+  totalCostUsd: z.number().nonnegative(),
+  modelSummary: z.array(ModelCostEntrySchema),
+});
+
+export type CostBreakdownResponse = z.infer<typeof CostBreakdownResponseSchema>;
+
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({

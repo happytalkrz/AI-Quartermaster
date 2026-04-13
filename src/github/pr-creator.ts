@@ -4,7 +4,7 @@ import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
-import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus, UsageInfo } from "../types/pipeline.js";
+import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus, UsageInfo, CostBreakdown } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -23,7 +23,24 @@ export interface PrContext {
   baseBranch: string;
   totalCostUsd?: number;
   totalUsage?: UsageInfo;
+  costBreakdown?: CostBreakdown;
   instanceLabel?: string;
+}
+
+export function buildPhaseCostTable(breakdown?: CostBreakdown): string {
+  if (!breakdown?.phaseCosts.length) return '';
+  const rows = breakdown.phaseCosts.map(p =>
+    `| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |`
+  ).join('\n');
+  return `\n### Phase Cost Breakdown\n\n| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|\n${rows}\n`;
+}
+
+export function buildModelSummary(breakdown?: CostBreakdown): string {
+  if (!breakdown?.modelSummary.length) return '';
+  const rows = breakdown.modelSummary.map(m =>
+    `| ${m.model} | $${m.costUsd.toFixed(4)} |`
+  ).join('\n');
+  return `\n### Model Usage\n\n| Model | Cost |\n|-------|------|\n${rows}\n`;
 }
 
 /**
@@ -72,6 +89,9 @@ export async function createDraftPR(
         outputTokens: ctx.totalUsage?.output_tokens || 0,
         cacheCreationTokens: ctx.totalUsage?.cache_creation_input_tokens || 0,
         cacheReadTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
+        phaseCostTable: buildPhaseCostTable(ctx.costBreakdown),
+        modelSummary: buildModelSummary(ctx.costBreakdown),
+        reviewCostUsd: ctx.costBreakdown?.reviewCostUsd?.toFixed(4) || '0.0000',
       },
     });
   } catch (err: unknown) {

@@ -112,6 +112,7 @@ export async function runReviewPhase(
   success: boolean;
   reviewResult?: ReviewPipelineResult;
   reviewVariables?: ReviewVariables;
+  costUsd?: number;
   error?: string;
 }> {
   let reviewVariables: ReviewVariables | undefined;
@@ -128,6 +129,8 @@ export async function runReviewPhase(
 
       reviewVariables = await buildReviewVars(ctx);
 
+      let reviewPhaseCostUsd = 0;
+
       // === Phase 1: Requirements Analysis ===
       const analystTemplatePath = resolve(ctx.promptsDir, "analyst-requirements.md");
       let analystResult: AnalystResult | undefined;
@@ -142,6 +145,7 @@ export async function runReviewPhase(
           cwd: ctx.worktreePath,
           variables: reviewVariables as unknown as TemplateVariables,
         });
+        reviewPhaseCostUsd += analystResult.costUsd ?? 0;
         ctx.jl?.log(`분석: ${analystResult.verdict} (${analystResult.findings.length}개 발견)`);
       } else {
         logger.info("[REVIEWING] Analyst template not found, skipping requirements analysis");
@@ -164,6 +168,7 @@ export async function runReviewPhase(
         maxRounds: executionModePreset.reviewRounds,
         executionMode: getExecutionModeFromPreset(executionModePreset),
       });
+      reviewPhaseCostUsd += reviewResult.costUsd ?? 0;
 
       if (analystResult) {
         reviewResult.analyst = analystResult;
@@ -328,7 +333,8 @@ export async function runReviewPhase(
             success: false,
             error: `Review failed after ${ctx.project.safety.maxRetries} retries: ${finalSummary}`,
             reviewResult,
-            reviewVariables
+            reviewVariables,
+            costUsd: reviewPhaseCostUsd || undefined,
           };
         }
       }
@@ -338,7 +344,8 @@ export async function runReviewPhase(
       return {
         success: true,
         reviewResult,
-        reviewVariables
+        reviewVariables,
+        costUsd: reviewPhaseCostUsd || undefined,
       };
     }
   }
@@ -351,7 +358,7 @@ export async function runSimplifyPhase(
   executionModePreset: ExecutionModePreset,
   state: PipelineState,
   isPastState: (current: PipelineState, target: PipelineState) => boolean
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; costUsd?: number; error?: string }> {
   const PROGRESS_SIMPLIFY_START = 80;
 
   if (executionModePreset.enableSimplify && ctx.project.review?.simplify?.enabled) {
@@ -373,7 +380,7 @@ export async function runSimplifyPhase(
         throw new Error("Test command not configured");
       }
 
-      await runSimplify({
+      const simplifyResult = await runSimplify({
         promptTemplate: ctx.project.review.simplify.promptTemplate,
         promptsDir: ctx.promptsDir,
         claudeConfig: ctx.project.commands.claudeCli,
@@ -384,6 +391,7 @@ export async function runSimplifyPhase(
       });
 
       ctx.checkpoint();
+      return { success: true, costUsd: simplifyResult.costUsd };
     }
   }
 

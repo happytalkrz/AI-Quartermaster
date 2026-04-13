@@ -114,22 +114,46 @@ describe("detectProjectCommands", () => {
   describe("Kotlin-Gradle 감지", () => {
     it("build.gradle.kts가 있으면 kotlin-gradle로 감지한다", () => {
       writeFileSync(join(testDir, "build.gradle.kts"), "");
+      writeFileSync(join(testDir, "gradlew"), "");
       const result = detectProjectCommands(testDir);
       expect(result.language).toBe("kotlin-gradle");
       expect(result.commands.test).toBe("./gradlew test");
       expect(result.commands.build).toBe("./gradlew build");
       expect(result.commands.typecheck).toBe("echo skip");
+      expect(result.confidence).toBe("high");
+    });
+
+    it("gradlew가 없으면 gradle fallback (medium confidence)", () => {
+      writeFileSync(join(testDir, "build.gradle.kts"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.language).toBe("kotlin-gradle");
+      expect(result.commands.test).toBe("gradle test");
+      expect(result.commands.build).toBe("gradle build");
+      expect(result.confidence).toBe("medium");
+      expect(result.fallbackReason).toBe("gradlew not found");
     });
   });
 
   describe("Java-Gradle 감지", () => {
     it("build.gradle가 있으면 java-gradle로 감지한다", () => {
       writeFileSync(join(testDir, "build.gradle"), "");
+      writeFileSync(join(testDir, "gradlew"), "");
       const result = detectProjectCommands(testDir);
       expect(result.language).toBe("java-gradle");
       expect(result.commands.test).toBe("./gradlew test");
       expect(result.commands.build).toBe("./gradlew build");
       expect(result.commands.typecheck).toBe("echo skip");
+      expect(result.confidence).toBe("high");
+    });
+
+    it("gradlew가 없으면 gradle fallback (medium confidence)", () => {
+      writeFileSync(join(testDir, "build.gradle"), "");
+      const result = detectProjectCommands(testDir);
+      expect(result.language).toBe("java-gradle");
+      expect(result.commands.test).toBe("gradle test");
+      expect(result.commands.build).toBe("gradle build");
+      expect(result.confidence).toBe("medium");
+      expect(result.fallbackReason).toBe("gradlew not found");
     });
   });
 

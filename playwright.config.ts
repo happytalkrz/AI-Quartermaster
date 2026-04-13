@@ -16,6 +16,28 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'visual-desktop',
+      testDir: './tests/visual',
+      snapshotDir: './tests/visual/__snapshots__',
+      snapshotPathTemplate: '{snapshotDir}/{testFilePath}/{arg}{ext}',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 800 },
+      },
+      updateSnapshots: process.env['CI'] ? 'none' : 'missing',
+    },
+    {
+      name: 'visual-mobile',
+      testDir: './tests/visual',
+      snapshotDir: './tests/visual/__snapshots__',
+      snapshotPathTemplate: '{snapshotDir}/{testFilePath}/{arg}{ext}',
+      use: {
+        ...devices['Pixel 5'],
+        viewport: { width: 375, height: 800 },
+      },
+      updateSnapshots: process.env['CI'] ? 'none' : 'missing',
+    },
   ],
   webServer: {
     command: 'tsx src/cli.ts start --port 3100',

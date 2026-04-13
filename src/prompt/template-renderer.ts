@@ -454,7 +454,7 @@ export function buildStaticLayers(
  */
 export function buildDynamicLayers(
   issue: IssueLayer,
-  phase: Pick<PhaseLayer, "currentPhase" | "previousResults">,
+  phase: Pick<PhaseLayer, "currentPhase" | "previousResults" | "buildStatus">,
   learning: LearningLayer
 ): DynamicLayersResult {
   const pastFailuresText = learning.pastFailures
@@ -479,6 +479,7 @@ export function buildDynamicLayers(
         name: phase.currentPhase.name,
         description: phase.currentPhase.description,
         files: phase.currentPhase.targetFiles,
+        buildStatus: phase.buildStatus ?? "",
       },
       previousPhases: {
         summary: phase.previousResults,
@@ -582,6 +583,7 @@ export function assemblePrompt(
         name: layers.phase.currentPhase.name,
         description: layers.phase.currentPhase.description,
         files: layers.phase.currentPhase.targetFiles,
+        buildStatus: layers.phase.buildStatus ?? "",
       },
       previousPhases: {
         summary: layers.phase.previousResults,

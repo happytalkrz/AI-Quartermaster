@@ -375,11 +375,11 @@ function renderAccordionDetail(job) {
     html += '<div class="mb-4">';
     html += '<span class="text-[10px] uppercase tracking-widest font-bold text-outline">Phase Progress</span>';
     html += '<div class="flex items-center gap-2 mt-2 flex-wrap">';
-    job.phaseResults.forEach(function(p, i) {
+    var phases = job.phaseResults;
+    phases.forEach(function(p, i) {
       var icon = p.success ? '<span class="text-[#3fb950]">✓</span>' : '<span class="text-error">✗</span>';
       html += '<span class="text-xs font-mono text-on-surface-variant">' + icon + ' P' + (i + 1) + '</span>';
-      // @ts-ignore
-      if (i < job.phaseResults.length - 1) html += '<span class="text-outline/30">→</span>';
+      if (i < phases.length - 1) html += '<span class="text-outline/30">→</span>';
     });
     html += '</div></div>';
   }
@@ -416,17 +416,18 @@ function renderMobileActivityLog(job) {
   container.style.display = 'none';
   return;
 
-  // @ts-ignore
-  if (!job.logs || job.logs.length === 0) {
-    // @ts-ignore
-    container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';
+  /* DISABLED: 태블릿 모드 미완성 — kept for future use */
+  // eslint-disable-next-line no-unreachable
+  var _job = /** @type {Job} */ (job);
+  var _container = /** @type {HTMLElement} */ (container);
+  var _logs = /** @type {string[]} */ (_job.logs || []);
+  if (_logs.length === 0) {
+    _container.innerHTML = '<div class="text-outline text-center py-4">이 작업에 대한 활동 로그가 없습니다.</div>';
     return;
   }
 
-  // @ts-ignore
-  var maxLines = job.status === 'running' ? 10 : 20;
-  // @ts-ignore
-  var lines = job.logs.slice(-maxLines);
+  var maxLines = _job.status === 'running' ? 10 : 20;
+  var lines = _logs.slice(-maxLines);
 
   var html = '<div class="space-y-3">';
   html += '<div class="flex items-center justify-between">';
@@ -443,8 +444,7 @@ function renderMobileActivityLog(job) {
   });
 
   html += '</div></div></div>';
-  // @ts-ignore
-  container.innerHTML = html;
+  _container.innerHTML = html;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -455,7 +455,8 @@ function renderMobileActivityLog(job) {
  * @returns {void}
  */
 function renderLogsView(job) {
-  var container = document.getElementById('logs-detail');
+  var container = $id('logs-detail');
+  if (!container) return;
 
   // Update job selector dropdown
   var selector = /** @type {HTMLSelectElement|null} */ (document.getElementById('logs-job-selector'));
@@ -484,7 +485,6 @@ function renderLogsView(job) {
   }
 
   if (!job || !job.logs || job.logs.length === 0) {
-    // @ts-ignore
     container.innerHTML = '<div class="text-outline text-center py-12">' + (job ? '이 작업에 대한 로그가 없습니다.' : '작업을 선택하세요.') + '</div>';
     return;
   }
@@ -494,10 +494,8 @@ function renderLogsView(job) {
     html += '<div class="log-line" data-log-text="' + esc(line) + '">' + colorizeLogLine(line) + '</div>';
   });
 
-  // @ts-ignore
   container.innerHTML = html;
   if (logTailEnabled) {
-    // @ts-ignore
     container.scrollTop = container.scrollHeight;
   }
 }
@@ -542,14 +540,10 @@ function render(data) {
   var completed = successCount + failedCount;
   var rate = completed > 0 ? ((successCount / completed) * 100).toFixed(1) : '0';
 
-  // @ts-ignore
-  document.getElementById('stat-total').textContent = total;
-  // @ts-ignore
-  document.getElementById('stat-rate').textContent = rate + '%';
-  // @ts-ignore
-  document.getElementById('stat-active').textContent = activeCount;
-  // @ts-ignore
-  document.getElementById('stat-failed').textContent = failedCount;
+  var elTotal = $id('stat-total'); if (elTotal) elTotal.textContent = String(total);
+  var elRate = $id('stat-rate'); if (elRate) elRate.textContent = rate + '%';
+  var elActive = $id('stat-active'); if (elActive) elActive.textContent = String(activeCount);
+  var elFailed = $id('stat-failed'); if (elFailed) elFailed.textContent = String(failedCount);
 
   renderFromState();
 
@@ -565,53 +559,33 @@ function renderFromState() {
   var filtered = filterJobs(allJobs);
 
   // Update filter counts
-  // @ts-ignore
-  document.getElementById('cnt-all').textContent = allJobs.filter(function(j) { return j.status !== 'archived'; }).length;
-  // @ts-ignore
-  document.getElementById('cnt-running').textContent = allJobs.filter(function(j) { return j.status === 'running'; }).length;
-  // @ts-ignore
-  document.getElementById('cnt-success').textContent = allJobs.filter(function(j) { return j.status === 'success'; }).length;
-  // @ts-ignore
-  document.getElementById('cnt-failure').textContent = allJobs.filter(function(j) { return j.status === 'failure'; }).length;
-  // @ts-ignore
-  document.getElementById('cnt-queued').textContent = allJobs.filter(function(j) { return j.status === 'queued'; }).length;
+  var cntAll = $id('cnt-all'); if (cntAll) cntAll.textContent = String(allJobs.filter(function(j) { return j.status !== 'archived'; }).length);
+  var cntRunning = $id('cnt-running'); if (cntRunning) cntRunning.textContent = String(allJobs.filter(function(j) { return j.status === 'running'; }).length);
+  var cntSuccess = $id('cnt-success'); if (cntSuccess) cntSuccess.textContent = String(allJobs.filter(function(j) { return j.status === 'success'; }).length);
+  var cntFailure = $id('cnt-failure'); if (cntFailure) cntFailure.textContent = String(allJobs.filter(function(j) { return j.status === 'failure'; }).length);
+  var cntQueued = $id('cnt-queued'); if (cntQueued) cntQueued.textContent = String(allJobs.filter(function(j) { return j.status === 'queued'; }).length);
 
-  var listEl = document.getElementById('job-list');
-  var emptyEl = document.getElementById('empty-state');
-  var filterEmptyEl = document.getElementById('filter-empty');
+  var listEl = $id('job-list');
+  var emptyEl = $id('empty-state');
+  var filterEmptyEl = $id('filter-empty');
 
-  // @ts-ignore
-  emptyEl.classList.add('hidden');
-  // @ts-ignore
-  emptyEl.classList.remove('flex');
-  // @ts-ignore
-  filterEmptyEl.classList.add('hidden');
-  // @ts-ignore
-  filterEmptyEl.classList.remove('flex');
-  // @ts-ignore
-  listEl.classList.remove('hidden');
+  if (emptyEl) { emptyEl.classList.add('hidden'); emptyEl.classList.remove('flex'); }
+  if (filterEmptyEl) { filterEmptyEl.classList.add('hidden'); filterEmptyEl.classList.remove('flex'); }
+  if (listEl) listEl.classList.remove('hidden');
 
   if (allJobs.length === 0) {
-    // @ts-ignore
-    listEl.classList.add('hidden');
-    // @ts-ignore
-    emptyEl.classList.remove('hidden');
-    // @ts-ignore
-    emptyEl.classList.add('flex');
-    // @ts-ignore
-    document.getElementById('job-detail').innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
+    if (listEl) listEl.classList.add('hidden');
+    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    var detailEl0 = $id('job-detail');
+    if (detailEl0) detailEl0.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     renderMobileActivityLog(null);
     startLiveTickers();
     return;
   }
 
   if (filtered.length === 0) {
-    // @ts-ignore
-    listEl.classList.add('hidden');
-    // @ts-ignore
-    filterEmptyEl.classList.remove('hidden');
-    // @ts-ignore
-    filterEmptyEl.classList.add('flex');
+    if (listEl) listEl.classList.add('hidden');
+    if (filterEmptyEl) { filterEmptyEl.classList.remove('hidden'); filterEmptyEl.classList.add('flex'); }
     startLiveTickers();
     return;
   }
@@ -625,8 +599,7 @@ function renderFromState() {
   var isTablet = false; /* DISABLED: 태블릿 모드 미완성 */
 
   // Render job list (with inline accordion on tablet)
-  // @ts-ignore
-  listEl.innerHTML = filtered.map(function(j) {
+  if (listEl) listEl.innerHTML = filtered.map(function(j) {
     var isSelected = j.id === selectedJobId;
     var html = renderJobListItem(j, isSelected);
     // Accordion: insert detail panel below selected row on tablet
@@ -639,8 +612,8 @@ function renderFromState() {
   // Render detail panel (desktop only)
   var selectedJob = filtered.find(function(j) { return j.id === selectedJobId; }) || filtered[0];
   if (!isTablet) {
-    // @ts-ignore
-    document.getElementById('job-detail').innerHTML = renderJobDetail(selectedJob);
+    var detailEl = $id('job-detail');
+    if (detailEl) detailEl.innerHTML = renderJobDetail(selectedJob);
   }
 
   // Render mobile activity log (disabled — accordion replaces it)
@@ -683,8 +656,7 @@ function selectJob(id) {
 var tickerInterval = null;
 /** @returns {void} */
 function startLiveTickers() {
-  // @ts-ignore
-  if (tickerInterval) clearInterval(tickerInterval);
+  if (tickerInterval !== null) clearInterval(tickerInterval);
   tickerInterval = setInterval(function() {
     currentJobs.filter(function(j) { return j.status === 'running'; }).forEach(function(job) {
       var dur = fmtDuration(job);
@@ -704,14 +676,10 @@ function fetchStats() {
   apiFetch(buildStatsUrl())
     .then(function(r) { return r.json(); })
     .then(function(stats) {
-      // @ts-ignore
-      if (stats.totalJobs !== undefined) document.getElementById('stat-total').textContent = stats.totalJobs;
-      // @ts-ignore
-      if (stats.successRate !== undefined) document.getElementById('stat-rate').textContent = stats.successRate + '%';
-      // @ts-ignore
-      if (stats.active !== undefined) document.getElementById('stat-active').textContent = stats.active;
-      // @ts-ignore
-      if (stats.failed !== undefined) document.getElementById('stat-failed').textContent = stats.failed;
+      if (stats.totalJobs !== undefined) { var el1 = $id('stat-total'); if (el1) el1.textContent = String(stats.totalJobs); }
+      if (stats.successRate !== undefined) { var el2 = $id('stat-rate'); if (el2) el2.textContent = stats.successRate + '%'; }
+      if (stats.active !== undefined) { var el3 = $id('stat-active'); if (el3) el3.textContent = String(stats.active); }
+      if (stats.failed !== undefined) { var el4 = $id('stat-failed'); if (el4) el4.textContent = String(stats.failed); }
     })
     .catch(function() {});
 }
@@ -739,13 +707,10 @@ function toggleLogTail() {
 
 /** @returns {void} */
 function filterLogs() {
-  var input = document.getElementById('log-search');
-  // @ts-ignore
-  var query = input ? input.value.toLowerCase() : '';
-  var lines = document.querySelectorAll('#logs-detail .log-line');
-  lines.forEach(function(el) {
+  var inputEl = asInput($id('log-search'));
+  var query = inputEl ? inputEl.value.toLowerCase() : '';
+  $$el('#logs-detail .log-line').forEach(function(el) {
     var text = el.getAttribute('data-log-text') || '';
-    // @ts-ignore
     el.style.display = (!query || text.toLowerCase().includes(query)) ? '' : 'none';
   });
 }

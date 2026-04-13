@@ -172,15 +172,15 @@ export function schedulePhases(phases: Phase[], enableParallelPhases: boolean = 
           const currentPhaseIndex = conflictingPhases[i];
           const previousPhaseIndex = conflictingPhases[i - 1];
 
-          // Add dependency: current phase depends on previous phase
-          const currentInDegree = inDegree.get(currentPhaseIndex) || 0;
-          inDegree.set(currentPhaseIndex, currentInDegree + 1);
-
-          // Add to dependents list of previous phase
+          // Add to dependents list of previous phase (skip if already present)
           const deps = dependents.get(previousPhaseIndex) || [];
           if (!deps.includes(currentPhaseIndex)) {
             deps.push(currentPhaseIndex);
             dependents.set(previousPhaseIndex, deps);
+
+            // Increment in-degree only when a new edge is actually added
+            const currentInDegree = inDegree.get(currentPhaseIndex) || 0;
+            inDegree.set(currentPhaseIndex, currentInDegree + 1);
           }
         }
       }

@@ -20,8 +20,7 @@ function navigateTo(view) {
 
   // Update sidebar nav
   document.querySelectorAll('#sidebar-nav a').forEach(function(a) {
-    // @ts-ignore
-    var isActive = a.dataset.nav === view;
+    var isActive = /** @type {HTMLElement} */ (a).dataset.nav === view;
     if (isActive) {
       a.className = 'nav-item-active flex items-center gap-3 rounded-md font-bold px-4 py-3 font-headline text-sm cursor-pointer';
     } else {
@@ -31,8 +30,7 @@ function navigateTo(view) {
 
   // Update top nav
   document.querySelectorAll('header nav a').forEach(function(a) {
-    // @ts-ignore
-    var isActive = a.dataset.nav === view;
+    var isActive = /** @type {HTMLElement} */ (a).dataset.nav === view;
     if (isActive) {
       a.className = 'font-body font-bold tracking-tight text-sm text-primary-container border-b-2 border-primary-container py-5 cursor-pointer';
     } else {
@@ -69,11 +67,11 @@ function navigateTo(view) {
 
 // Bind navigation clicks
 document.addEventListener('click', function(e) {
-  // @ts-ignore
-  var navEl = e.target.closest('[data-nav]');
+  var navEl = e.target instanceof Element ? /** @type {HTMLElement | null} */ (e.target.closest('[data-nav]')) : null;
   if (navEl) {
     e.preventDefault();
-    navigateTo(navEl.dataset.nav);
+    var nav = navEl.dataset.nav;
+    if (nav) navigateTo(nav);
   }
 });
 
@@ -84,16 +82,15 @@ document.addEventListener('click', function(e) {
 function toggleTheme() {
   var html = document.documentElement;
   var isDark = html.classList.contains('dark');
+  var themeBtn = document.getElementById('btn-theme');
   if (isDark) {
     html.classList.remove('dark');
     localStorage.setItem('aqm-theme', 'light');
-    // @ts-ignore
-    document.getElementById('btn-theme').textContent = 'light_mode';
+    if (themeBtn) themeBtn.textContent = 'light_mode';
   } else {
     html.classList.add('dark');
     localStorage.setItem('aqm-theme', 'dark');
-    // @ts-ignore
-    document.getElementById('btn-theme').textContent = 'dark_mode';
+    if (themeBtn) themeBtn.textContent = 'dark_mode';
   }
 }
 
@@ -176,7 +173,7 @@ var currentConfig = null; // 현재 설정 데이터 저장
  */
 function showErrorMessage(message) {
   var container = document.getElementById('settings-content');
-  // @ts-ignore
+  if (!container) return;
   container.innerHTML = '<div class="col-span-full flex items-center justify-center py-16 text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2">error</span>' + message + '</div>';
 }
 
@@ -195,15 +192,13 @@ function loadSettings() {
       if (data.config) {
         currentConfig = data.config;
         // Clear loading state from settings-content
-        // @ts-ignore
-        container.innerHTML = '';
+        if (container) container.innerHTML = '';
         // Try to render settings view with error handling
         try {
           renderSettingsView(data.config);
         } catch (renderError) {
           console.error('Settings render error:', renderError);
-          // @ts-ignore
-          showErrorMessage('설정을 렌더링하는데 실패했습니다: ' + renderError.message);
+          showErrorMessage('설정을 렌더링하는데 실패했습니다: ' + (renderError instanceof Error ? renderError.message : String(renderError)));
         }
       } else {
         showErrorMessage('설정 데이터가 없습니다.');
@@ -222,8 +217,7 @@ function setSettingsTab(tabName) {
   var activeClasses = ['bg-primary/10', 'text-primary', 'shadow-sm'];
   var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
   document.querySelectorAll('.settings-tab-btn').forEach(function(btn) {
-    // @ts-ignore
-    var isActive = btn.dataset.tab === tabName;
+    var isActive = /** @type {HTMLElement} */ (btn).dataset.tab === tabName;
     activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
     inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
   });
@@ -259,8 +253,7 @@ function showButtonState(btn, icon, message, colorClass) {
   if (icon !== 'sync') {
     _btnTimer = setTimeout(function() {
       btn.disabled = false;
-      // @ts-ignore
-      btn.innerHTML = _btnOriginal;
+      btn.innerHTML = _btnOriginal || '';
       btn.className = btn.className.replace(/bg-\S+/g, 'bg-primary');
       _btnOriginal = null;
       _btnTimer = null;
@@ -273,8 +266,7 @@ function saveSettings() {
   var saveBtn = document.getElementById('save-settings-btn');
   if (!saveBtn || !currentConfig) return;
 
-  // @ts-ignore
-  showButtonState(saveBtn, 'sync', t('config.saveState.saving'), 'bg-primary');
+  showButtonState(/** @type {HTMLButtonElement} */ (saveBtn), 'sync', t('config.saveState.saving'), 'bg-primary');
 
   apiFetch('/api/config', {
     method: 'PUT',
@@ -283,19 +275,16 @@ function saveSettings() {
   })
     .then(function(r) {
       if (r.ok) {
-        // @ts-ignore
-        showButtonState(saveBtn, 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
+        showButtonState(/** @type {HTMLButtonElement} */ (saveBtn), 'check', t('config.saveState.saved'), 'bg-[#3fb950]');
         // Update currentConfig without re-rendering UI
         var newData = collectFormData();
-        // @ts-ignore
-        if (newData) Object.assign(currentConfig, newData);
+        if (newData && currentConfig) Object.assign(currentConfig, newData);
       } else {
         throw new Error('Save failed');
       }
     })
     .catch(function() {
-      // @ts-ignore
-      showButtonState(saveBtn, 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
+      showButtonState(/** @type {HTMLButtonElement} */ (saveBtn), 'error', t('config.saveState.saveFailed'), 'bg-[#f85149]');
     });
 }
 
@@ -306,27 +295,24 @@ function collectFormData() {
   if (!currentConfig) return null;
 
   // 변경 가능한 섹션만 수집 (projects 등 복잡한 구조 제외)
-  var result = {};
+  var cfg = /** @type {Record<string, *>} */ (currentConfig);
+  var result = /** @type {Record<string, *>} */ ({});
 
   ['general', 'safety', 'review'].forEach(function(section) {
     var form = document.getElementById(section + '-settings-form');
     if (!form) return;
 
-    // @ts-ignore
-    var sectionData = currentConfig[section] ? JSON.parse(JSON.stringify(currentConfig[section])) : {};
+    var sectionData = cfg[section] ? JSON.parse(JSON.stringify(cfg[section])) : {};
     var inputs = form.querySelectorAll('input, select, textarea');
     inputs.forEach(function(input) {
-      // @ts-ignore
-      var path = input.dataset.configPath;
+      var path = /** @type {HTMLElement} */ (input).dataset.configPath;
       if (!path) return;
 
-      // @ts-ignore
-      var value = getInputValue(input);
+      var value = getInputValue(/** @type {HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement} */ (input));
       // path에서 섹션 prefix 제거 (예: "general.logLevel" → "logLevel")
       var subPath = path.startsWith(section + '.') ? path.slice(section.length + 1) : path;
       setNestedValue(sectionData, subPath, value);
     });
-    // @ts-ignore
     result[section] = sectionData;
   });
 
@@ -340,8 +326,7 @@ function collectFormData() {
 function getInputValue(input) {
   switch (input.type) {
     case 'checkbox':
-      // @ts-ignore
-      return input.checked;
+      return /** @type {HTMLInputElement} */ (input).checked;
     case 'number':
       return parseInt(input.value, 10) || 0;
     default:
@@ -442,8 +427,9 @@ function addProject() {
   var form = document.getElementById('add-project-form');
   if (!form) return;
 
-  // @ts-ignore
-  var formData = new FormData(form);
+  var htmlForm = asForm(form);
+  if (!htmlForm) return;
+  var formData = new FormData(htmlForm);
   var projectData = {
     repo: formData.get('repo'),
     path: formData.get('path')
@@ -456,13 +442,12 @@ function addProject() {
   }
 
   // Show loading state on submit button
-  var submitButton = form.querySelector('button[type="submit"]');
-  // @ts-ignore
-  var originalButtonContent = submitButton.innerHTML;
-  // @ts-ignore
-  submitButton.disabled = true;
-  // @ts-ignore
-  submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>추가 중...</span>';
+  var submitButton = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
+  var originalButtonContent = submitButton ? submitButton.innerHTML : '';
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>추가 중...</span>';
+  }
 
   // Send API request
   apiFetch('/api/projects', {
@@ -474,11 +459,16 @@ function addProject() {
   })
     .then(function(response) {
       if (response.ok) {
-        // Success - clear form and reload settings
-        // @ts-ignore
-        form.reset();
-        loadSettings();
-        showProjectMessage('프로젝트가 성공적으로 추가되었습니다.', 'success');
+        return response.json().then(function(data) {
+          // Success - clear form and reload settings
+          if (htmlForm) htmlForm.reset();
+          loadSettings();
+          var msg = '프로젝트가 성공적으로 추가되었습니다.';
+          if (data.detectedLanguage) {
+            msg += ' <span class="font-bold">[' + esc(data.detectedLanguage) + ' 감지됨]</span>';
+          }
+          showProjectMessage(msg, 'success');
+        });
       } else {
         return response.json().then(function(errorData) {
           throw new Error(errorData.error || '프로젝트 추가에 실패했습니다.');
@@ -490,10 +480,10 @@ function addProject() {
     })
     .finally(function() {
       // Restore submit button
-      // @ts-ignore
-      submitButton.disabled = false;
-      // @ts-ignore
-      submitButton.innerHTML = originalButtonContent;
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonContent;
+      }
     });
 }
 
@@ -567,8 +557,16 @@ function editProject(repo) {
     fieldsHtml += createModalField('모드', 'mode', project.mode || '', false);
   }
 
+  var cmds = project.commands || {};
+  fieldsHtml += '<div class="pt-2 pb-1"><span class="text-[10px] font-black uppercase text-primary tracking-widest">Commands</span></div>';
+  fieldsHtml += createModalField('테스트 (test)', 'cmd_test', cmds.test || '', false);
+  fieldsHtml += createModalField('타입체크 (typecheck)', 'cmd_typecheck', cmds.typecheck || '', false);
+  fieldsHtml += createModalField('사전 설치 (preInstall)', 'cmd_preInstall', cmds.preInstall || '', false);
+  fieldsHtml += createModalField('빌드 (build)', 'cmd_build', cmds.build || '', false);
+  fieldsHtml += createModalField('린트 (lint)', 'cmd_lint', cmds.lint || '', false);
+
   var modalHtml = '<div id="edit-project-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">' +
-    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20">' +
+    '<div class="bg-surface-container-lowest rounded-xl p-6 w-full max-w-md mx-4 border border-outline-variant/20 overflow-y-auto max-h-[90vh]">' +
     '<div class="flex justify-between items-center mb-4">' +
     '<h3 class="text-lg font-bold text-on-surface">프로젝트 편집</h3>' +
     '<button onclick="closeEditProjectModal()" class="text-outline hover:text-on-surface"><span class="material-symbols-outlined">close</span></button>' +
@@ -585,14 +583,15 @@ function editProject(repo) {
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-  // @ts-ignore
-  document.getElementById('edit-project-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    submitEditProject(repo);
-  });
+  var editFormEl = document.getElementById('edit-project-form');
+  if (editFormEl) {
+    editFormEl.addEventListener('submit', function(e) {
+      e.preventDefault();
+      submitEditProject(repo);
+    });
+  }
 
-  var firstInput = document.querySelector('#edit-project-form input[name="path"]');
-  // @ts-ignore
+  var firstInput = /** @type {HTMLElement | null} */ (document.querySelector('#edit-project-form input[name="path"]'));
   if (firstInput) firstInput.focus();
 }
 
@@ -610,26 +609,40 @@ function submitEditProject(repo) {
   var form = document.getElementById('edit-project-form');
   if (!form) return;
 
-  // @ts-ignore
-  var formData = new FormData(form);
-  var updates = {};
+  var htmlForm = asForm(form);
+  if (!htmlForm) return;
+  var formData = new FormData(htmlForm);
+  var updates = /** @type {Record<string, *>} */ ({});
 
   ['path', 'baseBranch', 'mode'].forEach(function(field) {
     var value = formData.get(field);
     if (field === 'path' ? value : value !== null) {
-      // @ts-ignore
       updates[field] = value;
     }
   });
 
+  var commands = {};
+  var hasCommands = false;
+  [['cmd_test', 'test'], ['cmd_typecheck', 'typecheck'], ['cmd_preInstall', 'preInstall'], ['cmd_build', 'build'], ['cmd_lint', 'lint']].forEach(function(pair) {
+    var value = formData.get(pair[0]);
+    if (typeof value === 'string' && value.trim() !== '') {
+      // @ts-ignore
+      commands[pair[1]] = value.trim();
+      hasCommands = true;
+    }
+  });
+  if (hasCommands) {
+    // @ts-ignore
+    updates.commands = commands;
+  }
+
   // Show loading state on submit button
-  var submitButton = form.querySelector('button[type="submit"]');
-  // @ts-ignore
-  var originalButtonContent = submitButton.innerHTML;
-  // @ts-ignore
-  submitButton.disabled = true;
-  // @ts-ignore
-  submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>저장 중...</span>';
+  var submitButton = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
+  var originalButtonContent = submitButton ? submitButton.innerHTML : '';
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>저장 중...</span>';
+  }
 
   // Send PUT request
   apiFetch('/api/projects/' + encodeURIComponent(repo), {
@@ -654,10 +667,10 @@ function submitEditProject(repo) {
     .catch(function(error) {
       showProjectMessage(error.message || '프로젝트 수정 중 오류가 발생했습니다.', 'error');
       // Restore submit button
-      // @ts-ignore
-      submitButton.disabled = false;
-      // @ts-ignore
-      submitButton.innerHTML = originalButtonContent;
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.innerHTML = originalButtonContent;
+      }
     });
 }
 
@@ -700,20 +713,15 @@ var reconnectAttempts = 0;
 function setConnState(state) {
   var dot = document.getElementById('conn-dot');
   var label = document.getElementById('conn-label');
+  if (!dot || !label) return;
   if (state === 'connected') {
-    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-[#3fb950]';
-    // @ts-ignore
     label.textContent = 'Connected';
   } else if (state === 'connecting') {
-    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-pulse';
-    // @ts-ignore
     label.textContent = currentLang === 'ko' ? '연결 중...' : 'Connecting...';
   } else {
-    // @ts-ignore
     dot.className = 'w-2 h-2 rounded-full bg-outline';
-    // @ts-ignore
     label.textContent = 'Disconnected';
   }
 }
@@ -760,8 +768,7 @@ function connectSSE() {
   });
   es.onerror = function() {
     setConnState('disconnected');
-    // @ts-ignore
-    es.close();
+    if (es) es.close();
     reconnectAttempts++;
     reconnectTimer = setTimeout(connectSSE, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
@@ -922,7 +929,7 @@ function adjustPagePadding() {
  * @returns {void}
  */
 function setUpdateButtonState(icon, text, isLoading) {
-  var updateBtn = document.getElementById('update-btn');
+  var updateBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('update-btn'));
   var updateBtnIcon = document.getElementById('update-btn-icon');
   var updateBtnText = document.getElementById('update-btn-text');
 
@@ -938,15 +945,13 @@ function setUpdateButtonState(icon, text, isLoading) {
     updateBtnText.textContent = text;
   }
   if (updateBtn) {
-    // @ts-ignore
     updateBtn.disabled = isLoading;
   }
 }
 
 /** @returns {void} */
 function performUpdate() {
-  var updateBtn = document.getElementById('update-btn');
-  // @ts-ignore
+  var updateBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById('update-btn'));
   if (!updateBtn || updateBtn.disabled) return;
 
   var activeCount = currentJobs.filter(function(j) { return j.status === 'running' || j.status === 'queued'; }).length;
@@ -1040,8 +1045,7 @@ applyTranslations();
 
 // Bind project form submit event
 document.addEventListener('submit', function(e) {
-  // @ts-ignore
-  if (e.target.id === 'add-project-form') {
+  if (e.target instanceof Element && e.target.id === 'add-project-form') {
     e.preventDefault();
     addProject();
   }
@@ -1145,8 +1149,8 @@ function initProjectSelection() {
   document.addEventListener('click', function(e) {
     var dropdown = document.getElementById('project-dropdown');
     var button = document.getElementById('project-selector');
-    // @ts-ignore
-    if (dropdown && button && !dropdown.contains(e.target) && !button.contains(e.target)) {
+    var target = /** @type {Node | null} */ (e.target);
+    if (dropdown && button && !dropdown.contains(target) && !button.contains(target)) {
       dropdown.classList.add('hidden');
     }
 
@@ -1308,8 +1312,7 @@ function renderAutomationsPanel() {
 // SSE/data 업데이트 시 automations 패널도 갱신
 (function() {
   var orig = renderFromState;
-  // @ts-ignore
-  renderFromState = function() {
+  window['renderFromState'] = function() {
     orig();
     renderAutomationsPanel();
   };

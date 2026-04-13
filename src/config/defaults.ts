@@ -15,6 +15,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     pollingIntervalMs: 60000,
     maxJobs: 500,
     autoUpdate: false,
+    serverMode: "hybrid",
   },
   git: {
     defaultBaseBranch: "main",

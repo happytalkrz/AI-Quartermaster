@@ -82,11 +82,12 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
 
 export function startServer(
   app: Hono,
-  port: number = 3000
+  port: number = 3000,
+  hostname: string = "127.0.0.1"
 ): { close: () => void } {
   let server: ReturnType<typeof serve>;
   try {
-    server = serve({ fetch: app.fetch, port });
+    server = serve({ fetch: app.fetch, port, hostname });
   } catch (err: unknown) {
     if (err instanceof Error && (err as NodeJS.ErrnoException).code === "EADDRINUSE") {
       logger.warn(`포트 ${port}가 이미 사용 중입니다 (EADDRINUSE)`);
@@ -94,7 +95,7 @@ export function startServer(
     }
     throw err;
   }
-  logger.info(`AI Quartermaster server listening on port ${port}`);
+  logger.info(`AI Quartermaster server listening on ${hostname}:${port}`);
   return {
     close: () => {
       // @hono/node-server returns a Node http.Server

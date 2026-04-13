@@ -197,8 +197,9 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     ctx.baseline = await captureErrorBaseline(ctx.cwd, {
       typecheck: ctx.config.commands.typecheck,
       lint: ctx.config.commands.lint,
+      test: ctx.config.commands.test,
     });
-    logger.info(`Baseline captured: tsc=${ctx.baseline.tsc.totalErrors} errors, eslint=${ctx.baseline.eslint.totalErrors} errors`);
+    logger.info(`Baseline captured: tsc=${ctx.baseline.tsc.totalErrors} errors, eslint=${ctx.baseline.eslint.totalErrors} errors, test failures=${ctx.baseline.test?.failedFiles.length ?? "not captured"}, capture warnings=${ctx.baseline.captureWarnings?.length ?? 0}`);
   }
 
   // Step 1: Generate plan

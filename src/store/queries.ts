@@ -1,6 +1,11 @@
 import type { AQDatabase } from "./database.js";
 import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse, GetFailureReasonsQuery, FailureReasonsResponse } from "../types/api.js";
 import { classifyError } from "../pipeline/errors/error-classifier.js";
+import type { PatternStore } from "../learning/pattern-store.js";
+
+export interface FailureReasonsWithPatternsResponse extends FailureReasonsResponse {
+  recurringPatterns: string[];
+}
 
 // SQLite row types for query results
 interface StatsRow {
@@ -260,7 +265,7 @@ interface FailureErrorRow {
   error: string;
 }
 
-export function getFailureReasons(aqDb: AQDatabase, query: GetFailureReasonsQuery): FailureReasonsResponse {
+export function getFailureReasons(aqDb: AQDatabase, query: GetFailureReasonsQuery, patternStore?: PatternStore): FailureReasonsWithPatternsResponse {
   const { project, window: timeWindow, top } = query;
   const cutoff = getTimeRangeCutoff(timeWindow);
   const { sql: whereBase, params } = buildWhereClause(project, cutoff);
@@ -309,11 +314,20 @@ export function getFailureReasons(aqDb: AQDatabase, query: GetFailureReasonsQuer
     recentErrors,
   }));
 
+  let recurringPatterns: string[] = [];
+  if (patternStore) {
+    const patternStats = patternStore.getStats(project);
+    recurringPatterns = Array.from(categoryMap.keys()).filter(
+      category => (patternStats.byCategory[category] ?? 0) > 0
+    );
+  }
+
   return {
     reasons,
     total,
     window: timeWindow,
     project: project ?? null,
+    recurringPatterns,
   };
 }
 

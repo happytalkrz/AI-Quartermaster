@@ -65,6 +65,19 @@
  * @property {string} [issueTitle]
  * @property {number} [cacheHitRatio]
  * @property {string} [branchName]
+ * @property {string} [triggerReason]
+ */
+
+/**
+ * 스킵된 이벤트 기록
+ * @typedef {Object} SkipEvent
+ * @property {number} [id]
+ * @property {number} issueNumber
+ * @property {string} repo
+ * @property {string} reasonCode
+ * @property {string} reasonMessage
+ * @property {'webhook'|'polling'} source
+ * @property {string} createdAt
  */
 
 /**

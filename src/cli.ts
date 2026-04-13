@@ -404,8 +404,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
       config: effectiveConfig,
       webhookSecret,
       store,
-      onPipelineTrigger: (issueNumber, repo, dependencies) => {
-        queue.enqueue(issueNumber, repo, dependencies);
+      onPipelineTrigger: (issueNumber, repo, dependencies, triggerReason) => {
+        queue.enqueue(issueNumber, repo, dependencies, undefined, undefined, undefined, triggerReason);
       },
     });
     app.route("/", dashboardRoutes);

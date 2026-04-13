@@ -141,7 +141,7 @@ describe("createWebhookApp", () => {
     expect(json.status).toBe("accepted");
     expect(json.issueNumber).toBe(42);
     expect(json.repo).toBe("test/repo");
-    expect(onPipelineTrigger).toHaveBeenCalledWith(42, "test/repo", undefined);
+    expect(onPipelineTrigger).toHaveBeenCalledWith(42, "test/repo", undefined, undefined);
   });
 
   it("calls onPipelineTrigger with dependencies when present", async () => {
@@ -159,7 +159,7 @@ describe("createWebhookApp", () => {
     const res = await app.request(makeRequest(body, "sha256=valid"));
 
     expect(res.status).toBe(202);
-    expect(onPipelineTrigger).toHaveBeenCalledWith(42, "test/repo", [10, 20]);
+    expect(onPipelineTrigger).toHaveBeenCalledWith(42, "test/repo", [10, 20], undefined);
   });
 
   it("returns 200 with ignored status when event should not be processed", async () => {

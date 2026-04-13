@@ -271,6 +271,78 @@ describe("buildCostBreakdown", () => {
     });
   });
 
+  describe("pseudo-phase 비용 집계", () => {
+    it("setup:worktree 비용이 setupCostUsd에 집계된다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -2, phaseName: "setup:worktree", costUsd: 0.01 }),
+        makePhaseResult({ phaseIndex: 0, costUsd: 0.02 }),
+      ];
+      const result = buildCostBreakdown(0.005, phaseResults);
+      expect(result.setupCostUsd).toBeCloseTo(0.01, 6);
+    });
+
+    it("setup:dependency 비용이 setupCostUsd에 집계된다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -3, phaseName: "setup:dependency", costUsd: 0.008 }),
+        makePhaseResult({ phaseIndex: 0, costUsd: 0.02 }),
+      ];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.setupCostUsd).toBeCloseTo(0.008, 6);
+    });
+
+    it("setup:worktree + setup:dependency 비용이 합산된다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -2, phaseName: "setup:worktree", costUsd: 0.005 }),
+        makePhaseResult({ phaseIndex: -3, phaseName: "setup:dependency", costUsd: 0.003 }),
+      ];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.setupCostUsd).toBeCloseTo(0.008, 6);
+    });
+
+    it("publish:pr 비용이 publishCostUsd에 집계된다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -10, phaseName: "publish:pr", costUsd: 0.007 }),
+      ];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.publishCostUsd).toBeCloseTo(0.007, 6);
+    });
+
+    it("pseudo-phase 비용이 totalCostUsd에 포함된다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -2, phaseName: "setup:worktree", costUsd: 0.005 }),
+        makePhaseResult({ phaseIndex: -10, phaseName: "publish:pr", costUsd: 0.003 }),
+        makePhaseResult({ phaseIndex: 0, costUsd: 0.02 }),
+      ];
+      const result = buildCostBreakdown(0.01, phaseResults, 0.002);
+      // 0.01 + 0.005 + 0.003 + 0.02 + 0.002 = 0.04
+      expect(result.totalCostUsd).toBeCloseTo(0.04, 6);
+    });
+
+    it("pseudo-phase는 phaseCosts에 포함되지 않는다", () => {
+      const phaseResults = [
+        makePhaseResult({ phaseIndex: -2, phaseName: "setup:worktree", costUsd: 0.005 }),
+        makePhaseResult({ phaseIndex: -3, phaseName: "setup:dependency", costUsd: 0.003 }),
+        makePhaseResult({ phaseIndex: -10, phaseName: "publish:pr", costUsd: 0.007 }),
+        makePhaseResult({ phaseIndex: 0, phaseName: "Phase 1", costUsd: 0.02 }),
+      ];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.phaseCosts).toHaveLength(1);
+      expect(result.phaseCosts[0].phaseName).toBe("Phase 1");
+    });
+
+    it("setupCostUsd가 0이면 undefined로 반환된다", () => {
+      const phaseResults = [makePhaseResult({ phaseIndex: 0, costUsd: 0.02 })];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.setupCostUsd).toBeUndefined();
+    });
+
+    it("publishCostUsd가 0이면 undefined로 반환된다", () => {
+      const phaseResults = [makePhaseResult({ phaseIndex: 0, costUsd: 0.02 })];
+      const result = buildCostBreakdown(0, phaseResults);
+      expect(result.publishCostUsd).toBeUndefined();
+    });
+  });
+
   describe("edge case", () => {
     it("phaseResults에 비용 필드가 일부만 있는 경우 합산이 정상 동작한다", () => {
       const phaseResults = [

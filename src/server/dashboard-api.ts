@@ -1,5 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
+import { SessionManager } from "./auth/session.js";
 import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
@@ -21,9 +22,8 @@ import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 
-// In-memory session token store: token → expiry timestamp
-const sessionTokens = new Map<string, number>();
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Session manager: in-memory token store with TTL and periodic pruning
+const sessionManager = new SessionManager();
 
 // SSE client management
 interface SSEClient {
@@ -113,12 +113,6 @@ function broadcastToAllClients(event: string, data: unknown): void {
   }
 }
 
-function pruneExpiredTokens(): void {
-  const now = Date.now();
-  for (const [token, expiry] of sessionTokens) {
-    if (now > expiry) sessionTokens.delete(token);
-  }
-}
 
 function sendHeartbeat(): void {
   const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
@@ -143,7 +137,7 @@ function startPeriodicCleanup(): void {
 
   // Start token cleanup interval
   tokenCleanupInterval = setInterval(() => {
-    pruneExpiredTokens();
+    sessionManager.pruneExpired();
   }, TOKEN_CLEANUP_INTERVAL_MS);
 
   // Start heartbeat interval
@@ -185,13 +179,11 @@ export function cleanupAllSSEClients(): void {
 export function cleanupDashboardResources(): void {
   stopPeriodicCleanup();
   cleanupAllSSEClients();
-  sessionTokens.clear();
+  sessionManager.revokeAll();
 }
 
 function isValidSessionToken(token: string): boolean {
-  pruneExpiredTokens();
-  const expiry = sessionTokens.get(token);
-  return expiry !== undefined && Date.now() <= expiry;
+  return sessionManager.validate(token);
 }
 
 /**
@@ -409,10 +401,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
-      pruneExpiredTokens();
-      const token = randomUUID();
-      sessionTokens.set(token, Date.now() + SESSION_TTL_MS);
-      return c.json({ token, expiresIn: SESSION_TTL_MS });
+      const { token, expiresIn } = sessionManager.createToken();
+      return c.json({ token, expiresIn });
     });
 
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only

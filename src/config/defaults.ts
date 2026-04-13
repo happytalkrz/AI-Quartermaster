@@ -25,6 +25,14 @@ export const DEFAULT_CONFIG: AQConfig = {
     maxJobs: 500,
     autoUpdate: false,
     serverMode: "hybrid",
+    dashboardAuth: {
+      rateLimit: {
+        maxAttempts: 5,
+        windowMs: 900000,
+        blockDurationMs: 900000,
+      },
+      sessionTtlMs: 3600000,
+    },
   },
   git: {
     defaultBaseBranch: "main",

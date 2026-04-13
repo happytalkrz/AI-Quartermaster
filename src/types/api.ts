@@ -373,6 +373,74 @@ export const CostBreakdownResponseSchema = z.object({
 
 export type CostBreakdownResponse = z.infer<typeof CostBreakdownResponseSchema>;
 
+// GetFailureReasons 쿼리 스키마 (GET /api/stats/failure-reasons)
+export const GetFailureReasonsQuerySchema = z.object({
+  project: z.string().optional(),
+  window: z.enum(["24h", "7d", "30d", "all"]).default("7d"),
+  top: z.coerce.number().int().min(1).max(50).default(10),
+}).strict();
+
+export type GetFailureReasonsQuery = z.infer<typeof GetFailureReasonsQuerySchema>;
+
+// FailureReasonEntry — 카테고리별 실패 집계 항목
+export const FailureReasonEntrySchema = z.object({
+  category: z.string(),
+  count: z.number().int().nonnegative(),
+  percentage: z.number().min(0).max(100),
+  recentErrors: z.array(z.string()),
+});
+
+export type FailureReasonEntry = z.infer<typeof FailureReasonEntrySchema>;
+
+// FailureReasonsResponse 응답 타입 (GET /api/stats/failure-reasons)
+export const FailureReasonsResponseSchema = z.object({
+  reasons: z.array(FailureReasonEntrySchema),
+  total: z.number().int().nonnegative(),
+  window: z.enum(["24h", "7d", "30d", "all"]),
+  project: z.string().nullable(),
+});
+
+export type FailureReasonsResponse = z.infer<typeof FailureReasonsResponseSchema>;
+
+// GetMetrics 쿼리 스키마 (GET /api/metrics/throughput, GET /api/metrics/success-rate)
+export const GetMetricsQuerySchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]).default("7d"),
+  project: z.string().optional(),
+}).strict();
+
+export type GetMetricsQuery = z.infer<typeof GetMetricsQuerySchema>;
+
+// ThroughputResponse 응답 타입 (GET /api/metrics/throughput)
+export const ThroughputSeriesEntrySchema = z.object({
+  date: z.string(), // YYYY-MM-DD
+  count: z.number().int().nonnegative(),
+});
+
+export type ThroughputSeriesEntry = z.infer<typeof ThroughputSeriesEntrySchema>;
+
+export const ThroughputResponseSchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]),
+  project: z.string().nullable(),
+  series: z.array(ThroughputSeriesEntrySchema),
+});
+
+export type ThroughputResponse = z.infer<typeof ThroughputResponseSchema>;
+
+// SuccessRateResponse 응답 타입 (GET /api/metrics/success-rate)
+export const SuccessRateResponseSchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]),
+  project: z.string().nullable(),
+  total: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  retrySuccessCount: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(100),
+  failureRate: z.number().min(0).max(100),
+  retrySuccessRate: z.number().min(0).max(100),
+});
+
+export type SuccessRateResponse = z.infer<typeof SuccessRateResponseSchema>;
+
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({

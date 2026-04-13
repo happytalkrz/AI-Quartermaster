@@ -17,6 +17,8 @@ export interface SafetyContext {
   gitConfig: GitConfig;
   cwd: string;
   baseBranch: string;
+  issueBody?: string;
+  issueLabels?: string[];
 }
 
 /**
@@ -60,7 +62,10 @@ export async function validateBeforePush(ctx: SafetyContext): Promise<void> {
   const diffStats = await collectDiff(ctx.gitConfig, ctx.baseBranch, { cwd: ctx.cwd });
 
   // Check sensitive paths
-  checkSensitivePaths(diffStats.changedFiles, ctx.safetyConfig.sensitivePaths);
+  checkSensitivePaths(diffStats.changedFiles, ctx.safetyConfig.sensitivePaths, {
+    issueBody: ctx.issueBody,
+    labels: ctx.issueLabels,
+  });
 
   // Check change limits — warn only, do not block (draft PR can be discarded)
   try {

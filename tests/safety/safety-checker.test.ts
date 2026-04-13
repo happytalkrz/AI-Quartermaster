@@ -230,7 +230,8 @@ describe("safety-checker", () => {
       );
       expect(mockCheckSensitivePaths).toHaveBeenCalledWith(
         ["src/app.ts", "tests/app.test.ts"],
-        ["**/*.env", "**/*.pem"]
+        ["**/*.env", "**/*.pem"],
+        { issueBody: undefined, labels: undefined }
       );
       expect(mockCheckChangeLimits).toHaveBeenCalledWith(
         { filesChanged: 5, insertions: 50, deletions: 20 },

@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand, statsCommand, cleanupCommand, planCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
 import { runPipeline } from "../src/pipeline/core/orchestrator.js";
@@ -8,9 +11,9 @@ import { runDoctor } from "../src/setup/doctor.js";
 import { runCli } from "../src/utils/cli-runner.js";
 import { IssuePoller } from "../src/polling/issue-poller.js";
 import { createWebhookApp, startServer } from "../src/server/webhook-server.js";
-import { createDashboardRoutes } from "../src/server/dashboard-api.js";
+import { createDashboardRoutes, cleanupDashboardResources } from "../src/server/dashboard-api.js";
 import { createHealthRoutes } from "../src/server/health.js";
-import { cleanupStalePid, writePidFile, readPidFile } from "../src/server/pid-manager.js";
+import { cleanupStalePid, writePidFile, readPidFile, removePidFile } from "../src/server/pid-manager.js";
 import { ConfigWatcher } from "../src/config/config-watcher.js";
 import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
 import { PatternStore } from "../src/learning/pattern-store.js";
@@ -61,6 +64,7 @@ vi.mock("../src/server/webhook-server.js", () => ({
 vi.mock("../src/server/dashboard-api.js", () => ({
   createDashboardRoutes: vi.fn(),
   applyConfigChanges: vi.fn(),
+  cleanupDashboardResources: vi.fn(),
 }));
 vi.mock("../src/server/health.js", () => ({
   createHealthRoutes: vi.fn(),
@@ -1271,5 +1275,243 @@ describe("planCommand", () => {
     expect(JobStore).toHaveBeenCalled();
     expect(JobQueue).toHaveBeenCalled();
     expect(enqueueMock).toHaveBeenCalledWith(7, "owner/repo", []);
+  });
+});
+
+describe("startCommand — gracefulShutdown", () => {
+  const mockConfigWithProject = {
+    ...mockBaseConfig,
+    projects: [{ repo: "owner/repo", path: "/tmp", baseBranch: "main" }],
+  } as unknown as ReturnType<typeof loadConfig>;
+
+  let mockPollerStop: ReturnType<typeof vi.fn>;
+  let mockQueueShutdown: ReturnType<typeof vi.fn>;
+  let mockConfigWatcherStop: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+
+    mockPollerStop = vi.fn();
+    vi.mocked(IssuePoller).mockImplementation(() => ({
+      start: vi.fn(),
+      stop: mockPollerStop,
+      isRunning: vi.fn().mockReturnValue(false),
+    } as unknown as IssuePoller));
+
+    mockQueueShutdown = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(JobQueue).mockImplementation(() => ({
+      recover: vi.fn(),
+      shutdown: mockQueueShutdown,
+      enqueue: vi.fn(),
+    } as unknown as JobQueue));
+
+    vi.mocked(JobStore).mockImplementation(() => ({
+      prune: vi.fn(),
+      list: vi.fn().mockReturnValue([]),
+    } as unknown as JobStore));
+
+    vi.mocked(createWebhookApp).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createWebhookApp>);
+    vi.mocked(createDashboardRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as ReturnType<typeof createDashboardRoutes>);
+    vi.mocked(createHealthRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createHealthRoutes>);
+    vi.mocked(cleanupStalePid).mockReturnValue(true);
+
+    mockConfigWatcherStop = vi.fn();
+    vi.mocked(ConfigWatcher).mockImplementation(() => ({
+      on: vi.fn(),
+      startWatching: vi.fn(),
+      stopWatching: mockConfigWatcherStop,
+    } as unknown as ConfigWatcher));
+
+    vi.mocked(runCli).mockResolvedValue({ stdout: "0\n", stderr: "", exitCode: 0 });
+    vi.mocked(removePidFile).mockImplementation(() => {});
+    vi.mocked(cleanupDashboardResources).mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    process.removeAllListeners("SIGINT");
+    process.removeAllListeners("SIGTERM");
+    vi.restoreAllMocks();
+  });
+
+  it("startCommand 실행 후 SIGINT, SIGTERM 핸들러가 등록됨", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    await startCommand({});
+
+    const sigintRegistered = onSpy.mock.calls.some(([event]) => event === "SIGINT");
+    const sigtermRegistered = onSpy.mock.calls.some(([event]) => event === "SIGTERM");
+    expect(sigintRegistered).toBe(true);
+    expect(sigtermRegistered).toBe(true);
+  });
+
+  it("SIGINT 수신 시 poller.stop, configWatcher.stopWatching, queue.shutdown, removePidFile, process.exit(0) 호출", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    // SIGINT 핸들러를 직접 추출하여 호출
+    const sigintCall = onSpy.mock.calls.find(([event]) => event === "SIGINT");
+    const sigintHandler = sigintCall?.[1] as (() => void) | undefined;
+    expect(sigintHandler).toBeDefined();
+
+    sigintHandler!();
+    // gracefulShutdown이 async이므로 마이크로태스크 큐를 비운다
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mockPollerStop).toHaveBeenCalled();
+    expect(mockConfigWatcherStop).toHaveBeenCalled();
+    expect(mockQueueShutdown).toHaveBeenCalledWith(30000);
+    expect(removePidFile).toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("SIGTERM 수신 시 queue.shutdown 및 process.exit(0) 호출", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    const sigtermCall = onSpy.mock.calls.find(([event]) => event === "SIGTERM");
+    const sigtermHandler = sigtermCall?.[1] as (() => void) | undefined;
+    expect(sigtermHandler).toBeDefined();
+
+    sigtermHandler!();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mockQueueShutdown).toHaveBeenCalledWith(30000);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("webhook 모드에서는 poller가 null이므로 SIGINT 시 poller.stop 미호출", async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...mockConfigWithProject,
+      general: { ...mockBaseConfig.general, serverMode: "webhook" },
+    } as unknown as ReturnType<typeof loadConfig>);
+
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    const sigintCall = onSpy.mock.calls.find(([event]) => event === "SIGINT");
+    const sigintHandler = sigintCall?.[1] as (() => void) | undefined;
+    sigintHandler!();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mockPollerStop).not.toHaveBeenCalled();
+    expect(mockQueueShutdown).toHaveBeenCalledWith(30000);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("startCommand — .env 로딩", () => {
+  const mockConfigWithProject = {
+    ...mockBaseConfig,
+    projects: [{ repo: "owner/repo", path: "/tmp", baseBranch: "main" }],
+  } as unknown as ReturnType<typeof loadConfig>;
+
+  let tmpDir: string;
+
+  beforeEach(() => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
+
+    tmpDir = mkdtempSync(join(tmpdir(), "aqm-env-test-"));
+
+    vi.mocked(IssuePoller).mockImplementation(() => ({
+      start: vi.fn(),
+      stop: vi.fn(),
+      isRunning: vi.fn().mockReturnValue(false),
+    } as unknown as IssuePoller));
+    vi.mocked(JobStore).mockImplementation(() => ({
+      prune: vi.fn(),
+      list: vi.fn().mockReturnValue([]),
+    } as unknown as JobStore));
+    vi.mocked(JobQueue).mockImplementation(() => ({
+      recover: vi.fn(),
+      shutdown: vi.fn().mockResolvedValue(undefined),
+      enqueue: vi.fn(),
+    } as unknown as JobQueue));
+    vi.mocked(createWebhookApp).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createWebhookApp>);
+    vi.mocked(createDashboardRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      delete: vi.fn(),
+    } as unknown as ReturnType<typeof createDashboardRoutes>);
+    vi.mocked(createHealthRoutes).mockReturnValue({
+      route: vi.fn(),
+      get: vi.fn(),
+    } as unknown as ReturnType<typeof createHealthRoutes>);
+    vi.mocked(cleanupStalePid).mockReturnValue(true);
+    vi.mocked(ConfigWatcher).mockImplementation(() => ({
+      on: vi.fn(),
+      startWatching: vi.fn(),
+      stopWatching: vi.fn(),
+    } as unknown as ConfigWatcher));
+    vi.mocked(runCli).mockResolvedValue({ stdout: "0\n", stderr: "", exitCode: 0 });
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_WEBHOOK_SECRET;
+    delete process.env.AQM_TEST_ENV_VAR;
+    delete process.env.AQM_TEST_QUOTED;
+    delete process.env.AQM_TEST_SINGLE_QUOTED;
+    rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it(".env 파일이 없으면 process.env에 영향 없음", async () => {
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_ENV_VAR).toBeUndefined();
+  });
+
+  it(".env 파일의 KEY=VALUE가 process.env에 로드됨", async () => {
+    writeFileSync(join(tmpDir, ".env"), "AQM_TEST_ENV_VAR=hello_world\n");
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_ENV_VAR).toBe("hello_world");
+  });
+
+  it("값에 큰따옴표가 있으면 제거됨", async () => {
+    writeFileSync(join(tmpDir, ".env"), 'AQM_TEST_QUOTED="quoted_value"\n');
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_QUOTED).toBe("quoted_value");
+  });
+
+  it("값에 작은따옴표가 있으면 제거됨", async () => {
+    writeFileSync(join(tmpDir, ".env"), "AQM_TEST_SINGLE_QUOTED='single_quoted'\n");
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_SINGLE_QUOTED).toBe("single_quoted");
+  });
+
+  it("이미 설정된 환경변수는 덮어쓰지 않음", async () => {
+    process.env.AQM_TEST_ENV_VAR = "existing_value";
+    writeFileSync(join(tmpDir, ".env"), "AQM_TEST_ENV_VAR=new_value\n");
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_ENV_VAR).toBe("existing_value");
+  });
+
+  it("주석 행(#)은 무시됨", async () => {
+    writeFileSync(join(tmpDir, ".env"), "# this is a comment\nAQM_TEST_ENV_VAR=from_env\n");
+    await startCommand({ config: join(tmpDir, "config.yml") });
+    expect(process.env.AQM_TEST_ENV_VAR).toBe("from_env");
   });
 });

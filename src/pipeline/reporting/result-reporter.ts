@@ -1,4 +1,4 @@
-import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport } from "../../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport, CostBreakdown } from "../../types/pipeline.js";
 import { getLogger } from "../../utils/logger.js";
 
 export type { DiagnosisReport };
@@ -31,6 +31,8 @@ export interface PipelineReport {
   diagnosis?: DiagnosisReport;
   /** baseline 캡처 실패로 인해 검증이 불완전한 경우 경고 목록 */
   verificationIncomplete?: string[];
+  /** phase/model별 비용 세분화 (Total 분해 출력용) */
+  costBreakdown?: CostBreakdown;
 }
 
 /**
@@ -102,6 +104,18 @@ export function printResult(report: PipelineReport): void {
 
   if (report.prUrl) {
     console.log(`\nPR: ${report.prUrl}`);
+  }
+
+  if (report.costBreakdown) {
+    const bd = report.costBreakdown;
+    const phaseTotal = bd.phaseCosts.reduce((sum, p) => sum + p.costUsd + p.retryCostUsd, 0);
+    console.log(`\nCost: $${bd.totalCostUsd.toFixed(4)}`);
+    if (bd.planCostUsd > 0) console.log(`  plan     $${bd.planCostUsd.toFixed(4)}`);
+    if (phaseTotal > 0) console.log(`  phases   $${phaseTotal.toFixed(4)}`);
+    if (bd.reviewCostUsd > 0) console.log(`  review   $${bd.reviewCostUsd.toFixed(4)}`);
+    if (bd.setupCostUsd && bd.setupCostUsd > 0) console.log(`  setup    $${bd.setupCostUsd.toFixed(4)}`);
+    if (bd.publishCostUsd && bd.publishCostUsd > 0) console.log(`  publish  $${bd.publishCostUsd.toFixed(4)}`);
+    if (bd.overheadCostUsd && bd.overheadCostUsd > 0) console.log(`  overhead $${bd.overheadCostUsd.toFixed(4)}`);
   }
 
   if (report.verificationIncomplete && report.verificationIncomplete.length > 0) {

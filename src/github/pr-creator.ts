@@ -28,18 +28,31 @@ export interface PrContext {
 }
 
 export function buildPhaseCostTable(breakdown?: CostBreakdown): string {
-  if (!breakdown?.phaseCosts.length) return '';
-  const rows = breakdown.phaseCosts.map(p =>
-    `| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |`
-  ).join('\n');
-  return `\n### Phase Cost Breakdown\n\n| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|\n${rows}\n`;
+  if (!breakdown) return '';
+  const rows: string[] = [];
+  for (const p of breakdown.phaseCosts) {
+    rows.push(`| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |`);
+  }
+  if (breakdown.setupCostUsd && breakdown.setupCostUsd > 0) {
+    rows.push(`| setup | $${breakdown.setupCostUsd.toFixed(4)} | - | - |`);
+  }
+  if (breakdown.publishCostUsd && breakdown.publishCostUsd > 0) {
+    rows.push(`| publish | $${breakdown.publishCostUsd.toFixed(4)} | - | - |`);
+  }
+  if (breakdown.overheadCostUsd && breakdown.overheadCostUsd > 0) {
+    rows.push(`| overhead | $${breakdown.overheadCostUsd.toFixed(4)} | - | - |`);
+  }
+  if (!rows.length) return '';
+  return `\n### Phase Cost Breakdown\n\n| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|\n${rows.join('\n')}\n`;
 }
 
 export function buildModelSummary(breakdown?: CostBreakdown): string {
   if (!breakdown?.modelSummary.length) return '';
-  const rows = breakdown.modelSummary.map(m =>
-    `| ${m.model} | $${m.costUsd.toFixed(4)} |`
-  ).join('\n');
+  const rows = breakdown.modelSummary
+    .filter(m => m.costUsd > 0)
+    .map(m => `| ${m.model} | $${m.costUsd.toFixed(4)} |`)
+    .join('\n');
+  if (!rows) return '';
   return `\n### Model Usage\n\n| Model | Cost |\n|-------|------|\n${rows}\n`;
 }
 

@@ -202,6 +202,7 @@ const generalConfigSchema = z.object({
   pollingIntervalMs: z.number().int().min(10000),
   maxJobs: z.number().int().min(1),
   autoUpdate: z.boolean().default(false),
+  serverMode: z.enum(["polling", "webhook", "hybrid"]).default("hybrid"),
 });
 
 const gitConfigSchema = z.object({

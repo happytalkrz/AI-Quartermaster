@@ -35,6 +35,7 @@ export interface GeneralConfig {
   pollingIntervalMs: number;
   maxJobs: number;
   autoUpdate: boolean;
+  serverMode: ServerMode;
 }
 
 export interface GitConfig {
@@ -196,7 +197,7 @@ export interface ExecutionModePreset {
 
 export type PipelineMode = "code" | "content";
 export type ExecutionMode = "economy" | "standard" | "thorough";
-export type ServerMode = "polling" | "webhook";
+export type ServerMode = "polling" | "webhook" | "hybrid";
 
 /** Setup wizard options */
 export interface SetupOptions {

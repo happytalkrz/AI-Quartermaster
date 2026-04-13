@@ -6,10 +6,18 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
   workers: 1,
-  reporter: 'list',
+  reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'list',
+  snapshotPathTemplate: '{testDir}/__snapshots__/{testFilePath}/{arg}{ext}',
+  updateSnapshots: process.env['CI'] ? 'none' : 'missing',
   use: {
     baseURL: 'http://localhost:3100',
     trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixelRatio: 0.02,
+    },
   },
   projects: [
     {

@@ -11,7 +11,7 @@ import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
@@ -437,6 +437,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/version", bearerAuth);
     api.use("/api/update", bearerAuth);
     api.use("/api/health", bearerAuth);
+    api.use("/api/skip-events", bearerAuth);
+    api.use("/api/skip-events/*", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -918,6 +920,65 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     const deleted = store.remove(id);
     if (!deleted) return c.json({ error: "Failed to delete" }, 500);
     return c.json({ status: "deleted", id });
+  });
+
+  // Skip events stats (reasonCode별 집계)
+  api.get("/api/skip-events/stats", (c) => {
+    try {
+      const repo = c.req.query("repo");
+      const allEvents = store.listSkipEvents(repo ? { repo } : undefined);
+
+      const reasonCodeCounts: Record<string, number> = {};
+      for (const event of allEvents) {
+        reasonCodeCounts[event.reasonCode] = (reasonCodeCounts[event.reasonCode] ?? 0) + 1;
+      }
+
+      const stats = Object.entries(reasonCodeCounts)
+        .map(([reasonCode, count]) => ({ reasonCode, count }))
+        .sort((a, b) => b.count - a.count);
+
+      return c.json({ total: allEvents.length, stats });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch skip event stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // List skip events
+  api.get("/api/skip-events", (c) => {
+    try {
+      const queryParams = {
+        repo: c.req.query("repo"),
+        limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
+        offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
+      };
+
+      const parseResult = GetSkipEventsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const { repo, limit, offset } = parseResult.data;
+      const allEvents = store.listSkipEvents(repo ? { repo } : undefined);
+      const total = allEvents.length;
+      const start = offset ?? 0;
+      const end = limit !== undefined ? start + limit : total;
+      const events = allEvents.slice(start, end);
+
+      return c.json({
+        events,
+        pagination: {
+          total,
+          offset: start,
+          limit: limit ?? total,
+          hasMore: end < total,
+        }
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch skip events: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
   });
 
   // Aggregate stats

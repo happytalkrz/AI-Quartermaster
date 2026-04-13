@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync } from "fs";
 import { getLogger } from "../utils/logger.js";
 import { AQM_HOME } from "../config/project-resolver.js";
-import type { JobPriority, CostBreakdown } from "../types/pipeline.js";
+import type { JobPriority, CostBreakdown, SkipEvent, DiagnosisReport } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -32,6 +32,18 @@ interface JobRow {
   cache_hit_ratio: number | null;
   priority: string | null;
   cost_breakdown: string | null;
+  trigger_reason: string | null;
+  diagnosis: string | null;
+}
+
+interface SkipEventRow {
+  id: number;
+  issue_number: number;
+  repo: string;
+  reason_code: string;
+  reason_message: string;
+  source: string;
+  created_at: string;
 }
 
 interface PhaseRow {
@@ -87,6 +99,10 @@ export interface DatabaseJob {
   cacheHitRatio?: number;
   /** phase/model별 비용 세분화 */
   costBreakdown?: CostBreakdown;
+  /** 이슈가 처리된 사유 (트리거 원인) */
+  triggerReason?: string;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
 }
 
 export interface DatabasePhase {
@@ -166,7 +182,9 @@ export class AQDatabase {
         total_cache_read_input_tokens INTEGER CHECK (total_cache_read_input_tokens >= 0),
         cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1),
         priority TEXT CHECK (priority IN ('high', 'normal', 'low')),
-        cost_breakdown TEXT
+        cost_breakdown TEXT,
+        trigger_reason TEXT,
+        diagnosis TEXT
       )
     `);
 
@@ -203,6 +221,19 @@ export class AQDatabase {
       )
     `);
 
+    // skip_events 테이블
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS skip_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        issue_number INTEGER NOT NULL,
+        repo TEXT NOT NULL,
+        reason_code TEXT NOT NULL,
+        reason_message TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('webhook', 'polling')),
+        created_at TEXT NOT NULL
+      )
+    `);
+
     // 인덱스 생성
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_jobs_issue_repo ON jobs (issue_number, repo);
@@ -213,6 +244,8 @@ export class AQDatabase {
       CREATE INDEX IF NOT EXISTS idx_phases_job_id ON phases (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_job_id ON logs (job_id);
       CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs (timestamp);
+      CREATE INDEX IF NOT EXISTS idx_skip_events_issue_repo ON skip_events (issue_number, repo);
+      CREATE INDEX IF NOT EXISTS idx_skip_events_created_at ON skip_events (created_at);
     `);
 
     // WAL 모드 활성화 (동시성 향상)
@@ -260,6 +293,20 @@ export class AQDatabase {
       this.db.exec(`ALTER TABLE jobs ADD COLUMN cost_breakdown TEXT`);
       logger.info("Migration: added cost_breakdown column to jobs table");
     }
+
+    // jobs 테이블에 trigger_reason 컬럼 추가 (기존 DB 마이그레이션)
+    const hasTriggerReason = jobColumns.some(col => col.name === "trigger_reason");
+    if (!hasTriggerReason) {
+      this.db.exec(`ALTER TABLE jobs ADD COLUMN trigger_reason TEXT`);
+      logger.info("Migration: added trigger_reason column to jobs table");
+    }
+
+    // jobs 테이블에 diagnosis 컬럼 추가 (기존 DB 마이그레이션)
+    const hasDiagnosis = jobColumns.some(col => col.name === "diagnosis");
+    if (!hasDiagnosis) {
+      this.db.exec(`ALTER TABLE jobs ADD COLUMN diagnosis TEXT`);
+      logger.info("Migration: added diagnosis column to jobs table");
+    }
   }
 
   // === Job CRUD ===
@@ -271,8 +318,8 @@ export class AQDatabase {
         pr_url, error, last_updated_at, current_step, dependencies, progress,
         is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
         total_cache_creation_input_tokens, total_cache_read_input_tokens, cache_hit_ratio, priority,
-        cost_breakdown
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cost_breakdown, trigger_reason, diagnosis
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
@@ -280,7 +327,7 @@ export class AQDatabase {
       params[0], params[1], params[2], params[3], params[4], params[5], params[6],
       params[7], params[8], params[9], params[10], params[11], params[12], params[13],
       params[14], params[15], params[16], params[17], params[18], params[19], params[20], params[21],
-      params[22]
+      params[22], params[23], params[24]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -306,7 +353,7 @@ export class AQDatabase {
         progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
         total_input_tokens = ?, total_output_tokens = ?, total_cache_creation_input_tokens = ?,
         total_cache_read_input_tokens = ?, cache_hit_ratio = ?, priority = ?,
-        cost_breakdown = ?
+        cost_breakdown = ?, trigger_reason = ?, diagnosis = ?
       WHERE id = ?
     `);
 
@@ -315,7 +362,7 @@ export class AQDatabase {
       params[1], params[2], params[3], params[4], params[5], params[6], params[7],
       params[8], params[9], params[10], params[11], params[12], params[13], params[14],
       params[15], params[16], params[17], params[18], params[19], params[20], params[21],
-      params[22], id
+      params[22], params[23], params[24], id
     ).changes;
 
     if (changes > 0) {
@@ -566,29 +613,31 @@ export class AQDatabase {
 
   private jobToParams(job: DatabaseJob): (string | number | null)[] {
     return [
-      job.id,
-      job.issueNumber,
-      job.repo,
-      job.status,
-      job.createdAt,
-      job.startedAt || null,
-      job.completedAt || null,
-      job.prUrl || null,
-      job.error || null,
-      job.lastUpdatedAt || null,
-      job.currentStep || null,
-      job.dependencies ? JSON.stringify(job.dependencies) : null,
-      job.progress || null,
-      job.isRetry ? 1 : 0,
-      job.costUsd || null,
-      job.totalCostUsd || null,
-      job.totalUsage?.input_tokens || null,
-      job.totalUsage?.output_tokens || null,
-      job.totalUsage?.cache_creation_input_tokens || null,
-      job.totalUsage?.cache_read_input_tokens || null,
-      job.cacheHitRatio ?? null,
-      job.priority || null,
-      job.costBreakdown ? JSON.stringify(job.costBreakdown) : null
+      job.id,               // 0
+      job.issueNumber,      // 1
+      job.repo,             // 2
+      job.status,           // 3
+      job.createdAt,        // 4
+      job.startedAt || null,    // 5
+      job.completedAt || null,  // 6
+      job.prUrl || null,        // 7
+      job.error || null,        // 8
+      job.lastUpdatedAt || null,  // 9
+      job.currentStep || null,    // 10
+      job.dependencies ? JSON.stringify(job.dependencies) : null,  // 11
+      job.progress || null,       // 12
+      job.isRetry ? 1 : 0,        // 13
+      job.costUsd || null,        // 14
+      job.totalCostUsd || null,   // 15
+      job.totalUsage?.input_tokens || null,                // 16
+      job.totalUsage?.output_tokens || null,               // 17
+      job.totalUsage?.cache_creation_input_tokens || null, // 18
+      job.totalUsage?.cache_read_input_tokens || null,     // 19
+      job.cacheHitRatio ?? null,  // 20
+      job.priority || null,       // 21
+      job.costBreakdown ? JSON.stringify(job.costBreakdown) : null, // 22
+      job.triggerReason || null,  // 23
+      job.diagnosis ? JSON.stringify(job.diagnosis) : null, // 24
     ];
   }
 
@@ -618,7 +667,78 @@ export class AQDatabase {
       } : undefined,
       priority: (row.priority as JobPriority | null) ?? undefined,
       cacheHitRatio: row.cache_hit_ratio ?? undefined,
-      costBreakdown: row.cost_breakdown ? (JSON.parse(row.cost_breakdown) as CostBreakdown) : undefined
+      costBreakdown: row.cost_breakdown ? (JSON.parse(row.cost_breakdown) as CostBreakdown) : undefined,
+      triggerReason: row.trigger_reason ?? undefined,
+      diagnosis: row.diagnosis ? JSON.parse(row.diagnosis) as DiagnosisReport : undefined,
+    };
+  }
+
+  // === SkipEvent CRUD ===
+
+  createSkipEvent(event: Omit<SkipEvent, "id">): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO skip_events (issue_number, repo, reason_code, reason_message, source, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      event.issueNumber,
+      event.repo,
+      event.reasonCode,
+      event.reasonMessage,
+      event.source,
+      event.createdAt
+    );
+
+    logger.debug(`SkipEvent created for issue #${event.issueNumber} (${event.repo}): ${event.reasonCode}`);
+    return result.lastInsertRowid as number;
+  }
+
+  listSkipEvents(issueNumber?: number, repo?: string, limit?: number): SkipEvent[] {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (issueNumber !== undefined) {
+      conditions.push("issue_number = ?");
+      params.push(issueNumber);
+    }
+    if (repo !== undefined) {
+      conditions.push("repo = ?");
+      params.push(repo);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limitClause = limit !== undefined ? `LIMIT ${limit}` : "";
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM skip_events
+      ${whereClause}
+      ORDER BY created_at DESC
+      ${limitClause}
+    `);
+
+    const rows = stmt.all(...params) as SkipEventRow[];
+    return rows.map(row => this.mapRowToSkipEvent(row));
+  }
+
+  pruneOldSkipEvents(beforeIso: string): number {
+    const stmt = this.db.prepare("DELETE FROM skip_events WHERE created_at < ?");
+    const changes = stmt.run(beforeIso).changes;
+    if (changes > 0) {
+      logger.info(`Pruned ${changes} old skip events before ${beforeIso}`);
+    }
+    return changes;
+  }
+
+  private mapRowToSkipEvent(row: SkipEventRow): SkipEvent {
+    return {
+      id: row.id,
+      issueNumber: row.issue_number,
+      repo: row.repo,
+      reasonCode: row.reason_code,
+      reasonMessage: row.reason_message,
+      source: row.source as SkipEvent["source"],
+      createdAt: row.created_at,
     };
   }
 

@@ -1,5 +1,7 @@
-import type { Plan, PhaseResult, ErrorCategory } from "../../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport } from "../../types/pipeline.js";
 import { getLogger } from "../../utils/logger.js";
+
+export type { DiagnosisReport };
 
 const logger = getLogger();
 
@@ -25,6 +27,8 @@ export interface PipelineReport {
   prUrl?: string;
   errorCategory?: ErrorCategory;
   errorSummary?: string;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
 }
 
 /**
@@ -87,5 +91,32 @@ export function printResult(report: PipelineReport): void {
   if (report.prUrl) {
     console.log(`\nPR: ${report.prUrl}`);
   }
+
+  if (report.diagnosis) {
+    printDiagnosisReport(report.diagnosis);
+  }
+
   console.log("");
+}
+
+/**
+ * Prints a Claude diagnosis report in a structured box format.
+ */
+export function printDiagnosisReport(diagnosis: DiagnosisReport): void {
+  const BORDER = "═".repeat(50);
+  console.log(`\n╔${BORDER}╗`);
+  console.log(`║  Claude 진단 리포트${" ".repeat(31)}║`);
+  console.log(`╚${BORDER}╝`);
+  console.log(`에러 카테고리 : ${diagnosis.errorCategory}`);
+  console.log(`신뢰도       : ${diagnosis.confidence}`);
+  console.log(`자동 재시도   : ${diagnosis.canAutoRetry ? "가능" : "불가"}`);
+  if (diagnosis.retryStrategy) {
+    console.log(`재시도 전략  : ${diagnosis.retryStrategy}`);
+  }
+  console.log(`\n원인 분석:\n  ${diagnosis.rootCause}`);
+  console.log(`\n추천 액션:`);
+  diagnosis.recommendedActions.forEach((action, i) => {
+    console.log(`  ${i + 1}. ${action}`);
+  });
+  console.log(`\n생성 시각: ${diagnosis.generatedAt}`);
 }

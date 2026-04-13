@@ -190,6 +190,15 @@ export const GetJobsQuerySchema = z.object({
 
 export type GetJobsQuery = z.infer<typeof GetJobsQuerySchema>;
 
+// GetSkipEvents 쿼리 스키마 (GET /api/skip-events)
+export const GetSkipEventsQuerySchema = z.object({
+  repo: z.string().optional(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+}).strict();
+
+export type GetSkipEventsQuery = z.infer<typeof GetSkipEventsQuerySchema>;
+
 // GetStats 쿼리 스키마 (GET /api/stats)
 export const GetStatsQuerySchema = z.object({
   project: z.string().optional(),

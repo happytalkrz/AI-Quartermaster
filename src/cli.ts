@@ -267,7 +267,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
           errorCategory: result.report?.errorCategory,
           lastOutput: result.report?.errorSummary,
         });
-        return { error: errorMsg };
+        return { error: errorMsg, diagnosis: result.report?.diagnosis };
       }
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);
@@ -277,7 +277,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
       });
       return { error: errorMsg };
     }
-  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined);
+  }, effectiveConfig.general.stuckTimeoutMs, Object.keys(projectConcurrency).length > 0 ? projectConcurrency : undefined, undefined, effectiveConfig.general.stuckThresholds);
 
   // Recover jobs from previous session
   queue.recover();
@@ -404,8 +404,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
       config: effectiveConfig,
       webhookSecret,
       store,
-      onPipelineTrigger: (issueNumber, repo, dependencies) => {
-        queue.enqueue(issueNumber, repo, dependencies);
+      onPipelineTrigger: (issueNumber, repo, dependencies, triggerReason) => {
+        queue.enqueue(issueNumber, repo, dependencies, undefined, undefined, undefined, triggerReason);
       },
     });
     app.route("/", dashboardRoutes);

@@ -58,6 +58,11 @@ function navigateTo(view) {
   if (view === 'automations') {
     renderAutomationsPanel();
   }
+
+  // If navigating to skip-events view, load data
+  if (view === 'skip-events') {
+    loadSkipEvents();
+  }
 }
 
 // Bind navigation clicks
@@ -1312,6 +1317,55 @@ function renderAutomationsPanel() {
     renderAutomationsPanel();
   };
 })();
+
+/* ══════════════════════════════════════════════════════════════
+   Skip Events
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @param {SkipEvent} ev
+ * @returns {string}
+ */
+function renderSkipEventRow(ev) {
+  var sourceIcon = ev.source === 'webhook' ? 'webhook' : 'refresh';
+  var time = typeof relativeTime === 'function' ? relativeTime(ev.createdAt) : ev.createdAt;
+  return '<tr class="border-b border-outline-variant/10 hover:bg-surface-container transition-colors">' +
+    '<td class="px-4 py-3 text-sm font-bold text-on-surface/80 whitespace-nowrap">#' + ev.issueNumber + '</td>' +
+    '<td class="px-4 py-3 text-xs font-mono text-outline truncate max-w-[140px]" title="' + esc(ev.repo) + '">' + esc(ev.repo) + '</td>' +
+    '<td class="px-4 py-3"><span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#f85149]/10 text-[#f85149] ring-1 ring-[#f85149]/20">' + esc(ev.reasonCode) + '</span></td>' +
+    '<td class="px-4 py-3 text-xs text-outline/80 max-w-[200px] truncate" title="' + esc(ev.reasonMessage) + '">' + esc(ev.reasonMessage) + '</td>' +
+    '<td class="px-4 py-3"><span class="flex items-center gap-1 text-[10px] text-outline"><span class="material-symbols-outlined text-[12px]">' + sourceIcon + '</span>' + esc(ev.source) + '</span></td>' +
+    '<td class="px-4 py-3 text-[10px] text-outline whitespace-nowrap" title="' + esc(ev.createdAt) + '">' + time + '</td>' +
+  '</tr>';
+}
+
+/** @returns {void} */
+function loadSkipEvents() {
+  var container = document.getElementById('skip-events-content');
+  if (!container) return;
+  container.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin align-middle">sync</span>로딩 중...</td></tr>';
+
+  var el = /** @type {HTMLElement} */ (container);
+  apiFetch('/api/skip-events?limit=100')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var events = /** @type {SkipEvent[]} */ (data.events || []);
+      var total = data.pagination ? data.pagination.total : events.length;
+      var totalEl = document.getElementById('skip-events-total');
+      if (totalEl) totalEl.textContent = String(total);
+
+      if (events.length === 0) {
+        el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">스킵된 이벤트가 없습니다.</td></tr>';
+        return;
+      }
+      el.innerHTML = events.map(renderSkipEventRow).join('');
+    })
+    .catch(function() {
+      el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-[#f85149] text-sm">스킵 이벤트를 불러오는데 실패했습니다.</td></tr>';
+    });
+}
+
+window.loadSkipEvents = loadSkipEvents;
 
 window.setSettingsTab = setSettingsTab;
 window.saveSettings = saveSettings;

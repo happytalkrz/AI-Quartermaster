@@ -1024,9 +1024,9 @@ describe("JobQueue", () => {
       queue.setConcurrency(3);
       expect(queue.getStatus().concurrency).toBe(3);
 
-      // Wait for all to start processing
-      await new Promise(r => setTimeout(r, 30));
-      expect(queue.getStatus().running).toBe(2); // remaining 2 should now be running
+      // processNext() has no await inside, so it runs synchronously in setConcurrency.
+      // All 3 jobs should be running and nothing pending immediately after the call.
+      expect(queue.getStatus().running).toBe(3); // job1 + jobs 2&3 = all 3 running
       expect(queue.getStatus().pending).toBe(0);
 
       // Wait for all to complete

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand, statsCommand, cleanupCommand } from "../src/cli.js";
+import { buildProjectConcurrency, parseArgs, printHelp, runCommand, checkForUpdates, statusCommand, versionCommand, doctorCommand, startCommand, resumeCommand, statsCommand, cleanupCommand, planCommand } from "../src/cli.js";
 import { loadConfig, tryLoadConfig } from "../src/config/loader.js";
 import { runPipeline } from "../src/pipeline/core/orchestrator.js";
 import { JobStore } from "../src/queue/job-store.js";
@@ -15,6 +15,13 @@ import { ConfigWatcher } from "../src/config/config-watcher.js";
 import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
 import { PatternStore } from "../src/learning/pattern-store.js";
 import { cleanOldWorktrees } from "../src/git/worktree-cleaner.js";
+import { listTriggerIssues, generateExecutionPlan, printExecutionPlan } from "../src/pipeline/automation/issue-orchestrator.js";
+
+vi.mock("../src/pipeline/automation/issue-orchestrator.js", () => ({
+  listTriggerIssues: vi.fn(),
+  generateExecutionPlan: vi.fn(),
+  printExecutionPlan: vi.fn(),
+}));
 
 vi.mock("../src/pipeline/errors/checkpoint.js", () => ({
   loadCheckpoint: vi.fn(),

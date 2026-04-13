@@ -2,20 +2,21 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo } from "../types/pipeline.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
-import { ProjectErrorState } from "../types/config.js";
+import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
+import { checkJobStuck } from "./stuck-detector.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
 import type { AQMTask } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
-export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string }>;
+export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string; diagnosis?: DiagnosisReport }>;
 
 /**
  * StoreJob을 새로운 discriminated union Job 타입으로 변환
@@ -100,6 +101,7 @@ export class JobQueue {
   private cancelled: Set<string> = new Set();
   private stuckChecker: ReturnType<typeof setInterval> | undefined;
   private stuckTimeoutMs: number;
+  private stuckThresholds?: StuckThresholdConfig;
   private shuttingDown: boolean = false;
   private stuckAborted: Set<string> = new Set();
   private isProcessing: boolean = false;
@@ -118,12 +120,14 @@ export class JobQueue {
     handler: JobHandler,
     stuckTimeoutMs: number = 600000,
     projectConcurrency?: Record<string, number>,
-    taskFactory?: TaskFactory
+    taskFactory?: TaskFactory,
+    stuckThresholds?: StuckThresholdConfig
   ) {
     this.store = store;
     this.concurrency = concurrency;
     this.handler = handler;
     this.stuckTimeoutMs = stuckTimeoutMs;
+    this.stuckThresholds = stuckThresholds;
     this.taskFactory = taskFactory;
 
     if (projectConcurrency) {
@@ -137,50 +141,57 @@ export class JobQueue {
   }
 
   private checkStuckJobs(): void {
-    const now = Date.now();
-    for (const jobId of this.running) {
-      const job = this.store.get(jobId);
-      if (!job) continue;
-      const lastUpdate = job.lastUpdatedAt ?? job.startedAt ?? job.createdAt;
-      const elapsed = now - new Date(lastUpdate).getTime();
-      if (elapsed > this.stuckTimeoutMs) {
-        const processAlive = isClaudeProcessAlive();
-        const lastActivityMs = getLastActivityMs();
-        const ACTIVITY_THRESHOLD_MS = 5 * 60 * 1000; // 5분 무활동 시 stuck 판정
+    const thresholds: StuckThresholdConfig = this.stuckThresholds ?? {
+      defaultMs: this.stuckTimeoutMs,
+      planGenerationMs: this.stuckTimeoutMs,
+      implementationMs: this.stuckTimeoutMs,
+      reviewMs: this.stuckTimeoutMs,
+      verificationMs: this.stuckTimeoutMs,
+      publishMs: this.stuckTimeoutMs,
+      activityThresholdMs: 5 * 60 * 1000,
+    };
 
-        if (processAlive && lastActivityMs >= 0 && lastActivityMs < ACTIVITY_THRESHOLD_MS) {
-          // Claude process alive + recent stream activity — still working, extend
-          logger.info(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 활동 중 (${Math.round(lastActivityMs / 1000)}초 전) — 대기 연장`);
-          this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
-        } else if (!processAlive && elapsed < this.stuckTimeoutMs * 2) {
-          // No Claude process but within 2x timeout — pipeline may be in non-Claude stage (validation, push, PR)
-          // Check if job store was recently updated (log/step changes)
-          logger.debug(`Job ${jobId}: Claude 프로세스 없음, 파이프라인 단계 진행 중일 수 있음 — 대기 연장`);
-          this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
-        } else if (processAlive && (lastActivityMs < 0 || lastActivityMs >= ACTIVITY_THRESHOLD_MS)) {
-          // Process alive but no recent activity — Claude stuck
-          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, Claude 무응답 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분 — 실패 처리`);
-          this.store.update(jobId, {
-            status: "failure",
-            completedAt: new Date().toISOString(),
-            error: `Claude가 ${Math.round((lastActivityMs >= 0 ? lastActivityMs : elapsed) / 60000)}분간 무응답 (프로세스는 살아있으나 활동 없음)`,
-          });
-          this.stuckAborted.add(jobId);
-          this.running.delete(jobId);
-          setTimeout(() => this.processNext(), 0);
+    const processAlive = isClaudeProcessAlive();
+    const lastActivityMs = getLastActivityMs();
+
+    for (const jobId of this.running) {
+      const storeJob = this.store.get(jobId);
+      if (!storeJob) continue;
+
+      const job = convertStoreJobToJob(storeJob);
+      const result = checkJobStuck(job, thresholds, { processAlive, lastActivityMs });
+
+      logger.debug(
+        `StuckCheck job=${jobId} step=${job.currentStep ?? "-"} category=${result.category} ` +
+        `elapsed=${result.elapsedMs}ms threshold=${result.thresholdMs}ms isStuck=${result.isStuck} reason=${result.reason}`
+      );
+
+      if (!result.isStuck && result.reason !== "임계값 이내") {
+        // Threshold exceeded but still working — extend lastUpdatedAt
+        if (result.reason.startsWith("Claude 활동 중")) {
+          logger.info(
+            `Job ${jobId} (${result.category}): ${Math.round(result.elapsedMs / 60000)}분 경과, ${result.reason} — 대기 연장`
+          );
         } else {
-          // No process, exceeded 2x timeout — genuinely stuck
-          logger.error(`Job ${jobId}: ${Math.round(elapsed / 60000)}분 경과, 프로세스 없음 — 실패 처리`);
-          this.store.update(jobId, {
-            status: "failure",
-            completedAt: new Date().toISOString(),
-            error: `파이프라인이 ${Math.round(elapsed / 60000)}분간 응답 없음`,
-          });
-          this.stuckAborted.add(jobId);
-          this.running.delete(jobId);
-          setTimeout(() => this.processNext(), 0);
+          logger.debug(
+            `Job ${jobId} (${result.category}): ${result.reason} — 대기 연장`
+          );
         }
+        this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
+      } else if (result.isStuck) {
+        logger.error(
+          `Job ${jobId} (${result.category}): ${Math.round(result.elapsedMs / 60000)}분 경과 — ${result.reason}`
+        );
+        this.store.update(jobId, {
+          status: "failure",
+          completedAt: new Date().toISOString(),
+          error: result.reason,
+        });
+        this.stuckAborted.add(jobId);
+        this.running.delete(jobId);
+        setTimeout(() => this.processNext(), 0);
       }
+      // result.reason === "임계값 이내": threshold not yet exceeded, no action needed
     }
   }
 
@@ -841,7 +852,7 @@ export class JobQueue {
         return;
       }
 
-      let result: { prUrl?: string; error?: string };
+      let result: { prUrl?: string; error?: string; diagnosis?: DiagnosisReport };
 
       if (this.taskFactory) {
         // TaskFactory 경로: AQMTask 생성 후 run() 호출
@@ -871,6 +882,7 @@ export class JobQueue {
           status: "failure",
           completedAt: new Date().toISOString(),
           error: result.error,
+          ...(result.diagnosis ? { diagnosis: result.diagnosis } : {}),
         });
         // Don't track project failure if it was stuck aborted
         if (!wasStuckAborted) {

@@ -249,7 +249,8 @@ export class JobStore extends EventEmitter {
           error: dbJob.error!,
           prUrl: dbJob.prUrl,
           logs: logMessages,
-          phaseResults
+          phaseResults,
+          diagnosis: dbJob.diagnosis
         } as FailureJob;
 
       case "cancelled":
@@ -302,7 +303,8 @@ export class JobStore extends EventEmitter {
       costUsd: job.costUsd,
       totalCostUsd: job.totalCostUsd,
       totalUsage: job.totalUsage,
-      triggerReason: job.triggerReason
+      triggerReason: job.triggerReason,
+      diagnosis: job.diagnosis
     };
   }
 
@@ -484,7 +486,8 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
-          priority: baseFields.priority
+          priority: baseFields.priority,
+          diagnosis: baseFields.diagnosis
         } as FailureJob;
         break;
 

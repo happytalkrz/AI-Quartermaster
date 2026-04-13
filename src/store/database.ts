@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync } from "fs";
 import { getLogger } from "../utils/logger.js";
 import { AQM_HOME } from "../config/project-resolver.js";
-import type { JobPriority, SkipEvent } from "../types/pipeline.js";
+import type { JobPriority, SkipEvent, DiagnosisReport } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -32,6 +32,7 @@ interface JobRow {
   cache_hit_ratio: number | null;
   priority: string | null;
   trigger_reason: string | null;
+  diagnosis: string | null;
 }
 
 interface SkipEventRow {
@@ -97,6 +98,8 @@ export interface DatabaseJob {
   cacheHitRatio?: number;
   /** 이슈가 처리된 사유 (트리거 원인) */
   triggerReason?: string;
+  /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
+  diagnosis?: DiagnosisReport;
 }
 
 export interface DatabasePhase {
@@ -176,7 +179,8 @@ export class AQDatabase {
         total_cache_read_input_tokens INTEGER CHECK (total_cache_read_input_tokens >= 0),
         cache_hit_ratio REAL CHECK (cache_hit_ratio >= 0 AND cache_hit_ratio <= 1),
         priority TEXT CHECK (priority IN ('high', 'normal', 'low')),
-        trigger_reason TEXT
+        trigger_reason TEXT,
+        diagnosis TEXT
       )
     `);
 
@@ -285,6 +289,13 @@ export class AQDatabase {
       this.db.exec(`ALTER TABLE jobs ADD COLUMN trigger_reason TEXT`);
       logger.info("Migration: added trigger_reason column to jobs table");
     }
+
+    // jobs 테이블에 diagnosis 컬럼 추가 (기존 DB 마이그레이션)
+    const hasDiagnosis = jobColumns.some(col => col.name === "diagnosis");
+    if (!hasDiagnosis) {
+      this.db.exec(`ALTER TABLE jobs ADD COLUMN diagnosis TEXT`);
+      logger.info("Migration: added diagnosis column to jobs table");
+    }
   }
 
   // === Job CRUD ===
@@ -296,8 +307,8 @@ export class AQDatabase {
         pr_url, error, last_updated_at, current_step, dependencies, progress,
         is_retry, cost_usd, total_cost_usd, total_input_tokens, total_output_tokens,
         total_cache_creation_input_tokens, total_cache_read_input_tokens, cache_hit_ratio, priority,
-        trigger_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        trigger_reason, diagnosis
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const params = this.jobToParams(job);
@@ -305,7 +316,7 @@ export class AQDatabase {
       params[0], params[1], params[2], params[3], params[4], params[5], params[6],
       params[7], params[8], params[9], params[10], params[11], params[12], params[13],
       params[14], params[15], params[16], params[17], params[18], params[19], params[20], params[21],
-      params[22]
+      params[22], params[23]
     );
 
     logger.debug(`Job created: ${job.id}`);
@@ -331,7 +342,7 @@ export class AQDatabase {
         progress = ?, is_retry = ?, cost_usd = ?, total_cost_usd = ?,
         total_input_tokens = ?, total_output_tokens = ?, total_cache_creation_input_tokens = ?,
         total_cache_read_input_tokens = ?, cache_hit_ratio = ?, priority = ?,
-        trigger_reason = ?
+        trigger_reason = ?, diagnosis = ?
       WHERE id = ?
     `);
 
@@ -340,7 +351,7 @@ export class AQDatabase {
       params[1], params[2], params[3], params[4], params[5], params[6], params[7],
       params[8], params[9], params[10], params[11], params[12], params[13], params[14],
       params[15], params[16], params[17], params[18], params[19], params[20], params[21],
-      params[22], id
+      params[22], params[23], id
     ).changes;
 
     if (changes > 0) {
@@ -614,6 +625,7 @@ export class AQDatabase {
       job.cacheHitRatio ?? null,  // 20
       job.priority || null,       // 21
       job.triggerReason || null,  // 22
+      job.diagnosis ? JSON.stringify(job.diagnosis) : null, // 23
     ];
   }
 
@@ -644,6 +656,7 @@ export class AQDatabase {
       priority: (row.priority as JobPriority | null) ?? undefined,
       cacheHitRatio: row.cache_hit_ratio ?? undefined,
       triggerReason: row.trigger_reason ?? undefined,
+      diagnosis: row.diagnosis ? JSON.parse(row.diagnosis) as DiagnosisReport : undefined,
     };
   }
 

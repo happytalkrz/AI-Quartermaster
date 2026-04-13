@@ -26,6 +26,8 @@ export interface OrchestratorResult {
   report?: PipelineReport;
   error?: string;
   totalCostUsd?: number;
+  /** Claude 진단 호출 비용 (USD) */
+  diagnosisCostUsd?: number;
 }
 
 export interface PipelineRuntime {

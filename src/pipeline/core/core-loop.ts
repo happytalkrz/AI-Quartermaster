@@ -11,6 +11,7 @@ import { getErrorMessage } from "../../utils/error-utils.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
+import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
 import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
 import { createCheckpoint } from "../../safety/rollback-manager.js";
 import { createSlug } from "../../utils/slug.js";
@@ -209,6 +210,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   let plan: Plan;
   let planCostUsd: number | undefined;
   let planUsage: import("../../types/pipeline.js").UsageInfo | undefined;
+  const planStartedAt = nowIso();
+  const planStartMs = Date.now();
   try {
     const planResult = await generatePlan({
       issue: ctx.issue,
@@ -235,6 +238,12 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.error(`Plan generation failed for issue #${ctx.issue.number}: ${errorMessage}`);
     ctx.jobLogger?.log(`Plan 생성 실패: ${errorMessage}`);
 
+    const planDurationMs = Date.now() - planStartMs;
+    const planFailResult = makePseudoPhaseFailure("plan:generate", planDurationMs, errorMessage, {
+      startedAt: planStartedAt,
+      completedAt: nowIso(),
+    });
+
     // Plan 생성 실패 시 빈 결과 반환 (상위에서 적절한 실패 처리)
     return {
       plan: {
@@ -249,21 +258,28 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         verificationPoints: [],
         stopConditions: [],
       },
-      phaseResults: [],
+      phaseResults: [planFailResult],
       success: false,
       totalCostUsd: 0,
       totalUsage: undefined,
-      costBreakdown: buildCostBreakdown(undefined, []),
+      costBreakdown: buildCostBreakdown(undefined, [planFailResult]),
       baseline: ctx.baseline,
     };
   }
+
+  // plan:generate pseudo-phase를 phaseResults에 기록
+  const planGenerateResult = makePseudoPhaseSuccess("plan:generate", Date.now() - planStartMs, {
+    startedAt: planStartedAt,
+    completedAt: nowIso(),
+    costUsd: planCostUsd,
+  });
 
   checkPhaseLimit(plan.phases.length, ctx.config.safety.maxPhases);
 
   // Step 2: Execute phases sequentially with retry
   const jl = ctx.jobLogger;
   jl?.setProgress(PROGRESS_PLAN_GENERATED);
-  const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? [])];
+  const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? []), planGenerateResult];
   const maxRetries = ctx.config.safety.maxRetries;
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
 
@@ -438,8 +454,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         const totalCostUsd = phaseResults.filter(r => r.phaseIndex >= 0).reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
         const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
         const totalUsage = sumUsage(allUsages);
-        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults) };
-        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, baseline: ctx.baseline };
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults), baseline: ctx.baseline };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -464,6 +479,5 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
   }
 
-  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults) };
-  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, baseline: ctx.baseline };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, costBreakdown: buildCostBreakdown(planCostUsd, phaseResults), baseline: ctx.baseline };
 }

@@ -239,7 +239,7 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(3);
+      expect(result.phaseResults).toHaveLength(4); // 3 phases + plan:generate pseudo-phase
       expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(3);
 
@@ -281,7 +281,7 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(4);
+      expect(result.phaseResults).toHaveLength(5); // 4 phases + plan:generate pseudo-phase
       expect(mockSchedulePhases).toHaveBeenCalledWith(phases, false);
       expect(mockExecutePhase).toHaveBeenCalledTimes(4);
     });
@@ -304,7 +304,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.phaseResults).toEqual([]);
+      expect(result.phaseResults).toHaveLength(1); // plan:generate pseudo-phase recorded before scheduling
+      expect(result.phaseResults[0].phaseName).toBe("plan:generate");
       expect(mockExecutePhase).not.toHaveBeenCalled();
     });
 
@@ -371,8 +372,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].success).toBe(true);
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].success).toBe(true);
       expect(mockRetryPhase).toHaveBeenCalledWith(
         expect.objectContaining({
           phase: phases[0],
@@ -414,8 +415,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].errorCategory).toBe("TIMEOUT");
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].errorCategory).toBe("TIMEOUT");
       expect(mockRetryPhase).not.toHaveBeenCalled(); // No retry for timeout
     });
 
@@ -448,7 +449,7 @@ describe("runCoreLoop", () => {
       }));
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(2);
+      expect(result.phaseResults).toHaveLength(3); // previous(1) + plan:generate + phase 1
       expect(mockExecutePhase).toHaveBeenCalledTimes(1); // Only phase 1 executed
 
       // Verify phase 0 was skipped
@@ -596,9 +597,9 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(2);
-      expect(result.phaseResults[0].success).toBe(true); // Retry succeeded
-      expect(result.phaseResults[1].success).toBe(true); // Next phase succeeded
+      expect(result.phaseResults).toHaveLength(3); // plan:generate pseudo-phase + 2 phases
+      expect(result.phaseResults[1].success).toBe(true); // Retry succeeded
+      expect(result.phaseResults[2].success).toBe(true); // Next phase succeeded
 
       // Should have called retry with error history
       expect(mockRetryPhase).toHaveBeenCalledWith(expect.objectContaining({
@@ -635,8 +636,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].errorCategory).toBe("TIMEOUT");
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].errorCategory).toBe("TIMEOUT");
 
       // Should not attempt retry for timeout errors
       expect(mockRetryPhase).not.toHaveBeenCalled();
@@ -660,8 +661,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].errorCategory).toBe("SAFETY_VIOLATION");
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].errorCategory).toBe("SAFETY_VIOLATION");
 
       // Should not attempt retry for safety violations
       expect(mockRetryPhase).not.toHaveBeenCalled();
@@ -829,8 +830,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].success).toBe(true);
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].success).toBe(true);
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
@@ -840,7 +841,9 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(false);
-      expect(result.phaseResults).toEqual([]);
+      expect(result.phaseResults).toHaveLength(1); // plan:generate failure pseudo-phase
+      expect(result.phaseResults[0].phaseName).toBe("plan:generate");
+      expect(result.phaseResults[0].success).toBe(false);
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
       expect(mockSchedulePhases).not.toHaveBeenCalled();
       expect(mockExecutePhase).not.toHaveBeenCalled();
@@ -878,7 +881,7 @@ describe("runCoreLoop", () => {
         cache_read_input_tokens: 50, // 50 (plan) + 0 + 0
         cache_creation_input_tokens: 25, // 25 (plan) + 0 + 0
       });
-      expect(result.phaseResults).toHaveLength(2);
+      expect(result.phaseResults).toHaveLength(3); // plan:generate pseudo-phase + 2 phases
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
@@ -1013,8 +1016,8 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(1);
-      expect(result.phaseResults[0].phaseName).toBe("RetryPhase");
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
+      expect(result.phaseResults[1].phaseName).toBe("RetryPhase");
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
@@ -1031,7 +1034,7 @@ describe("runCoreLoop", () => {
       const result = await runCoreLoop(makeContext());
 
       expect(result.success).toBe(true);
-      expect(result.phaseResults[0].phaseName).toBe("ValidPhase");
+      expect(result.phaseResults[1].phaseName).toBe("ValidPhase"); // phaseResults[0] is plan:generate pseudo-phase
       expect(mockGeneratePlan).toHaveBeenCalledTimes(1);
     });
 
@@ -1292,7 +1295,7 @@ describe("runCoreLoop", () => {
 
       // 캐시 실패에도 불구하고 실행이 성공해야 함
       expect(result.success).toBe(true);
-      expect(result.phaseResults).toHaveLength(1);
+      expect(result.phaseResults).toHaveLength(2); // plan:generate pseudo-phase + 1 phase
       expect(mockExecutePhase).toHaveBeenCalledTimes(1);
     });
 

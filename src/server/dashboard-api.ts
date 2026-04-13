@@ -448,7 +448,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     const bearerAuth = async (c: Context, next: Next) => {
       const path = c.req.path;
       // Public routes — no auth required
-      if (path === "/api/auth" || path === "/api/health" || path === "/api/version") {
+      if (path === "/api/auth") {
         await next();
         return;
       }

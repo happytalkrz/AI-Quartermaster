@@ -29,6 +29,8 @@ export interface PipelineReport {
   errorSummary?: string;
   /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
   diagnosis?: DiagnosisReport;
+  /** baseline 캡처 실패로 인해 검증이 불완전한 경우 경고 목록 */
+  verificationIncomplete?: string[];
 }
 
 /**
@@ -90,6 +92,13 @@ export function printResult(report: PipelineReport): void {
 
   if (report.prUrl) {
     console.log(`\nPR: ${report.prUrl}`);
+  }
+
+  if (report.verificationIncomplete && report.verificationIncomplete.length > 0) {
+    console.log("\n[WARN] 검증 불완전: baseline 캡처 실패로 일부 검증이 누락되었을 수 있습니다.");
+    for (const warning of report.verificationIncomplete) {
+      console.log(`  - ${warning}`);
+    }
   }
 
   if (report.diagnosis) {

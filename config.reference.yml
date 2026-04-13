@@ -33,16 +33,30 @@ general:                                 # [선택] 전체 설정 (모든 필드
   logLevel: "info"                       # [선택] 로그 레벨: debug | info | warn | error (기본값: "info")
   logDir: "./logs"                       # [선택] 로그 디렉토리 (기본값: "logs")
   dryRun: false                          # [선택] 드라이 런 모드 (기본값: false)
-  locale: "ko"                           # [선택] 언어: ko | en (기본값: "en")
+  locale: "en"                           # [선택] 언어: ko | en (기본값: "en")
   concurrency: 1                         # [선택] 동시 처리 수 (기본값: 1)
   # autoUpdate: false                    # [선택] 자동 업데이트 (git pull + 재시작) (기본값: false)
   # stuckTimeoutMs: 600000               # [선택] stuck job 감지 타임아웃 ms (기본값: 600000)
-  # serverMode: "webhook"                # [선택] 운영 모드: webhook | polling | hybrid (기본값: "webhook")
+  # serverMode: "hybrid"                 # [선택] 운영 모드: webhook | polling | hybrid (기본값: "hybrid")
                                         #   webhook: GitHub webhook 이벤트만 수신 (GITHUB_WEBHOOK_SECRET 필수)
                                         #   polling: 주기적으로 GitHub API 폴링 (webhook 설정 불필요)
                                         #   hybrid:  webhook + 폴링 병행 (missed events 보완, 중복 처리 자동 방지)
   # pollingIntervalMs: 60000             # [선택] 폴링 간격 ms (기본값: 60000, polling/hybrid 모드에서 사용)
   # maxJobs: 500                         # [선택] 최대 job 보관 수 (기본값: 500)
+  # dashboardAuth:                       # [선택] 대시보드 인증 정책 (기본값: 아래 참조)
+  #   rateLimit:
+  #     maxAttempts: 5                   # [선택] 윈도우당 최대 로그인 시도 횟수 (기본값: 5)
+  #     windowMs: 900000                 # [선택] sliding-window 크기 ms (기본값: 900000 = 15분)
+  #     blockDurationMs: 900000          # [선택] 초과 후 차단 지속 시간 ms (기본값: 900000 = 15분)
+  #   sessionTtlMs: 3600000              # [선택] 세션 토큰 TTL ms (기본값: 3600000 = 1시간)
+  #                                      #
+  #   동작 정책:
+  #   - rate-limit: IP별 sliding-window. maxAttempts 초과 시 429 + Retry-After 헤더 반환,
+  #     warn 로그 출력, SSE 이벤트 rateLimitExceeded 브로드캐스트.
+  #     로그인 성공 시 해당 IP 카운트 즉시 초기화.
+  #   - session: in-memory 관리. 서버 재시작 시 모든 세션 무효화 (의도된 동작).
+  #     클라이언트는 401 수신 시 자동 재인증 (api.js 기존 로직).
+  #     TTL 만료 토큰은 다음 접근 시 또는 주기적 cleanup에서 자동 제거.
 
 # 대상 프로젝트 목록
 projects:                                # [선택] 프로젝트별 설정 (없으면 git.allowedRepos 사용)
@@ -68,7 +82,7 @@ git:                                     # [선택] Git 설정 (모든 필드에
   signCommits: false                     # [선택] 커밋 서명 여부 (기본값: false)
 
 worktree:                                # [선택] 워크트리 설정 (모든 필드에 기본값 있음)
-  rootPath: "../.aq-worktrees"           # [선택] 워크트리 루트 경로 (기본값: ".worktrees")
+  rootPath: ".worktrees"                 # [선택] 워크트리 루트 경로 (기본값: ".worktrees")
   cleanupOnSuccess: true                 # [선택] 성공 시 정리 (기본값: true)
   cleanupOnFailure: false                # [선택] 실패 시 정리 (기본값: false)
   maxAge: "24h"                          # [선택] 최대 보관 기간 (기본값: "24h")
@@ -83,7 +97,7 @@ commands:                                # [선택] 명령어 설정 (모든 필
       phase: "claude-sonnet-4-20250514"  # [선택] Phase 구현용 모델 (코딩)
       review: "claude-haiku-4-5-20251001" # [선택] 리뷰/검증용 모델
       fallback: "claude-sonnet-4-20250514" # [선택] 실패 시 폴백 모델
-    maxTurns: 50                         # [선택] 최대 턴 수 (기본값: 50)
+    maxTurns: 60                         # [선택] 최대 턴 수 (기본값: 60)
     maxTurnsPerMode:                     # [선택] 실행 모드별 최대 턴 수 (기본값: economy=30, standard=60, thorough=120)
       economy: 30                        # [선택] Economy 모드 최대 턴 수
       standard: 60                       # [선택] Standard 모드 최대 턴 수
@@ -106,8 +120,8 @@ commands:                                # [선택] 명령어 설정 (모든 필
   test: "npm test"                       # [선택] 테스트 명령어 (기본값: "npm test")
   lint: "npm run lint"                   # [선택] 린트 명령어 (기본값: "npm run lint")
   build: "npm run build"                 # [선택] 빌드 명령어 (기본값: "npm run build")
-  typecheck: "npx tsc --noEmit"          # [선택] 타입체크 명령어 (기본값: "npm run typecheck")
-  preInstall: "npm ci"                   # [선택] 설치 전 명령어 (기본값: "")
+  typecheck: "npm run typecheck"         # [선택] 타입체크 명령어 (기본값: "npm run typecheck")
+  preInstall: ""                         # [선택] 설치 전 명령어 (기본값: "") (예: "npm ci")
   # claudeMdPath: "CLAUDE.md"            # [선택] 프로젝트 컨벤션 파일 경로 (기본값: "CLAUDE.md")
   # skillsPath: ".claude/skills"         # [선택] 스킬 디렉토리 경로 (기본값: ".claude/skills")
 
@@ -128,7 +142,7 @@ review:                                  # [선택] 리뷰 설정 (모든 필드
     #   maxRetries: 1
     #   model: null
   simplify:                              # [선택] 코드 간소화 설정
-    enabled: false                       # [선택] 간소화 활성화 여부 (기본값: false)
+    enabled: true                        # [선택] 간소화 활성화 여부 (기본값: true)
     promptTemplate: "review-round3-simplify.md"  # [선택] 간소화 프롬프트 템플릿
   # unifiedMode: false                   # [선택] 통합 리뷰 모드 - 1회 호출로 3가지 관점 통합 평가 (기본값: false)
 
@@ -169,16 +183,16 @@ safety:                                  # [선택] 안전장치 설정 (모든 
     reviewRound: 180000                  # [선택] 리뷰 라운드 타임아웃 ms (기본값: 180000)
     prCreation: 60000                    # [선택] PR 생성 타임아웃 ms (기본값: 60000)
   stopConditions:                        # [선택] 중단 조건 목록
-    - "CRITICAL_ERROR"
-    - "SECURITY_VIOLATION"
-    - "BASE_BRANCH_MODIFIED"
+    - "STOP"
+    - "ABORT"
+    - "SAFETY_VIOLATION"
   allowedLabels:                         # [선택] 허용된 라벨 목록 (기본값: [])
     - "aqm"
   # Rollback strategy on pipeline failure:
-  #   "none"        — no rollback (default)
+  #   "none"        — no rollback
   #   "all"         — reset to pre-pipeline HEAD (undo all phase commits)
-  #   "failed-only" — reset to last successful phase commit
-  rollbackStrategy: "none"               # [선택] 롤백 전략: none | all | failed-only (기본값: "none")
+  #   "failed-only" — reset to last successful phase commit (default)
+  rollbackStrategy: "failed-only"        # [선택] 롤백 전략: none | all | failed-only (기본값: "failed-only")
   feasibilityCheck:                      # [선택] 실행 가능성 체크 설정
     enabled: true                        # [선택] 실행 가능성 체크 활성화 (기본값: true)
     maxRequirements: 5                   # [선택] 최대 요구사항 수 (기본값: 5)

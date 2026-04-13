@@ -402,6 +402,45 @@ export const FailureReasonsResponseSchema = z.object({
 
 export type FailureReasonsResponse = z.infer<typeof FailureReasonsResponseSchema>;
 
+// GetMetrics 쿼리 스키마 (GET /api/metrics/throughput, GET /api/metrics/success-rate)
+export const GetMetricsQuerySchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]).default("7d"),
+  project: z.string().optional(),
+}).strict();
+
+export type GetMetricsQuery = z.infer<typeof GetMetricsQuerySchema>;
+
+// ThroughputResponse 응답 타입 (GET /api/metrics/throughput)
+export const ThroughputSeriesEntrySchema = z.object({
+  date: z.string(), // YYYY-MM-DD
+  count: z.number().int().nonnegative(),
+});
+
+export type ThroughputSeriesEntry = z.infer<typeof ThroughputSeriesEntrySchema>;
+
+export const ThroughputResponseSchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]),
+  project: z.string().nullable(),
+  series: z.array(ThroughputSeriesEntrySchema),
+});
+
+export type ThroughputResponse = z.infer<typeof ThroughputResponseSchema>;
+
+// SuccessRateResponse 응답 타입 (GET /api/metrics/success-rate)
+export const SuccessRateResponseSchema = z.object({
+  window: z.enum(["7d", "30d", "90d"]),
+  project: z.string().nullable(),
+  total: z.number().int().nonnegative(),
+  successCount: z.number().int().nonnegative(),
+  failureCount: z.number().int().nonnegative(),
+  retrySuccessCount: z.number().int().nonnegative(),
+  successRate: z.number().min(0).max(100),
+  failureRate: z.number().min(0).max(100),
+  retrySuccessRate: z.number().min(0).max(100),
+});
+
+export type SuccessRateResponse = z.infer<typeof SuccessRateResponseSchema>;
+
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({

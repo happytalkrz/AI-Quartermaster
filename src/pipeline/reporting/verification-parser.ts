@@ -84,12 +84,22 @@ export function parseVitestOutput(output: string): VitestParseResult {
   };
 }
 
+export interface BuildBaselineResult {
+  exitCode: number;
+  hasErrors: boolean;
+  output: string;
+}
+
 /**
- * Baseline snapshot of tsc + eslint errors for diffing against new runs.
+ * Baseline snapshot of tsc + eslint + build + test errors for diffing against new runs.
+ * captureWarnings records any failures that occurred while capturing the baseline.
  */
 export interface BaselineErrors {
   tsc: TscParseResult;
   eslint: EslintParseResult;
+  build?: BuildBaselineResult;
+  test?: VitestParseResult;
+  captureWarnings?: string[];
 }
 
 /**

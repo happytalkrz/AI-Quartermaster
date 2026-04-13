@@ -10,9 +10,10 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
 
 import { createDraftPR, closeIssue, checkPrConflict, commentOnIssue, listOpenPrs, enableAutoMerge, addIssueComment } from "../../src/github/pr-creator.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { loadTemplate } from "../../src/prompt/template-renderer.js";
+import { renderTemplate, loadTemplate } from "../../src/prompt/template-renderer.js";
 
 const mockLoadTemplate = vi.mocked(loadTemplate);
+const mockRenderTemplate = vi.mocked(renderTemplate);
 
 const mockRunCli = vi.mocked(runCli);
 
@@ -154,6 +155,25 @@ describe("createDraftPR", () => {
       .mockResolvedValueOnce({ stdout: "", stderr: "API error", exitCode: 1 }); // retry fails
     const result = await createDraftPR(prConfig, ghConfig, ctx, options);
     expect(result).toBe(null);
+  });
+
+  it("should use '-' for pseudo-phase without commitHash in PR body phases", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/10", stderr: "", exitCode: 0 });
+    const ctxWithPseudo = {
+      ...ctx,
+      phaseResults: [
+        { phaseIndex: 0, phaseName: "setup:worktree", success: true, durationMs: 300 },
+        { phaseIndex: 1, phaseName: "Phase 1", success: true, commitHash: "abc12345", durationMs: 1000 },
+        { phaseIndex: 2, phaseName: "review:code", success: true, durationMs: 400 },
+      ],
+    };
+    await createDraftPR(prConfig, ghConfig, ctxWithPseudo, options);
+    // calls[0] = title renderTemplate, calls[1] = body renderTemplate
+    const templateVars = mockRenderTemplate.mock.calls[1][1] as Record<string, unknown>;
+    const phasesText = templateVars.phases as string;
+    expect(phasesText).toContain("(-)");
+    expect(phasesText).not.toContain("(N/A)");
+    expect(phasesText).toContain("(abc12345)");
   });
 });
 

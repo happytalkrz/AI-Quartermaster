@@ -138,6 +138,9 @@ export async function runValidationPhase(
 
       checkpoint({ plan: context.plan, phaseResults: context.phaseResults });
       const report = formatResult(issueNumber, repo, context.plan, context.phaseResults, startTime);
+      if (context.baseline?.captureWarnings && context.baseline.captureWarnings.length > 0) {
+        report.verificationIncomplete = context.baseline.captureWarnings;
+      }
       printResult(report);
       saveResult(config, _aqRoot ?? _projectRoot ?? process.cwd(), issueNumber, report);
 

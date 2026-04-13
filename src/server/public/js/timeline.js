@@ -80,16 +80,19 @@ function renderGanttChart(phases, totalDurationMs, epochStart) {
       '<span class="material-symbols-outlined text-lg mr-2">hourglass_empty</span>No phase data available</div>';
   }
 
+  var hasTimestamps = epochStart && phases.some(function(p) { return p.startedAt; });
+
   // Legend
-  var html = '<div class="flex gap-4 text-[10px] font-mono text-outline mb-6">' +
+  var html = '<div class="flex flex-wrap gap-4 text-[10px] font-mono text-outline mb-6">' +
     '<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#3fb950]"></span> SUCCESS</span>' +
     '<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#f85149]"></span> FAILED</span>' +
     '<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#58a6ff]"></span> RUNNING</span>' +
     '<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:#31353c"></span> PENDING</span>' +
+    (hasTimestamps ? '<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded" style="background:rgba(65,71,82,0.5)"></span> GAP/IDLE</span>' : '') +
     '</div>';
 
   // X-axis labels
-  html += buildXAxis(totalDurationMs);
+  html += buildXAxis(totalDurationMs, hasTimestamps ? epochStart : null);
 
   // Phase rows with grid overlay
   html += '<div class="relative">';
@@ -99,9 +102,22 @@ function renderGanttChart(phases, totalDurationMs, epochStart) {
 
   html += '<div class="space-y-4">';
   var cumulativeMs = 0;
-  phases.forEach(function(phase) {
+  phases.forEach(function(phase, i) {
     html += renderGanttPhaseRow(phase, epochStart, cumulativeMs, totalDurationMs);
     cumulativeMs += (phase.durationMs || 0);
+
+    // Gap rendering: only when timestamp data is available
+    if (hasTimestamps && phase.completedAt && i + 1 < phases.length) {
+      var nextPhase = phases[i + 1];
+      if (nextPhase.startedAt) {
+        var gapStartMs = new Date(phase.completedAt) - epochStart;
+        var gapEndMs = new Date(nextPhase.startedAt) - epochStart;
+        var gapDurationMs = gapEndMs - gapStartMs;
+        if (gapDurationMs > 1000) {
+          html += renderGanttGapRow(gapStartMs, gapDurationMs, totalDurationMs);
+        }
+      }
+    }
   });
   html += '</div>';
   html += '</div>';
@@ -113,19 +129,72 @@ function renderGanttChart(phases, totalDurationMs, epochStart) {
    X-Axis
    ══════════════════════════════════════════════════════════════ */
 
-function buildXAxis(totalDurationMs) {
+function buildXAxis(totalDurationMs, epochStart) {
   var TICKS = 6;
   var labels = [];
   for (var i = 0; i < TICKS; i++) {
     var ms = totalDurationMs > 0 ? Math.round((totalDurationMs * i) / (TICKS - 1)) : 0;
-    labels.push(fmtDurationMs(ms));
+    if (epochStart) {
+      // Relative time labels: +0m, +5m, ... (wall-clock based)
+      var mins = Math.round(ms / 60000);
+      labels.push('+' + mins + 'm');
+    } else {
+      labels.push(fmtDurationMs(ms));
+    }
   }
 
-  var html = '<div class="flex justify-between text-[10px] font-mono text-outline-variant pb-2 border-b border-outline-variant/10 mb-4" style="margin-left:12rem">';
+  var axisLabel = epochStart ? '<span class="text-[9px] text-outline-variant/50 mr-2">wall-clock</span>' : '';
+
+  var html = '<div class="flex items-center pb-2 border-b border-outline-variant/10 mb-4" style="margin-left:12rem">' +
+    axisLabel +
+    '<div class="flex justify-between flex-1 text-[10px] font-mono text-outline-variant">';
   labels.forEach(function(label, i) {
     var cls = i === labels.length - 1 ? ' class="text-primary"' : '';
     html += '<span' + cls + '>' + esc(label) + '</span>';
   });
+  html += '</div></div>';
+  return html;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Gap Row
+   ══════════════════════════════════════════════════════════════ */
+
+function renderGanttGapRow(gapStartMs, gapDurationMs, totalDurationMs) {
+  var leftPct = totalDurationMs > 0 ? (gapStartMs / totalDurationMs * 100) : 0;
+  var widthPct = totalDurationMs > 0 ? (gapDurationMs / totalDurationMs * 100) : 0;
+
+  leftPct = Math.min(Math.max(leftPct, 0), 100);
+  widthPct = Math.max(widthPct, 0.5);
+  widthPct = Math.min(widthPct, 100 - leftPct);
+
+  var idleLabel = fmtDurationMs(gapDurationMs);
+
+  var barStyle = [
+    'position:absolute',
+    'left:' + leftPct.toFixed(2) + '%',
+    'top:0',
+    'height:100%',
+    'width:' + widthPct.toFixed(2) + '%',
+    'background:rgba(65,71,82,0.45)',
+    'border:1px dashed rgba(100,110,125,0.35)',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'border-radius:3px',
+    'overflow:hidden',
+    'min-width:4px'
+  ].join(';');
+
+  var html = '<div class="flex items-center">';
+  // Label column (same 12rem width as phase rows)
+  html += '<div class="pr-4 text-[10px] font-mono truncate" style="width:12rem;flex-shrink:0;color:rgba(100,110,125,0.6)">idle</div>';
+  // Bar track
+  html += '<div class="flex-1 relative" style="height:1.25rem">';
+  html += '<div style="' + barStyle + '">';
+  html += '<span class="text-[9px] font-mono" style="color:rgba(139,145,157,0.7)">' + esc(idleLabel) + '</span>';
+  html += '</div>';
+  html += '</div>';
   html += '</div>';
   return html;
 }

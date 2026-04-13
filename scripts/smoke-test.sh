@@ -60,7 +60,7 @@ fi
 # 4. aqm version — exit 0 + 버전 문자열
 # --------------------------------------------------------------------------
 echo "[smoke] Testing: aqm version..."
-VERSION_OUTPUT=$(AQM_HOME="$AQM_INSTALL_DIR" "$AQM_BIN" version 2>&1) || VERSION_EXIT=$?
+VERSION_OUTPUT=$("$AQM_BIN" version 2>&1) || VERSION_EXIT=$?
 VERSION_EXIT=${VERSION_EXIT:-0}
 
 if [ "$VERSION_EXIT" -ne 0 ]; then
@@ -82,7 +82,7 @@ echo "PASS: aqm version → $VERSION_OUTPUT"
 # --------------------------------------------------------------------------
 echo "[smoke] Testing: aqm doctor..."
 DOCTOR_EXIT=0
-DOCTOR_OUTPUT=$(AQM_HOME="$AQM_INSTALL_DIR" "$AQM_BIN" doctor 2>&1) || DOCTOR_EXIT=$?
+DOCTOR_OUTPUT=$("$AQM_BIN" doctor 2>&1) || DOCTOR_EXIT=$?
 
 if [ "$DOCTOR_EXIT" -ne 0 ]; then
   echo "FAIL: aqm doctor exited $DOCTOR_EXIT"
@@ -165,6 +165,27 @@ if [ "$REGRESSION_HEALTH" -eq 1 ]; then
 fi
 
 echo "PASS: regression gate — aqm start fails without dist/"
+
+# --------------------------------------------------------------------------
+# 6. git-clone 모드 테스트 — AQM_HOME을 프로젝트 루트로 설정
+# --------------------------------------------------------------------------
+echo "[smoke] Testing: git-clone mode (AQM_HOME=$PROJECT_ROOT)..."
+GIT_VERSION_OUTPUT=$(AQM_HOME="$PROJECT_ROOT" "$AQM_BIN" version 2>&1) || GIT_VERSION_EXIT=$?
+GIT_VERSION_EXIT=${GIT_VERSION_EXIT:-0}
+
+if [ "$GIT_VERSION_EXIT" -ne 0 ]; then
+  echo "FAIL: aqm version (git-clone mode) exited $GIT_VERSION_EXIT"
+  echo "$GIT_VERSION_OUTPUT"
+  exit 1
+fi
+
+if ! echo "$GIT_VERSION_OUTPUT" | grep -qE "v[0-9]+\.[0-9]+\.[0-9]+"; then
+  echo "FAIL: aqm version (git-clone mode) output missing version string"
+  echo "$GIT_VERSION_OUTPUT"
+  exit 1
+fi
+
+echo "PASS: aqm version (git-clone mode) → $GIT_VERSION_OUTPUT"
 
 # --------------------------------------------------------------------------
 echo "[smoke] Smoke test passed."

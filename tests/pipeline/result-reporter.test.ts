@@ -4,7 +4,7 @@ vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { formatResult, printResult } from "../../src/pipeline/reporting/result-reporter.js";
+import { formatResult, printResult, reindexPhaseResults } from "../../src/pipeline/reporting/result-reporter.js";
 import type { Plan, PhaseResult } from "../../src/types/pipeline.js";
 
 function makePlan(overrides: Partial<Plan> = {}): Plan {
@@ -105,6 +105,66 @@ describe("formatResult", () => {
     expect(report.phases[0].error).toBe("build error");
     expect(report.phases[0].errorCategory).toBe("CLI_CRASH");
     expect(report.phases[0].durationMs).toBe(750);
+  });
+});
+
+describe("reindexPhaseResults", () => {
+  it("assigns sequential phaseIndex starting from 0", () => {
+    const results: PhaseResult[] = [
+      { phaseIndex: -7, phaseName: "setup:worktree", success: true, durationMs: 500 },
+      { phaseIndex: -6, phaseName: "setup:dependency", success: true, durationMs: 300 },
+      { phaseIndex: 0, phaseName: "Phase 1", success: true, commitHash: "abc12345", durationMs: 1000 },
+      { phaseIndex: 1, phaseName: "Phase 2", success: true, commitHash: "feedcafe", durationMs: 2000 },
+      { phaseIndex: -4, phaseName: "review:code", success: true, durationMs: 400 },
+    ];
+    const reindexed = reindexPhaseResults(results);
+    expect(reindexed.map(r => r.phaseIndex)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("preserves insertion order of results", () => {
+    const results: PhaseResult[] = [
+      { phaseIndex: -7, phaseName: "setup:worktree", success: true, durationMs: 100 },
+      { phaseIndex: 0, phaseName: "Phase 1", success: true, durationMs: 200 },
+      { phaseIndex: -1, phaseName: "publish:pr", success: true, durationMs: 300 },
+    ];
+    const reindexed = reindexPhaseResults(results);
+    expect(reindexed[0].phaseName).toBe("setup:worktree");
+    expect(reindexed[1].phaseName).toBe("Phase 1");
+    expect(reindexed[2].phaseName).toBe("publish:pr");
+  });
+
+  it("does not mutate the original array", () => {
+    const results: PhaseResult[] = [
+      { phaseIndex: -5, phaseName: "plan:generate", success: true, durationMs: 500 },
+      { phaseIndex: 0, phaseName: "Phase 1", success: true, durationMs: 1000 },
+    ];
+    reindexPhaseResults(results);
+    expect(results[0].phaseIndex).toBe(-5);
+    expect(results[1].phaseIndex).toBe(0);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(reindexPhaseResults([])).toEqual([]);
+  });
+
+  it("preserves all other fields of each PhaseResult", () => {
+    const results: PhaseResult[] = [
+      {
+        phaseIndex: -4,
+        phaseName: "review:code",
+        success: false,
+        error: "review failed",
+        errorCategory: "UNKNOWN",
+        durationMs: 800,
+        costUsd: 0.01,
+      },
+    ];
+    const reindexed = reindexPhaseResults(results);
+    expect(reindexed[0].phaseIndex).toBe(0);
+    expect(reindexed[0].phaseName).toBe("review:code");
+    expect(reindexed[0].success).toBe(false);
+    expect(reindexed[0].error).toBe("review failed");
+    expect(reindexed[0].costUsd).toBe(0.01);
   });
 });
 

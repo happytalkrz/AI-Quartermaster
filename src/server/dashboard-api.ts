@@ -1,5 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
+import { SessionManager } from "./auth/session.js";
+import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
@@ -7,12 +9,13 @@ import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
-import type { ProjectConfig, AQConfig } from "../types/config.js";
+import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
+import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -21,9 +24,11 @@ import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 
-// In-memory session token store: token → expiry timestamp
-const sessionTokens = new Map<string, number>();
-const SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Session manager: in-memory token store with TTL and periodic pruning
+const sessionManager = new SessionManager();
+
+// Rate limiter for POST /api/auth (initialized when createDashboardRoutes is called)
+let loginRateLimiter: LoginRateLimiter | undefined;
 
 // SSE client management
 interface SSEClient {
@@ -113,12 +118,6 @@ function broadcastToAllClients(event: string, data: unknown): void {
   }
 }
 
-function pruneExpiredTokens(): void {
-  const now = Date.now();
-  for (const [token, expiry] of sessionTokens) {
-    if (now > expiry) sessionTokens.delete(token);
-  }
-}
 
 function sendHeartbeat(): void {
   const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
@@ -143,7 +142,7 @@ function startPeriodicCleanup(): void {
 
   // Start token cleanup interval
   tokenCleanupInterval = setInterval(() => {
-    pruneExpiredTokens();
+    sessionManager.pruneExpired();
   }, TOKEN_CLEANUP_INTERVAL_MS);
 
   // Start heartbeat interval
@@ -185,13 +184,12 @@ export function cleanupAllSSEClients(): void {
 export function cleanupDashboardResources(): void {
   stopPeriodicCleanup();
   cleanupAllSSEClients();
-  sessionTokens.clear();
+  sessionManager.revokeAll();
+  loginRateLimiter?.destroy();
 }
 
 function isValidSessionToken(token: string): boolean {
-  pruneExpiredTokens();
-  const expiry = sessionTokens.get(token);
-  return expiry !== undefined && Date.now() <= expiry;
+  return sessionManager.validate(token);
 }
 
 /**
@@ -384,8 +382,22 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, patternStore?: PatternStore, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean): Hono {
   const api = new Hono();
+
+  // Initialize rate limiter from config (or defaults)
+  const rateLimitCfg = dashboardAuth?.rateLimit ?? {
+    maxAttempts: 5,
+    windowMs: 900_000,
+    blockDurationMs: 900_000,
+  };
+  loginRateLimiter = new LoginRateLimiter({
+    maxAttempts: rateLimitCfg.maxAttempts,
+    windowMs: rateLimitCfg.windowMs,
+    onExceeded: (ip) => {
+      broadcastToAllClients('rateLimitExceeded', { ip, timestamp: Date.now() });
+    },
+  });
 
   // Subscribe to JobStore events for real-time broadcasts
   store.on('jobDeleted', (job: Job) => {
@@ -403,16 +415,32 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   if (apiKey) {
     // POST /api/auth — exchange Bearer key for a short-lived session token
     api.post("/api/auth", (c) => {
+      const ip =
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+        (c.env as Record<string, unknown> | undefined)?.["remoteAddress"] as string | undefined ??
+        "unknown";
+
+      const rateLimitCheck = loginRateLimiter?.checkAndRecord(ip);
+      if (rateLimitCheck && !rateLimitCheck.allowed) {
+        const retryAfterSec = Math.ceil((rateLimitCheck.retryAfterMs ?? 900_000) / 1000);
+        getLogger().warn(`[Auth] Rate limit exceeded for IP ${ip}`);
+        return c.json(
+          { error: "Too Many Requests" },
+          429,
+          { "Retry-After": String(retryAfterSec) }
+        );
+      }
+
       const auth = c.req.header("Authorization");
       const expected = Buffer.from(`Bearer ${apiKey}`);
       const actual = Buffer.from(auth ?? "");
       if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
-      pruneExpiredTokens();
-      const token = randomUUID();
-      sessionTokens.set(token, Date.now() + SESSION_TTL_MS);
-      return c.json({ token, expiresIn: SESSION_TTL_MS });
+
+      loginRateLimiter?.reset(ip);
+      const { token, expiresIn } = sessionManager.createToken();
+      return c.json({ token, expiresIn });
     });
 
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
@@ -439,6 +467,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     api.use("/api/health", bearerAuth);
     api.use("/api/skip-events", bearerAuth);
     api.use("/api/skip-events/*", bearerAuth);
+    api.use("/api/metrics/failure-reasons", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -454,7 +483,24 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   } else {
     // apiKey 미설정: 바인드 호스트에 따라 로그 레벨 분기
     const isLocalBind = !hostname || hostname === "127.0.0.1" || hostname === "localhost";
-    if (isLocalBind) {
+    if (readOnly) {
+      // readOnly 모드: write 엔드포인트에 403 반환
+      const readOnlyGuard = async (c: Context, next: Next) => {
+        if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+          return c.json({ error: "Forbidden: dashboard is in read-only mode" }, 403);
+        }
+        await next();
+      };
+      api.use("/api/config", readOnlyGuard);
+      api.use("/api/projects", readOnlyGuard);
+      api.use("/api/projects/*", readOnlyGuard);
+      api.use("/api/jobs/*", readOnlyGuard);
+      api.use("/api/update", readOnlyGuard);
+      getLogger().info(
+        "Dashboard is running in read-only mode. Write endpoints are disabled." +
+        (!isLocalBind ? " Non-local bind is permitted in read-only mode." : "")
+      );
+    } else if (isLocalBind) {
       getLogger().info(
         "Dashboard API key is not configured. All endpoints are accessible without authentication."
       );
@@ -1055,6 +1101,76 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(stats);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch project stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Failure reason top-N analysis
+  api.get("/api/metrics/failure-reasons", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window"),
+        top: c.req.query("top"),
+      };
+
+      const parseResult = GetFailureReasonsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const result = getFailureReasons(store.getAqDb(), parseResult.data, patternStore);
+      return c.json(result);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch failure reasons: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Throughput time series
+  api.get("/api/metrics/throughput", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window") || "7d",
+      };
+
+      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const data = getThroughputTimeSeries(store.getAqDb(), parseResult.data);
+      return c.json(data);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch throughput metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Success rate metrics
+  api.get("/api/metrics/success-rate", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window") || "7d",
+      };
+
+      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const data = getSuccessRate(store.getAqDb(), parseResult.data);
+      return c.json(data);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch success rate metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

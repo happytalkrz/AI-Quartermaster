@@ -19,6 +19,7 @@ import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
 import { PatternStore } from "../src/learning/pattern-store.js";
 import { cleanOldWorktrees } from "../src/git/worktree-cleaner.js";
 import { listTriggerIssues, generateExecutionPlan, printExecutionPlan } from "../src/pipeline/automation/issue-orchestrator.js";
+import { killAllActiveProcesses } from "../src/claude/claude-runner.js";
 
 vi.mock("../src/pipeline/automation/issue-orchestrator.js", () => ({
   listTriggerIssues: vi.fn(),
@@ -1289,6 +1290,7 @@ describe("startCommand — gracefulShutdown", () => {
 
   let mockPollerStop: ReturnType<typeof vi.fn>;
   let mockQueueShutdown: ReturnType<typeof vi.fn>;
+  let mockStoreClose: ReturnType<typeof vi.fn>;
   let mockConfigWatcherStop: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -1309,10 +1311,11 @@ describe("startCommand — gracefulShutdown", () => {
       enqueue: vi.fn(),
     } as unknown as JobQueue));
 
+    mockStoreClose = vi.fn();
     vi.mocked(JobStore).mockImplementation(() => ({
       prune: vi.fn(),
       list: vi.fn().mockReturnValue([]),
-      close: vi.fn(),
+      close: mockStoreClose,
     } as unknown as JobStore));
 
     vi.mocked(startServer).mockReturnValue({ close: vi.fn() });
@@ -1421,6 +1424,53 @@ describe("startCommand — gracefulShutdown", () => {
     expect(mockPollerStop).not.toHaveBeenCalled();
     expect(mockQueueShutdown).toHaveBeenCalledWith(30000);
     expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it("shutdown 시 killAllActiveProcesses가 호출됨", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    const sigintCall = onSpy.mock.calls.find(([event]) => event === "SIGINT");
+    const sigintHandler = sigintCall?.[1] as (() => void) | undefined;
+    sigintHandler!();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(killAllActiveProcesses).toHaveBeenCalled();
+    exitSpy.mockRestore();
+  });
+
+  it("shutdown 시 store.close가 호출됨", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    const sigtermCall = onSpy.mock.calls.find(([event]) => event === "SIGTERM");
+    const sigtermHandler = sigtermCall?.[1] as (() => void) | undefined;
+    sigtermHandler!();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mockStoreClose).toHaveBeenCalled();
+    exitSpy.mockRestore();
+  });
+
+  it("중복 shutdown 호출 시 queue.shutdown은 한 번만 실행됨", async () => {
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as unknown as never);
+
+    await startCommand({});
+
+    const sigintCall = onSpy.mock.calls.find(([event]) => event === "SIGINT");
+    const sigintHandler = sigintCall?.[1] as (() => void) | undefined;
+
+    sigintHandler!();
+    sigintHandler!();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mockQueueShutdown).toHaveBeenCalledTimes(1);
+    exitSpy.mockRestore();
   });
 });
 

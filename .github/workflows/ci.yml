@@ -41,6 +41,28 @@ jobs:
       - run: npm ci
       - run: npm run check:pack
 
+  generate-visual-baseline:
+    name: generate-visual-baseline
+    runs-on: ubuntu-latest
+    # TEMP: baseline 스냅샷 생성용 임시 잡 — 스냅샷 커밋 후 삭제 예정 (#668)
+    if: github.ref == 'refs/heads/aq/668-ci-visual-regression-baseline'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Seed test config.yml
+        run: cp config.reference.yml config.yml
+      - run: npx playwright test --project=visual-desktop --project=visual-mobile --update-snapshots
+      - name: Upload baseline snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baseline-snapshots
+          path: tests/visual/__snapshots__/
+          if-no-files-found: error
+
   visual-regression:
     name: visual-regression
     runs-on: ubuntu-latest

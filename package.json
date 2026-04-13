@@ -27,7 +27,8 @@
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "bash scripts/smoke-test.sh"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",

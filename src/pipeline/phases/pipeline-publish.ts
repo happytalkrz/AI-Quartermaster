@@ -9,6 +9,7 @@ import { runCli } from "../../utils/cli-runner.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { getLogger } from "../../utils/logger.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../../types/pipeline.js";
+import type { SenderPermission } from "../../github/issue-fetcher.js";
 import { removeCheckpoint } from "../errors/checkpoint.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PR_CREATED } from "../reporting/progress-tracker.js";
@@ -19,7 +20,7 @@ const logger = getLogger();
 /**
  * Push branch, create PR, enable auto-merge, and close issue
  */
-export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ success: boolean; prUrl?: string; prNumber?: number; error?: string }> {
+export async function pushAndCreatePR(context: PublishPhaseContext & { senderPermission?: SenderPermission }): Promise<{ success: boolean; prUrl?: string; prNumber?: number; error?: string }> {
   const {
     issueNumber,
     repo,
@@ -45,6 +46,9 @@ export async function pushAndCreatePR(context: PublishPhaseContext): Promise<{ s
       gitConfig,
       cwd: worktreePath,
       baseBranch,
+      issueBody: issue.body,
+      issueLabels: issue.labels,
+      senderPermission: context.senderPermission,
     });
 
     // === Conflict detection before push ===

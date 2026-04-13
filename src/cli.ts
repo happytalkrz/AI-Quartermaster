@@ -129,7 +129,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const logger = getLogger();
   const port = args.port ?? 3000;
-  const host = args.host ?? "127.0.0.1";
+  const isWSL = !!process.env.WSL_DISTRO_NAME || !!process.env.WSL_INTEROP;
+  const host = args.host ?? (isWSL ? "0.0.0.0" : "127.0.0.1");
 
   // === Pre-flight checks ===
   const projects = effectiveConfig.projects ?? [];
@@ -392,7 +393,8 @@ export async function startCommand(args: CliArgs): Promise<void> {
 
   // === Non-local bind 보안 검사 ===
   const isLocalBind = host === "127.0.0.1" || host === "localhost";
-  if (!isLocalBind && !apiKey && process.env.DASHBOARD_ALLOW_INSECURE !== "true") {
+  const insecureAllowed = process.env.DASHBOARD_ALLOW_INSECURE === "true";
+  if (!isLocalBind && !apiKey && !insecureAllowed && !isWSL) {
     console.error(`\n✗ 보안 오류: non-local bind(${host})에서 DASHBOARD_API_KEY가 설정되지 않았습니다.`);
     console.error("  API가 인증 없이 외부 네트워크에 노출됩니다. 아래 중 하나를 선택하세요:\n");
     console.error("  1. DASHBOARD_API_KEY 환경변수 설정 (권장):");
@@ -402,6 +404,12 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("  3. 보안 위험을 감수하고 강제 실행 (비권장):");
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
+  }
+  if (!isLocalBind && !apiKey && isWSL) {
+    logger.warn(
+      `WSL 환경 감지: 대시보드를 ${host}:${port}에 인증 없이 바인딩합니다. ` +
+      `보안이 필요한 환경에서는 DASHBOARD_API_KEY를 설정하세요.`
+    );
   }
 
   const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host);

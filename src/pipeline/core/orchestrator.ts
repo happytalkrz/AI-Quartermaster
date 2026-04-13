@@ -11,6 +11,7 @@ import type {
   OrchestratorInput,
   OrchestratorResult,
 } from "./pipeline-context.js";
+import type { PhaseResult } from "../../types/pipeline.js";
 import { clearCache } from "../../github/github-cache.js";
 import {
   handleDuplicatePR,
@@ -37,6 +38,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   // Initialize pipeline state
   const runtime = await initializePipelineState(input, config);
 
+  // 전체 파이프라인 수명 동안 유지되는 누적 phase 결과 배열
+  const accumulatedPhaseResults: PhaseResult[] = [];
+
   try {
     // Phase 1: Initial Setup (Project, Duplicate PR check, Issue validation)
     const setupResult = await executeInitialSetupPhases(input, runtime, config, aqRoot);
@@ -62,7 +66,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       checkpointFn
     );
 
-    checkpointFn({ plan: undefined, phaseResults: [] });
+    checkpointFn({ plan: undefined, phaseResults: [...accumulatedPhaseResults] });
 
     // Phase 3: Core Loop Execution (Plan generation + Phase execution)
     const coreResult = await executeCoreLoopPhase(
@@ -80,7 +84,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       hookExecutor
     );
 
-    checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: coreResult.coreResult.phaseResults });
+    checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: [...accumulatedPhaseResults, ...coreResult.coreResult.phaseResults] });
 
     // Phase 4: Post-processing (Review, Simplify, Validation, Publish)
     const postProcessingContext = createPostProcessingContext({
@@ -91,7 +95,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       preset: coreResult.preset,
       runtime,
       checkpointFn,
-      jobLogger: input.jobLogger
+      jobLogger: input.jobLogger,
+      accumulatedPhaseResults,
     });
     postProcessingContext.hookRegistry = hookRegistry;
     postProcessingContext.hookExecutor = hookExecutor;

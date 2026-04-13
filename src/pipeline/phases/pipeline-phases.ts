@@ -24,7 +24,7 @@ import {
   PROGRESS_DONE
 } from "../reporting/progress-tracker.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
-import type { PipelineState } from "../../types/pipeline.js";
+import type { PipelineState, PhaseResult } from "../../types/pipeline.js";
 import type { OrchestratorInput } from "../core/pipeline-context.js";
 import type { CoreLoopResult } from "../core/core-loop.js";
 import type { ResolvedProject } from "../../config/project-resolver.js";
@@ -101,6 +101,7 @@ export interface PostProcessingContext {
   jobLogger?: JobLogger;
   hookRegistry?: HookRegistry;
   hookExecutor?: HookExecutor;
+  accumulatedPhaseResults?: PhaseResult[];
 }
 
 /**

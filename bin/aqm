@@ -30,6 +30,7 @@ fi
 AQM_DATA_DIR="$HOME/.ai-quartermaster"
 AQM_PID_FILE="$AQM_DATA_DIR/.aqm-server.pid"
 AQM_LOG_FILE="$AQM_DATA_DIR/logs/server.log"
+AQM_INSTALL_LOG="$AQM_DATA_DIR/logs/install.log"
 AQM_CLAUDE_PROFILE_FILE="$AQM_DATA_DIR/.claude-profile"
 
 # Resolve CLAUDE_CONFIG_DIR for the daemon so the dashboard shows the right profile.
@@ -160,12 +161,20 @@ case "${1:-}" in
     if [ "$BEFORE" = "$AFTER" ]; then
       echo "이미 최신 버전입니다."
     else
-      npm install --silent 2>/dev/null
-      echo "빌드 중..."
-      npm run build --silent 2>/dev/null
+      mkdir -p "$AQM_DATA_DIR/logs"
+      npm install --silent 2>>"$AQM_INSTALL_LOG"
       if [ $? -ne 0 ]; then
-        echo "빌드 실패! 로그를 확인하세요."
-        npm run build
+        echo "npm install 실패! 오류 로그:"
+        tail -n 50 "$AQM_INSTALL_LOG"
+        echo "(전체 로그: $AQM_INSTALL_LOG)"
+        exit 1
+      fi
+      echo "빌드 중..."
+      npm run build --silent 2>>"$AQM_INSTALL_LOG"
+      if [ $? -ne 0 ]; then
+        echo "빌드 실패! 오류 로그:"
+        tail -n 50 "$AQM_INSTALL_LOG"
+        echo "(전체 로그: $AQM_INSTALL_LOG)"
         exit 1
       fi
       # Update wrapper script

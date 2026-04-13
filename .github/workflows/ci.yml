@@ -52,7 +52,7 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test --project=chromium
+      - run: npx playwright test --project=visual-desktop --project=visual-mobile
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v4

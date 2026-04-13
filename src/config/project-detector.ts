@@ -39,29 +39,76 @@ function parsePackageJson(projectPath: string): Record<string, string> {
   }
 }
 
-function detectNodeCommands(projectPath: string): Partial<CommandsConfig> {
-  const scripts = parsePackageJson(projectPath);
+interface PackageManagerDetection {
+  packageManager: DetectedPackageManager;
+  confidence: "high" | "medium";
+  fallbackReason?: string;
+}
+
+function detectPackageManager(projectPath: string): PackageManagerDetection {
+  if (existsSync(join(projectPath, "pnpm-lock.yaml"))) {
+    return { packageManager: "pnpm", confidence: "high" };
+  }
+  if (existsSync(join(projectPath, "yarn.lock"))) {
+    return { packageManager: "yarn", confidence: "high" };
+  }
+  if (existsSync(join(projectPath, "bun.lockb"))) {
+    return { packageManager: "bun", confidence: "high" };
+  }
+  return {
+    packageManager: "npm",
+    confidence: "medium",
+    fallbackReason: "lockfile 없음 — npm fallback",
+  };
+}
+
+function buildNodeCommands(
+  scripts: Record<string, string>,
+  projectPath: string,
+  pm: DetectedPackageManager,
+): Partial<CommandsConfig> {
+  const run = (script: string): string => {
+    if (pm === "yarn") return `yarn ${script}`;
+    return `${pm} run ${script}`;
+  };
+
   const commands: Partial<CommandsConfig> = {};
 
-  commands.test = scripts["test"] ? "npm test" : "echo skip";
+  if (pm === "bun") {
+    commands.test = scripts["test"] ? "bun test" : "echo skip";
+  } else if (pm === "yarn") {
+    commands.test = scripts["test"] ? "yarn test" : "echo skip";
+  } else {
+    commands.test = scripts["test"] ? `${pm} test` : "echo skip";
+  }
 
   if (scripts["lint"]) {
-    commands.lint = "npm run lint";
+    commands.lint = run("lint");
   }
 
   if (scripts["build"]) {
-    commands.build = "npm run build";
+    commands.build = run("build");
   }
 
   if (scripts["typecheck"]) {
-    commands.typecheck = "npm run typecheck";
+    commands.typecheck = run("typecheck");
   } else if (scripts["type-check"]) {
-    commands.typecheck = "npm run type-check";
+    commands.typecheck = run("type-check");
   } else if (existsSync(join(projectPath, "tsconfig.json"))) {
     commands.typecheck = "npx tsc --noEmit";
   }
 
   return commands;
+}
+
+function detectNodeCommands(projectPath: string): {
+  commands: Partial<CommandsConfig>;
+  pmDetection: PackageManagerDetection;
+} {
+  const scripts = parsePackageJson(projectPath);
+  const pmDetection = detectPackageManager(projectPath);
+  const commands = buildNodeCommands(scripts, projectPath, pmDetection.packageManager);
+  return { commands, pmDetection };
 }
 
 export function detectProjectCommands(projectPath: string): DetectionResult {
@@ -70,24 +117,39 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
   try {
     if (existsSync(join(projectPath, "package.json"))) {
       logger.debug(`[project-detector] Node.js 프로젝트 감지: ${projectPath}`);
-      return { language: "nodejs", commands: detectNodeCommands(projectPath), confidence: "high" };
+      const { commands, pmDetection } = detectNodeCommands(projectPath);
+      return {
+        language: "nodejs",
+        commands,
+        confidence: pmDetection.confidence,
+        packageManager: pmDetection.packageManager,
+        ...(pmDetection.fallbackReason ? { fallbackReason: pmDetection.fallbackReason } : {}),
+      };
     }
 
     if (existsSync(join(projectPath, "build.gradle.kts"))) {
       logger.debug(`[project-detector] Kotlin-Gradle 프로젝트 감지: ${projectPath}`);
+      const hasWrapper = existsSync(join(projectPath, "gradlew"));
       return {
         language: "kotlin-gradle",
-        commands: { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" },
-        confidence: "high",
+        commands: hasWrapper
+          ? { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" }
+          : { test: "gradle test", build: "gradle build", typecheck: "echo skip" },
+        confidence: hasWrapper ? "high" : "medium",
+        ...(hasWrapper ? {} : { fallbackReason: "gradlew not found" }),
       };
     }
 
     if (existsSync(join(projectPath, "build.gradle"))) {
       logger.debug(`[project-detector] Java-Gradle 프로젝트 감지: ${projectPath}`);
+      const hasWrapper = existsSync(join(projectPath, "gradlew"));
       return {
         language: "java-gradle",
-        commands: { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" },
-        confidence: "high",
+        commands: hasWrapper
+          ? { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" }
+          : { test: "gradle test", build: "gradle build", typecheck: "echo skip" },
+        confidence: hasWrapper ? "high" : "medium",
+        ...(hasWrapper ? {} : { fallbackReason: "gradlew not found" }),
       };
     }
 
@@ -132,10 +194,10 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
     }
 
     logger.debug(`[project-detector] 언어 감지 불가: ${projectPath}`);
-    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low" };
+    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low", fallbackReason: "no project marker found" };
   } catch (err: unknown) {
     logger.warn(`[project-detector] 감지 중 오류: ${getErrorMessage(err)}`);
-    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low" };
+    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low", fallbackReason: "no project marker found" };
   }
 }
 

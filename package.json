@@ -24,7 +24,8 @@
     "postbuild": "node scripts/add-shebang.cjs",
     "prepublishOnly": "npm run typecheck && npm run lint && npm run test && npm run build",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=e2e",
+    "test:visual": "playwright test --project=visual",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/",
     "typecheck": "tsc --noEmit"

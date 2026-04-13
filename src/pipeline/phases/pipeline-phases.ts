@@ -23,6 +23,7 @@ import {
   PROGRESS_REVIEW_START,
   PROGRESS_DONE
 } from "../reporting/progress-tracker.js";
+import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
 import type { PipelineState, PhaseResult } from "../../types/pipeline.js";
 import type { OrchestratorInput } from "../core/pipeline-context.js";
@@ -72,6 +73,7 @@ export interface InitialSetupResult {
   mode?: PipelineMode;
   executionMode?: ExecutionMode;
   checkpoint?: (overrides?: Partial<PipelineCheckpoint>) => void;
+  phaseResults: PhaseResult[];
 }
 
 export interface EnvironmentSetupResult {
@@ -79,6 +81,7 @@ export interface EnvironmentSetupResult {
   skillsContext: string;
   repoStructure: string;
   rollbackHash?: string;
+  phaseResults: PhaseResult[];
 }
 
 export interface CoreLoopExecutionResult {
@@ -150,7 +153,8 @@ export async function executeInitialSetupPhases(
       project,
       dataDir,
       timer,
-      duplicatePRUrl: duplicateResult.prUrl
+      duplicatePRUrl: duplicateResult.prUrl,
+      phaseResults: []
     };
   }
 
@@ -191,7 +195,8 @@ export async function executeInitialSetupPhases(
     issue,
     mode,
     executionMode,
-    checkpoint
+    checkpoint,
+    phaseResults: []
   };
 }
 
@@ -210,8 +215,11 @@ export async function executeEnvironmentSetup(
 ): Promise<EnvironmentSetupResult> {
   const { issueNumber, repo } = input;
   const jl = input.jobLogger;
+  const phaseResults: PhaseResult[] = [];
 
   // Setup Git Environment
+  const worktreeStartedAt = nowIso();
+  const worktreeStart = Date.now();
   const gitSetupResult = await setupGitEnvironment({
     issueNumber,
     issueTitle: issue.title,
@@ -223,6 +231,10 @@ export async function executeEnvironmentSetup(
     isRetry: input.isRetry || false,
     jl,
   });
+  phaseResults.push(makePseudoPhaseSuccess("setup:worktree", Date.now() - worktreeStart, {
+    startedAt: worktreeStartedAt,
+    completedAt: nowIso(),
+  }));
 
   transitionState(runtime, gitSetupResult.state, {
     branchName: gitSetupResult.branchName,
@@ -239,6 +251,8 @@ export async function executeEnvironmentSetup(
   let envPrepResult: EnvironmentPrepResult;
 
   if (runtime.worktreePath) {
+    const depStartedAt = nowIso();
+    const depStart = Date.now();
     envPrepResult = await prepareWorkEnvironment({
       projectRoot,
       worktreePath: runtime.worktreePath,
@@ -247,6 +261,10 @@ export async function executeEnvironmentSetup(
       rollbackStrategy,
       jl,
     });
+    phaseResults.push(makePseudoPhaseSuccess("setup:dependency", Date.now() - depStart, {
+      startedAt: depStartedAt,
+      completedAt: nowIso(),
+    }));
   } else {
     envPrepResult = {
       rollbackHash: undefined,
@@ -261,6 +279,7 @@ export async function executeEnvironmentSetup(
     skillsContext: envPrepResult.skillsContext,
     repoStructure: envPrepResult.repoStructure,
     rollbackHash: envPrepResult.rollbackHash,
+    phaseResults,
   };
 }
 
@@ -447,7 +466,31 @@ export async function executePostProcessingPhases(
     checkpoint
   };
 
+  const reviewStartedAt = nowIso();
+  const reviewStartMs = Date.now();
   const reviewResult = await runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState);
+  const reviewDurationMs = Date.now() - reviewStartMs;
+  const reviewCompletedAt = nowIso();
+
+  if (context.accumulatedPhaseResults) {
+    if (reviewResult.success) {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseSuccess("review:code", reviewDurationMs, {
+          startedAt: reviewStartedAt,
+          completedAt: reviewCompletedAt,
+          costUsd: reviewResult.costUsd,
+        })
+      );
+    } else {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseFailure("review:code", reviewDurationMs, reviewResult.error ?? "Review phase failed", {
+          startedAt: reviewStartedAt,
+          completedAt: reviewCompletedAt,
+          costUsd: reviewResult.costUsd,
+        })
+      );
+    }
+  }
 
   if (!reviewResult.success) {
     const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -479,7 +522,31 @@ export async function executePostProcessingPhases(
       checkpoint
     };
 
+    const simplifyStartedAt = nowIso();
+    const simplifyStartMs = Date.now();
     const simplifyResult = await runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState);
+    const simplifyDurationMs = Date.now() - simplifyStartMs;
+    const simplifyCompletedAt = nowIso();
+
+    if (context.accumulatedPhaseResults) {
+      if (simplifyResult.success) {
+        context.accumulatedPhaseResults.push(
+          makePseudoPhaseSuccess("review:simplify", simplifyDurationMs, {
+            startedAt: simplifyStartedAt,
+            completedAt: simplifyCompletedAt,
+            costUsd: simplifyResult.costUsd,
+          })
+        );
+      } else {
+        context.accumulatedPhaseResults.push(
+          makePseudoPhaseFailure("review:simplify", simplifyDurationMs, simplifyResult.error ?? "Simplify phase failed", {
+            startedAt: simplifyStartedAt,
+            completedAt: simplifyCompletedAt,
+            costUsd: simplifyResult.costUsd,
+          })
+        );
+      }
+    }
 
     if (!simplifyResult.success) {
       const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
@@ -505,6 +572,8 @@ export async function executePostProcessingPhases(
     baseline: coreResult.baseline,
   };
 
+  const validationStartedAt = nowIso();
+  const validationStartMs = Date.now();
   const validationResult = await runValidationPhase(
     validationContext,
     timer,
@@ -520,6 +589,26 @@ export async function executePostProcessingPhases(
     aqRoot,
     runtime.projectRoot
   );
+  const validationDurationMs = Date.now() - validationStartMs;
+  const validationCompletedAt = nowIso();
+
+  if (context.accumulatedPhaseResults) {
+    if (validationResult.success) {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseSuccess("validation:check", validationDurationMs, {
+          startedAt: validationStartedAt,
+          completedAt: validationCompletedAt,
+        })
+      );
+    } else {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseFailure("validation:check", validationDurationMs, validationResult.error ?? "Validation phase failed", {
+          startedAt: validationStartedAt,
+          completedAt: validationCompletedAt,
+        })
+      );
+    }
+  }
 
   if (!validationResult.success) {
     throw new Error(validationResult.error || "Validation phase failed");
@@ -565,7 +654,29 @@ export async function executePostProcessingPhases(
     costBreakdown: coreResult.costBreakdown,
   };
 
+  const publishStartedAt = nowIso();
+  const publishStartMs = Date.now();
   const publishResult = await pushAndCreatePR(publishContext);
+  const publishDurationMs = Date.now() - publishStartMs;
+  const publishCompletedAt = nowIso();
+
+  if (context.accumulatedPhaseResults) {
+    if (publishResult.success) {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseSuccess("publish:pr", publishDurationMs, {
+          startedAt: publishStartedAt,
+          completedAt: publishCompletedAt,
+        })
+      );
+    } else {
+      context.accumulatedPhaseResults.push(
+        makePseudoPhaseFailure("publish:pr", publishDurationMs, publishResult.error ?? "Publish phase failed", {
+          startedAt: publishStartedAt,
+          completedAt: publishCompletedAt,
+        })
+      );
+    }
+  }
 
   if (!publishResult.success) {
     throw new Error(publishResult.error || "Publish phase failed");

@@ -34,6 +34,7 @@ describe("validateConfig", () => {
       pollingIntervalMs: 60000,
       maxJobs: 100,
       autoUpdate: false,
+      serverMode: "hybrid",
     },
     git: {
       defaultBaseBranch: "main",
@@ -372,6 +373,31 @@ describe("validateConfig", () => {
     const result = validateConfig(configWithoutInstanceLabel);
     expect(result.general.instanceLabel).toBeUndefined();
   });
+
+  it("serverMode: polling 허용", () => {
+    const config = updateNested(validConfig, "general", { serverMode: "polling" as const });
+    const result = validateConfig(config);
+    expect(result.general.serverMode).toBe("polling");
+  });
+
+  it("serverMode: webhook 허용", () => {
+    const config = updateNested(validConfig, "general", { serverMode: "webhook" as const });
+    const result = validateConfig(config);
+    expect(result.general.serverMode).toBe("webhook");
+  });
+
+  it("serverMode: hybrid 허용", () => {
+    const config = updateNested(validConfig, "general", { serverMode: "hybrid" as const });
+    const result = validateConfig(config);
+    expect(result.general.serverMode).toBe("hybrid");
+  });
+
+  it("serverMode: 잘못된 값이면 에러", () => {
+    const invalidConfig = updateNested(validConfig, "general", {
+      serverMode: "auto" as any,
+    });
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
 });
 
 describe("validateCommandSafety", () => {
@@ -442,6 +468,7 @@ describe("validateConfig - command safety", () => {
       pollingIntervalMs: 60000,
       maxJobs: 100,
       autoUpdate: false,
+      serverMode: "hybrid",
     },
     git: {
       defaultBaseBranch: "main",

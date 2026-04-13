@@ -499,6 +499,7 @@ export async function executePostProcessingPhases(
     plan: coreResult.plan,
     phaseResults: coreResult.phaseResults,
     jl,
+    baseline: coreResult.baseline,
   };
 
   const validationResult = await runValidationPhase(

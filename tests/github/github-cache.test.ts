@@ -408,5 +408,83 @@ describe("github-cache", () => {
         expect(cached).toEqual(issue);
       });
     });
+
+    it("should simulate TTL-aware issue caching (5분 TTL 정책)", () => {
+      vi.useFakeTimers();
+      try {
+        const ISSUE_CACHE_TTL_MS = 5 * 60 * 1000;
+        const issueKey = "issue:owner/repo:42";
+        const issueData = { number: 42, title: "TTL integration test", body: "", labels: [] };
+
+        // 캐시 저장
+        setCached(issueKey, issueData, ISSUE_CACHE_TTL_MS);
+
+        // TTL 이전 — 캐시 히트
+        vi.advanceTimersByTime(ISSUE_CACHE_TTL_MS - 1);
+        expect(getCached(issueKey)).toEqual(issueData);
+
+        // TTL 경과 — 캐시 미스
+        vi.advanceTimersByTime(2);
+        expect(getCached(issueKey)).toBeUndefined();
+        expect(getCacheSize()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("should simulate selective invalidation of issue cache", () => {
+      const issue42Key = "issue:owner/repo:42";
+      const issue99Key = "issue:owner/repo:99";
+      const prKey = "pr:owner/repo:5";
+
+      setCached(issue42Key, { number: 42, title: "Issue 42" });
+      setCached(issue99Key, { number: 99, title: "Issue 99" });
+      setCached(prKey, { number: 5, title: "PR 5" });
+
+      expect(getCacheSize()).toBe(3);
+
+      // 이슈 42만 무효화
+      deleteCached(issue42Key);
+
+      expect(getCached(issue42Key)).toBeUndefined();
+      expect(getCached(issue99Key)).toEqual({ number: 99, title: "Issue 99" });
+      expect(getCached(prKey)).toEqual({ number: 5, title: "PR 5" });
+      expect(getCacheSize()).toBe(2);
+    });
+
+    it("should simulate memoize TTL with full pipeline lifecycle", async () => {
+      vi.useFakeTimers();
+      try {
+        const ISSUE_CACHE_TTL_MS = 5 * 60 * 1000;
+        let fetchCount = 0;
+
+        const fetchIssueSimulated = memoize(
+          async (repo: string, number: number) => {
+            fetchCount++;
+            return { repo, number, title: `Issue #${number}` };
+          },
+          {
+            ttl: ISSUE_CACHE_TTL_MS,
+            keyFn: (repo: string, number: number) => `issue:${repo}:${number}`,
+          }
+        );
+
+        // 최초 호출 — fetch 실행
+        await fetchIssueSimulated("owner/repo", 1);
+        expect(fetchCount).toBe(1);
+
+        // TTL 이내 재호출 — 캐시 히트
+        vi.advanceTimersByTime(ISSUE_CACHE_TTL_MS - 1);
+        await fetchIssueSimulated("owner/repo", 1);
+        expect(fetchCount).toBe(1);
+
+        // TTL 경과 후 재호출 — fetch 재실행
+        vi.advanceTimersByTime(2);
+        await fetchIssueSimulated("owner/repo", 1);
+        expect(fetchCount).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

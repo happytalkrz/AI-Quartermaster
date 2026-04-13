@@ -49,6 +49,22 @@ function renderProjectCard(project) {
     html += '</div>';
   }
 
+  if (project.commands) {
+    var cmdLabels = [];
+    if (project.commands.test) cmdLabels.push('test');
+    if (project.commands.typecheck) cmdLabels.push('typecheck');
+    if (project.commands.build) cmdLabels.push('build');
+    if (project.commands.lint) cmdLabels.push('lint');
+    if (project.commands.preInstall) cmdLabels.push('preInstall');
+    if (cmdLabels.length > 0) {
+      html += '<div class="flex flex-wrap gap-1 mt-1">';
+      cmdLabels.forEach(function(cmd) {
+        html += '<span class="text-[9px] px-1.5 py-0.5 rounded bg-secondary/10 text-secondary font-mono">' + esc(cmd) + '</span>';
+      });
+      html += '</div>';
+    }
+  }
+
   html += '</div></div>';
   return html;
 }

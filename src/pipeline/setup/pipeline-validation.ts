@@ -1,4 +1,5 @@
 import { runFinalValidation } from "../reporting/final-validator.js";
+import type { ValidationResult } from "../reporting/final-validator.js";
 import { retryWithClaudeFix } from "../execution/retry-with-fix.js";
 import { formatResult, printResult } from "../reporting/result-reporter.js";
 import { PROGRESS_VALIDATION_START } from "../reporting/progress-tracker.js";
@@ -11,8 +12,62 @@ import { getLogger } from "../../utils/logger.js";
 import type { ValidationPhaseContext } from "../../types/pipeline.js";
 import type { ExecutionMode } from "../../types/config.js";
 import type { PipelineTimer } from "../../safety/timeout-manager.js";
+import {
+  parseTscOutput,
+  parseEslintOutput,
+  diffTscErrors,
+  diffEslintErrors,
+  type BaselineErrors,
+} from "../reporting/verification-parser.js";
 
 const logger = getLogger();
+
+/**
+ * baseline 기반으로 ValidationResult를 필터링한다.
+ * typecheck/lint 체크가 실패했을 때, baseline 대비 새로운 에러가 없으면 passed로 처리한다.
+ * 새로운 에러가 있으면 해당 에러만 output에 남긴다.
+ */
+function filterValidationWithBaseline(
+  validation: ValidationResult,
+  baseline: BaselineErrors
+): ValidationResult {
+  const filteredChecks = validation.checks.map((check) => {
+    if (check.passed || !check.output) return check;
+
+    if (check.name === "typecheck") {
+      const current = parseTscOutput(check.output);
+      const diff = diffTscErrors(baseline.tsc, current);
+      if (!diff.hasErrors) {
+        logger.info(`[FINAL_VALIDATING] typecheck: ${current.totalErrors} error(s) all pre-existing — treating as passed`);
+        return { ...check, passed: true, output: undefined };
+      }
+      const newOutput = Object.entries(diff.errorsByFile)
+        .flatMap(([file, msgs]) => msgs.map((msg) => `${file}: ${msg}`))
+        .join("\n");
+      return { ...check, output: newOutput };
+    }
+
+    if (check.name === "lint") {
+      const current = parseEslintOutput(check.output);
+      const diff = diffEslintErrors(baseline.eslint, current);
+      if (!diff.hasErrors) {
+        logger.info(`[FINAL_VALIDATING] lint: ${current.totalErrors} error(s) all pre-existing — treating as passed`);
+        return { ...check, passed: true, output: undefined };
+      }
+      const newOutput = Object.entries(diff.errorsByFile)
+        .flatMap(([file, msgs]) => msgs.map((msg) => `${file}: ${msg}`))
+        .join("\n");
+      return { ...check, output: newOutput };
+    }
+
+    return check;
+  });
+
+  return {
+    checks: filteredChecks,
+    success: filteredChecks.every((c) => c.passed),
+  };
+}
 
 export interface ValidationPhaseResult {
   success: boolean;
@@ -51,7 +106,10 @@ export async function runValidationPhase(
   context.jl?.setStep("최종 검증 중...");
   context.jl?.setProgress(PROGRESS_VALIDATION_START);
 
-  const validation = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
+  const rawValidation = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
+  const validation = context.baseline
+    ? filterValidationWithBaseline(rawValidation, context.baseline)
+    : rawValidation;
 
   for (const check of validation.checks) {
     context.jl?.log(`${check.passed ? "PASS" : "FAIL"} ${check.name}`);
@@ -123,7 +181,10 @@ async function retryValidationWithFixes(
   };
 
   const revalidateFn = async () => {
-    const result = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
+    const rawResult = await runFinalValidation(fullCommands, { cwd: context.cwd }, executionMode, context.gitPath);
+    const result = context.baseline
+      ? filterValidationWithBaseline(rawResult, context.baseline)
+      : rawResult;
 
     // Log validation results
     for (const check of result.checks) {

@@ -1,6 +1,17 @@
 import { runCli, CliRunOptions } from "../utils/cli-runner.js";
 import { sanitizeGhError, sanitizeErrorMessage } from "../utils/error-sanitizer.js";
-import { memoize } from "./github-cache.js";
+import { memoize, deleteCached } from "./github-cache.js";
+
+/**
+ * 캐시 정책: 이슈/PR 메타데이터는 5분 TTL로 캐시합니다.
+ *
+ * - 근거: 파이프라인 평균 실행 시간(~3분) 내에서는 일관성을 보장하면서,
+ *         5분 후에는 최신 메타데이터(본문, 라벨, 제목 변경)를 반영합니다.
+ * - 키 구조: "issue:{repo}:{number}" 또는 "pr:{repo}:{number}"
+ * - 무효화 시점: 파이프라인 재처리 전, 또는 메타데이터 변경이 확인된 경우
+ *               invalidateIssueCache / invalidatePRCache 를 호출합니다.
+ */
+const ISSUE_CACHE_TTL_MS = 5 * 60 * 1000; // 5분
 
 export interface GitHubIssue {
   number: number;
@@ -127,13 +138,31 @@ async function fetchPRInternal(
   };
 }
 
-// Memoized versions with custom key functions
+// Memoized versions with TTL and custom key functions
 export const fetchIssue = memoize(fetchIssueInternal, {
+  ttl: ISSUE_CACHE_TTL_MS,
   keyFn: (repo: string, issueNumber: number, options?: { ghPath?: string; timeout?: number }) =>
     `issue:${repo}:${issueNumber}`,
 });
 
 export const fetchPR = memoize(fetchPRInternal, {
+  ttl: ISSUE_CACHE_TTL_MS,
   keyFn: (repo: string, prNumber: number, options?: { ghPath?: string; timeout?: number }) =>
     `pr:${repo}:${prNumber}`,
 });
+
+/**
+ * 특정 이슈의 캐시를 즉시 무효화합니다.
+ * 파이프라인 재처리 전 또는 이슈 메타데이터 변경이 확인된 경우 호출하세요.
+ */
+export function invalidateIssueCache(repo: string, issueNumber: number): void {
+  deleteCached(`issue:${repo}:${issueNumber}`);
+}
+
+/**
+ * 특정 PR의 캐시를 즉시 무효화합니다.
+ * 파이프라인 재처리 전 또는 PR 메타데이터 변경이 확인된 경우 호출하세요.
+ */
+export function invalidatePRCache(repo: string, prNumber: number): void {
+  deleteCached(`pr:${repo}:${prNumber}`);
+}

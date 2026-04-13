@@ -133,6 +133,72 @@ function sortJobs(jobs) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   DOM Type Guard Helpers
+   ══════════════════════════════════════════════════════════════ */
+/**
+ * querySelector with null check — returns HTMLElement or null.
+ * Eliminates @ts-ignore on querySelector + property access patterns.
+ * @param {string} selector
+ * @param {ParentNode} [root]
+ * @returns {HTMLElement | null}
+ */
+function $el(selector, root) {
+  var r = root || document;
+  return /** @type {HTMLElement | null} */ (r.querySelector(selector));
+}
+
+/**
+ * querySelectorAll wrapper typed as HTMLElement array.
+ * @param {string} selector
+ * @param {ParentNode} [root]
+ * @returns {HTMLElement[]}
+ */
+function $$el(selector, root) {
+  var r = root || document;
+  return /** @type {HTMLElement[]} */ (Array.from(r.querySelectorAll(selector)));
+}
+
+/**
+ * getElementById with HTMLElement cast.
+ * Eliminates @ts-ignore on getElementById + property access patterns.
+ * @param {string} id
+ * @returns {HTMLElement | null}
+ */
+function $id(id) {
+  return /** @type {HTMLElement | null} */ (document.getElementById(id));
+}
+
+/**
+ * Cast element to HTMLInputElement for value/checked access.
+ * @param {Element | HTMLElement | null} el
+ * @returns {HTMLInputElement | null}
+ */
+function asInput(el) {
+  if (el instanceof HTMLInputElement) return el;
+  return null;
+}
+
+/**
+ * Cast element to HTMLSelectElement for value access.
+ * @param {Element | HTMLElement | null} el
+ * @returns {HTMLSelectElement | null}
+ */
+function asSelect(el) {
+  if (el instanceof HTMLSelectElement) return el;
+  return null;
+}
+
+/**
+ * Cast element to HTMLFormElement for FormData access.
+ * @param {Element | HTMLElement | null} el
+ * @returns {HTMLFormElement | null}
+ */
+function asForm(el) {
+  if (el instanceof HTMLFormElement) return el;
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════
    Log Colorizer
    ══════════════════════════════════════════════════════════════ */
 /**

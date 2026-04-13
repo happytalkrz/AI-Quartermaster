@@ -29,10 +29,10 @@ describe("token-pricing", () => {
         output_tokens: 1_000_000, // 1M tokens
       };
 
-      const cost = calculateCostFromUsage(usage, "claude-3-haiku-20240307");
+      const cost = calculateCostFromUsage(usage, "claude-haiku-4-5");
 
-      // Expected: 2M * $0.25 + 1M * $1.25 = $0.5 + $1.25 = $1.75
-      expect(cost).toBeCloseTo(1.75, 6);
+      // Expected: 2M * $1 + 1M * $5 = $2 + $5 = $7
+      expect(cost).toBeCloseTo(7, 6);
     });
 
     it("should calculate cost for opus model", () => {
@@ -41,10 +41,10 @@ describe("token-pricing", () => {
         output_tokens: 50_000,  // 0.05M tokens
       };
 
-      const cost = calculateCostFromUsage(usage, "claude-3-opus-20240229");
+      const cost = calculateCostFromUsage(usage, "claude-opus-4-6");
 
-      // Expected: 0.1M * $15 + 0.05M * $75 = $1.5 + $3.75 = $5.25
-      expect(cost).toBeCloseTo(5.25, 6);
+      // Expected: 0.1M * $5 + 0.05M * $25 = $0.5 + $1.25 = $1.75
+      expect(cost).toBeCloseTo(1.75, 6);
     });
 
     it("should handle cache read tokens", () => {
@@ -191,11 +191,11 @@ describe("token-pricing", () => {
       expect(MODEL_PRICING.sonnet.input).toBe(3.0);
       expect(MODEL_PRICING.sonnet.output).toBe(15.0);
 
-      expect(MODEL_PRICING.haiku.input).toBe(0.25);
-      expect(MODEL_PRICING.haiku.output).toBe(1.25);
+      expect(MODEL_PRICING.haiku.input).toBe(1.0);
+      expect(MODEL_PRICING.haiku.output).toBe(5.0);
 
-      expect(MODEL_PRICING.opus.input).toBe(15.0);
-      expect(MODEL_PRICING.opus.output).toBe(75.0);
+      expect(MODEL_PRICING.opus.input).toBe(5.0);
+      expect(MODEL_PRICING.opus.output).toBe(25.0);
     });
 
     it("should have correct cache pricing multipliers", () => {

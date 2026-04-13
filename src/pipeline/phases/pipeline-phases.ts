@@ -499,6 +499,7 @@ export async function executePostProcessingPhases(
     plan: coreResult.plan,
     phaseResults: coreResult.phaseResults,
     jl,
+    baseline: coreResult.baseline,
   };
 
   const validationResult = await runValidationPhase(
@@ -550,6 +551,7 @@ export async function executePostProcessingPhases(
     dryRun: config.general.dryRun,
     jl,
     totalUsage: coreResult.totalUsage,
+    totalCostUsd: coreResult.totalCostUsd,
   };
 
   const publishResult = await pushAndCreatePR(publishContext);

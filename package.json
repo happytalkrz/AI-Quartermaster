@@ -8,9 +8,10 @@
   },
   "main": "dist/cli.js",
   "bin": {
-    "aqm": "dist/cli.js"
+    "aqm": "bin/aqm"
   },
   "files": [
+    "bin/",
     "dist/",
     "prompts/",
     "docs/",

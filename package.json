@@ -27,7 +27,8 @@
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "lint": "eslint src/ tests/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:pack": "node scripts/check-package-integrity.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",

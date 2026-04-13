@@ -43,6 +43,20 @@ general:                                 # [선택] 전체 설정 (모든 필드
                                         #   hybrid:  webhook + 폴링 병행 (missed events 보완, 중복 처리 자동 방지)
   # pollingIntervalMs: 60000             # [선택] 폴링 간격 ms (기본값: 60000, polling/hybrid 모드에서 사용)
   # maxJobs: 500                         # [선택] 최대 job 보관 수 (기본값: 500)
+  # dashboardAuth:                       # [선택] 대시보드 인증 정책 (기본값: 아래 참조)
+  #   rateLimit:
+  #     maxAttempts: 5                   # [선택] 윈도우당 최대 로그인 시도 횟수 (기본값: 5)
+  #     windowMs: 900000                 # [선택] sliding-window 크기 ms (기본값: 900000 = 15분)
+  #     blockDurationMs: 900000          # [선택] 초과 후 차단 지속 시간 ms (기본값: 900000 = 15분)
+  #   sessionTtlMs: 3600000              # [선택] 세션 토큰 TTL ms (기본값: 3600000 = 1시간)
+  #                                      #
+  #   동작 정책:
+  #   - rate-limit: IP별 sliding-window. maxAttempts 초과 시 429 + Retry-After 헤더 반환,
+  #     warn 로그 출력, SSE 이벤트 rateLimitExceeded 브로드캐스트.
+  #     로그인 성공 시 해당 IP 카운트 즉시 초기화.
+  #   - session: in-memory 관리. 서버 재시작 시 모든 세션 무효화 (의도된 동작).
+  #     클라이언트는 401 수신 시 자동 재인증 (api.js 기존 로직).
+  #     TTL 만료 토큰은 다음 접근 시 또는 주기적 cleanup에서 자동 제거.
 
 # 대상 프로젝트 목록
 projects:                                # [선택] 프로젝트별 설정 (없으면 git.allowedRepos 사용)

@@ -14,9 +14,14 @@ export type DetectedLanguage =
   | "rust"
   | "unknown";
 
+export type DetectedPackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
 export interface DetectionResult {
   language: DetectedLanguage;
   commands: Partial<CommandsConfig>;
+  confidence: "high" | "medium" | "low";
+  fallbackReason?: string;
+  packageManager?: DetectedPackageManager;
 }
 
 const SAFE_DEFAULT_COMMANDS: Partial<CommandsConfig> = {
@@ -65,7 +70,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
   try {
     if (existsSync(join(projectPath, "package.json"))) {
       logger.debug(`[project-detector] Node.js 프로젝트 감지: ${projectPath}`);
-      return { language: "nodejs", commands: detectNodeCommands(projectPath) };
+      return { language: "nodejs", commands: detectNodeCommands(projectPath), confidence: "high" };
     }
 
     if (existsSync(join(projectPath, "build.gradle.kts"))) {
@@ -73,6 +78,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "kotlin-gradle",
         commands: { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" },
+        confidence: "high",
       };
     }
 
@@ -81,6 +87,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "java-gradle",
         commands: { test: "./gradlew test", build: "./gradlew build", typecheck: "echo skip" },
+        confidence: "high",
       };
     }
 
@@ -89,6 +96,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "java-maven",
         commands: { test: "mvn test", build: "mvn package -DskipTests", typecheck: "echo skip" },
+        confidence: "high",
       };
     }
 
@@ -101,6 +109,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "python",
         commands: { test: "python -m pytest", lint: "ruff check .", typecheck: "echo skip" },
+        confidence: "high",
       };
     }
 
@@ -109,6 +118,7 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "go",
         commands: { test: "go test ./...", build: "go build ./...", typecheck: "go vet ./..." },
+        confidence: "high",
       };
     }
 
@@ -117,14 +127,15 @@ export function detectProjectCommands(projectPath: string): DetectionResult {
       return {
         language: "rust",
         commands: { test: "cargo test", build: "cargo build", lint: "cargo clippy", typecheck: "echo skip" },
+        confidence: "high",
       };
     }
 
     logger.debug(`[project-detector] 언어 감지 불가: ${projectPath}`);
-    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS };
+    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low" };
   } catch (err: unknown) {
     logger.warn(`[project-detector] 감지 중 오류: ${getErrorMessage(err)}`);
-    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS };
+    return { language: "unknown", commands: SAFE_DEFAULT_COMMANDS, confidence: "low" };
   }
 }
 

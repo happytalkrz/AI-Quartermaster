@@ -311,5 +311,36 @@ describe("safety-checker", () => {
         "Git diff failed"
       );
     });
+
+    it("senderPermission이 checkSensitivePaths에 전달되어야 한다", async () => {
+      const ctxWithPermission: SafetyContext = {
+        ...mockSafetyContext,
+        senderPermission: "admin",
+        issueBody: "## 관련 파일\n- `.github/workflows/ci.yml`",
+        issueLabels: ["allow-ci"],
+      };
+
+      mockAssertNotOnBaseBranch.mockResolvedValue(undefined);
+      mockCollectDiff.mockResolvedValue({
+        filesChanged: 1,
+        insertions: 5,
+        deletions: 2,
+        changedFiles: [".github/workflows/ci.yml"],
+      });
+      mockCheckSensitivePaths.mockImplementation(() => {});
+      mockCheckChangeLimits.mockImplementation(() => {});
+
+      await validateBeforePush(ctxWithPermission);
+
+      expect(mockCheckSensitivePaths).toHaveBeenCalledWith(
+        [".github/workflows/ci.yml"],
+        ["**/*.env", "**/*.pem"],
+        {
+          issueBody: "## 관련 파일\n- `.github/workflows/ci.yml`",
+          labels: ["allow-ci"],
+          senderPermission: "admin",
+        }
+      );
+    });
   });
 });

@@ -1,29 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../../src/utils/cli-runner.js", () => ({
   runCli: vi.fn(),
 }));
 
-vi.mock("../../src/github/github-cache.js", () => ({
-  memoize: vi.fn((fn) => fn), // Mock memoize to return the original function
-  getCached: vi.fn(),
-  setCached: vi.fn(),
-  clearCache: vi.fn(),
-}));
+vi.mock("../../src/github/github-cache.js", async () => {
+  return await vi.importActual("../../src/github/github-cache.js");
+});
 
-import { fetchIssue } from "../../src/github/issue-fetcher.js";
+import { fetchIssue, fetchPR, invalidateIssueCache, invalidatePRCache } from "../../src/github/issue-fetcher.js";
 import { runCli } from "../../src/utils/cli-runner.js";
-import { getCached, setCached } from "../../src/github/github-cache.js";
+import { clearCache } from "../../src/github/github-cache.js";
 
 const mockRunCli = vi.mocked(runCli);
-const mockGetCached = vi.mocked(getCached);
-const mockSetCached = vi.mocked(setCached);
 
 describe("fetchIssue", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 기본적으로 캐시 미스 상태로 설정
-    mockGetCached.mockReturnValue(undefined);
+    clearCache();
   });
 
   it("should fetch issue successfully with basic options", async () => {
@@ -330,6 +324,182 @@ describe("fetchIssue", () => {
       ["issue", "view", "999999", "--repo", "test/repo", "--json", "number,title,body,labels"],
       { timeout: undefined }
     );
+  });
+
+  describe("TTL 캐시 만료", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should re-fetch after TTL (5 minutes) expires", async () => {
+      const mockResponse = {
+        number: 1001,
+        title: "TTL test issue",
+        body: "Testing TTL expiration",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — TTL 이전이므로 캐시 히트
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // TTL(5분) 경과 후 재호출
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+      await fetchIssue("test/repo", 1001);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not re-fetch before TTL expires", async () => {
+      const mockResponse = {
+        number: 1002,
+        title: "TTL not expired test",
+        body: "Cache should still be valid",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      await fetchIssue("test/repo", 1002);
+      vi.advanceTimersByTime(5 * 60 * 1000 - 1);
+      await fetchIssue("test/repo", 1002);
+
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("캐시 선택적 무효화 — invalidateIssueCache", () => {
+    it("should re-fetch after invalidateIssueCache is called", async () => {
+      const mockResponse = {
+        number: 1003,
+        title: "Invalidation test",
+        body: "Testing cache invalidation",
+        labels: []
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      // 첫 번째 호출 — runCli 실행
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — 캐시 히트, runCli 미실행
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 캐시 무효화 후 재호출 — runCli 재실행
+      invalidateIssueCache("test/repo", 1003);
+      await fetchIssue("test/repo", 1003);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+    });
+
+    it("should only invalidate the specified issue, not others", async () => {
+      mockRunCli
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1004, title: "Issue A", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1005, title: "Issue B", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1004, title: "Issue A updated", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        });
+
+      await fetchIssue("test/repo", 1004);
+      await fetchIssue("test/repo", 1005);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+
+      // 1004만 무효화
+      invalidateIssueCache("test/repo", 1004);
+
+      // 1004는 재요청, 1005는 캐시 히트
+      await fetchIssue("test/repo", 1004);
+      await fetchIssue("test/repo", 1005);
+      expect(mockRunCli).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("캐시 선택적 무효화 — invalidatePRCache", () => {
+    it("should re-fetch PR after invalidatePRCache is called", async () => {
+      const mockPRResponse = {
+        number: 10,
+        title: "PR title",
+        body: "PR body",
+        state: "open",
+        headRefName: "feature-branch",
+        headRefOid: "abc123def456",
+        baseRefName: "main"
+      };
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify(mockPRResponse),
+        stderr: "",
+        exitCode: 0
+      });
+
+      // 첫 번째 호출 — runCli 실행
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // 두 번째 호출 — 캐시 히트
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(1);
+
+      // PR 캐시 무효화 후 재호출
+      invalidatePRCache("test/repo", 10);
+      await fetchPR("test/repo", 10);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+    });
+
+    it("invalidatePRCache should not affect issue cache", async () => {
+      mockRunCli
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({ number: 1006, title: "Issue", body: "", labels: [] }),
+          stderr: "",
+          exitCode: 0
+        })
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            number: 11, title: "PR", body: "", state: "open",
+            headRefName: "feat", headRefOid: "sha", baseRefName: "main"
+          }),
+          stderr: "",
+          exitCode: 0
+        });
+
+      await fetchIssue("test/repo", 1006);
+      await fetchPR("test/repo", 11);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+
+      // PR 캐시만 무효화
+      invalidatePRCache("test/repo", 11);
+
+      // 이슈는 여전히 캐시 히트
+      await fetchIssue("test/repo", 1006);
+      expect(mockRunCli).toHaveBeenCalledTimes(2);
+    });
   });
 
 });

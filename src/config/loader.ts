@@ -404,6 +404,20 @@ function buildProjectLines(indent: string, project: ProjectConfig): string[] {
   ];
   if (project.baseBranch) lines.push(`${indent}  baseBranch: "${project.baseBranch}"`);
   if (project.mode) lines.push(`${indent}  mode: "${project.mode}"`);
+  if (project.commands) {
+    const cmdFields = ['test', 'typecheck', 'preInstall', 'build', 'lint'] as const;
+    const cmdLines: string[] = [];
+    for (const field of cmdFields) {
+      const val = project.commands[field];
+      if (typeof val === 'string') {
+        cmdLines.push(`${indent}    ${field}: "${val}"`);
+      }
+    }
+    if (cmdLines.length > 0) {
+      lines.push(`${indent}  commands:`);
+      lines.push(...cmdLines);
+    }
+  }
   return lines;
 }
 
@@ -512,7 +526,7 @@ export function removeProjectFromConfig(configPath: string, targetRepo: string):
 /**
  * 기존 config.yml에서 프로젝트 업데이트 (YAML 포맷 보존)
  */
-export function updateProjectInConfig(configPath: string, targetRepo: string, updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode'>>): void {
+export function updateProjectInConfig(configPath: string, targetRepo: string, updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode' | 'commands'>>): void {
   const content = readFileSync(configPath, 'utf-8');
   const lines = content.split('\n');
 
@@ -569,8 +583,11 @@ export function updateProjectInConfig(configPath: string, targetRepo: string, up
 
   const projectLines = lines.slice(projectStart, projectEnd + 1);
 
-  // Update or add fields
-  Object.entries(updates).forEach(([field, value]) => {
+  // Separate commands (nested) from simple string fields
+  const { commands, ...simpleUpdates } = updates;
+
+  // Update or add simple string fields (path, baseBranch, mode)
+  Object.entries(simpleUpdates).forEach(([field, value]) => {
     if (value === undefined) return;
 
     const fieldLineIndex = projectLines.findIndex((line, i) => i > 0 && line.includes(`${field}:`));
@@ -581,6 +598,62 @@ export function updateProjectInConfig(configPath: string, targetRepo: string, up
       projectLines.splice(1, 0, `${fieldIndent}${field}: "${value}"`);
     }
   });
+
+  // Update or add commands nested block
+  if (commands !== undefined) {
+    const cmdFields = ['test', 'typecheck', 'preInstall', 'build', 'lint'] as const;
+    const cmdIndent = fieldIndent + '  ';
+
+    // Find existing commands: block within project lines
+    let cmdHeaderIdx = -1;
+    let cmdEndIdx = -1;
+    for (let i = 1; i < projectLines.length; i++) {
+      if (projectLines[i].match(/^\s+commands\s*:\s*$/)) {
+        cmdHeaderIdx = i;
+        cmdEndIdx = i;
+        for (let j = i + 1; j < projectLines.length; j++) {
+          if (projectLines[j].trim() === '') continue;
+          if (projectLines[j].startsWith(cmdIndent)) {
+            cmdEndIdx = j;
+          } else {
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    // Collect existing command values to preserve those not being overridden
+    const existingCmdValues: Partial<Record<typeof cmdFields[number], string>> = {};
+    if (cmdHeaderIdx !== -1) {
+      for (const field of cmdFields) {
+        const line = projectLines.slice(cmdHeaderIdx + 1, cmdEndIdx + 1).find(l => l.includes(`${field}:`));
+        if (line) {
+          const match = line.match(new RegExp(`${field}:\\s*["']?(.+?)["']?\\s*$`));
+          if (match) existingCmdValues[field] = match[1];
+        }
+      }
+    }
+
+    // Build merged commands block
+    const newCmdLines: string[] = [`${fieldIndent}commands:`];
+    for (const field of cmdFields) {
+      const newVal = commands[field];
+      const existingVal = existingCmdValues[field];
+      const val = newVal !== undefined ? newVal : existingVal;
+      if (val !== undefined) {
+        newCmdLines.push(`${cmdIndent}${field}: "${val}"`);
+      }
+    }
+
+    if (newCmdLines.length > 1) {
+      if (cmdHeaderIdx !== -1) {
+        projectLines.splice(cmdHeaderIdx, cmdEndIdx - cmdHeaderIdx + 1, ...newCmdLines);
+      } else {
+        projectLines.push(...newCmdLines);
+      }
+    }
+  }
 
   lines.splice(projectStart, projectEnd - projectStart + 1, ...projectLines);
   writeFileSync(configPath, lines.join('\n'), 'utf-8');

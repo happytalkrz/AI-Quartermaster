@@ -394,11 +394,11 @@ describe("cost fallback behavior", () => {
     const result = await runPromise;
     expect(result.success).toBe(true);
     expect(result.costUsd).toBeGreaterThan(0);
-    // Expected cost for haiku:
-    // input: (2000 * 0.25) / 1000000 = 0.0005
-    // output: (1000 * 1.25) / 1000000 = 0.00125
-    // total: 0.00175
-    expect(result.costUsd).toBeCloseTo(0.00175, 6);
+    // Expected cost for haiku (input: $1.0/M, output: $5.0/M):
+    // input: (2000 * 1.0) / 1000000 = 0.002
+    // output: (1000 * 5.0) / 1000000 = 0.005
+    // total: 0.007
+    expect(result.costUsd).toBeCloseTo(0.007, 6);
   });
 
   it("should use original cost when total_cost_usd is valid", async () => {

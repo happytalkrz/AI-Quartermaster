@@ -27,6 +27,7 @@ import { executePhase } from "../../src/pipeline/execution/phase-executor.js";
 import { runClaude } from "../../src/claude/claude-runner.js";
 import { runCli, runShell } from "../../src/utils/cli-runner.js";
 import type { PhaseExecutorContext } from "../../src/pipeline/execution/phase-executor.js";
+import type { BaselineErrors } from "../../src/pipeline/reporting/verification-parser.js";
 
 import { assemblePrompt, loadTemplate, buildIssueLayer } from "../../src/prompt/template-renderer.js";
 import { analyzeTokenUsage, summarizeForBudget } from "../../src/review/token-estimator.js";
@@ -108,8 +109,11 @@ describe("executePhase", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     // status --porcelain returns empty (no uncommitted changes)
     mockRunCli
-      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status
-      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log (final)
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
 
     const result = await executePhase(makeCtx());
@@ -439,8 +443,11 @@ describe("executePhase", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     // Claude already committed, so git status is clean
     mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
       .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
-      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log
+      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log (final)
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
 
     const ctx = makeCtx({
@@ -466,11 +473,14 @@ describe("executePhase", () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     // Claude succeeded but left some files uncommitted
     mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })                      // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })                      // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })                      // git diff uncommitted (scope guard)
       .mockResolvedValueOnce({ stdout: " M src/modified.ts\n", stderr: "", exitCode: 0 }) // git status (dirty)
-      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git add
-      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git commit
-      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 }) // git log (from autoCommitIfDirty)
-      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 }); // git log (from executePhase end)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })                      // git add
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 })                      // git commit
+      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 })             // git log (from autoCommitIfDirty)
+      .mockResolvedValueOnce({ stdout: "abcdef12", stderr: "", exitCode: 0 });            // git log (from executePhase end)
     mockRunShell.mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
 
     const ctx = makeCtx({
@@ -500,6 +510,9 @@ describe("executePhase", () => {
   it("returns partial success when some vitest test files fail and some pass", async () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
       .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
       .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log (getHeadHash in partial path)
     const partialOutput = [
@@ -522,8 +535,11 @@ describe("executePhase", () => {
   it("returns partial success without warnings when no individual failing test names captured", async () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
       .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
-      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log
+      .mockResolvedValueOnce({ stdout: "deadbeef", stderr: "", exitCode: 0 }); // git log (final)
     const partialOutput = [
       " ✓ tests/a.test.ts (3 tests) 50ms",
       " FAIL  tests/b.test.ts",
@@ -542,9 +558,12 @@ describe("executePhase", () => {
   it("returns partial success when tsc has errors in specific files", async () => {
     mockRunClaude.mockResolvedValue({ success: true, output: "done" });
     mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
       .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
-      .mockResolvedValueOnce({ stdout: "cafebabe", stderr: "", exitCode: 0 }); // git log
-    const tscOutput = "src/pipeline/phase-executor.ts(39,3): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.";
+      .mockResolvedValueOnce({ stdout: "cafebabe", stderr: "", exitCode: 0 }); // git log (final)
+    const tscOutput ="src/pipeline/phase-executor.ts(39,3): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.";
     mockRunShell.mockResolvedValue({ stdout: tscOutput, stderr: "", exitCode: 1 });
 
     const result = await executePhase(makeCtx());
@@ -641,5 +660,96 @@ describe("executePhase", () => {
     expect(result.success).toBe(false);
     expect(result.partial).toBeUndefined();
     expect(result.errorCategory).toBe("VERIFICATION_FAILED");
+  });
+
+  // Baseline diff integration tests
+  it("treats all tsc errors as success when all match baseline", async () => {
+    // Baseline contains the same error → diffTscErrors returns empty → success
+    const baseline: BaselineErrors = {
+      tsc: {
+        errorsByFile: { "src/foo.ts": ["TS2345: Type mismatch."] },
+        totalErrors: 1,
+        hasErrors: true,
+      },
+      eslint: { errorsByFile: {}, warningsByFile: {}, totalErrors: 0, totalWarnings: 0, hasErrors: false },
+    };
+    const tscOutput = "src/foo.ts(10,5): error TS2345: Type mismatch.";
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "abc12345", stderr: "", exitCode: 0 }); // git log (getHeadHash)
+    mockRunShell.mockResolvedValue({ stdout: tscOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx({ baseline }));
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBeUndefined();
+    expect(result.commitHash).toBe("abc12345");
+  });
+
+  it("returns partial success with only new tsc errors when baseline covers some", async () => {
+    // Baseline has first error; second is new
+    const baseline: BaselineErrors = {
+      tsc: {
+        errorsByFile: { "src/foo.ts": ["TS2345: Old error."] },
+        totalErrors: 1,
+        hasErrors: true,
+      },
+      eslint: { errorsByFile: {}, warningsByFile: {}, totalErrors: 0, totalWarnings: 0, hasErrors: false },
+    };
+    const tscOutput = [
+      "src/foo.ts(10,5): error TS2345: Old error.",
+      "src/foo.ts(20,3): error TS2304: New error.",
+    ].join("\n");
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git status (clean)
+      .mockResolvedValueOnce({ stdout: "cafebabe", stderr: "", exitCode: 0 }); // git log (getHeadHash)
+    mockRunShell.mockResolvedValue({ stdout: tscOutput, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx({ baseline }));
+
+    expect(result.success).toBe(true);
+    expect(result.partial).toBe(true);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors![0]).toContain("TS2304");
+    expect(result.errors![0]).not.toContain("TS2345"); // pre-existing, excluded
+  });
+
+  it("only includes targetFile tsc errors in failure error message", async () => {
+    // All vitest files failed (no passed) + tsc errors in both target and non-target files
+    // targetFiles = ["src/foo.ts"] (from makeCtx default)
+    // → filteredErrLines contains only src/foo.ts error; non-target errors excluded
+    const output = [
+      " × tests/other.test.ts (2 tests | 2 failed) 100ms",
+      "src/foo.ts(5,1): error TS2345: Target file error.",
+      "src/other.ts(10,2): error TS2304: Non-target file error.",
+    ].join("\n");
+
+    mockRunClaude.mockResolvedValue({ success: true, output: "done" });
+    mockRunCli
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git log (phaseStartHash)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff committed (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git diff uncommitted (scope guard)
+      .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // git status (clean)
+    mockRunShell.mockResolvedValue({ stdout: output, stderr: "", exitCode: 1 });
+
+    const result = await executePhase(makeCtx());
+
+    expect(result.success).toBe(false);
+    // classifyError checks TS patterns before "tests failed", so TS_ERROR takes precedence
+    expect(result.errorCategory).toBe("TS_ERROR");
+    expect(result.error).toContain("src/foo.ts");
+    expect(result.error).toContain("TS2345");
+    expect(result.error).not.toContain("src/other.ts");
+    expect(result.error).not.toContain("TS2304");
   });
 });

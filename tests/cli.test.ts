@@ -1191,3 +1191,85 @@ describe("cleanupCommand", () => {
     expect(cleanOldWorktrees).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("planCommand", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((_code?: number): never => {
+      throw new Error(`process.exit(${_code})`);
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(loadConfig).mockReturnValue(mockBaseConfig);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("--repo 없으면 process.exit(1)", async () => {
+    await expect(planCommand({})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("이슈 0건이면 조기 리턴 (exit 없음)", async () => {
+    vi.mocked(listTriggerIssues).mockResolvedValue([]);
+
+    await planCommand({ repo: "owner/repo" });
+
+    expect(listTriggerIssues).toHaveBeenCalledWith("owner/repo", ["ai-task"], "gh");
+    expect(generateExecutionPlan).not.toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("이슈 있으면 plan 생성 및 출력", async () => {
+    const mockIssues = [{ number: 1, title: "Test issue", body: "", labels: ["ai-task"] }];
+    const mockPlan = {
+      repo: "",
+      totalIssues: 1,
+      executionOrder: [[{ issueNumber: 1, title: "Test issue", priority: "high" as const, dependencies: [], estimatedPhases: 2 }]],
+      estimatedDuration: "2h",
+    };
+    vi.mocked(listTriggerIssues).mockResolvedValue(mockIssues);
+    vi.mocked(generateExecutionPlan).mockResolvedValue(mockPlan);
+    vi.mocked(printExecutionPlan).mockImplementation(() => {});
+
+    await planCommand({ repo: "owner/repo" });
+
+    expect(listTriggerIssues).toHaveBeenCalledWith("owner/repo", ["ai-task"], "gh");
+    expect(generateExecutionPlan).toHaveBeenCalledWith(
+      mockIssues,
+      mockBaseConfig.commands.claudeCli,
+      expect.any(String),
+      expect.any(String)
+    );
+    expect(printExecutionPlan).toHaveBeenCalledWith(expect.objectContaining({ repo: "owner/repo" }));
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("--execute 시 JobStore/JobQueue 생성 및 enqueue 호출", async () => {
+    const mockIssues = [{ number: 7, title: "Issue A", body: "", labels: ["ai-task"] }];
+    const mockPlan = {
+      repo: "",
+      totalIssues: 1,
+      executionOrder: [[{ issueNumber: 7, title: "Issue A", priority: "medium" as const, dependencies: [], estimatedPhases: 1 }]],
+      estimatedDuration: "1h",
+    };
+    vi.mocked(listTriggerIssues).mockResolvedValue(mockIssues);
+    vi.mocked(generateExecutionPlan).mockResolvedValue(mockPlan);
+    vi.mocked(printExecutionPlan).mockImplementation(() => {});
+
+    const enqueueMock = vi.fn();
+    vi.mocked(JobStore).mockImplementation(() => ({} as unknown as JobStore));
+    vi.mocked(JobQueue).mockImplementation(() => ({
+      enqueue: enqueueMock,
+    } as unknown as JobQueue));
+
+    await planCommand({ repo: "owner/repo", execute: true });
+
+    expect(JobStore).toHaveBeenCalled();
+    expect(JobQueue).toHaveBeenCalled();
+    expect(enqueueMock).toHaveBeenCalledWith(7, "owner/repo", []);
+  });
+});

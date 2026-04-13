@@ -8,6 +8,7 @@ import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost,
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { resolveRetryBudget } from "../execution/retry-config.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
@@ -281,7 +282,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   const jl = ctx.jobLogger;
   jl?.setProgress(PROGRESS_PLAN_GENERATED);
   const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? []), planGenerateResult];
-  const maxRetries = ctx.config.safety.maxRetries;
+  const maxRetries = resolveRetryBudget(ctx.config, "phase");
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
 
   // Load past failures for this repo to inject into phase prompts

@@ -50,6 +50,7 @@ export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../../notification/notifier.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { DEFAULT_PLAN_MAX_RETRIES } from "../execution/retry-config.js";
 import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../../review/token-estimator.js";
 
 const logger = getLogger();
@@ -71,7 +72,7 @@ export interface PlanGeneratorContext {
 }
 
 export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithCost> {
-  const maxRetries = 2;
+  const maxRetries = DEFAULT_PLAN_MAX_RETRIES;
   const retryContext: PlanRetryContext = {
     currentAttempt: 0,
     maxRetries,

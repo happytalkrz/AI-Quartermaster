@@ -16,6 +16,8 @@ import { createCheckpoint } from "../../safety/rollback-manager.js";
 import { createSlug } from "../../utils/slug.js";
 import { buildBaseLayer, buildProjectLayer, buildStaticContent, loadTemplate, computeLayerCacheKey } from "../../prompt/template-renderer.js";
 import { resolve } from "path";
+import { captureErrorBaseline } from "../reporting/error-baseline.js";
+import type { BaselineErrors } from "../reporting/verification-parser.js";
 
 const logger = getLogger();
 
@@ -72,6 +74,7 @@ export interface CoreLoopContext {
   worktreeInfo?: { path: string; branch: string };  // worktree information
   slug?: string;  // issue slug for worktree naming
   cachedLayers?: import("../../types/pipeline.js").CachedPromptLayer;  // 캐시된 Base+Project 레이어
+  baseline?: BaselineErrors;  // pre-existing 에러 baseline (한 번 캡처 후 모든 phase에서 재사용)
 }
 
 export interface CoreLoopResult {
@@ -80,6 +83,7 @@ export interface CoreLoopResult {
   success: boolean;
   totalCostUsd?: number;
   totalUsage?: import("../../types/pipeline.js").UsageInfo;
+  baseline?: BaselineErrors;
 }
 
 export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult> {
@@ -133,6 +137,16 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     }
   }
 
+  // Step 0b: Capture error baseline (한 번만 캡처하여 모든 phase에서 재사용)
+  if (!ctx.baseline) {
+    logger.info("Capturing pre-existing error baseline (tsc + eslint)...");
+    ctx.baseline = await captureErrorBaseline(ctx.cwd, {
+      typecheck: ctx.config.commands.typecheck,
+      lint: ctx.config.commands.lint,
+    });
+    logger.info(`Baseline captured: tsc=${ctx.baseline.tsc.totalErrors} errors, eslint=${ctx.baseline.eslint.totalErrors} errors`);
+  }
+
   // Step 1: Generate plan
   logger.info(`Generating plan for issue #${ctx.issue.number}...`);
 
@@ -183,6 +197,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: 0,
       totalUsage: undefined,
+      baseline: ctx.baseline,
     };
   }
 
@@ -223,6 +238,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       success: false,
       totalCostUsd: planCostUsd ?? 0,
       totalUsage: planUsage,
+      baseline: ctx.baseline,
     };
   }
 
@@ -280,6 +296,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         locale: ctx.config.general.locale,
         cachedLayers: ctx.cachedLayers,
         gitConfig: ctx.config.git,
+        baseline: ctx.baseline,
       });
 
       // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
@@ -363,7 +380,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         const totalCostUsd = phaseResults.reduce((sum, r) => sum + (r.costUsd ?? 0), 0) + (planCostUsd ?? 0);
         const allUsages = [planUsage, ...phaseResults.map(r => r.usage)];
         const totalUsage = sumUsage(allUsages);
-        return { plan, phaseResults, success: false, totalCostUsd, totalUsage };
+        return { plan, phaseResults, success: false, totalCostUsd, totalUsage, baseline: ctx.baseline };
       }
 
       logger.info(`Phase ${phase.index + 1} completed (commit: ${result.commitHash?.slice(0, 8)})`);
@@ -388,5 +405,5 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     logger.info(`Total usage: input=${totalUsage.input_tokens}, output=${totalUsage.output_tokens}, cache_creation=${totalUsage.cache_creation_input_tokens ?? 0}, cache_read=${totalUsage.cache_read_input_tokens ?? 0}`);
   }
 
-  return { plan, phaseResults, success: true, totalCostUsd, totalUsage };
+  return { plan, phaseResults, success: true, totalCostUsd, totalUsage, baseline: ctx.baseline };
 }

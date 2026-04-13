@@ -1,6 +1,7 @@
 import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
+import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
@@ -8,7 +9,7 @@ import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
-import type { ProjectConfig, AQConfig } from "../types/config.js";
+import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
@@ -24,6 +25,9 @@ import { detectProjectCommands, detectBaseBranch } from "../config/project-detec
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
+
+// Rate limiter for POST /api/auth (initialized when createDashboardRoutes is called)
+let loginRateLimiter: LoginRateLimiter | undefined;
 
 // SSE client management
 interface SSEClient {
@@ -180,6 +184,7 @@ export function cleanupDashboardResources(): void {
   stopPeriodicCleanup();
   cleanupAllSSEClients();
   sessionManager.revokeAll();
+  loginRateLimiter?.destroy();
 }
 
 function isValidSessionToken(token: string): boolean {
@@ -376,8 +381,22 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig): Hono {
   const api = new Hono();
+
+  // Initialize rate limiter from config (or defaults)
+  const rateLimitCfg = dashboardAuth?.rateLimit ?? {
+    maxAttempts: 5,
+    windowMs: 900_000,
+    blockDurationMs: 900_000,
+  };
+  loginRateLimiter = new LoginRateLimiter({
+    maxAttempts: rateLimitCfg.maxAttempts,
+    windowMs: rateLimitCfg.windowMs,
+    onExceeded: (ip) => {
+      broadcastToAllClients('rateLimitExceeded', { ip, timestamp: Date.now() });
+    },
+  });
 
   // Subscribe to JobStore events for real-time broadcasts
   store.on('jobDeleted', (job: Job) => {
@@ -395,12 +414,30 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   if (apiKey) {
     // POST /api/auth — exchange Bearer key for a short-lived session token
     api.post("/api/auth", (c) => {
+      const ip =
+        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+        (c.env as Record<string, unknown> | undefined)?.["remoteAddress"] as string | undefined ??
+        "unknown";
+
+      const rateLimitCheck = loginRateLimiter?.checkAndRecord(ip);
+      if (rateLimitCheck && !rateLimitCheck.allowed) {
+        const retryAfterSec = Math.ceil((rateLimitCheck.retryAfterMs ?? 900_000) / 1000);
+        getLogger().warn(`[Auth] Rate limit exceeded for IP ${ip}`);
+        return c.json(
+          { error: "Too Many Requests" },
+          429,
+          { "Retry-After": String(retryAfterSec) }
+        );
+      }
+
       const auth = c.req.header("Authorization");
       const expected = Buffer.from(`Bearer ${apiKey}`);
       const actual = Buffer.from(auth ?? "");
       if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
         return c.json({ error: "Unauthorized" }, 401);
       }
+
+      loginRateLimiter?.reset(ip);
       const { token, expiresIn } = sessionManager.createToken();
       return c.json({ token, expiresIn });
     });

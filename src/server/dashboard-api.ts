@@ -827,8 +827,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           }
           durationMs = body.durationMs;
         }
-      } catch {
-        // No body or invalid JSON — use default
+      } catch (err: unknown) {
+        getLogger().debug(`Optional body parse failed — using default: ${getErrorMessage(err)}`);
       }
 
       // Default: 30 minutes
@@ -1358,7 +1358,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const result = await runCli(config.commands.claudeCli.path, ["--version"], { timeout: 5000 });
       if (result.exitCode === 0) cliVersion = result.stdout.trim();
-    } catch { /* ignore */ }
+    } catch { /* 비차단 버전 조회 — 실패 무시 */ }
 
     return c.json({
       profile,

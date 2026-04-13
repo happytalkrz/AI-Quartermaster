@@ -221,7 +221,7 @@ describe("startServer", () => {
     const app = new Hono();
     const result = startServer(app, 3000);
 
-    expect(mockServe).toHaveBeenCalledWith({ fetch: app.fetch, port: 3000 });
+    expect(mockServe).toHaveBeenCalledWith({ fetch: app.fetch, port: 3000, hostname: "127.0.0.1" });
     expect(typeof result.close).toBe("function");
   });
 
@@ -231,7 +231,7 @@ describe("startServer", () => {
     const app = new Hono();
     startServer(app);
 
-    expect(mockServe).toHaveBeenCalledWith({ fetch: app.fetch, port: 3000 });
+    expect(mockServe).toHaveBeenCalledWith({ fetch: app.fetch, port: 3000, hostname: "127.0.0.1" });
   });
 
   it("calls server close when close is invoked", () => {

@@ -45,6 +45,7 @@ interface CliArgs {
   target?: string;
   dryRun?: boolean;
   port?: number;
+  host?: string;
   mode?: string;
   interval?: number;
   execute?: boolean;
@@ -128,6 +129,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   setGlobalLogLevel(effectiveConfig.general.logLevel);
   const logger = getLogger();
   const port = args.port ?? 3000;
+  const host = args.host ?? "127.0.0.1";
 
   // === Pre-flight checks ===
   const projects = effectiveConfig.projects ?? [];
@@ -387,7 +389,22 @@ export async function startCommand(args: CliArgs): Promise<void> {
 
   // Mount dashboard and health routes
   const apiKey = process.env.DASHBOARD_API_KEY || undefined;
-  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey);
+
+  // === Non-local bind 보안 검사 ===
+  const isLocalBind = host === "127.0.0.1" || host === "localhost";
+  if (!isLocalBind && !apiKey && process.env.DASHBOARD_ALLOW_INSECURE !== "true") {
+    console.error(`\n✗ 보안 오류: non-local bind(${host})에서 DASHBOARD_API_KEY가 설정되지 않았습니다.`);
+    console.error("  API가 인증 없이 외부 네트워크에 노출됩니다. 아래 중 하나를 선택하세요:\n");
+    console.error("  1. DASHBOARD_API_KEY 환경변수 설정 (권장):");
+    console.error("       export DASHBOARD_API_KEY=<strong-random-key>");
+    console.error("  2. localhost로 변경 (기본값):");
+    console.error("       aqm start --host 127.0.0.1");
+    console.error("  3. 보안 위험을 감수하고 강제 실행 (비권장):");
+    console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
+    process.exit(1);
+  }
+
+  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host);
   const healthRoutes = createHealthRoutes(queue);
 
   let app: ReturnType<typeof createWebhookApp>;
@@ -435,7 +452,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  startServer(app, port);
+  startServer(app, port, host);
   initDispatcher(scheduler);
   scheduler.start();
   writePidFile(pidPath);
@@ -457,7 +474,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   process.on("SIGINT", () => { void gracefulShutdown("SIGINT"); });
   process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });
 
-  logger.info(`Dashboard available at http://localhost:${port}/`);
+  logger.info(`Dashboard available at http://${host}:${port}/`);
 }
 
 async function setupCommand(args: CliArgs): Promise<void> {
@@ -782,6 +799,7 @@ Options:
   --issue <number>    이슈 번호
   --repo <owner/repo> GitHub 저장소
   --port <number>     서버 포트 (기본: 3000)
+  --host <address>    바인드 주소 (기본: 127.0.0.1)
   --mode <mode>       시작 모드: webhook (기본) / polling / hybrid
   --interval <sec>    폴링 간격 (초, 기본: 60)
   --daemon, -d        백그라운드 실행
@@ -793,7 +811,8 @@ Options:
 Environment:
   GITHUB_WEBHOOK_SECRET   웹훅 서명 검증 (webhook 모드 필수)
   SMEE_URL                Smee.io 채널 URL (webhook 프록시)
-  DASHBOARD_API_KEY       대시보드 API 인증 키 (선택)
+  DASHBOARD_API_KEY       대시보드 API 인증 키 (non-local bind 시 필수)
+  DASHBOARD_ALLOW_INSECURE  true로 설정 시 non-local bind에서 API_KEY 없이 실행 허용 (비권장)
   AQM_HOME                설치 디렉토리 (기본: ~/.ai-quartermaster)
 `);
 }
@@ -821,6 +840,8 @@ export function parseArgs(argv: string[]): CliArgs {
       result.dryRun = true;
     } else if (argv[i] === "--port" && argv[i + 1]) {
       result.port = parseInt(argv[++i], 10);
+    } else if (argv[i] === "--host" && argv[i + 1]) {
+      result.host = argv[++i];
     } else if (argv[i] === "--mode" && argv[i + 1]) {
       result.mode = argv[++i];
     } else if (argv[i] === "--interval" && argv[i + 1]) {

@@ -1,5 +1,6 @@
 import { minimatch } from "minimatch";
 import { SafetyViolationError } from "../types/errors.js";
+import type { SenderPermission } from "../github/issue-fetcher.js";
 
 /**
  * 이슈 본문에서 `## 관련 파일` 섹션 아래 리스트 항목의
@@ -59,6 +60,7 @@ export interface SensitivePathAuditEntry {
 export interface CheckSensitivePathsOptions {
   issueBody?: string;
   labels?: string[];
+  senderPermission?: SenderPermission;
 }
 
 const WORKFLOW_PATTERN = ".github/workflows/**";

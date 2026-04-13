@@ -11,8 +11,8 @@ import type { ProjectConfig, AQConfig } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange } from "../store/queries.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -1072,6 +1072,52 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(stats);
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch project stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Throughput time series
+  api.get("/api/metrics/throughput", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window") || "7d",
+      };
+
+      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const data = getThroughputTimeSeries(store.getAqDb(), parseResult.data);
+      return c.json(data);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch throughput metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Success rate metrics
+  api.get("/api/metrics/success-rate", (c) => {
+    try {
+      const queryParams = {
+        project: c.req.query("project"),
+        window: c.req.query("window") || "7d",
+      };
+
+      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const data = getSuccessRate(store.getAqDb(), parseResult.data);
+      return c.json(data);
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch success rate metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

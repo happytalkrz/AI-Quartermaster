@@ -1,5 +1,5 @@
 import type { AQDatabase } from "./database.js";
-import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse } from "../types/api.js";
+import type { StatsResponse, GetStatsQuery, CostsResponse, GetCostsQuery, CostEntry, GetProjectStatsQuery, ProjectStatsResponse, GetMetricsQuery, ThroughputResponse, SuccessRateResponse } from "../types/api.js";
 
 // SQLite row types for query results
 interface StatsRow {
@@ -60,6 +60,7 @@ function getTimeRangeCutoff(timeRange: string): string | null {
     case "24h": return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     case "7d": return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
     case "30d": return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    case "90d": return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
     default: return null;
   }
 }
@@ -252,6 +253,99 @@ export function getProjectStatsWithTimeRange(aqDb: AQDatabase, query: GetProject
       totalCostUsd: row.total_cost_usd,
       avgCostUsd: row.total > 0 ? row.total_cost_usd / row.total : 0,
     })),
+  };
+}
+
+interface ThroughputRow {
+  date: string;
+  count: number;
+}
+
+interface SuccessRateRow {
+  total: number;
+  success_count: number;
+  failure_count: number;
+  retry_success_count: number;
+}
+
+export function getThroughputTimeSeries(aqDb: AQDatabase, query: GetMetricsQuery): ThroughputResponse {
+  const { window, project } = query;
+  const cutoff = getTimeRangeCutoff(window);
+  const { sql: whereClause, params } = buildWhereClause(project, cutoff);
+
+  const db = aqDb.getDb();
+
+  const rows = db.prepare(`
+    SELECT
+      date(created_at) AS date,
+      COUNT(*) AS count
+    FROM jobs
+    ${whereClause}
+    GROUP BY date(created_at)
+    ORDER BY date(created_at)
+  `).all(...params) as ThroughputRow[];
+
+  return {
+    window,
+    project: project ?? null,
+    series: rows.map(row => ({ date: row.date, count: row.count })),
+  };
+}
+
+export function getSuccessRate(aqDb: AQDatabase, query: GetMetricsQuery): SuccessRateResponse {
+  const { window, project } = query;
+  const cutoff = getTimeRangeCutoff(window);
+  const { sql: whereClause, params } = buildWhereClause(project, cutoff);
+
+  const db = aqDb.getDb();
+
+  const row = db.prepare(`
+    WITH latest_jobs AS (
+      SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY issue_number, repo ORDER BY created_at DESC) AS rn
+      FROM jobs
+      ${whereClause}
+    )
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE
+        WHEN status = 'success' AND NOT EXISTS (
+          SELECT 1 FROM jobs j2
+          WHERE j2.issue_number = latest_jobs.issue_number
+            AND j2.repo = latest_jobs.repo
+            AND j2.status = 'failure'
+            AND j2.id != latest_jobs.id
+        ) THEN 1 ELSE 0
+      END) AS success_count,
+      SUM(CASE WHEN status = 'failure' THEN 1 ELSE 0 END) AS failure_count,
+      SUM(CASE
+        WHEN status = 'success' AND EXISTS (
+          SELECT 1 FROM jobs j2
+          WHERE j2.issue_number = latest_jobs.issue_number
+            AND j2.repo = latest_jobs.repo
+            AND j2.status = 'failure'
+            AND j2.id != latest_jobs.id
+        ) THEN 1 ELSE 0
+      END) AS retry_success_count
+    FROM latest_jobs
+    WHERE rn = 1
+  `).get(...params) as SuccessRateRow;
+
+  const total = row.total ?? 0;
+  const successCount = row.success_count ?? 0;
+  const failureCount = row.failure_count ?? 0;
+  const retrySuccessCount = row.retry_success_count ?? 0;
+
+  return {
+    window,
+    project: project ?? null,
+    total,
+    successCount,
+    failureCount,
+    retrySuccessCount,
+    successRate: total > 0 ? Math.round((successCount / total) * 100) : 0,
+    failureRate: total > 0 ? Math.round((failureCount / total) * 100) : 0,
+    retrySuccessRate: total > 0 ? Math.round((retrySuccessCount / total) * 100) : 0,
   };
 }
 

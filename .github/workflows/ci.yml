@@ -46,12 +46,8 @@ jobs:
     name: generate-visual-baseline
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/aq/668-ci-visual-regression-baseline'
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -60,14 +56,11 @@ jobs:
       - name: Seed test config.yml
         run: cp config.reference.yml config.yml
       - run: npx playwright test --project=visual-desktop --project=visual-mobile --update-snapshots
-      - name: Commit baseline snapshots
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add tests/visual/__snapshots__/
-          git diff --staged --quiet && echo "No new snapshots to commit" && exit 0
-          git commit -m "ci: visual regression baseline snapshots [skip ci]"
-          git push
+      - name: Upload baseline snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baseline-snapshots
+          path: tests/visual/__snapshots__/
 
   visual-regression:
     name: visual-regression

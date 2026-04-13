@@ -1,4 +1,4 @@
-import { checkPathsAgainstRules } from "./rule-engine.js";
+import { minimatch } from "minimatch";
 import { SafetyViolationError } from "../types/errors.js";
 
 /**
@@ -47,34 +47,105 @@ export function parseRelatedFilesSection(issueBody: string): string[] {
   return result;
 }
 
+/** 파일별 판정 결과 */
+export interface SensitivePathAuditEntry {
+  file: string;
+  matchedPattern: string | null;
+  decision: "allowed" | "blocked";
+  reason: "no-match" | "related-file" | "allow-ci-label" | "sensitive-violation";
+}
+
+/** checkSensitivePaths 확장 옵션 */
+export interface CheckSensitivePathsOptions {
+  issueBody?: string;
+  labels?: string[];
+}
+
+const WORKFLOW_PATTERN = ".github/workflows/**";
+const MINIMATCH_OPTS = { dot: true };
+
 /**
  * Checks if any changed files match sensitive path patterns.
- * Throws SafetyViolationError if a match is found.
+ *
+ * 파일별 독립 판정 매트릭스 (5단계):
+ * 1. 민감 패턴 비매칭 → allowed (no-match)
+ * 2. 이슈 본문 `## 관련 파일` 명시 경로 → allowed (related-file)
+ * 3. `.github/workflows/**` + allow-ci 라벨 → allowed (allow-ci-label)
+ * 4. 그 외 민감 패턴 매칭 → blocked (sensitive-violation)
+ * 5. 차단 파일 존재 시 SafetyViolationError (수정 가이드 포함)
+ *
+ * 기존 시그니처(changedFiles, sensitivePaths)도 하위 호환 유지.
  */
 export function checkSensitivePaths(
   changedFiles: string[],
-  sensitivePaths: string[]
-): void {
-  try {
-    checkPathsAgainstRules(changedFiles, {
-      allow: [],
-      deny: sensitivePaths,
-      strategy: "deny-first"
-    });
-  } catch (err: unknown) {
-    if (err instanceof SafetyViolationError) {
-      // Re-wrap RuleEngine errors as SensitivePathGuard errors to maintain API compatibility
-      const violations = err.details?.violations;
-      const violationsText = Array.isArray(violations) && violations.length > 0
-        ? violations.join("\n")
-        : err.message;
+  sensitivePaths: string[],
+  options?: CheckSensitivePathsOptions
+): SensitivePathAuditEntry[] {
+  const relatedFiles = options?.issueBody
+    ? parseRelatedFilesSection(options.issueBody)
+    : [];
+  const labels = options?.labels ?? [];
+  const hasAllowCi = labels.includes("allow-ci");
 
-      throw new SafetyViolationError(
-        "SensitivePathGuard",
-        `Sensitive files modified:\n${violationsText}`,
-        err.details
-      );
+  const auditLog: SensitivePathAuditEntry[] = [];
+  const blockedFiles: string[] = [];
+
+  for (const file of changedFiles) {
+    const matchedPattern =
+      sensitivePaths.find((p) => minimatch(file, p, MINIMATCH_OPTS)) ?? null;
+
+    // 1. 민감 패턴 비매칭
+    if (!matchedPattern) {
+      auditLog.push({ file, matchedPattern: null, decision: "allowed", reason: "no-match" });
+      continue;
     }
-    throw err;
+
+    // 2. 이슈 본문 관련 파일로 명시된 경우
+    if (relatedFiles.includes(file)) {
+      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "related-file" });
+      continue;
+    }
+
+    // 3. allow-ci 라벨 — .github/workflows/** 패턴에만 스코핑
+    if (hasAllowCi && minimatch(file, WORKFLOW_PATTERN, MINIMATCH_OPTS)) {
+      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "allow-ci-label" });
+      continue;
+    }
+
+    // 4. 차단
+    auditLog.push({ file, matchedPattern, decision: "blocked", reason: "sensitive-violation" });
+    blockedFiles.push(file);
   }
+
+  // 5. 차단 파일이 있으면 수정 가이드 포함 에러 throw
+  if (blockedFiles.length > 0) {
+    const guide = buildBlockGuideMessage(blockedFiles, hasAllowCi);
+    throw new SafetyViolationError(
+      "SensitivePathGuard",
+      guide,
+      { violations: blockedFiles, auditLog }
+    );
+  }
+
+  return auditLog;
+}
+
+function buildBlockGuideMessage(blockedFiles: string[], hasAllowCi: boolean): string {
+  const lines: string[] = [
+    `Sensitive files modified:\n${blockedFiles.join("\n")}`,
+    "\nTo allow these files, add the missing paths under `## 관련 파일` in the issue body:",
+  ];
+
+  for (const f of blockedFiles) {
+    lines.push(`  - \`${f}\``);
+  }
+
+  const workflowBlocked = blockedFiles.filter((f) =>
+    minimatch(f, WORKFLOW_PATTERN, MINIMATCH_OPTS)
+  );
+  if (workflowBlocked.length > 0 && !hasAllowCi) {
+    lines.push("\nFor workflow files, you can also add the `allow-ci` label to the issue.");
+  }
+
+  return lines.join("\n");
 }

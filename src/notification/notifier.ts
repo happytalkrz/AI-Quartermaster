@@ -48,7 +48,13 @@ export async function notifySuccess(
 /**
  * errorCategory에 따라 권장 액션 인사이트 텍스트를 반환합니다.
  */
-function getActionInsight(errorCategory?: string): string {
+function getActionInsight(errorCategory?: string, errorMessage?: string): string {
+  if (errorCategory === "QUOTA_EXHAUSTED") {
+    // 메시지에 reset 시각이 포함되어 있으면 추출 (예: "resets Apr 15, 2pm (Asia/Seoul)")
+    const resetMatch = errorMessage?.match(/resets\s+([^.\n]+)/i);
+    const resetText = resetMatch ? ` 한도 해제 시각: **${resetMatch[1].trim()}**.` : "";
+    return `Claude 요금제 사용 한도에 도달했습니다.${resetText} 한도 해제 후 잡을 다시 큐잉해 주세요. 재시도는 자동으로 비활성화됩니다.`;
+  }
   if (errorCategory === "MAX_TURNS_EXCEEDED") {
     return "이슈가 너무 복잡합니다. **이슈 분할**을 권장하거나, config의 `maxTurns` 값을 높여 주세요.";
   }
@@ -73,7 +79,7 @@ export async function notifyFailure(
     ? `\n<details><summary>마지막 출력 (최대 50줄)</summary>\n\n\`\`\`\n${options.lastOutput.split("\n").slice(-50).join("\n")}\n\`\`\`\n</details>\n`
     : "";
   const rollback = options?.rollbackInfo ? `\n**롤백**: ${options.rollbackInfo}\n` : "";
-  const actionInsight = getActionInsight(options?.errorCategory);
+  const actionInsight = getActionInsight(options?.errorCategory, error);
   const message = `## AI Quartermaster${instancePrefix} - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n${actionInsight}`;
   await notifyIssue(repo, issueNumber, message, options);
 }

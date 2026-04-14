@@ -175,6 +175,12 @@ export function loadConfig(projectRoot: string, options?: LoadConfigOptions): AQ
     config = deepMerge(config, options.configOverrides);
   }
 
+  // 6. Seed maxTurnsPerMode if absent (legacy flat config migration)
+  if (!config.commands.claudeCli.maxTurnsPerMode ||
+      Object.keys(config.commands.claudeCli.maxTurnsPerMode).length === 0) {
+    config.commands.claudeCli.maxTurnsPerMode = DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode;
+  }
+
   return validateConfig(config);
 }
 
@@ -285,6 +291,12 @@ export function tryLoadConfig(projectRoot: string, options?: LoadConfigOptions):
         }
       };
     }
+  }
+
+  // Seed maxTurnsPerMode if absent (legacy flat config migration)
+  if (!config.commands.claudeCli.maxTurnsPerMode ||
+      Object.keys(config.commands.claudeCli.maxTurnsPerMode).length === 0) {
+    config.commands.claudeCli.maxTurnsPerMode = DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode;
   }
 
   // Try to validate config

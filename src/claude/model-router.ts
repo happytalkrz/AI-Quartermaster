@@ -70,9 +70,9 @@ export function resolveModelWithExecutionMode(
  * Execution mode specific maxTurns limits
  */
 const EXECUTION_MODE_MAX_TURNS: Record<ExecutionMode, number> = {
-  economy: 30,    // Fewer turns for speed
-  standard: 60,   // Balanced
-  thorough: 120,  // More turns for comprehensive work
+  economy: 50,    // Fewer turns for speed
+  standard: 100,  // Balanced
+  thorough: 180,  // More turns for comprehensive work
 };
 
 /**

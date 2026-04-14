@@ -441,6 +441,18 @@ export const SuccessRateResponseSchema = z.object({
 
 export type SuccessRateResponse = z.infer<typeof SuccessRateResponseSchema>;
 
+// Phase 2: zValidator용 뮤테이션 스키마 (짧은 이름으로 export)
+export const configUpdateSchema = UpdateConfigRequestSchema;
+export const projectCreateSchema = CreateProjectRequestSchema;
+export const projectUpdateSchema = UpdateProjectRequestSchema;
+export const jobPrioritySchema = UpdateJobPriorityRequestSchema;
+
+// POST /api/jobs/:id/cancel — request body 없음
+export const jobCancelSchema = z.object({}).strict();
+
+// POST /api/jobs/:id/retry — request body 없음
+export const jobRetrySchema = z.object({}).strict();
+
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({

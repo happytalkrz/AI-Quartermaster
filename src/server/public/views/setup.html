@@ -1,0 +1,166 @@
+  <!-- ============ Setup View ============ -->
+  <div id="view-setup" class="view-panel">
+    <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
+      <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+      <span>Setup Wizard</span>
+    </h2>
+
+    <div class="max-w-2xl">
+      <!-- Stepper -->
+      <div class="flex items-center mb-10">
+        <!-- Step 1: Active -->
+        <div class="flex flex-col items-center gap-1.5 shrink-0">
+          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-primary-container flex items-center justify-center font-bold text-sm text-on-primary shadow-lg shadow-primary/30">1</div>
+          <span class="text-[10px] font-bold text-primary uppercase tracking-widest whitespace-nowrap">GitHub</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-2 bg-outline-variant/20"></div>
+        <!-- Step 2: Inactive -->
+        <div class="flex flex-col items-center gap-1.5 shrink-0">
+          <div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-sm text-outline/50">2</div>
+          <span class="text-[10px] text-outline/40 uppercase tracking-widest whitespace-nowrap">저장소</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-2 bg-outline-variant/20"></div>
+        <!-- Step 3: Inactive -->
+        <div class="flex flex-col items-center gap-1.5 shrink-0">
+          <div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-sm text-outline/50">3</div>
+          <span class="text-[10px] text-outline/40 uppercase tracking-widest whitespace-nowrap">Claude CLI</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-2 bg-outline-variant/20"></div>
+        <!-- Step 4: Inactive -->
+        <div class="flex flex-col items-center gap-1.5 shrink-0">
+          <div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-sm text-outline/50">4</div>
+          <span class="text-[10px] text-outline/40 uppercase tracking-widest whitespace-nowrap">알림</span>
+        </div>
+        <div class="flex-1 h-0.5 mx-2 bg-outline-variant/20"></div>
+        <!-- Step 5: Inactive -->
+        <div class="flex flex-col items-center gap-1.5 shrink-0">
+          <div class="w-9 h-9 rounded-full bg-surface-container-high flex items-center justify-center font-bold text-sm text-outline/50">5</div>
+          <span class="text-[10px] text-outline/40 uppercase tracking-widest whitespace-nowrap">완료</span>
+        </div>
+      </div>
+
+      <!-- Step 1 Content: GitHub Personal Access Token -->
+      <div id="setup-step-1" class="bg-surface-container p-8 rounded-xl ring-1 ring-outline-variant/10">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <span class="material-symbols-outlined text-primary">hub</span>
+          </div>
+          <div>
+            <h3 class="font-headline text-lg font-bold text-on-surface">GitHub Personal Access Token</h3>
+            <p class="text-xs text-outline mt-0.5">저장소 접근과 PR 생성에 필요합니다</p>
+          </div>
+        </div>
+
+        <!-- Token Input -->
+        <div class="space-y-4">
+          <label class="block">
+            <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Personal Access Token</span>
+            <input
+              type="password"
+              id="setup-github-token"
+              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono"
+              placeholder="ghp_..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <div class="flex items-center justify-between">
+            <a
+              href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=AI-Quartermaster"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+            >
+              <span class="material-symbols-outlined text-sm">open_in_new</span>
+              토큰 만들기
+            </a>
+            <button
+              id="setup-validate-btn"
+              onclick="validateGitHubToken()"
+              class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm rounded-lg transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span class="material-symbols-outlined text-base">verified</span>
+              토큰 검증
+            </button>
+          </div>
+        </div>
+
+        <!-- Validation Result Area -->
+        <div id="setup-validate-result" class="hidden mt-6 p-4 rounded-xl">
+          <div id="setup-validate-content" class="flex items-start gap-3 text-sm"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function validateGitHubToken() {
+      var tokenInput = /** @type {HTMLInputElement|null} */ (document.getElementById('setup-github-token'));
+      var btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('setup-validate-btn'));
+      var resultEl = document.getElementById('setup-validate-result');
+      var contentEl = document.getElementById('setup-validate-content');
+
+      if (!tokenInput || !btn || !resultEl || !contentEl) return;
+
+      var token = tokenInput.value.trim();
+      if (!token) {
+        resultEl.className = 'mt-6 p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/20';
+        contentEl.innerHTML =
+          '<span class="material-symbols-outlined text-outline text-base mt-0.5">info</span>' +
+          '<span class="text-outline">토큰을 입력하세요.</span>';
+        resultEl.classList.remove('hidden');
+        return;
+      }
+
+      btn.disabled = true;
+      resultEl.className = 'mt-6 p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/20';
+      contentEl.innerHTML =
+        '<span class="material-symbols-outlined text-primary text-base mt-0.5 animate-spin">progress_activity</span>' +
+        '<span class="text-outline">검증 중...</span>';
+      resultEl.classList.remove('hidden');
+
+      try {
+        var resp = await fetch('/api/setup/validate-token', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        var data = await resp.json();
+
+        if (resp.ok && data.login) {
+          resultEl.className = 'mt-6 p-4 rounded-xl bg-[#238636]/10 ring-1 ring-[#238636]/30';
+          contentEl.innerHTML =
+            '<span class="material-symbols-outlined text-[#3fb950] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">check_circle</span>' +
+            '<div>' +
+              '<div class="font-bold text-on-surface">연결 성공</div>' +
+              '<div class="text-xs text-outline mt-0.5">@' + escapeHtml(data.login) + (data.name ? ' · ' + escapeHtml(data.name) : '') + '</div>' +
+            '</div>';
+        } else {
+          var msg = (data && data.error) ? data.error : '토큰 검증에 실패했습니다.';
+          resultEl.className = 'mt-6 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
+          contentEl.innerHTML =
+            '<span class="material-symbols-outlined text-[#f85149] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">cancel</span>' +
+            '<div>' +
+              '<div class="font-bold text-on-surface">검증 실패</div>' +
+              '<div class="text-xs text-outline mt-0.5">' + escapeHtml(msg) + '</div>' +
+            '</div>';
+        }
+      } catch (err) {
+        resultEl.className = 'mt-6 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
+        contentEl.innerHTML =
+          '<span class="material-symbols-outlined text-[#f85149] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">error</span>' +
+          '<div>' +
+            '<div class="font-bold text-on-surface">요청 오류</div>' +
+            '<div class="text-xs text-outline mt-0.5">서버에 연결할 수 없습니다.</div>' +
+          '</div>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>

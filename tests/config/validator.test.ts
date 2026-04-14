@@ -599,4 +599,40 @@ describe("validateConfig - command safety", () => {
     };
     expect(() => validateConfig(unsafe)).toThrow("위험한 shell 패턴");
   });
+
+  describe("modelFallbackChain validation", () => {
+    it("accepts config without modelFallbackChain (optional field)", () => {
+      expect(() => validateConfig(validConfig)).not.toThrow();
+    });
+
+    it("accepts valid non-empty string array for modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: ["claude-haiku-4-5-20251001"],
+        },
+      });
+      expect(() => validateConfig(config)).not.toThrow();
+    });
+
+    it("accepts multiple models in modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
+        },
+      });
+      expect(() => validateConfig(config)).not.toThrow();
+    });
+
+    it("rejects empty array for modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: [],
+        },
+      });
+      expect(() => validateConfig(config)).toThrow();
+    });
+  });
 });

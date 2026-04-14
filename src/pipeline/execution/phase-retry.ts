@@ -181,7 +181,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     });
 
     if (!claudeResult.success) {
-      throw new PipelineError("PHASE_RETRY_FAILED", `Phase retry failed: ${claudeResult.output}`);
+      logger.warn(`Claude retry failed`, { output: claudeResult.output, durationMs: claudeResult.durationMs, model: claudeResult.model, usage: claudeResult.usage });
+      const failureMessage = claudeResult.output.trim() || 'empty Claude output (exitCode non-zero)';
+      throw new PipelineError("PHASE_RETRY_FAILED", `Phase retry failed: ${failureMessage}`);
     }
 
     // Auto-commit if needed

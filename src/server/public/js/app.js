@@ -63,6 +63,11 @@ function navigateTo(view) {
   if (view === 'skip-events') {
     loadSkipEvents();
   }
+
+  // If navigating to setup view, init wizard
+  if (view === 'setup') {
+    initSetupView();
+  }
 }
 
 // Bind navigation clicks

@@ -448,10 +448,14 @@ export const projectUpdateSchema = UpdateProjectRequestSchema;
 export const jobPrioritySchema = UpdateJobPriorityRequestSchema;
 
 // POST /api/jobs/:id/cancel — request body 없음
-export const jobCancelSchema = z.object({}).strict();
+export const CancelJobRequestSchema = z.object({}).strict();
+export const jobCancelSchema = CancelJobRequestSchema;
+export type CancelJobRequest = z.infer<typeof CancelJobRequestSchema>;
 
 // POST /api/jobs/:id/retry — request body 없음
-export const jobRetrySchema = z.object({}).strict();
+export const RetryJobRequestSchema = z.object({}).strict();
+export const jobRetrySchema = RetryJobRequestSchema;
+export type RetryJobRequest = z.infer<typeof RetryJobRequestSchema>;
 
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {

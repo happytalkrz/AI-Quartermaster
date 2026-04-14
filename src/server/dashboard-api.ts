@@ -13,7 +13,7 @@ import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/conf
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
@@ -550,23 +550,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   const configPath = `${projectRoot}/config.yml`;
 
   // Update configuration
-  api.put("/api/config", async (c) => {
+  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema, zodValidationHook), async (c) => {
     try {
-      const body = await c.req.json();
-
-      // Zod 스키마 검증
-      const parseResult = UpdateConfigRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
+      const body = c.req.valid('json');
 
       // Update configuration file
       // Filter out undefined values and complex sections (projects, hooks)
       // that should not be updated via this endpoint
-      const { projects, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
+      const { projects, hooks, ...safeData } = body as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,
@@ -639,20 +630,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Add project to configuration
-  api.post("/api/projects", async (c) => {
+  api.post("/api/projects", zValidator('json', CreateProjectRequestSchema, zodValidationHook), async (c) => {
     try {
-      const body = await c.req.json();
-
-      // Zod 스키마 검증
-      const parseResult = CreateProjectRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const { repo, path, baseBranch, mode, commands } = parseResult.data;
+      const { repo, path, baseBranch, mode, commands } = c.req.valid('json');
 
       // Validate and normalize path
       let normalizedPath: string;
@@ -739,27 +719,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Update project in configuration
-  api.put("/api/projects/:repo", async (c) => {
+  api.put("/api/projects/:repo", zValidator('json', UpdateProjectRequestSchema, zodValidationHook), async (c) => {
     try {
-      const repo = decodeURIComponent(c.req.param("repo"));
+      const repo = decodeURIComponent(c.req.param("repo") ?? "");
 
       if (!repo || repo.trim() === "") {
         return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      let body: unknown;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "Invalid JSON body" }, 400);
-      }
-
-      const parseResult = UpdateProjectRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
       }
 
       // Validate that project exists
@@ -772,7 +737,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
-      const { path, baseBranch, mode, commands } = parseResult.data;
+      const { path, baseBranch, mode, commands } = c.req.valid('json');
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode' | 'commands'>> = {};
 
       if (path !== undefined) {
@@ -956,32 +921,20 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Cancel a job
-  api.post("/api/jobs/:id/cancel", (c) => {
-    const id = c.req.param("id");
+  api.post("/api/jobs/:id/cancel", zValidator('json', CancelJobRequestSchema, zodValidationHook), (c) => {
+    const id = c.req.param("id") ?? "";
     const cancelled = queue.cancel(id);
     if (!cancelled) return c.json({ error: "Job not found or not cancellable" }, 404);
     return c.json({ status: "cancelled", id });
   });
 
   // Update job priority
-  api.put("/api/jobs/:id/priority", async (c) => {
-    const id = c.req.param("id");
+  api.put("/api/jobs/:id/priority", zValidator('json', UpdateJobPriorityRequestSchema, zodValidationHook), async (c) => {
+    const id = c.req.param("id") ?? "";
     const job = store.get(id);
     if (!job) return c.json({ error: "Job not found" }, 404);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-
-    const parseResult = UpdateJobPriorityRequestSchema.safeParse(body);
-    if (!parseResult.success) {
-      return c.json({ error: "Invalid request body", details: formatZodError(parseResult.error) }, 400);
-    }
-
-    const { priority } = parseResult.data;
+    const { priority } = c.req.valid('json');
     const updatedJob = store.update(id, { priority });
     if (!updatedJob) return c.json({ error: "Failed to update priority" }, 500);
 
@@ -1258,8 +1211,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Retry a failed job
-  api.post("/api/jobs/:id/retry", async (c) => {
-    const id = c.req.param("id");
+  api.post("/api/jobs/:id/retry", zValidator('json', RetryJobRequestSchema, zodValidationHook), async (c) => {
+    const id = c.req.param("id") ?? "";
     const job = store.get(id);
     if (!job) return c.json({ error: "Job not found" }, 404);
     if (job.status !== "failure" && job.status !== "cancelled") {

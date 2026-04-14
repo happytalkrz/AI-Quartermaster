@@ -297,9 +297,7 @@ describe("Dashboard API - PUT /api/config", () => {
         body: "invalid json string",
       });
 
-      expect(response.status).toBe(500); // JSON parsing error is caught and returns 500
-      const result = await response.json();
-      expect(result.error).toContain("Failed to update configuration");
+      expect(response.status).toBe(400);
       expect(mockUpdateConfigSection).not.toHaveBeenCalled();
     });
 
@@ -338,6 +336,24 @@ describe("Dashboard API - PUT /api/config", () => {
     it("should return 400 for negative concurrency value", async () => {
       const updates = {
         general: { concurrency: -1 },
+      };
+
+      const response = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      expect(response.status).toBe(400);
+      const result = await response.json();
+      expect(result.error).toBe("Invalid request body");
+      expect(result.details).toBeDefined();
+      expect(mockUpdateConfigSection).not.toHaveBeenCalled();
+    });
+
+    it("should return 400 for wrong type for concurrency (string instead of number)", async () => {
+      const updates = {
+        general: { concurrency: "abc" },
       };
 
       const response = await app.request("/api/config", {
@@ -2455,8 +2471,6 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
   });
 
   it("should return 400 for invalid JSON body", async () => {
-    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
-
     const response = await app.request("/api/jobs/job-123/priority", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -2464,8 +2478,6 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
     });
 
     expect(response.status).toBe(400);
-    const result = await response.json();
-    expect(result.error).toBe("Invalid JSON body");
   });
 
   it("should return 400 for invalid priority value", async () => {
@@ -3476,5 +3488,193 @@ describe("Dashboard API - stale config 회귀 테스트 (configWatcher.current()
 
     expect(response.status).toBe(200);
     expect(mockLoadConfig).toHaveBeenCalledWith(process.cwd());
+  });
+});
+
+describe("Dashboard API - POST /api/jobs/:id/cancel", () => {
+  let app: Hono;
+  let localQueue: { getStatus: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; retryJob: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const emitter = new EventEmitter();
+    const localStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      update: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+      getAqDb: vi.fn().mockReturnValue({}),
+    } as any;
+
+    localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn().mockReturnValue(true),
+      retryJob: vi.fn(),
+    };
+
+    app = createDashboardRoutes(localStore, localQueue as any);
+  });
+
+  it("should return 400 for invalid JSON body", async () => {
+    const response = await app.request("/api/jobs/job-123/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not-valid-json",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should return 400 for body with extra fields (strict schema)", async () => {
+    const response = await app.request("/api/jobs/job-123/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "user requested" }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid request body");
+    expect(result.details).toBeDefined();
+  });
+
+  it("should cancel job successfully with valid empty body", async () => {
+    localQueue.cancel.mockReturnValue(true);
+
+    const response = await app.request("/api/jobs/job-123/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("cancelled");
+    expect(result.id).toBe("job-123");
+  });
+
+  it("should return 404 when job not found or not cancellable", async () => {
+    localQueue.cancel.mockReturnValue(false);
+
+    const response = await app.request("/api/jobs/nonexistent/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(404);
+    const result = await response.json();
+    expect(result.error).toBe("Job not found or not cancellable");
+  });
+});
+
+describe("Dashboard API - POST /api/jobs/:id/retry", () => {
+  let app: Hono;
+  let localStore: JobStore;
+  let localQueue: { getStatus: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn>; retryJob: ReturnType<typeof vi.fn> };
+
+  const mockFailedJob = {
+    id: "job-failed",
+    issueNumber: 99,
+    repo: "owner/repo",
+    status: "failure" as const,
+    createdAt: "2026-04-10T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const emitter = new EventEmitter();
+    localStore = {
+      list: vi.fn().mockReturnValue([]),
+      get: vi.fn(),
+      set: vi.fn(),
+      remove: vi.fn(),
+      update: vi.fn(),
+      on: emitter.on.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+      getAqDb: vi.fn().mockReturnValue({}),
+    } as any;
+
+    localQueue = {
+      getStatus: vi.fn().mockReturnValue({ running: 0, queued: 0 }),
+      cancel: vi.fn(),
+      retryJob: vi.fn(),
+    };
+
+    app = createDashboardRoutes(localStore, localQueue as any);
+  });
+
+  it("should return 400 for invalid JSON body", async () => {
+    const response = await app.request("/api/jobs/job-failed/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not-valid-json",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("should return 400 for body with extra fields (strict schema)", async () => {
+    const response = await app.request("/api/jobs/job-failed/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: true }),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Invalid request body");
+    expect(result.details).toBeDefined();
+  });
+
+  it("should retry failed job successfully with valid empty body", async () => {
+    vi.mocked(localStore.get).mockReturnValue(mockFailedJob as any);
+    const newJob = { ...mockFailedJob, id: "job-new", status: "queued" as const };
+    localQueue.retryJob.mockReturnValue(newJob);
+
+    const response = await app.request("/api/jobs/job-failed/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.status).toBe("queued");
+    expect(result.id).toBe("job-new");
+  });
+
+  it("should return 404 when job not found", async () => {
+    vi.mocked(localStore.get).mockReturnValue(undefined);
+
+    const response = await app.request("/api/jobs/nonexistent/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(404);
+    const result = await response.json();
+    expect(result.error).toBe("Job not found");
+  });
+
+  it("should return 400 when job is not in failure or cancelled status", async () => {
+    const runningJob = { ...mockFailedJob, status: "running" as const };
+    vi.mocked(localStore.get).mockReturnValue(runningJob as any);
+
+    const response = await app.request("/api/jobs/job-failed/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(400);
+    const result = await response.json();
+    expect(result.error).toBe("Only failed or cancelled jobs can be retried");
   });
 });

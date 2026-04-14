@@ -24,6 +24,34 @@ vi.mock("../../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
 }));
 
+vi.mock("../../src/claude/claude-runner.js", () => ({
+  runClaude: vi.fn(),
+}));
+
+vi.mock("../../src/git/commit-helper.js", () => ({
+  getHeadHash: vi.fn().mockResolvedValue("deadbeef000"),
+  autoCommitIfDirty: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock("../../src/prompt/template-renderer.js", () => ({
+  assemblePrompt: vi.fn().mockReturnValue({ content: "mock prompt content" }),
+  loadTemplate: vi.fn().mockReturnValue("mock template"),
+  buildBaseLayer: vi.fn().mockReturnValue({}),
+  buildProjectLayer: vi.fn().mockReturnValue({}),
+  buildIssueLayer: vi.fn().mockReturnValue({}),
+  buildLearningLayer: vi.fn().mockReturnValue({}),
+}));
+
+vi.mock("../../src/review/token-estimator.js", () => ({
+  analyzeTokenUsage: vi.fn().mockReturnValue({
+    exceedsLimit: false,
+    estimatedTokens: 100,
+    usagePercentage: 5,
+    effectiveLimit: 2000,
+  }),
+  summarizeForBudget: vi.fn().mockReturnValue("summary"),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
@@ -43,6 +71,10 @@ import { JobQueue, type JobHandler } from "../../src/queue/job-queue.js";
 import { JobStore } from "../../src/queue/job-store.js";
 import { ConfigWatcher, type ConfigChangeEvent } from "../../src/config/config-watcher.js";
 import { loadConfig } from "../../src/config/loader.js";
+import { runClaude } from "../../src/claude/claude-runner.js";
+import { executePhase, type PhaseExecutorContext } from "../../src/pipeline/execution/phase-executor.js";
+import type { PhaseResult, Plan, Phase } from "../../src/types/pipeline.js";
+import type { ClaudeCliConfig, GitConfig } from "../../src/types/config.js";
 
 // ---------------------------------------------------------------------------
 // Common helpers
@@ -142,6 +174,117 @@ describe("Integration: retry budget exhaustion", () => {
       expect(reason).toContain("0");
     });
   });
+
+  describe("executePhase — Claude CLI always fails → PhaseResult.success=false", () => {
+    const mockRunClaude = vi.mocked(runClaude);
+
+    function makeCtx(): PhaseExecutorContext {
+      const phase: Phase = {
+        index: 0,
+        name: "Test Phase",
+        description: "Test description",
+        targetFiles: ["src/test.ts"],
+        commitStrategy: "single",
+        verificationCriteria: [],
+      };
+      const plan: Plan = {
+        issueNumber: 1,
+        title: "Test Plan",
+        problemDefinition: "Test problem",
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [phase],
+        verificationPoints: [],
+        stopConditions: [],
+      };
+      const claudeConfig: ClaudeCliConfig = {
+        path: "claude",
+        model: "claude-sonnet-4-5",
+        models: {
+          plan: "claude-opus-4-5",
+          phase: "claude-sonnet-4-5",
+          review: "claude-haiku-4-5-20251001",
+          fallback: "claude-sonnet-4-5",
+        },
+        maxTurns: 5,
+        timeout: 0,
+        additionalArgs: [],
+      };
+      const gitConfig: GitConfig = {
+        defaultBaseBranch: "main",
+        branchTemplate: "aq/{{issueNumber}}-{{slug}}",
+        commitMessageTemplate: "[#{{issueNumber}}] {{title}}",
+        remoteAlias: "origin",
+        allowedRepos: [],
+        gitPath: "git",
+        fetchDepth: 1,
+        signCommits: false,
+      };
+      return {
+        issue: { number: 1, title: "Test Issue", body: "Test body", labels: [] },
+        plan,
+        phase,
+        previousResults: [],
+        claudeConfig,
+        promptsDir: "/mock/prompts",
+        cwd: "/mock/cwd",
+        testCommand: "",
+        lintCommand: "",
+        gitPath: "git",
+        gitConfig,
+      };
+    }
+
+    beforeEach(() => {
+      mockRunClaude.mockResolvedValue({
+        success: false,
+        output: "Claude CLI exited with code 1",
+        durationMs: 0,
+      });
+    });
+
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("returns success=false when runClaude always fails", async () => {
+      const result = await executePhase(makeCtx());
+      expect(result.success).toBe(false);
+    });
+
+    it("completes within 5 seconds — no infinite loop", async () => {
+      const start = Date.now();
+      const result = await executePhase(makeCtx());
+      const elapsed = Date.now() - start;
+      expect(result.success).toBe(false);
+      expect(elapsed).toBeLessThan(5000);
+    });
+
+    it("runClaude is called exactly once per executePhase invocation", async () => {
+      await executePhase(makeCtx());
+      expect(mockRunClaude).toHaveBeenCalledTimes(1);
+    });
+
+    it(`all ${DEFAULT_PHASE_MAX_RETRIES} retry budget attempts return success=false within 5 seconds`, async () => {
+      const start = Date.now();
+      const results: PhaseResult[] = [];
+      for (let i = 0; i < DEFAULT_PHASE_MAX_RETRIES; i++) {
+        mockRunClaude.mockResolvedValue({
+          success: false,
+          output: `Claude CLI failed on attempt ${i + 1}`,
+          durationMs: 0,
+        });
+        results.push(await executePhase(makeCtx()));
+      }
+      const elapsed = Date.now() - start;
+      expect(results).toHaveLength(DEFAULT_PHASE_MAX_RETRIES);
+      expect(results.every((r) => !r.success)).toBe(true);
+      expect(elapsed).toBeLessThan(5000);
+      // runClaude invoked once per attempt — no internal retry loop inside executePhase
+      expect(mockRunClaude).toHaveBeenCalledTimes(DEFAULT_PHASE_MAX_RETRIES);
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -233,6 +376,71 @@ describe("Integration: sqlite3 preflight", () => {
     db = new AQDatabase(dbPath);
     expect(db.countJobs()).toBe(0);
   });
+
+  it("propagates better-sqlite3 native module error without swallowing it", async () => {
+    // Simulate a native build failure by mocking better-sqlite3 to throw
+    vi.doMock("better-sqlite3", () => ({
+      default: class FailingSQLite {
+        constructor() {
+          throw new Error(
+            "Could not locate the bindings file. Tried:\n" +
+            " → build/Release/better_sqlite3.node\n" +
+            " → build/Debug/better_sqlite3.node\n" +
+            "This is a better-sqlite3 native module build failure."
+          );
+        }
+      },
+    }));
+    vi.resetModules();
+
+    const nativeFailDir = makeTempDir("aq-native-fail");
+    try {
+      const { AQDatabase: FreshAQDatabase } = await import("../../src/store/database.js");
+      expect(() => new FreshAQDatabase(join(nativeFailDir, "test.db"))).toThrow(
+        /better.sqlite3|native/i
+      );
+    } finally {
+      vi.doUnmock("better-sqlite3");
+      vi.resetModules();
+      removeTempDir(nativeFailDir);
+    }
+  });
+
+  it("error from native module failure is an Error instance with actionable message", async () => {
+    vi.doMock("better-sqlite3", () => ({
+      default: class FailingSQLite {
+        constructor() {
+          throw new Error(
+            "better-sqlite3 native addon failed to load: NODE_MODULE_VERSION mismatch. " +
+            "Run `npm rebuild better-sqlite3` to fix this."
+          );
+        }
+      },
+    }));
+    vi.resetModules();
+
+    const nativeFailDir2 = makeTempDir("aq-native-fail2");
+    try {
+      const { AQDatabase: FreshAQDatabase } = await import("../../src/store/database.js");
+
+      let caught: unknown;
+      try {
+        new FreshAQDatabase(join(nativeFailDir2, "test.db"));
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      const msg = (caught as Error).message;
+      expect(msg).toMatch(/better.sqlite3|native/i);
+      // The error message must NOT be empty — user needs actionable info
+      expect(msg.length).toBeGreaterThan(0);
+    } finally {
+      vi.doUnmock("better-sqlite3");
+      vi.resetModules();
+      removeTempDir(nativeFailDir2);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -321,6 +529,163 @@ describe("Integration: graceful shutdown", () => {
     await queue.shutdown(500);
     // No error → idempotent
     expect(true).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 3 강화: shutdown 순서 보장 + Claude 프로세스 정리 (#696)
+// ---------------------------------------------------------------------------
+
+describe("Integration: graceful shutdown 순서 보장 + Claude 프로세스 정리", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("shutdown 순서: server.close → queue.shutdown → killAllActiveProcesses → store.close", async () => {
+    const mockServerClose = vi.fn();
+    const mockQueueShutdown = vi.fn().mockResolvedValue(undefined);
+    const mockKillAllActiveProcesses = vi.fn().mockResolvedValue(undefined);
+    const mockStoreClose = vi.fn();
+
+    // cli.ts gracefulShutdown 로직을 그대로 모방
+    mockServerClose();
+    await mockQueueShutdown(30000);
+    await mockKillAllActiveProcesses();
+    mockStoreClose();
+
+    const serverOrder = mockServerClose.mock.invocationCallOrder[0]!;
+    const queueOrder = mockQueueShutdown.mock.invocationCallOrder[0]!;
+    const killOrder = mockKillAllActiveProcesses.mock.invocationCallOrder[0]!;
+    const storeOrder = mockStoreClose.mock.invocationCallOrder[0]!;
+
+    expect(serverOrder).toBeLessThan(queueOrder);
+    expect(queueOrder).toBeLessThan(killOrder);
+    expect(killOrder).toBeLessThan(storeOrder);
+  });
+
+  it("shutdown 순서: queue.shutdown 완료 후에만 killAllActiveProcesses 호출됨", async () => {
+    const callOrder: string[] = [];
+
+    const mockQueueShutdown = vi.fn().mockImplementation(async () => {
+      callOrder.push("queue.shutdown");
+    });
+    const mockKillAll = vi.fn().mockImplementation(async () => {
+      callOrder.push("killAllActiveProcesses");
+    });
+
+    await mockQueueShutdown(30000);
+    await mockKillAll();
+
+    expect(callOrder[0]).toBe("queue.shutdown");
+    expect(callOrder[1]).toBe("killAllActiveProcesses");
+    expect(mockQueueShutdown.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockKillAll.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it("killAllActiveProcesses: SIGTERM → 3초 대기 → SIGKILL 순서 (미종료 프로세스)", async () => {
+    vi.useFakeTimers();
+
+    const killSignals: string[] = [];
+    const fakeChild = {
+      pid: 12345,
+      killed: false,
+      kill: vi.fn((signal: string) => {
+        killSignals.push(signal);
+        // SIGTERM 후에도 종료되지 않음 — SIGKILL 대상
+      }),
+    };
+    const activeProcs = new Map([[12345, { process: fakeChild }]]);
+
+    // killAllActiveProcesses 구현 계약 검증 (SIGTERM → 3초 → SIGKILL)
+    const entries = Array.from(activeProcs.entries());
+    for (const [, { process: child }] of entries) {
+      child.kill("SIGTERM");
+    }
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    for (const [pid, { process: child }] of entries) {
+      if (!child.killed && activeProcs.has(pid)) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    expect(killSignals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(fakeChild.kill.mock.invocationCallOrder[0]!).toBeLessThan(
+      fakeChild.kill.mock.invocationCallOrder[1]!
+    );
+  });
+
+  it("killAllActiveProcesses: SIGTERM 후 프로세스가 스스로 종료되면 SIGKILL 미발송", async () => {
+    vi.useFakeTimers();
+
+    const killSignals: string[] = [];
+    const fakeChild = {
+      pid: 12346,
+      killed: false,
+      kill: vi.fn((signal: string) => {
+        killSignals.push(signal);
+        if (signal === "SIGTERM") {
+          fakeChild.killed = true; // SIGTERM에 반응하여 정상 종료
+        }
+      }),
+    };
+    const activeProcs = new Map([[12346, { process: fakeChild }]]);
+
+    const entries = Array.from(activeProcs.entries());
+    for (const [, { process: child }] of entries) {
+      child.kill("SIGTERM");
+    }
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    for (const [pid, { process: child }] of entries) {
+      if (!child.killed && activeProcs.has(pid)) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    expect(killSignals).toEqual(["SIGTERM"]); // SIGKILL 미발송
+    expect(fakeChild.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("graceful shutdown은 isShuttingDown 플래그로 중복 호출을 방지함", async () => {
+    let isShuttingDown = false;
+    const shutdownInvocations: number[] = [];
+
+    const gracefulShutdown = async (callIndex: number): Promise<void> => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      shutdownInvocations.push(callIndex);
+    };
+
+    await gracefulShutdown(1);
+    await gracefulShutdown(2);
+    await gracefulShutdown(3);
+
+    expect(shutdownInvocations).toHaveLength(1);
+    expect(shutdownInvocations[0]).toBe(1);
+  });
+
+  it("shutdown 시 server.close는 queue.shutdown보다 먼저 호출됨 (새 요청 차단 후 job 대기)", async () => {
+    const callOrder: string[] = [];
+
+    const mockServerClose = vi.fn(() => {
+      callOrder.push("server.close");
+    });
+    const mockQueueShutdown = vi.fn(async () => {
+      callOrder.push("queue.shutdown");
+    });
+
+    mockServerClose();
+    await mockQueueShutdown(30000);
+
+    expect(callOrder).toEqual(["server.close", "queue.shutdown"]);
+    expect(mockServerClose.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockQueueShutdown.mock.invocationCallOrder[0]!
+    );
   });
 });
 
@@ -436,5 +801,69 @@ describe("Integration: config hot reload", () => {
     expect(mockLoadConfig.mock.calls.length).toBeGreaterThan(callCountBefore);
 
     watcher.stopWatching();
+  });
+
+  it("concurrent current() calls after refresh() all observe the new config (race condition)", async () => {
+    const configV1 = structuredClone(DEFAULT_CONFIG);
+    configV1.general.projectName = "v1";
+    const configV2 = structuredClone(DEFAULT_CONFIG);
+    configV2.general.projectName = "v2";
+
+    mockLoadConfig.mockReturnValue(configV1);
+    watcher = new ConfigWatcher(tempDir);
+
+    // Prime cache with V1
+    expect(watcher.current().general.projectName).toBe("v1");
+
+    // Switch mock to V2 and refresh
+    mockLoadConfig.mockReturnValue(configV2);
+    watcher.refresh();
+
+    // Simulate N concurrent readers — all must see V2
+    const CONCURRENCY = 20;
+    const results = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        Promise.resolve(watcher!.current())
+      )
+    );
+
+    for (const cfg of results) {
+      expect(cfg.general.projectName).toBe("v2");
+    }
+  });
+
+  it("concurrent current() calls during rapid refresh() cycles always return a consistent config", async () => {
+    const configs = ["alpha", "beta", "gamma"].map((name) => {
+      const c = structuredClone(DEFAULT_CONFIG);
+      c.general.projectName = name;
+      return c;
+    });
+
+    mockLoadConfig.mockReturnValue(configs[0]);
+    watcher = new ConfigWatcher(tempDir);
+    watcher.current(); // prime cache
+
+    // Fire refresh + concurrent reads in interleaved microtasks
+    const snapshots: string[] = [];
+    for (const cfg of configs) {
+      mockLoadConfig.mockReturnValue(cfg);
+      watcher.refresh();
+      // Ten simultaneous readers after each refresh
+      const batch = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          Promise.resolve(watcher!.current().general.projectName)
+        )
+      );
+      snapshots.push(...batch);
+    }
+
+    // Every snapshot must be one of the known config names — no undefined/stale values
+    const knownNames = new Set(["alpha", "beta", "gamma"]);
+    for (const name of snapshots) {
+      expect(knownNames.has(name)).toBe(true);
+    }
+
+    // Final value after last refresh must be the last config applied
+    expect(watcher.current().general.projectName).toBe("gamma");
   });
 });

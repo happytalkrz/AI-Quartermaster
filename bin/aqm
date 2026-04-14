@@ -18,6 +18,12 @@ if [ -z "$AQM_MODE" ] && [ -n "$AQM_HOME" ] && [ -d "$AQM_HOME" ]; then
   AQM_ROOT="$AQM_HOME"
 fi
 
+# git-clone 기본 위치 폴백: $HOME/.ai-quartermaster가 존재하면 자동으로 git 모드
+if [ -z "$AQM_MODE" ] && [ -d "$HOME/.ai-quartermaster" ] && [ -f "$HOME/.ai-quartermaster/package.json" ]; then
+  AQM_MODE="git"
+  AQM_ROOT="$HOME/.ai-quartermaster"
+fi
+
 if [ -z "$AQM_MODE" ]; then
   echo "AI Quartermaster가 설치되어 있지 않습니다."
   echo ""

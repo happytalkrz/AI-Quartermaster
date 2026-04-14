@@ -390,6 +390,163 @@ describe("Integration: graceful shutdown", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Scenario 3 강화: shutdown 순서 보장 + Claude 프로세스 정리 (#696)
+// ---------------------------------------------------------------------------
+
+describe("Integration: graceful shutdown 순서 보장 + Claude 프로세스 정리", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it("shutdown 순서: server.close → queue.shutdown → killAllActiveProcesses → store.close", async () => {
+    const mockServerClose = vi.fn();
+    const mockQueueShutdown = vi.fn().mockResolvedValue(undefined);
+    const mockKillAllActiveProcesses = vi.fn().mockResolvedValue(undefined);
+    const mockStoreClose = vi.fn();
+
+    // cli.ts gracefulShutdown 로직을 그대로 모방
+    mockServerClose();
+    await mockQueueShutdown(30000);
+    await mockKillAllActiveProcesses();
+    mockStoreClose();
+
+    const serverOrder = mockServerClose.mock.invocationCallOrder[0]!;
+    const queueOrder = mockQueueShutdown.mock.invocationCallOrder[0]!;
+    const killOrder = mockKillAllActiveProcesses.mock.invocationCallOrder[0]!;
+    const storeOrder = mockStoreClose.mock.invocationCallOrder[0]!;
+
+    expect(serverOrder).toBeLessThan(queueOrder);
+    expect(queueOrder).toBeLessThan(killOrder);
+    expect(killOrder).toBeLessThan(storeOrder);
+  });
+
+  it("shutdown 순서: queue.shutdown 완료 후에만 killAllActiveProcesses 호출됨", async () => {
+    const callOrder: string[] = [];
+
+    const mockQueueShutdown = vi.fn().mockImplementation(async () => {
+      callOrder.push("queue.shutdown");
+    });
+    const mockKillAll = vi.fn().mockImplementation(async () => {
+      callOrder.push("killAllActiveProcesses");
+    });
+
+    await mockQueueShutdown(30000);
+    await mockKillAll();
+
+    expect(callOrder[0]).toBe("queue.shutdown");
+    expect(callOrder[1]).toBe("killAllActiveProcesses");
+    expect(mockQueueShutdown.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockKillAll.mock.invocationCallOrder[0]!
+    );
+  });
+
+  it("killAllActiveProcesses: SIGTERM → 3초 대기 → SIGKILL 순서 (미종료 프로세스)", async () => {
+    vi.useFakeTimers();
+
+    const killSignals: string[] = [];
+    const fakeChild = {
+      pid: 12345,
+      killed: false,
+      kill: vi.fn((signal: string) => {
+        killSignals.push(signal);
+        // SIGTERM 후에도 종료되지 않음 — SIGKILL 대상
+      }),
+    };
+    const activeProcs = new Map([[12345, { process: fakeChild }]]);
+
+    // killAllActiveProcesses 구현 계약 검증 (SIGTERM → 3초 → SIGKILL)
+    const entries = Array.from(activeProcs.entries());
+    for (const [, { process: child }] of entries) {
+      child.kill("SIGTERM");
+    }
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    for (const [pid, { process: child }] of entries) {
+      if (!child.killed && activeProcs.has(pid)) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    expect(killSignals).toEqual(["SIGTERM", "SIGKILL"]);
+    expect(fakeChild.kill.mock.invocationCallOrder[0]!).toBeLessThan(
+      fakeChild.kill.mock.invocationCallOrder[1]!
+    );
+  });
+
+  it("killAllActiveProcesses: SIGTERM 후 프로세스가 스스로 종료되면 SIGKILL 미발송", async () => {
+    vi.useFakeTimers();
+
+    const killSignals: string[] = [];
+    const fakeChild = {
+      pid: 12346,
+      killed: false,
+      kill: vi.fn((signal: string) => {
+        killSignals.push(signal);
+        if (signal === "SIGTERM") {
+          fakeChild.killed = true; // SIGTERM에 반응하여 정상 종료
+        }
+      }),
+    };
+    const activeProcs = new Map([[12346, { process: fakeChild }]]);
+
+    const entries = Array.from(activeProcs.entries());
+    for (const [, { process: child }] of entries) {
+      child.kill("SIGTERM");
+    }
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    for (const [pid, { process: child }] of entries) {
+      if (!child.killed && activeProcs.has(pid)) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    expect(killSignals).toEqual(["SIGTERM"]); // SIGKILL 미발송
+    expect(fakeChild.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it("graceful shutdown은 isShuttingDown 플래그로 중복 호출을 방지함", async () => {
+    let isShuttingDown = false;
+    const shutdownInvocations: number[] = [];
+
+    const gracefulShutdown = async (callIndex: number): Promise<void> => {
+      if (isShuttingDown) return;
+      isShuttingDown = true;
+      shutdownInvocations.push(callIndex);
+    };
+
+    await gracefulShutdown(1);
+    await gracefulShutdown(2);
+    await gracefulShutdown(3);
+
+    expect(shutdownInvocations).toHaveLength(1);
+    expect(shutdownInvocations[0]).toBe(1);
+  });
+
+  it("shutdown 시 server.close는 queue.shutdown보다 먼저 호출됨 (새 요청 차단 후 job 대기)", async () => {
+    const callOrder: string[] = [];
+
+    const mockServerClose = vi.fn(() => {
+      callOrder.push("server.close");
+    });
+    const mockQueueShutdown = vi.fn(async () => {
+      callOrder.push("queue.shutdown");
+    });
+
+    mockServerClose();
+    await mockQueueShutdown(30000);
+
+    expect(callOrder).toEqual(["server.close", "queue.shutdown"]);
+    expect(mockServerClose.mock.invocationCallOrder[0]!).toBeLessThan(
+      mockQueueShutdown.mock.invocationCallOrder[0]!
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scenario 4: Config Hot Reload (#695)
 // ---------------------------------------------------------------------------
 

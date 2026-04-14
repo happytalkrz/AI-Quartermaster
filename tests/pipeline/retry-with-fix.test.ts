@@ -129,7 +129,7 @@ describe("retryWithClaudeFix", () => {
     expect(result.success).toBe(false);
     expect(result.result).toEqual(failedResult);
     expect(result.attempts).toBe(2);
-    expect(result.error).toBe("Failed after 2 attempts");
+    expect(result.error).toBe("[RETRY_BUDGET_EXHAUSTED] retry-with-fix failed after 2 attempt(s). No further retries to prevent API token exhaustion.");
 
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
     expect(mockAutoCommitIfDirty).toHaveBeenCalledTimes(2);

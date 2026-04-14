@@ -3,6 +3,7 @@ import type { ClaudeCliConfig, ExecutionMode } from "../../types/config.js";
 import { configForTaskWithMode } from "../../claude/model-router.js";
 import { autoCommitIfDirty } from "../../git/commit-helper.js";
 import { getLogger } from "../../utils/logger.js";
+import { retryBudgetExhaustedReason } from "./retry-config.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { estimateTokenCount } from "../../review/token-estimator.js";
 
@@ -203,7 +204,7 @@ export async function retryWithClaudeFix<T>(
     success: false,
     result: currentResult,
     attempts: maxRetries,
-    error: `Failed after ${maxRetries} attempts`
+    error: retryBudgetExhaustedReason("retry-with-fix", maxRetries)
   };
 }
 

@@ -2,6 +2,32 @@
 AQM_HOME="${AQM_HOME:-$HOME/.ai-quartermaster}"
 AQM_PID_FILE="$AQM_HOME/.aqm-server.pid"
 AQM_LOG_FILE="$AQM_HOME/logs/server.log"
+AQM_CLAUDE_PROFILE_FILE="$AQM_HOME/.claude-profile"
+
+# Resolve CLAUDE_CONFIG_DIR for the daemon so the dashboard shows the right profile.
+# Priority: current env > tmux global env > persisted .claude-profile file.
+resolve_claude_config_dir() {
+  if [ -n "$CLAUDE_CONFIG_DIR" ]; then
+    return 0
+  fi
+  if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
+    local tmux_val
+    tmux_val=$(tmux show-environment -g CLAUDE_CONFIG_DIR 2>/dev/null | grep -E '^CLAUDE_CONFIG_DIR=' | sed 's/^CLAUDE_CONFIG_DIR=//')
+    if [ -n "$tmux_val" ] && [ -d "$tmux_val" ]; then
+      export CLAUDE_CONFIG_DIR="$tmux_val"
+      return 0
+    fi
+  fi
+  if [ -f "$AQM_CLAUDE_PROFILE_FILE" ]; then
+    local file_val
+    file_val=$(head -n1 "$AQM_CLAUDE_PROFILE_FILE" | tr -d '[:space:]')
+    if [ -n "$file_val" ] && [ -d "$file_val" ]; then
+      export CLAUDE_CONFIG_DIR="$file_val"
+      return 0
+    fi
+  fi
+}
+resolve_claude_config_dir
 
 if [ ! -d "$AQM_HOME" ]; then
   echo "AI Quartermaster가 설치되어 있지 않습니다."
@@ -126,12 +152,32 @@ case "${1:-}" in
     exit 0
     ;;
   start)
-    # Check for --daemon flag
+    # Check for --daemon flag and --claude-config-dir
     DAEMON=false
     ARGS=()
+    SKIP_NEXT=false
+    PREV=""
     for arg in "${@:2}"; do
+      if [ "$SKIP_NEXT" = true ]; then
+        SKIP_NEXT=false
+        if [ "$PREV" = "--claude-config-dir" ]; then
+          if [ -d "$arg" ]; then
+            echo "$arg" > "$AQM_CLAUDE_PROFILE_FILE"
+            export CLAUDE_CONFIG_DIR="$arg"
+            echo "Claude profile 저장: $arg"
+          else
+            echo "오류: --claude-config-dir 경로가 존재하지 않습니다: $arg"
+            exit 1
+          fi
+        fi
+        PREV=""
+        continue
+      fi
       if [ "$arg" = "--daemon" ] || [ "$arg" = "-d" ]; then
         DAEMON=true
+      elif [ "$arg" = "--claude-config-dir" ]; then
+        SKIP_NEXT=true
+        PREV="$arg"
       else
         ARGS+=("$arg")
       fi

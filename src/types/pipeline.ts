@@ -95,6 +95,18 @@ export type ErrorCategory =
   | "UNKNOWN";
 
 /**
+ * 비개발자용 파이프라인 실패 3줄 요약
+ */
+export interface UserSummary {
+  /** 무슨 일이 일어났는지 (What) */
+  what: string;
+  /** 왜 실패했는지 (Why) */
+  why: string;
+  /** 다음에 무엇을 해야 하는지 (Next) */
+  next: string;
+}
+
+/**
  * Claude 기반 파이프라인 실패 진단 리포트
  */
 export interface DiagnosisReport {

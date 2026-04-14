@@ -233,6 +233,71 @@ describe("Integration: sqlite3 preflight", () => {
     db = new AQDatabase(dbPath);
     expect(db.countJobs()).toBe(0);
   });
+
+  it("propagates better-sqlite3 native module error without swallowing it", async () => {
+    // Simulate a native build failure by mocking better-sqlite3 to throw
+    vi.doMock("better-sqlite3", () => ({
+      default: class FailingSQLite {
+        constructor() {
+          throw new Error(
+            "Could not locate the bindings file. Tried:\n" +
+            " → build/Release/better_sqlite3.node\n" +
+            " → build/Debug/better_sqlite3.node\n" +
+            "This is a better-sqlite3 native module build failure."
+          );
+        }
+      },
+    }));
+    vi.resetModules();
+
+    const nativeFailDir = makeTempDir("aq-native-fail");
+    try {
+      const { AQDatabase: FreshAQDatabase } = await import("../../src/store/database.js");
+      expect(() => new FreshAQDatabase(join(nativeFailDir, "test.db"))).toThrow(
+        /better.sqlite3|native/i
+      );
+    } finally {
+      vi.doUnmock("better-sqlite3");
+      vi.resetModules();
+      removeTempDir(nativeFailDir);
+    }
+  });
+
+  it("error from native module failure is an Error instance with actionable message", async () => {
+    vi.doMock("better-sqlite3", () => ({
+      default: class FailingSQLite {
+        constructor() {
+          throw new Error(
+            "better-sqlite3 native addon failed to load: NODE_MODULE_VERSION mismatch. " +
+            "Run `npm rebuild better-sqlite3` to fix this."
+          );
+        }
+      },
+    }));
+    vi.resetModules();
+
+    const nativeFailDir2 = makeTempDir("aq-native-fail2");
+    try {
+      const { AQDatabase: FreshAQDatabase } = await import("../../src/store/database.js");
+
+      let caught: unknown;
+      try {
+        new FreshAQDatabase(join(nativeFailDir2, "test.db"));
+      } catch (e) {
+        caught = e;
+      }
+
+      expect(caught).toBeInstanceOf(Error);
+      const msg = (caught as Error).message;
+      expect(msg).toMatch(/better.sqlite3|native/i);
+      // The error message must NOT be empty — user needs actionable info
+      expect(msg.length).toBeGreaterThan(0);
+    } finally {
+      vi.doUnmock("better-sqlite3");
+      vi.resetModules();
+      removeTempDir(nativeFailDir2);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { dirname, resolve } from "path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
+import { dirname, resolve, join } from "path";
 import { fileURLToPath } from "url";
+import { tmpdir } from "os";
 import { parse as parseYaml } from "yaml";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
+import { loadConfig } from "../../src/config/loader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "../../");
@@ -86,6 +88,13 @@ describe("config.reference.yml drift 검증", () => {
     expect(claudeCli["maxTurns"]).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurns);
   });
 
+  it("commands.claudeCli.maxTurnsPerMode 값이 defaults.ts와 일치", () => {
+    const maxTurnsPerMode = claudeCli["maxTurnsPerMode"] as Record<string, number>;
+    expect(maxTurnsPerMode["economy"]).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.economy);
+    expect(maxTurnsPerMode["standard"]).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.standard);
+    expect(maxTurnsPerMode["thorough"]).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.thorough);
+  });
+
   it("commands.typecheck 값이 defaults.ts와 일치", () => {
     expect(commands["typecheck"]).toBe(DEFAULT_CONFIG.commands.typecheck);
   });
@@ -128,5 +137,54 @@ describe("README.md drift 검증", () => {
 
   it("README에 typecheck 명령어 표기", () => {
     expect(readme).toContain(`typecheck: "npm run typecheck"`);
+  });
+});
+
+describe("loader 마이그레이션: maxTurnsPerMode 자동 시드", () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `aq-drift-test-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`);
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it("maxTurnsPerMode 없는 config 로드 시 defaults로 자동 시드", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+commands:
+  claudeCli:
+    maxTurns: 100
+`);
+    const config = loadConfig(testDir);
+    expect(config.commands.claudeCli.maxTurnsPerMode).toBeDefined();
+    expect(config.commands.claudeCli.maxTurnsPerMode.economy).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.economy);
+    expect(config.commands.claudeCli.maxTurnsPerMode.standard).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.standard);
+    expect(config.commands.claudeCli.maxTurnsPerMode.thorough).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.thorough);
+  });
+
+  it("maxTurnsPerMode 빈 객체 config 로드 시 defaults로 자동 시드", () => {
+    writeFileSync(join(testDir, "config.yml"), `
+general:
+  projectName: "test-project"
+git:
+  allowedRepos:
+    - "test/repo"
+commands:
+  claudeCli:
+    maxTurnsPerMode: {}
+`);
+    const config = loadConfig(testDir);
+    expect(config.commands.claudeCli.maxTurnsPerMode).toBeDefined();
+    expect(config.commands.claudeCli.maxTurnsPerMode.economy).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.economy);
+    expect(config.commands.claudeCli.maxTurnsPerMode.standard).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.standard);
+    expect(config.commands.claudeCli.maxTurnsPerMode.thorough).toBe(DEFAULT_CONFIG.commands.claudeCli.maxTurnsPerMode.thorough);
   });
 });

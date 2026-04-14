@@ -246,6 +246,7 @@ function openRuleModal(rule) {
         '<label class="' + labelCls + '">이벤트</label>' +
         '<select id="rule-trigger-event" class="' + fieldCls + '">' +
           '<option value="pr-merged"' + (triggerEvent === 'pr-merged' ? ' selected' : '') + '>PR Merged</option>' +
+          '<option value="draft-pr-created"' + (triggerEvent === 'draft-pr-created' ? ' selected' : '') + '>Draft PR 생성</option>' +
           '<option value="phase-failed"' + (triggerEvent === 'phase-failed' ? ' selected' : '') + '>Phase Failed</option>' +
         '</select>' +
       '</div>' +

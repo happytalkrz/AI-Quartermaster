@@ -8,12 +8,30 @@ GitHub Issue에 라벨을 붙이면 Claude가 자동으로 구현하고 Draft PR
 curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash
 ```
 
+**지원 플랫폼:**
+
+| 플랫폼 | 지원 여부 | 비고 |
+|--------|----------|------|
+| Linux (glibc, Ubuntu/Debian/RHEL 계열) | ✅ | 권장 환경 |
+| macOS arm64 (Apple Silicon) | ✅ | Node.js 20+ 필수 |
+| macOS x86_64 | ✅ | |
+| WSL2 (Windows Subsystem for Linux) | ✅ | glibc 기반 배포판 사용 |
+| Windows 네이티브 | ❌ | 미지원 |
+| Alpine Linux / musl libc | ❌ | better-sqlite3 prebuilt binary 미지원 |
+
+> **Alpine/musl 환경 주의**: better-sqlite3는 musl libc 환경에서 prebuilt binary를 제공하지 않으며, 소스 빌드 시에도 호환성 문제가 발생할 수 있습니다.
+
 **필수 요구사항:**
-- macOS / Linux / WSL (Windows 네이티브 미지원)
 - Node.js 20+
 - Git
 - [GitHub CLI](https://cli.github.com) (`gh auth login` 완료)
 - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (Claude Max 요금제 권장)
+- **Native build 도구** (시스템에 없으면 `install.sh`가 설치를 안내합니다):
+  - `python3`
+  - `make`
+  - `g++` (또는 `build-essential` 패키지)
+
+> better-sqlite3는 prebuilt binary가 현재 Node.js 버전과 맞지 않을 경우 소스 빌드(node-gyp)를 시도합니다. 위 도구가 없으면 설치가 실패할 수 있습니다.
 
 **Public / Private 레포 모두 지원** — `gh auth login` 인증 토큰에 repo 접근 권한이 있으면 Private 레포에서도 동작합니다.
 

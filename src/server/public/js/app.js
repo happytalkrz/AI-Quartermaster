@@ -63,6 +63,11 @@ function navigateTo(view) {
   if (view === 'skip-events') {
     loadSkipEvents();
   }
+
+  // If navigating to doctor view, run checks
+  if (view === 'doctor') {
+    runDoctorCheck();
+  }
 }
 
 // Bind navigation clicks

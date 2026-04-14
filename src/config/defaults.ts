@@ -61,6 +61,7 @@ export const DEFAULT_CONFIG: AQConfig = {
         review: CLAUDE_MODELS.HAIKU,
         fallback: CLAUDE_MODELS.SONNET,
       },
+      modelFallbackChain: [CLAUDE_MODELS.SONNET, CLAUDE_MODELS.HAIKU],
       maxTurns: 60,
       maxTurnsPerMode: {
         economy: 30,

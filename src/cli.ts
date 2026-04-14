@@ -188,6 +188,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   // === Claude quota 자가진단 (non-blocking) ===
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Phase 4에서 createDashboardRoutes에 전달 예정
   let quotaStatus: QuotaCheckResult | undefined;
   checkClaudeQuota(effectiveConfig.commands.claudeCli)
     .then((result) => {

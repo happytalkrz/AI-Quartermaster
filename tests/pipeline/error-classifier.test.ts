@@ -28,6 +28,24 @@ describe("classifyError", () => {
     });
   });
 
+  describe("MAX_TURNS_EXCEEDED", () => {
+    it("detects 'max turns exceeded'", () => {
+      expect(classifyError("max turns exceeded: limit reached")).toBe("MAX_TURNS_EXCEEDED");
+    });
+
+    it("detects 'maximum turns'", () => {
+      expect(classifyError("maximum turns reached for this session")).toBe("MAX_TURNS_EXCEEDED");
+    });
+
+    it("detects 'turn limit exceeded'", () => {
+      expect(classifyError("turn limit exceeded after 100 attempts")).toBe("MAX_TURNS_EXCEEDED");
+    });
+
+    it("is case-insensitive", () => {
+      expect(classifyError("MAX TURNS EXCEEDED")).toBe("MAX_TURNS_EXCEEDED");
+    });
+  });
+
   describe("TIMEOUT", () => {
     it("detects 'timeout'", () => {
       expect(classifyError("Operation timeout after 30s")).toBe("TIMEOUT");

@@ -43,7 +43,7 @@ vi.mock("../src/queue/job-store.js", () => ({
   JobStore: vi.fn(),
 }));
 vi.mock("../src/utils/logger.js", () => ({
-  getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() })),
+  getLogger: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
   setGlobalLogLevel: vi.fn(),
 }));
 vi.mock("../src/setup/doctor.js", () => ({

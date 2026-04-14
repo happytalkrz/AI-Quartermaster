@@ -5,6 +5,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { AQConfig, ProjectConfig, InitCommandOptions } from "../types/config.js";
 import { ConfigError } from "../types/errors.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { getLogger } from "../utils/logger.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { validateConfig } from "./validator.js";
 import { parseEnvVars } from "./env-parser.js";
@@ -334,8 +335,9 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
       if (remoteResult.exitCode === 0) {
         repo = extractRepoFromUrl(remoteResult.stdout.trim());
       }
-    } catch {
+    } catch (err: unknown) {
       // git remote 실패 - repo는 undefined로 남김
+      getLogger().debug(`git remote 감지 실패 (무시): ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // 2. 기본 브랜치 감지
@@ -345,14 +347,16 @@ export async function detectGitInfo(cwd: string): Promise<{ repo?: string; baseB
       if (branchResult.exitCode === 0) {
         baseBranch = branchResult.stdout.trim().split('/').pop();
       }
-    } catch {
+    } catch (err: unknown) {
       // symbolic-ref 실패 시 git config에서 확인
+      getLogger().debug(`git symbolic-ref 감지 실패, git config 폴백 (무시): ${err instanceof Error ? err.message : String(err)}`);
       try {
         const configResult = await runCli("git", ["config", "init.defaultBranch"], { cwd, timeout: 5000 });
         if (configResult.exitCode === 0) {
           baseBranch = configResult.stdout.trim();
         }
-      } catch {
+      } catch (err2: unknown) {
+        getLogger().debug(`git config defaultBranch 감지 실패, "main"으로 폴백 (무시): ${err2 instanceof Error ? err2.message : String(err2)}`);
         baseBranch = "main";
       }
     }

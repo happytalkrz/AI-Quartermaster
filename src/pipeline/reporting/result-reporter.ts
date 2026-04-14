@@ -100,6 +100,9 @@ export function printResult(report: PipelineReport): void {
     const cost = phase.costUsd !== undefined ? ` $${phase.costUsd.toFixed(4)}` : "";
     const retryCost = phase.retryCostUsd ? ` +retry $${phase.retryCostUsd.toFixed(4)}` : "";
     console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s${cost}${retryCost})`);
+    if (!phase.success && phase.error) {
+      console.log(`    → ${phase.error}`);
+    }
   }
 
   if (report.prUrl) {
@@ -123,6 +126,10 @@ export function printResult(report: PipelineReport): void {
     for (const warning of report.verificationIncomplete) {
       console.log(`  - ${warning}`);
     }
+  }
+
+  if (report.errorSummary) {
+    console.log(`\nError Summary: ${report.errorSummary}`);
   }
 
   if (report.diagnosis) {

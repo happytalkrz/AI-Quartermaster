@@ -94,8 +94,9 @@ export async function checkForUpdates(aqRoot: string): Promise<void> {
     if (behind > 0) {
       console.log(`\n  📦 업데이트 ${behind}개 사용 가능 — aqm update 로 업데이트하세요\n`);
     }
-  } catch {
-    // 네트워크 실패 등 무시
+  } catch (err: unknown) {
+    // 네트워크 실패 등 무시 (업데이트 확인 실패가 시작을 막지 않아야 함)
+    getLogger().debug(`업데이트 확인 실패 (무시): ${getErrorMessage(err)}`);
   }
 }
 
@@ -103,7 +104,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
 
   // Check for updates (non-blocking)
-  checkForUpdates(aqRoot).catch(() => {});
+  checkForUpdates(aqRoot).catch(() => {}); // 비동기 업데이트 확인 — 실패해도 시작에 영향 없음 (의도적 무시)
 
   // Load .env
   const envPath = resolve(aqRoot, ".env");

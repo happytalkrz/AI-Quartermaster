@@ -120,8 +120,10 @@ export async function executeInitialSetupPhases(
 ): Promise<InitialSetupResult> {
   const { issueNumber, repo } = input;
   const jl = input.jobLogger;
+  const phaseResults: PhaseResult[] = [];
 
   // Phase 1: Resolve project setup
+  const projectStart = new Date();
   const setupResult = resolveResolvedProject(
     repo,
     config,
@@ -129,7 +131,6 @@ export async function executeInitialSetupPhases(
     input.resumeFrom?.projectRoot,
     aqRoot
   );
-
   const { projectRoot, promptsDir, gitConfig } = setupResult;
 
   // Start pipeline-level timer
@@ -161,6 +162,7 @@ export async function executeInitialSetupPhases(
   }
 
   // Phase 3: Fetch and validate issue
+  const validationStart = new Date();
   const issueResult = await fetchAndValidateIssue(
     repo,
     issueNumber,
@@ -177,7 +179,6 @@ export async function executeInitialSetupPhases(
     },
     config.general.instanceLabel
   );
-
   const { issue, checkpoint } = issueResult;
   const mode = issueResult.mode;
   const executionMode = issueResult.executionMode;
@@ -275,7 +276,6 @@ export async function executeEnvironmentSetup(
       repoStructure: "",
     };
   }
-
   return {
     projectConventions: envPrepResult.projectConventions,
     skillsContext: envPrepResult.skillsContext,

@@ -527,6 +527,8 @@ export interface JobBase {
   triggerReason?: string;
   /** Claude 기반 실패 진단 리포트 (실패 시에만 존재) */
   diagnosis?: DiagnosisReport;
+  /** 비개발자용 실패 3줄 요약 (실패 시에만 존재) */
+  userSummary?: UserSummary;
 }
 
 /**

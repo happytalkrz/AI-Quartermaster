@@ -1,6 +1,6 @@
 import { resolve } from "path";
 import { writeFileSync, mkdirSync } from "fs";
-import type { PipelineState } from "../../types/pipeline.js";
+import type { PipelineState, UserSummary } from "../../types/pipeline.js";
 import type { AQConfig, GitConfig } from "../../types/config.js";
 import type { PipelineReport } from "../reporting/result-reporter.js";
 import type { JobLogger } from "../../queue/job-logger.js";
@@ -28,6 +28,8 @@ export interface OrchestratorResult {
   totalCostUsd?: number;
   /** Claude 진단 호출 비용 (USD) */
   diagnosisCostUsd?: number;
+  /** 비개발자용 실패 3줄 요약 (실패 시에만 존재) */
+  userSummary?: UserSummary;
 }
 
 export interface PipelineRuntime {

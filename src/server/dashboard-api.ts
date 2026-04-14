@@ -515,7 +515,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/config", (c) => {
     try {
       const projectRoot = process.cwd();
-      const config = loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(projectRoot);
       const maskedConfig = maskSensitiveConfig(config);
       return c.json({ config: maskedConfig });
     } catch (error: unknown) {
@@ -554,12 +554,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       ) as Partial<AQConfig>;
 
       updateConfigSection(process.cwd(), cleanedData);
+      configWatcher?.refresh();
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {
         try {
           // Load updated config for runtime application
-          const newConfig = loadConfig(projectRoot);
+          const newConfig = configWatcher.current();
 
           // Apply runtime changes immediately (force update)
           if (body.general?.concurrency !== undefined) {
@@ -595,7 +596,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/projects", (c) => {
     try {
       const projectRoot = process.cwd();
-      const config = loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(projectRoot);
 
       if (!config.projects || config.projects.length === 0) {
         return c.json({ projects: [] });
@@ -651,7 +652,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       };
 
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
@@ -660,9 +661,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       addProjectToConfig(configPath, project);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -687,7 +689,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -696,9 +698,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       removeProjectFromConfig(configPath, repo);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -738,7 +741,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       // Validate that project exists
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -775,9 +778,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       updateProjectInConfig(configPath, repo, updates);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -1318,7 +1322,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/version", async (c) => {
     try {
       const currentVersion = getCurrentVersion();
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
 
       try {
@@ -1350,7 +1354,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/claude-profile", async (c) => {
     const configDir = process.env.CLAUDE_CONFIG_DIR || "";
     const profile = configDir ? basename(configDir).replace(/^\.claude-?/, "") || "default" : "default";
-    const config = loadConfig(projectRoot);
+    const config = configWatcher?.current() ?? loadConfig(projectRoot);
     const models = config.commands.claudeCli.models;
 
     let cliVersion = "unknown";
@@ -1420,7 +1424,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Repositories API - project-level aggregated information with health and stats
   api.get("/api/repositories", async (c) => {
     try {
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1522,7 +1526,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Projects health check endpoint — all configured projects
   api.get("/api/projects/health", async (c) => {
     try {
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1601,7 +1605,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const project = decodeURIComponent(projectParam);
 
       // Load configuration to get project path and git settings
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projectConfig = config.projects?.find(p => p.repo === project);
 
       if (!projectConfig) {

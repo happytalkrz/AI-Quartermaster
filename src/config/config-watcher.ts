@@ -3,6 +3,8 @@ import { resolve } from "path";
 import { EventEmitter } from "events";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { loadConfig } from "./loader.js";
+import { AQConfig } from "../types/config.js";
 
 const logger = getLogger();
 
@@ -22,6 +24,7 @@ export class ConfigWatcher extends EventEmitter {
   private errorCounts: Map<string, number> = new Map();
   private readonly maxErrorRetries = 3;
   private readonly errorRetryDelay = 1000; // 1 second
+  private cachedConfig: AQConfig | null = null;
 
   constructor(projectRoot: string) {
     super();
@@ -30,8 +33,27 @@ export class ConfigWatcher extends EventEmitter {
     this.localConfigPath = resolve(this.projectRoot, "config.local.yml");
   }
 
+  current(): AQConfig {
+    if (!this.cachedConfig) {
+      this.cachedConfig = loadConfig(this.projectRoot);
+    }
+    return this.cachedConfig;
+  }
+
+  refresh(): void {
+    this.cachedConfig = loadConfig(this.projectRoot);
+    logger.debug('Config cache refreshed explicitly');
+  }
+
   startWatching(): void {
     this.stopWatching(); // Ensure clean state
+
+    // Load initial config into cache
+    try {
+      this.cachedConfig = loadConfig(this.projectRoot);
+    } catch (err: unknown) {
+      logger.warn(`Failed to load initial config cache: ${getErrorMessage(err)}`);
+    }
 
     // Watch base config.yml (required)
     this.watchFile(this.baseConfigPath, 'base');
@@ -197,6 +219,13 @@ export class ConfigWatcher extends EventEmitter {
       type: eventType,
       paths
     };
+
+    // Reload config into cache before emitting
+    try {
+      this.cachedConfig = loadConfig(this.projectRoot);
+    } catch (err: unknown) {
+      logger.warn(`Failed to reload config cache on change: ${getErrorMessage(err)}`);
+    }
 
     logger.info(`Config changed: ${eventType} (${paths.join(', ')})`);
     this.emit('configChanged', event);

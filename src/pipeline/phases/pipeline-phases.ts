@@ -693,13 +693,14 @@ export async function executePostProcessingPhases(
   const prUrl = publishResult.prUrl;
 
   await dispatchPipelineEvent({
-    type: "pr-merged",
+    type: "draft-pr-created",
     payload: {
       issueNumber,
       repo,
       prNumber: publishResult.prNumber ?? 0,
       prUrl: prUrl ?? "",
-      mergedAt: new Date().toISOString(),
+      branchName: runtime.branchName ?? "",
+      createdAt: new Date().toISOString(),
     },
     triggeredAt: new Date().toISOString(),
   });

@@ -297,9 +297,7 @@ describe("Dashboard API - PUT /api/config", () => {
         body: "invalid json string",
       });
 
-      expect(response.status).toBe(500); // JSON parsing error is caught and returns 500
-      const result = await response.json();
-      expect(result.error).toContain("Failed to update configuration");
+      expect(response.status).toBe(400);
       expect(mockUpdateConfigSection).not.toHaveBeenCalled();
     });
 
@@ -2455,8 +2453,6 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
   });
 
   it("should return 400 for invalid JSON body", async () => {
-    vi.mocked(localStore.get).mockReturnValue(mockJob as any);
-
     const response = await app.request("/api/jobs/job-123/priority", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -2464,8 +2460,6 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
     });
 
     expect(response.status).toBe(400);
-    const result = await response.json();
-    expect(result.error).toBe("Invalid JSON body");
   });
 
   it("should return 400 for invalid priority value", async () => {

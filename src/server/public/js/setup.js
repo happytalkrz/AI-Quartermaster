@@ -5,6 +5,9 @@
    Setup Wizard — Step 1: GitHub Token
    ══════════════════════════════════════════════════════════════ */
 
+/** @type {() => void} */
+var validateGitHubToken;
+
 /** @type {ReturnType<typeof setTimeout> | null} */
 var _setupDebounceTimer = null;
 
@@ -14,8 +17,9 @@ var _setupListenerAttached = false;
 /** @returns {void} */
 function initSetupView() {
   if (_setupListenerAttached) return;
-  var tokenInput = /** @type {HTMLInputElement|null} */ (document.getElementById('setup-github-token'));
-  if (!tokenInput) return;
+  var tokenInputEl = document.getElementById('setup-github-token');
+  if (!tokenInputEl) return;
+  var tokenInput = /** @type {HTMLInputElement} */ (tokenInputEl);
 
   _setupListenerAttached = true;
 

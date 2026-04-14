@@ -390,8 +390,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         baseline: ctx.baseline,
       });
 
-      // Retry on failure (skip for TIMEOUT and SAFETY_VIOLATION — not recoverable by retry)
-      if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION") {
+      // Retry on failure (skip for TIMEOUT, SAFETY_VIOLATION, QUOTA_EXHAUSTED — not recoverable by retry)
+      if (!result.success && result.errorCategory !== "TIMEOUT" && result.errorCategory !== "SAFETY_VIOLATION" && result.errorCategory !== "QUOTA_EXHAUSTED") {
         let errorHistory = addErrorToHistory(phaseErrorHistories, phase.index, 0, result.errorCategory, result.error);
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {

@@ -5,6 +5,10 @@ export function classifyError(error: string): ErrorCategory {
   if (lower.includes("ts2") || lower.includes("ts1") || lower.includes("type error") || lower.includes("cannot find name") || (lower.includes("property") && lower.includes("does not exist"))) {
     return "TS_ERROR";
   }
+  // Claude Max 요금제 quota 한도 — 짧은 retry로 회복 불가, 별도 카테고리로 분리
+  if (lower.includes("hit your limit") || lower.includes("usage limit reached") || lower.includes("quota exhausted")) {
+    return "QUOTA_EXHAUSTED";
+  }
   if (lower.includes("rate limit") || lower.includes("too many requests") || lower.includes("x-ratelimit") || lower.includes("429")) {
     return "RATE_LIMIT";
   }

@@ -90,6 +90,7 @@ function buildClaudeEnv(): NodeJS.ProcessEnv {
     "XDG_CACHE_HOME",
     "ANTHROPIC_API_KEY",
     "CLAUDE_API_KEY",
+    "CLAUDE_CONFIG_DIR",
   ];
 
   const env: NodeJS.ProcessEnv = {};

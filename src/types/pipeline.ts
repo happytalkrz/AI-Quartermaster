@@ -91,6 +91,7 @@ export type ErrorCategory =
   | "RATE_LIMIT"
   | "PROMPT_TOO_LONG"
   | "MAX_TURNS_EXCEEDED"
+  | "QUOTA_EXHAUSTED"
   | "UNKNOWN";
 
 /**

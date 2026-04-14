@@ -125,13 +125,13 @@
         });
         var data = await resp.json();
 
-        if (resp.ok && data.login) {
+        if (resp.ok && data.username) {
           resultEl.className = 'mt-6 p-4 rounded-xl bg-[#238636]/10 ring-1 ring-[#238636]/30';
           contentEl.innerHTML =
             '<span class="material-symbols-outlined text-[#3fb950] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">check_circle</span>' +
             '<div>' +
               '<div class="font-bold text-on-surface">연결 성공</div>' +
-              '<div class="text-xs text-outline mt-0.5">@' + escapeHtml(data.login) + (data.name ? ' · ' + escapeHtml(data.name) : '') + '</div>' +
+              '<div class="text-xs text-outline mt-0.5">@' + escapeHtml(data.username) + '</div>' +
             '</div>';
         } else {
           var msg = (data && data.error) ? data.error : '토큰 검증에 실패했습니다.';

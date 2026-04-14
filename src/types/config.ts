@@ -89,6 +89,7 @@ export interface ClaudeCliConfig {
   path: string;
   model: string;            // 글로벌 기본 모델 (routing 미설정 시 사용)
   models: ModelRouting;     // 태스크별 모델 라우팅
+  modelFallbackChain?: string[]; // QUOTA_EXHAUSTED 시 순서대로 시도할 모델 체인
   maxTurns: number;
   maxTurnsPerMode?: Record<ExecutionMode, number>; // 실행 모드별 maxTurns 제한
   timeout: number;
@@ -276,6 +277,19 @@ export interface ProjectConfig {
   pauseDurationMs?: number;
 }
 
+
+export interface QuotaModelStatus {
+  ok: boolean;
+  message: string;
+}
+
+export interface QuotaStatus {
+  ok: boolean;
+  message: string;
+  models: Record<string, QuotaModelStatus>;
+  profileVerified: boolean;
+  lastChecked: number;
+}
 
 export interface AQConfig {
   general: GeneralConfig;

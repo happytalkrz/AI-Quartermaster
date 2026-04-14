@@ -157,8 +157,113 @@ function loadClaudeProfile() {
       if (el && data.profile) {
         el.textContent = data.profile;
       }
+      updateQuotaBadge(data.quotaStatus || null);
     })
     .catch(function() {});
+}
+
+/**
+ * @typedef {{ ok: boolean, message: string }} QuotaModelStatus
+ * @typedef {{ ok: boolean, message: string, models: Record<string, QuotaModelStatus>, profileVerified: boolean, lastChecked: number }} QuotaStatusData
+ */
+
+/**
+ * @param {QuotaStatusData|null} quotaStatus
+ * @returns {void}
+ */
+function updateQuotaBadge(quotaStatus) {
+  var badge = document.getElementById('claude-quota-badge');
+  if (!badge) return;
+
+  if (!quotaStatus) {
+    badge.classList.add('hidden');
+    badge.classList.remove('flex');
+    return;
+  }
+
+  var dotColor, badgeText, badgeBg;
+  if (quotaStatus.ok) {
+    dotColor = 'bg-green-400';
+    badgeText = '';
+    badgeBg = 'bg-green-400/10 text-green-400';
+  } else if (quotaStatus.profileVerified) {
+    dotColor = 'bg-yellow-400';
+    badgeText = 'Quota Low';
+    badgeBg = 'bg-yellow-400/10 text-yellow-400';
+  } else {
+    var msg = quotaStatus.message.toLowerCase();
+    var isAuth = msg.includes('auth') || msg.includes('login') || msg.includes('unauthorized');
+    dotColor = 'bg-red-400';
+    badgeText = isAuth ? 'Auth Failed' : 'Quota Exhausted';
+    badgeBg = 'bg-red-400/10 text-red-400';
+  }
+
+  badge.className = 'flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-pointer leading-tight ' + badgeBg;
+  badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full ' + dotColor + '"></span>' + (badgeText ? badgeText : '');
+  badge.onclick = function() { showQuotaModal(quotaStatus); };
+}
+
+/**
+ * @param {QuotaStatusData} quotaStatus
+ * @returns {void}
+ */
+function showQuotaModal(quotaStatus) {
+  var existing = document.getElementById('quota-modal');
+  if (existing) existing.remove();
+
+  var lastChecked = new Date(quotaStatus.lastChecked).toLocaleTimeString();
+  var modelsHtml = Object.keys(quotaStatus.models).map(function(role) {
+    var status = quotaStatus.models[role];
+    var dot = status.ok ? 'bg-green-400' : 'bg-red-400';
+    var msg = status.ok ? 'OK' : status.message.substring(0, 60);
+    return '<div class="flex items-start gap-2 py-1.5 border-b border-[#30363d] last:border-0">' +
+      '<span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span>' +
+      '<div class="min-w-0">' +
+        '<div class="text-xs font-medium text-slate-200 capitalize">' + role + '</div>' +
+        '<div class="text-[10px] text-slate-400 break-words">' + msg + '</div>' +
+      '</div></div>';
+  }).join('');
+
+  var modal = document.createElement('div');
+  modal.id = 'quota-modal';
+  modal.className = 'fixed inset-0 z-50 flex items-center justify-center';
+  modal.innerHTML =
+    '<div class="absolute inset-0 bg-black/40" id="quota-modal-backdrop"></div>' +
+    '<div class="relative bg-[#161b22] border border-[#30363d] rounded-lg p-4 w-72 shadow-xl">' +
+      '<div class="flex items-center justify-between mb-3">' +
+        '<span class="text-sm font-bold text-slate-200">Claude Quota</span>' +
+        '<button id="quota-modal-close" class="text-slate-400 hover:text-slate-200 text-xl leading-none">&times;</button>' +
+      '</div>' +
+      '<div class="mb-3">' + modelsHtml + '</div>' +
+      '<div class="flex items-center justify-between">' +
+        '<span class="text-[10px] text-slate-500">확인: ' + lastChecked + '</span>' +
+        '<button id="quota-refresh-btn" class="flex items-center gap-1 text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-200 px-2 py-1 rounded transition-colors">' +
+          '<span class="material-symbols-outlined" style="font-size:12px">refresh</span>새로고침' +
+        '</button>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(modal);
+
+  var backdrop = document.getElementById('quota-modal-backdrop');
+  var closeBtn = document.getElementById('quota-modal-close');
+  var refreshBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('quota-refresh-btn'));
+
+  if (backdrop) backdrop.onclick = function() { modal.remove(); };
+  if (closeBtn) closeBtn.onclick = function() { modal.remove(); };
+  if (refreshBtn) refreshBtn.onclick = function() {
+    var btn = /** @type {HTMLButtonElement} */ (document.getElementById('quota-refresh-btn'));
+    if (btn) btn.disabled = true;
+    apiFetch('/api/claude-profile/refresh', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        modal.remove();
+        if (data.quotaStatus) {
+          updateQuotaBadge(data.quotaStatus);
+        }
+      })
+      .catch(function() { modal.remove(); });
+  };
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -315,6 +420,29 @@ function collectFormData() {
     });
     result[section] = sectionData;
   });
+
+  // commands.claudeCli 필드 수집 (maxTurns, maxTurnsPerMode)
+  var commandsCliData = /** @type {Record<string, *>} */ ({});
+
+  var maxTurnsEl = /** @type {HTMLInputElement|null} */ (document.getElementById('field-commands-claudeCli-maxTurns'));
+  if (maxTurnsEl && maxTurnsEl.value !== '') {
+    var maxTurnsVal = parseInt(maxTurnsEl.value, 10);
+    if (!isNaN(maxTurnsVal)) commandsCliData.maxTurns = maxTurnsVal;
+  }
+
+  var perModeData = /** @type {Record<string, number>} */ ({});
+  ['economy', 'standard', 'thorough'].forEach(function(mode) {
+    var el = /** @type {HTMLInputElement|null} */ (document.getElementById('field-commands-claudeCli-maxTurnsPerMode-' + mode));
+    if (el && el.value !== '') {
+      var val = parseInt(el.value, 10);
+      if (!isNaN(val)) perModeData[mode] = val;
+    }
+  });
+  if (Object.keys(perModeData).length > 0) commandsCliData.maxTurnsPerMode = perModeData;
+
+  if (Object.keys(commandsCliData).length > 0) {
+    result.commands = { claudeCli: commandsCliData };
+  }
 
   return result;
 }

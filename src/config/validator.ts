@@ -263,11 +263,19 @@ const retryConfigSchema = z.object({
   jitterFactor: z.number().min(0).max(1),
 });
 
+const maxTurnsPerModeSchema = z.object({
+  economy: z.number().int().min(1).max(500),
+  standard: z.number().int().min(1).max(500),
+  thorough: z.number().int().min(1).max(500),
+}).partial().optional();
+
 const claudeCliConfigSchema = z.object({
   path: z.string(),
   model: z.string(),
   models: modelRoutingSchema,
-  maxTurns: z.number().int().positive(),
+  modelFallbackChain: z.array(z.string()).min(1).optional(),
+  maxTurns: z.number().int().min(1).max(500),
+  maxTurnsPerMode: maxTurnsPerModeSchema,
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),
   retry: retryConfigSchema.optional(),

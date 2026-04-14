@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../../prompt/template-renderer.js";
 import type { PromptLayers } from "../../prompt/layer-types.js";
 import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
-import { configForTask } from "../../claude/model-router.js";
+import { configForTask, resolveFallbackChain } from "../../claude/model-router.js";
 import { runShell, runCli } from "../../utils/cli-runner.js";
 import { checkDuplicateExtension, checkFileScope } from "../../safety/scope-guard.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
@@ -53,6 +53,15 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
   const startedAt = new Date().toISOString();
   const jl = ctx.jobLogger;
   let claudeResult: ClaudeRunResult | undefined;
+  const modelCostsAccumulated: ModelCostEntry[] = [];
+
+  const buildFinalModelCosts = (result: ClaudeRunResult | undefined): ModelCostEntry[] | undefined => {
+    const entries: ModelCostEntry[] = [...modelCostsAccumulated];
+    if (result?.model && result.usage) {
+      entries.push({ model: result.model, costUsd: result.costUsd ?? 0, usage: result.usage });
+    }
+    return entries.length > 0 ? entries : undefined;
+  };
 
   try {
     // 1. Load and render phase implementation template using cached layers if available
@@ -71,8 +80,11 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
 
     const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
-    const config = configForTask(ctx.claudeConfig, "phase");
-    const modelName = config.model || ctx.claudeConfig.model;
+    const fallbackChain = ctx.claudeConfig.models
+      ? resolveFallbackChain(ctx.claudeConfig)
+      : (ctx.claudeConfig.modelFallbackChain ?? []);
+    const baseConfig = configForTask(ctx.claudeConfig, "phase");
+    const modelName = baseConfig.model || ctx.claudeConfig.model;
 
     // Build PromptLayers for assemblePrompt
     const buildLayers = (summary: string): PromptLayers => ({
@@ -154,30 +166,55 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       }
     }
 
-    // 2. Run Claude to implement the phase
-    jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
+    // 2. Run Claude to implement the phase (with QUOTA_EXHAUSTED fallback chain support)
     const phaseStartHash = await getHeadHash(ctx.gitPath, ctx.cwd);
     const totalPhases = ctx.plan.phases.length;
     const phaseIdx = ctx.phase.index;
-    claudeResult = await runClaude({
-      prompt: rendered,
-      cwd: ctx.cwd,
-      config,
-      enableAgents: true,
-      onStderr: jl ? (line: string) => {
-        const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
-        if (match) {
-          const pct = parseInt(match[1], 10);
-          jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
-          jl.log(line.trim());
-        } else if (line.includes("[HEARTBEAT]") || line.includes("[INFO]") || line.includes("[STEP]")) {
-          jl.log(line.trim());
-        }
-      } : undefined,
-    });
+    const onStderr = jl ? (line: string) => {
+      const match = line.match(/\[HEARTBEAT\].*?\((\d+)%\)/);
+      if (match) {
+        const pct = parseInt(match[1], 10);
+        jl.setProgress(phaseProgress(phaseIdx, totalPhases, pct));
+        jl.log(line.trim());
+      } else if (line.includes("[HEARTBEAT]") || line.includes("[INFO]") || line.includes("[STEP]")) {
+        jl.log(line.trim());
+      }
+    } : undefined;
 
-    if (!claudeResult.success) {
-      throw new PipelineError("PHASE_FAILED", `Phase implementation failed: ${claudeResult.output}`);
+    const configsToTry: ClaudeCliConfig[] = fallbackChain.length > 0
+      ? fallbackChain.map((m) => ({ ...baseConfig, model: m }))
+      : [baseConfig];
+
+    for (let fi = 0; fi < configsToTry.length; fi++) {
+      if (fi > 0) {
+        jl?.log(`QUOTA_EXHAUSTED (${fallbackChain[fi - 1]}), fallback 시도: ${fallbackChain[fi]}`);
+        logger.warn(`Phase ${ctx.phase.index}: QUOTA_EXHAUSTED on ${fallbackChain[fi - 1]}, trying fallback model ${fallbackChain[fi]}`);
+      }
+      jl?.log(`Claude 구현 중: ${ctx.phase.name}`);
+      claudeResult = await runClaude({
+        prompt: rendered,
+        cwd: ctx.cwd,
+        config: configsToTry[fi],
+        enableAgents: true,
+        onStderr,
+      });
+
+      if (claudeResult.success) break;
+
+      if (fi < configsToTry.length - 1) {
+        const failCategory = classifyError(claudeResult.output);
+        if (failCategory === 'QUOTA_EXHAUSTED') {
+          if (claudeResult.model && claudeResult.usage) {
+            modelCostsAccumulated.push({ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage });
+          }
+          continue;
+        }
+      }
+      break;
+    }
+
+    if (!claudeResult!.success) {
+      throw new PipelineError("PHASE_FAILED", `Phase implementation failed: ${claudeResult!.output}`);
     }
     jl?.log(`Claude 구현 완료: ${ctx.phase.name}`);
 
@@ -222,10 +259,6 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
           const warnings = vitestResult.failedTests.length > 0
             ? vitestResult.failedTests.map(t => `Test failed: ${t}`)
             : undefined;
-          const partialVitestModelCosts: ModelCostEntry[] | undefined =
-            claudeResult?.model && claudeResult.usage
-              ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
-              : undefined;
           return {
             phaseIndex: ctx.phase.index,
             phaseName: ctx.phase.name,
@@ -239,7 +272,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
-            modelCosts: partialVitestModelCosts,
+            modelCosts: buildFinalModelCosts(claudeResult),
           };
         }
 
@@ -280,10 +313,6 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             `Phase ${ctx.phase.index}: ${tscRawResult.totalErrors} tsc error(s) all pre-existing — treating as success`
           );
           const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
-          const partialTscModelCosts: ModelCostEntry[] | undefined =
-            claudeResult?.model && claudeResult.usage
-              ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
-              : undefined;
           return {
             phaseIndex: ctx.phase.index,
             phaseName: ctx.phase.name,
@@ -294,7 +323,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
             completedAt: new Date().toISOString(),
             costUsd: claudeResult?.costUsd,
             usage: claudeResult?.usage,
-            modelCosts: partialTscModelCosts,
+            modelCosts: buildFinalModelCosts(claudeResult),
           };
         }
 
@@ -313,10 +342,6 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     // 5. Get latest commit hash
     const commitHash = await getHeadHash(ctx.gitPath, ctx.cwd);
 
-    const successModelCosts: ModelCostEntry[] | undefined =
-      claudeResult.model && claudeResult.usage
-        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
-        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -325,16 +350,12 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       durationMs: Date.now() - startTime,
       startedAt,
       completedAt: new Date().toISOString(),
-      costUsd: claudeResult.costUsd,
-      usage: claudeResult.usage,
-      modelCosts: successModelCosts,
+      costUsd: claudeResult!.costUsd,
+      usage: claudeResult!.usage,
+      modelCosts: buildFinalModelCosts(claudeResult),
     };
   } catch (error: unknown) {
     const errMsg = getErrorMessage(error);
-    const errorModelCosts: ModelCostEntry[] | undefined =
-      claudeResult?.model && claudeResult.usage
-        ? [{ model: claudeResult.model, costUsd: claudeResult.costUsd ?? 0, usage: claudeResult.usage }]
-        : undefined;
     return {
       phaseIndex: ctx.phase.index,
       phaseName: ctx.phase.name,
@@ -347,7 +368,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
       completedAt: new Date().toISOString(),
       costUsd: claudeResult?.costUsd,
       usage: claudeResult?.usage,
-      modelCosts: errorModelCosts,
+      modelCosts: buildFinalModelCosts(claudeResult),
     };
   }
 }

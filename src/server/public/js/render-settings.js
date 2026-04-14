@@ -97,6 +97,9 @@ function renderSettingsView(config) {
   renderTabForm('safety', config.safety || null);
   renderTabForm('review', config.review || null);
 
+  // Claude CLI maxTurns / maxTurnsPerMode 필드 바인딩
+  bindCommandsCliFields(config);
+
   // 저장된 탭 선택 복원 또는 기본 탭 설정
   var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
   setSettingsTab(savedTab);
@@ -364,6 +367,30 @@ function renderArrayInput(fieldId, value, configPath, isReadonly) {
          esc(arrayText) +
          '</textarea>' +
          '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
+}
+
+/**
+ * config.commands.claudeCli 값을 maxTurns / maxTurnsPerMode 필드에 바인딩
+ * @param {AqmConfig} config
+ * @returns {void}
+ */
+function bindCommandsCliFields(config) {
+  var commands = /** @type {any} */ (config).commands;
+  var cli = commands && commands.claudeCli ? commands.claudeCli : null;
+  if (!cli) return;
+
+  var maxTurnsEl = document.getElementById('field-commands-claudeCli-maxTurns');
+  if (maxTurnsEl && typeof cli.maxTurns === 'number') {
+    /** @type {HTMLInputElement} */ (maxTurnsEl).value = String(cli.maxTurns);
+  }
+
+  var modes = ['economy', 'standard', 'thorough'];
+  modes.forEach(function(mode) {
+    var el = document.getElementById('field-commands-claudeCli-maxTurnsPerMode-' + mode);
+    if (el && cli.maxTurnsPerMode && typeof cli.maxTurnsPerMode[mode] === 'number') {
+      /** @type {HTMLInputElement} */ (el).value = String(cli.maxTurnsPerMode[mode]);
+    }
+  });
 }
 
 /**

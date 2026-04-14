@@ -22,6 +22,7 @@ export interface PipelineReport {
     errorCategory?: ErrorCategory;
     costUsd?: number;
     retryCostUsd?: number;
+    usedModel?: string;
   }>;
   totalDurationMs: number;
   prUrl?: string;
@@ -74,6 +75,7 @@ export function formatResult(
       errorCategory: r.errorCategory,
       costUsd: r.costUsd,
       retryCostUsd: r.retryCostUsd,
+      usedModel: r.usedModel,
     })),
     totalDurationMs: Date.now() - startTime,
     prUrl,
@@ -99,7 +101,8 @@ export function printResult(report: PipelineReport): void {
     const commit = phase.commit ? ` [${phase.commit}]` : "";
     const cost = phase.costUsd !== undefined ? ` $${phase.costUsd.toFixed(4)}` : "";
     const retryCost = phase.retryCostUsd ? ` +retry $${phase.retryCostUsd.toFixed(4)}` : "";
-    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s${cost}${retryCost})`);
+    const model = phase.usedModel ? ` [${phase.usedModel}]` : "";
+    console.log(`  ${status} ${phase.name}${commit} (${(phase.durationMs / 1000).toFixed(1)}s${cost}${retryCost}${model})`);
     if (!phase.success && phase.error) {
       console.log(`    → ${phase.error}`);
     }

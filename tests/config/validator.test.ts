@@ -340,6 +340,76 @@ describe("validateConfig", () => {
     expect(() => validateConfig(invalidConfig)).toThrow();
   });
 
+  it("maxTurnsPerMode 전체 모드 설정 시 유효", () => {
+    const config = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          maxTurnsPerMode: { economy: 10, standard: 30, thorough: 80 },
+        },
+      },
+    };
+    const result = validateConfig(config);
+    expect(result.commands.claudeCli.maxTurnsPerMode).toEqual({ economy: 10, standard: 30, thorough: 80 });
+  });
+
+  it("maxTurnsPerMode 일부 모드만 설정 시 유효 (partial)", () => {
+    const config = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          maxTurnsPerMode: { standard: 50 },
+        },
+      },
+    };
+    const result = validateConfig(config);
+    expect(result.commands.claudeCli.maxTurnsPerMode).toEqual({ standard: 50 });
+  });
+
+  it("maxTurnsPerMode 생략 시 유효 (optional)", () => {
+    const config = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: { ...validConfig.commands.claudeCli, maxTurnsPerMode: undefined },
+      },
+    };
+    const result = validateConfig(config);
+    expect(result.commands.claudeCli.maxTurnsPerMode).toBeUndefined();
+  });
+
+  it("maxTurnsPerMode.economy가 0이면 에러 (min 1)", () => {
+    const invalidConfig = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          maxTurnsPerMode: { economy: 0 },
+        },
+      },
+    };
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
+  it("maxTurnsPerMode.standard가 501이면 에러 (max 500)", () => {
+    const invalidConfig = {
+      ...validConfig,
+      commands: {
+        ...validConfig.commands,
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          maxTurnsPerMode: { standard: 501 },
+        },
+      },
+    };
+    expect(() => validateConfig(invalidConfig)).toThrow();
+  });
+
   it("should throw error for maxRetries outside valid range (too small)", () => {
     const invalidConfig = updateNested(validConfig, "safety", {
       maxRetries: 0,
@@ -598,5 +668,41 @@ describe("validateConfig - command safety", () => {
       }],
     };
     expect(() => validateConfig(unsafe)).toThrow("위험한 shell 패턴");
+  });
+
+  describe("modelFallbackChain validation", () => {
+    it("accepts config without modelFallbackChain (optional field)", () => {
+      expect(() => validateConfig(validConfig)).not.toThrow();
+    });
+
+    it("accepts valid non-empty string array for modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: ["claude-haiku-4-5-20251001"],
+        },
+      });
+      expect(() => validateConfig(config)).not.toThrow();
+    });
+
+    it("accepts multiple models in modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: ["claude-sonnet-4-20250514", "claude-haiku-4-5-20251001"],
+        },
+      });
+      expect(() => validateConfig(config)).not.toThrow();
+    });
+
+    it("rejects empty array for modelFallbackChain", () => {
+      const config = updateNested(validConfig, "commands", {
+        claudeCli: {
+          ...validConfig.commands.claudeCli,
+          modelFallbackChain: [],
+        },
+      });
+      expect(() => validateConfig(config)).toThrow();
+    });
   });
 });

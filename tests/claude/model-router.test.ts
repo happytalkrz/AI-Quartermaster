@@ -5,6 +5,7 @@ import {
   resolveModelWithExecutionMode,
   resolveMaxTurnsForMode,
   configForTaskWithMode,
+  resolveFallbackChain,
 } from "../../src/claude/model-router.js";
 import { CLAUDE_MODELS } from "../../src/claude/model-constants.js";
 import type { ClaudeCliConfig } from "../../src/types/config.js";
@@ -176,5 +177,66 @@ describe("configForTaskWithMode", () => {
   it("should not set disallowedTools when workerRole is not provided", () => {
     const result = configForTaskWithMode(baseConfig, "plan", "economy");
     expect(result.disallowedTools).toBeUndefined();
+  });
+});
+
+describe("resolveFallbackChain", () => {
+  it("returns explicit modelFallbackChain as-is when set", () => {
+    const config: ClaudeCliConfig = {
+      ...baseConfig,
+      models: {
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.HAIKU,
+      },
+      modelFallbackChain: ["claude-custom-model", CLAUDE_MODELS.HAIKU],
+    };
+    expect(resolveFallbackChain(config)).toEqual(["claude-custom-model", CLAUDE_MODELS.HAIKU]);
+  });
+
+  it("derives chain from models.phase and models.fallback when modelFallbackChain is not set", () => {
+    const config: ClaudeCliConfig = {
+      ...baseConfig,
+      models: {
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.HAIKU,
+      },
+    };
+    const chain = resolveFallbackChain(config);
+    expect(chain).toContain(CLAUDE_MODELS.SONNET);
+    expect(chain).toContain(CLAUDE_MODELS.HAIKU);
+  });
+
+  it("deduplicates when models.phase equals models.fallback", () => {
+    const config: ClaudeCliConfig = {
+      ...baseConfig,
+      models: {
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.SONNET,
+      },
+    };
+    const chain = resolveFallbackChain(config);
+    expect(chain).toEqual([CLAUDE_MODELS.SONNET]);
+  });
+
+  it("returns chain with phase first and fallback second when models differ", () => {
+    const config: ClaudeCliConfig = {
+      ...baseConfig,
+      models: {
+        plan: CLAUDE_MODELS.OPUS,
+        phase: CLAUDE_MODELS.SONNET,
+        review: CLAUDE_MODELS.HAIKU,
+        fallback: CLAUDE_MODELS.HAIKU,
+      },
+    };
+    const chain = resolveFallbackChain(config);
+    expect(chain[0]).toBe(CLAUDE_MODELS.SONNET);
+    expect(chain[1]).toBe(CLAUDE_MODELS.HAIKU);
+    expect(chain).toHaveLength(2);
   });
 });

@@ -100,6 +100,33 @@ export function resolveMaxTurnsForMode(
 }
 
 /**
+ * Resolves the fallback chain of models for QUOTA_EXHAUSTED scenarios.
+ *
+ * - If modelFallbackChain is explicitly configured, returns it as-is.
+ * - Otherwise, derives the chain from [models.phase, models.fallback] with deduplication.
+ *   EXECUTION_MODE_MODELS entries are intentionally not merged here — the phase-executor
+ *   resolves the initial model via resolveModelWithExecutionMode, so the remaining chain
+ *   should reflect the config-level fallbacks (models.phase → models.fallback).
+ */
+export function resolveFallbackChain(config: ClaudeCliConfig): string[] {
+  if (config.modelFallbackChain && config.modelFallbackChain.length > 0) {
+    return config.modelFallbackChain;
+  }
+
+  const chain: string[] = [];
+  const seen = new Set<string>();
+
+  for (const model of [config.models.phase, config.models.fallback]) {
+    if (model && !seen.has(model)) {
+      seen.add(model);
+      chain.push(model);
+    }
+  }
+
+  return chain;
+}
+
+/**
  * Creates a copy of ClaudeCliConfig with the model set for the given task type and execution mode.
  * Optionally includes disallowedTools based on worker role.
  */

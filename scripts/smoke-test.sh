@@ -7,17 +7,28 @@ TMP_PREFIX=$(mktemp -d)
 TARBALL_PATH=""
 SMOKE_PORT=$(( 49152 + RANDOM % 11848 ))
 SMOKE_PID=""
+ISO_PREFIX=""
+ISO_HOME=""
+ISO_SMOKE_PID=""
+ISO_SMOKE_PORT=$(( SMOKE_PORT + 4 ))
 
 cleanup() {
   if [ -n "${SMOKE_PID:-}" ] && kill -0 "$SMOKE_PID" 2>/dev/null; then
     kill "$SMOKE_PID" 2>/dev/null || true
     wait "$SMOKE_PID" 2>/dev/null || true
   fi
+  if [ -n "${ISO_SMOKE_PID:-}" ] && kill -0 "$ISO_SMOKE_PID" 2>/dev/null; then
+    kill "$ISO_SMOKE_PID" 2>/dev/null || true
+    wait "$ISO_SMOKE_PID" 2>/dev/null || true
+  fi
   fuser -k "${SMOKE_PORT}/tcp" 2>/dev/null || true
+  fuser -k "${ISO_SMOKE_PORT}/tcp" 2>/dev/null || true
   if [ -n "$TARBALL_PATH" ] && [ -f "$TARBALL_PATH" ]; then
     rm -f "$TARBALL_PATH"
   fi
   rm -rf "$TMP_PREFIX"
+  [ -n "${ISO_PREFIX:-}" ] && rm -rf "$ISO_PREFIX"
+  [ -n "${ISO_HOME:-}" ] && rm -rf "$ISO_HOME"
 }
 trap cleanup EXIT
 
@@ -186,6 +197,113 @@ if ! echo "$GIT_VERSION_OUTPUT" | grep -qE "v[0-9]+\.[0-9]+\.[0-9]+"; then
 fi
 
 echo "PASS: aqm version (git-clone mode) → $GIT_VERSION_OUTPUT"
+
+# --------------------------------------------------------------------------
+# 8. 격리 환경 검증 — AQM_HOME unset 상태에서 npm-pack 설치본 동작 확인 (시나리오 A)
+# --------------------------------------------------------------------------
+echo "[smoke] Testing: isolated npm-pack scenario (AQM_HOME unset)..."
+ISO_PREFIX=$(mktemp -d)
+
+npm install -g "$TARBALL_PATH" --prefix "$ISO_PREFIX" --silent 2>/dev/null
+
+ISO_BIN="$ISO_PREFIX/bin/aqm"
+
+if [ ! -f "$ISO_BIN" ]; then
+  echo "FAIL: isolated aqm binary not found at $ISO_BIN"
+  exit 1
+fi
+
+# aqm version — AQM_HOME, CLAUDE_CONFIG_DIR unset
+ISO_VERSION_EXIT=0
+ISO_VERSION_OUTPUT=$(
+  unset AQM_HOME
+  unset CLAUDE_CONFIG_DIR
+  HOME="$ISO_PREFIX" "$ISO_BIN" version 2>&1
+) || ISO_VERSION_EXIT=$?
+
+if [ "$ISO_VERSION_EXIT" -ne 0 ]; then
+  echo "FAIL: isolated aqm version exited $ISO_VERSION_EXIT (AQM_HOME unset)"
+  echo "$ISO_VERSION_OUTPUT"
+  exit 1
+fi
+
+if ! echo "$ISO_VERSION_OUTPUT" | grep -qE "v[0-9]+\.[0-9]+\.[0-9]+"; then
+  echo "FAIL: isolated aqm version output missing version string (AQM_HOME unset)"
+  echo "$ISO_VERSION_OUTPUT"
+  exit 1
+fi
+
+echo "PASS: isolated aqm version (AQM_HOME unset) → $ISO_VERSION_OUTPUT"
+
+# aqm start + /health 200 확인 — AQM_HOME, CLAUDE_CONFIG_DIR unset
+ISO_SMOKE_HOME="$ISO_PREFIX/aqm-home"
+ISO_SMOKE_REPO="$ISO_PREFIX/smoke-repo"
+mkdir -p "$ISO_SMOKE_HOME" "$ISO_SMOKE_REPO"
+
+cat > "$ISO_SMOKE_HOME/config.yml" << EOF
+general:
+  serverMode: "polling"
+  logLevel: "warn"
+projects:
+  - repo: "smoke/iso"
+    path: "$ISO_SMOKE_REPO"
+    baseBranch: "main"
+EOF
+
+(
+  unset AQM_HOME
+  unset CLAUDE_CONFIG_DIR
+  HOME="$ISO_PREFIX" exec "$ISO_BIN" start --config "$ISO_SMOKE_HOME/config.yml" --port "$ISO_SMOKE_PORT" --mode polling
+) &
+ISO_SMOKE_PID=$!
+
+ISO_HEALTH_PASS=0
+for i in $(seq 1 15); do
+  ISO_HEALTH_RESPONSE=$(curl -sf "http://127.0.0.1:$ISO_SMOKE_PORT/health" 2>/dev/null) || true
+  if echo "$ISO_HEALTH_RESPONSE" | grep -q '"status":"ok"'; then
+    ISO_HEALTH_PASS=1
+    break
+  fi
+  sleep 1
+done
+
+kill "$ISO_SMOKE_PID" 2>/dev/null || true
+wait "$ISO_SMOKE_PID" 2>/dev/null || true
+ISO_SMOKE_PID=""
+
+if [ "$ISO_HEALTH_PASS" -ne 1 ]; then
+  echo "FAIL: isolated aqm start /health did not respond within 15s (AQM_HOME unset)"
+  exit 1
+fi
+
+echo "PASS: isolated aqm start → /health returned {\"status\":\"ok\"} (AQM_HOME unset)"
+
+# --------------------------------------------------------------------------
+# 9. 격리 환경 검증 — AQM_HOME unset 시 \$HOME/.ai-quartermaster 폴백 (#710 회귀 방지, 시나리오 B)
+# --------------------------------------------------------------------------
+echo "[smoke] Testing: git-clone \$HOME fallback (AQM_HOME unset, #710 회귀 방지)..."
+ISO_HOME=$(mktemp -d)
+ln -s "$PROJECT_ROOT" "$ISO_HOME/.ai-quartermaster"
+
+ISO_FALLBACK_EXIT=0
+ISO_FALLBACK_OUTPUT=$(
+  unset AQM_HOME
+  HOME="$ISO_HOME" "$PROJECT_ROOT/bin/aqm" version 2>&1
+) || ISO_FALLBACK_EXIT=$?
+
+if [ "$ISO_FALLBACK_EXIT" -ne 0 ]; then
+  echo "FAIL: #710 회귀 감지 — AQM_HOME unset 시 \$HOME/.ai-quartermaster 폴백 실패 (exit $ISO_FALLBACK_EXIT)"
+  echo "$ISO_FALLBACK_OUTPUT"
+  exit 1
+fi
+
+if ! echo "$ISO_FALLBACK_OUTPUT" | grep -qE "v[0-9]+\.[0-9]+\.[0-9]+"; then
+  echo "FAIL: #710 회귀 감지 — aqm version (git-clone fallback) 출력에 버전 문자열 없음"
+  echo "$ISO_FALLBACK_OUTPUT"
+  exit 1
+fi
+
+echo "PASS: git-clone \$HOME fallback (AQM_HOME unset) → $ISO_FALLBACK_OUTPUT"
 
 # --------------------------------------------------------------------------
 echo "[smoke] Smoke test passed."

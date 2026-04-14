@@ -9,7 +9,8 @@ import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
-import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/config.js";
+import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
+import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
@@ -31,6 +32,17 @@ const sessionManager = new SessionManager();
 
 // Rate limiter for POST /api/auth (initialized when createDashboardRoutes is called)
 let loginRateLimiter: LoginRateLimiter | undefined;
+
+// Claude quota status — set by daemon startup, refreshed on demand
+let currentQuotaStatus: QuotaStatus | null = null;
+
+export function setQuotaStatus(status: QuotaStatus): void {
+  currentQuotaStatus = status;
+}
+
+export function getQuotaStatus(): QuotaStatus | null {
+  return currentQuotaStatus;
+}
 
 // SSE client management
 interface SSEClient {
@@ -1352,7 +1364,20 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       },
       maxTurns: config.commands.claudeCli.maxTurns,
       timeout: config.commands.claudeCli.timeout,
+      quotaStatus: currentQuotaStatus,
     });
+  });
+
+  // Refresh Claude quota status
+  api.post("/api/claude-profile/refresh", async (c) => {
+    try {
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const status = await checkClaudeQuota(config.commands.claudeCli);
+      currentQuotaStatus = status;
+      return c.json({ quotaStatus: status });
+    } catch (error: unknown) {
+      return c.json({ error: `quota 재검사 실패: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
   });
 
   // Perform self-update

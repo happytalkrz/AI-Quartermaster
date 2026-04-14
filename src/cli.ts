@@ -14,6 +14,7 @@ import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
 import { killAllActiveProcesses } from "./claude/claude-runner.js";
+import { checkClaudeQuota, type QuotaCheckResult } from "./claude/quota-checker.js";
 import { createDashboardRoutes, cleanupDashboardResources } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
 import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
@@ -185,6 +186,24 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("  먼저 aqm setup을 실행하세요.\n");
     process.exit(1);
   }
+
+  // === Claude quota 자가진단 (non-blocking) ===
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Phase 4에서 createDashboardRoutes에 전달 예정
+  let quotaStatus: QuotaCheckResult | undefined;
+  checkClaudeQuota(effectiveConfig.commands.claudeCli)
+    .then((result) => {
+      quotaStatus = result;
+      if (!result.ok) {
+        console.error(`\n⚠ Claude quota 경고: ${result.message}\n`);
+      }
+      logger.info(`[quota] 진단 완료: ${result.ok ? "정상" : "이상"}`);
+      for (const [role, modelResult] of Object.entries(result.models)) {
+        logger.info(`[quota] ${modelResult.ok ? "✓" : "✗"} ${role}(${modelResult.message})`);
+      }
+    })
+    .catch((err: unknown) => {
+      logger.warn(`[quota] 진단 실패: ${getErrorMessage(err)}`);
+    });
 
   // === Cache dashboard HTML and JS at startup (fix #15) ===
   const publicDir = resolve(aqRoot, "src/server/public");

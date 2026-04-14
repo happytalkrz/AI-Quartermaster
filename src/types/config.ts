@@ -278,6 +278,19 @@ export interface ProjectConfig {
 }
 
 
+export interface QuotaModelStatus {
+  ok: boolean;
+  message: string;
+}
+
+export interface QuotaStatus {
+  ok: boolean;
+  message: string;
+  models: Record<string, QuotaModelStatus>;
+  profileVerified: boolean;
+  lastChecked: number;
+}
+
 export interface AQConfig {
   general: GeneralConfig;
   git: GitConfig;

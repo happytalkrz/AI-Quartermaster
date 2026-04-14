@@ -7,8 +7,8 @@ import {
 } from "../../src/config/schema-meta.js";
 
 describe("BASIC_FIELD_METAS", () => {
-  it("화이트리스트 필드가 정확히 11개 포함된다", () => {
-    expect(BASIC_FIELD_METAS).toHaveLength(11);
+  it("화이트리스트 필드가 정확히 7개 포함된다", () => {
+    expect(BASIC_FIELD_METAS).toHaveLength(7);
   });
 
   it("모든 필드에 key, type, label이 존재한다", () => {
@@ -48,19 +48,6 @@ describe("general 섹션 필드 메타데이터", () => {
     expect(field.max).toBeUndefined();
   });
 
-  it("general.logLevel — dropdown, options 4개, default:info", () => {
-    const field = getField("general.logLevel");
-    expect(field.type).toBe("dropdown");
-    expect(field.default).toBe("info");
-    expect(field.options).toEqual(["debug", "info", "warn", "error"]);
-  });
-
-  it("general.dryRun — toggle, default:false", () => {
-    const field = getField("general.dryRun");
-    expect(field.type).toBe("toggle");
-    expect(field.default).toBe(false);
-  });
-
   it("general.pollingIntervalMs — number, min:10000, default:60000", () => {
     const field = getField("general.pollingIntervalMs");
     expect(field.type).toBe("number");
@@ -69,64 +56,55 @@ describe("general 섹션 필드 메타데이터", () => {
     expect(field.max).toBeUndefined();
   });
 
-  it("general.maxJobs — number, min:1, default:500", () => {
-    const field = getField("general.maxJobs");
-    expect(field.type).toBe("number");
-    expect(field.default).toBe(500);
-    expect(field.min).toBe(1);
-    expect(field.max).toBeUndefined();
+  it("general.instanceOwners — chip-input, default:[]", () => {
+    const field = getField("general.instanceOwners");
+    expect(field.type).toBe("chip-input");
+    expect(field.default).toEqual([]);
   });
 });
 
-describe("safety 섹션 필드 메타데이터", () => {
+describe("commands 섹션 필드 메타데이터", () => {
   const getField = (key: string): FieldMeta => {
     const field = BASIC_FIELD_METAS.find((f) => f.key === key);
     if (!field) throw new Error(`field not found: ${key}`);
     return field;
   };
 
-  it("safety.maxPhases — number, min:1, max:20, default:10", () => {
-    const field = getField("safety.maxPhases");
+  it("commands.claudeCli.timeout — number, min:60000, default:600000", () => {
+    const field = getField("commands.claudeCli.timeout");
     expect(field.type).toBe("number");
-    expect(field.default).toBe(10);
-    expect(field.min).toBe(1);
-    expect(field.max).toBe(20);
-  });
-
-  it("safety.maxRetries — number, min:1, max:10, default:3", () => {
-    const field = getField("safety.maxRetries");
-    expect(field.type).toBe("number");
-    expect(field.default).toBe(3);
-    expect(field.min).toBe(1);
-    expect(field.max).toBe(10);
-  });
-
-  it("safety.requireTests — toggle, default:false", () => {
-    const field = getField("safety.requireTests");
-    expect(field.type).toBe("toggle");
-    expect(field.default).toBe(false);
-  });
-
-  it("safety.maxFileChanges — number, min:1, default:50", () => {
-    const field = getField("safety.maxFileChanges");
-    expect(field.type).toBe("number");
-    expect(field.default).toBe(50);
-    expect(field.min).toBe(1);
+    expect(field.default).toBe(600000);
+    expect(field.min).toBe(60000);
     expect(field.max).toBeUndefined();
   });
 });
 
-describe("review/git 섹션 필드 메타데이터", () => {
+describe("최상위 필드 메타데이터", () => {
   const getField = (key: string): FieldMeta => {
     const field = BASIC_FIELD_METAS.find((f) => f.key === key);
     if (!field) throw new Error(`field not found: ${key}`);
     return field;
   };
 
-  it("review.enabled — toggle, default:true", () => {
-    const field = getField("review.enabled");
-    expect(field.type).toBe("toggle");
-    expect(field.default).toBe(true);
+  it("executionMode — dropdown, options 3개, default:standard", () => {
+    const field = getField("executionMode");
+    expect(field.type).toBe("dropdown");
+    expect(field.default).toBe("standard");
+    expect(field.options).toEqual(["economy", "standard", "thorough"]);
+  });
+});
+
+describe("safety/git 섹션 필드 메타데이터", () => {
+  const getField = (key: string): FieldMeta => {
+    const field = BASIC_FIELD_METAS.find((f) => f.key === key);
+    if (!field) throw new Error(`field not found: ${key}`);
+    return field;
+  };
+
+  it("safety.allowedLabels — chip-input, default:[]", () => {
+    const field = getField("safety.allowedLabels");
+    expect(field.type).toBe("chip-input");
+    expect(field.default).toEqual([]);
   });
 
   it("git.defaultBaseBranch — text, default:main", () => {

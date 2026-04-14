@@ -22,7 +22,13 @@ export interface FieldMeta {
 
 /**
  * Basic 탭에 표시할 화이트리스트 필드 메타데이터 목록.
+ * 이슈 #734 명세 기준: maxConcurrentJobs, claudeTimeout, pollIntervalMs,
+ * executionMode, instanceOwners, allowedLabels, baseBranch.
  * 순서는 UI 렌더링 순서와 동일하다.
+ *
+ * 미구현 필드 (AQConfig에 경로 없음):
+ *   - dashboardPort: CLI --port 인자로만 지정, config 필드 없음
+ *   - 알림 on/off: notification 관련 config 필드 미구현
  */
 export const BASIC_FIELD_METAS: FieldMeta[] = [
   // general
@@ -30,24 +36,9 @@ export const BASIC_FIELD_METAS: FieldMeta[] = [
     key: "general.concurrency",
     type: "number",
     label: "동시 실행 수",
-    helperText: "동시에 처리할 최대 이슈 수",
+    helperText: "동시에 처리할 최대 이슈 수 (maxConcurrentJobs)",
     default: 1,
     min: 1,
-  },
-  {
-    key: "general.logLevel",
-    type: "dropdown",
-    label: "로그 레벨",
-    helperText: "서버 로그 출력 수준",
-    default: "info",
-    options: ["debug", "info", "warn", "error"],
-  },
-  {
-    key: "general.dryRun",
-    type: "toggle",
-    label: "Dry Run",
-    helperText: "활성화 시 실제 변경 없이 시뮬레이션만 실행",
-    default: false,
   },
   {
     key: "general.pollingIntervalMs",
@@ -58,61 +49,44 @@ export const BASIC_FIELD_METAS: FieldMeta[] = [
     min: 10000,
   },
   {
-    key: "general.maxJobs",
+    key: "general.instanceOwners",
+    type: "chip-input",
+    label: "인스턴스 오너",
+    helperText: "이 AQM 인스턴스를 관리할 GitHub 사용자 목록",
+    default: [],
+  },
+  // commands
+  {
+    key: "commands.claudeCli.timeout",
     type: "number",
-    label: "최대 잡 보관 수",
-    helperText: "히스토리에 보관할 최대 잡 수",
-    default: 500,
-    min: 1,
+    label: "Claude 타임아웃 (ms)",
+    helperText: "Claude CLI 실행 최대 시간 (claudeTimeout)",
+    default: 600000,
+    min: 60000,
+  },
+  // executionMode (AQConfig 최상위 필드)
+  {
+    key: "executionMode",
+    type: "dropdown",
+    label: "실행 모드",
+    helperText: "파이프라인 품질/속도 트레이드오프 (economy: 빠름, thorough: 꼼꼼함)",
+    default: "standard",
+    options: ["economy", "standard", "thorough"],
   },
   // safety
   {
-    key: "safety.maxPhases",
-    type: "number",
-    label: "최대 Phase 수",
-    helperText: "이슈 하나당 허용할 최대 Phase 수 (1–20)",
-    default: 10,
-    min: 1,
-    max: 20,
-  },
-  {
-    key: "safety.maxRetries",
-    type: "number",
-    label: "최대 재시도 횟수",
-    helperText: "Phase 실패 시 재시도 최대 횟수 (1–10)",
-    default: 3,
-    min: 1,
-    max: 10,
-  },
-  {
-    key: "safety.requireTests",
-    type: "toggle",
-    label: "테스트 필수",
-    helperText: "활성화 시 테스트 없는 PR 생성 차단",
-    default: false,
-  },
-  {
-    key: "safety.maxFileChanges",
-    type: "number",
-    label: "최대 파일 변경 수",
-    helperText: "한 번의 파이프라인에서 변경 가능한 최대 파일 수",
-    default: 50,
-    min: 1,
-  },
-  // review
-  {
-    key: "review.enabled",
-    type: "toggle",
-    label: "코드 리뷰 활성화",
-    helperText: "활성화 시 PR 생성 전 자동 리뷰 실행",
-    default: true,
+    key: "safety.allowedLabels",
+    type: "chip-input",
+    label: "허용 레이블",
+    helperText: "AQM이 처리할 GitHub 이슈 레이블 목록 (allowedLabels)",
+    default: [],
   },
   // git
   {
     key: "git.defaultBaseBranch",
     type: "text",
     label: "기본 베이스 브랜치",
-    helperText: "PR의 대상 브랜치 이름",
+    helperText: "PR의 대상 브랜치 이름 (baseBranch)",
     default: "main",
   },
 ];

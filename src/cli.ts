@@ -406,12 +406,14 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
   }
-  const wslReadOnly = !isLocalBind && !apiKey && isWSL;
-  if (wslReadOnly) {
+  // WSL 자동 read-only 가드 제거 — WSL은 사실상 개인 개발 환경이고,
+  // 가드가 켜지면 잡 삭제/취소 등 기본 동작이 silently 막혀 사용 불가.
+  // 외부 노출이 우려되는 환경은 DASHBOARD_API_KEY 또는 server.host=127.0.0.1로 명시 통제.
+  const wslReadOnly = false;
+  if (!isLocalBind && !apiKey && isWSL) {
     logger.warn(
-      `WSL 환경 감지: 대시보드를 ${host}:${port}에 read-only 모드로 바인딩합니다. ` +
-      `쓰기 작업(config 수정, 잡 취소 등)은 차단됩니다. ` +
-      `full access가 필요하면 DASHBOARD_API_KEY를 설정하세요.`
+      `WSL 환경에서 비로컬 바인드(${host}:${port}) 감지 — read-only 가드는 비활성화되어 있습니다. ` +
+      `LAN 노출 환경이라면 server.host=127.0.0.1로 변경하거나 DASHBOARD_API_KEY를 설정하세요.`
     );
   }
 

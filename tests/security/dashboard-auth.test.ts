@@ -42,6 +42,12 @@ vi.mock("../../src/store/queries.js", () => ({
     breakdown: [],
   }),
   getProjectSummary: vi.fn().mockReturnValue([]),
+  getThroughputTimeSeries: vi.fn().mockReturnValue({
+    window: "7d", project: null, series: [],
+  }),
+  getSuccessRate: vi.fn().mockReturnValue({
+    window: "7d", project: null, successRate: 0, total: 0, success: 0, failure: 0,
+  }),
 }));
 
 vi.mock("fs", () => ({
@@ -328,5 +334,57 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
     // 타이밍 어택 방어 (timingSafeEqual 사용)로 인해 즉각 응답
     // 단순히 응답이 왔음을 확인 (무한 대기 없음)
     expect(elapsed).toBeLessThan(5000);
+  });
+
+  it("apiKey 설정 시 /api/metrics/throughput은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/metrics/throughput");
+    expect(res.status).toBe(401);
+  });
+
+  it("apiKey 설정 시 /api/metrics/success-rate은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/metrics/success-rate");
+    expect(res.status).toBe(401);
+  });
+
+  it("apiKey 설정 시 /api/skip-events/stats은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/skip-events/stats");
+    expect(res.status).toBe(401);
+  });
+
+  it("apiKey 설정 시 /api/claude-profile은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/claude-profile");
+    expect(res.status).toBe(401);
+  });
+
+  it("apiKey 설정 시 /api/repositories은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/repositories");
+    expect(res.status).toBe(401);
+  });
+
+  it("apiKey 설정 시 /api/projects/health은 인증 필요하다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/projects/health");
+    expect(res.status).toBe(401);
+  });
+
+  it("올바른 Bearer 토큰으로 /api/metrics/throughput 요청 시 401이 아니다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/metrics/throughput", {
+      Authorization: `Bearer ${API_KEY}`,
+    });
+    expect(res.status).not.toBe(401);
+  });
+
+  it("올바른 Bearer 토큰으로 /api/claude-profile 요청 시 401이 아니다", async () => {
+    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const res = await request(app, "GET", "/api/claude-profile", {
+      Authorization: `Bearer ${API_KEY}`,
+    });
+    expect(res.status).not.toBe(401);
   });
 });

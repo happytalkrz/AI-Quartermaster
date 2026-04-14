@@ -44,8 +44,8 @@ describe("DEFAULT_CONFIG 핵심 필드 기본값", () => {
     expect(DEFAULT_CONFIG.safety.stopConditions).toContain("SAFETY_VIOLATION");
   });
 
-  it("commands.claudeCli.maxTurns 기본값은 60", () => {
-    expect(DEFAULT_CONFIG.commands.claudeCli.maxTurns).toBe(60);
+  it("commands.claudeCli.maxTurns 기본값은 100", () => {
+    expect(DEFAULT_CONFIG.commands.claudeCli.maxTurns).toBe(100);
   });
 
   it("commands.typecheck 기본값은 'npm run typecheck'", () => {

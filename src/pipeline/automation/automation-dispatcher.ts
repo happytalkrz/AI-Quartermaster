@@ -1,6 +1,7 @@
 import type {
   PipelineEvent,
   PrMergedPayload,
+  DraftPrCreatedPayload,
   PhaseFailedPayload,
   PipelineCompletePayload,
   PipelineFailedPayload,
@@ -46,6 +47,13 @@ export async function dispatchPipelineEvent(event: PipelineEvent): Promise<void>
 
 async function processEvent(event: PipelineEvent): Promise<void> {
   switch (event.type) {
+    case "draft-pr-created": {
+      const p = event.payload as DraftPrCreatedPayload;
+      logger.info(
+        `[AutomationDispatcher] Draft PR 생성 — 이슈 #${p.issueNumber} PR #${p.prNumber} (${p.repo})`
+      );
+      break;
+    }
     case "pr-merged": {
       const p = event.payload as PrMergedPayload;
       logger.info(

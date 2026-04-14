@@ -16,6 +16,7 @@ import { AutomationScheduler } from "../../src/automation/scheduler.js";
 import type {
   PipelineEvent,
   PrMergedPayload,
+  DraftPrCreatedPayload,
   PhaseFailedPayload,
   PipelineCompletePayload,
   PipelineFailedPayload,
@@ -32,6 +33,21 @@ function makeScheduler(running: boolean): AutomationScheduler {
   const scheduler = new AutomationScheduler(DEFAULT_CONFIG, [], mockHandlers);
   if (running) scheduler.start();
   return scheduler;
+}
+
+function makeDraftPrCreatedEvent(): PipelineEvent<"draft-pr-created"> {
+  return {
+    type: "draft-pr-created",
+    payload: {
+      issueNumber: 42,
+      repo: "test/repo",
+      prNumber: 7,
+      prUrl: "https://github.com/test/repo/pull/7",
+      branchName: "aq/42-test-feature",
+      createdAt: "2026-04-10T11:00:00Z",
+    } satisfies DraftPrCreatedPayload,
+    triggeredAt: "2026-04-10T11:00:00Z",
+  };
 }
 
 function makePrMergedEvent(): PipelineEvent<"pr-merged"> {
@@ -194,6 +210,28 @@ describe("automation-dispatcher", () => {
         expect(mockLogger.info).toHaveBeenCalledWith(
           expect.stringContaining("PHASE_FAILED")
         );
+      });
+
+      it("draft-pr-created 이벤트를 처리한다", async () => {
+        const event = makeDraftPrCreatedEvent();
+        await dispatchPipelineEvent(event);
+        expect(mockLogger.info).toHaveBeenCalledWith(
+          expect.stringContaining("Draft PR 생성")
+        );
+        expect(mockLogger.info).toHaveBeenCalledWith(
+          expect.stringContaining("42")
+        );
+        expect(mockLogger.info).toHaveBeenCalledWith(
+          expect.stringContaining("7")
+        );
+      });
+
+      it("draft PR 생성 시 pr-merged 이벤트가 발화되지 않는다 (회귀)", async () => {
+        const event = makeDraftPrCreatedEvent();
+        await dispatchPipelineEvent(event);
+        const infoCalls = mockLogger.info.mock.calls.map((c: unknown[]) => c[0] as string);
+        const hasPrMerged = infoCalls.some((msg) => msg.includes("PR 병합"));
+        expect(hasPrMerged).toBe(false);
       });
     });
 

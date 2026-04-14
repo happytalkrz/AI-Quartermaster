@@ -448,7 +448,7 @@ function renderBasicTab(config) {
        */
       var fields = data.fields || [];
       if (fields.length === 0) {
-        container.innerHTML = '<div class="col-span-full text-outline text-sm text-center py-8">표시할 필드가 없습니다.</div>';
+        /** @type {HTMLElement} */ (container).innerHTML = '<div class="col-span-full text-outline text-sm text-center py-8">표시할 필드가 없습니다.</div>';
         return;
       }
       var html = '';
@@ -456,10 +456,10 @@ function renderBasicTab(config) {
         var value = getConfigValueByPath(/** @type {Record<string, *>} */ (config), meta.key);
         html += renderBasicField(meta, value);
       });
-      container.innerHTML = html;
+      /** @type {HTMLElement} */ (container).innerHTML = html;
     })
     .catch(function() {
-      container.innerHTML = '<div class="col-span-full flex items-center justify-center py-12 text-outline text-sm gap-2">' +
+      /** @type {HTMLElement} */ (container).innerHTML = '<div class="col-span-full flex items-center justify-center py-12 text-outline text-sm gap-2">' +
         '<span class="material-symbols-outlined text-base">error</span>' +
         '<span>메타데이터를 불러올 수 없습니다.</span></div>';
     });

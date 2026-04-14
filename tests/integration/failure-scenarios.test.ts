@@ -437,4 +437,68 @@ describe("Integration: config hot reload", () => {
 
     watcher.stopWatching();
   });
+
+  it("concurrent current() calls after refresh() all observe the new config (race condition)", async () => {
+    const configV1 = structuredClone(DEFAULT_CONFIG);
+    configV1.general.projectName = "v1";
+    const configV2 = structuredClone(DEFAULT_CONFIG);
+    configV2.general.projectName = "v2";
+
+    mockLoadConfig.mockReturnValue(configV1);
+    watcher = new ConfigWatcher(tempDir);
+
+    // Prime cache with V1
+    expect(watcher.current().general.projectName).toBe("v1");
+
+    // Switch mock to V2 and refresh
+    mockLoadConfig.mockReturnValue(configV2);
+    watcher.refresh();
+
+    // Simulate N concurrent readers — all must see V2
+    const CONCURRENCY = 20;
+    const results = await Promise.all(
+      Array.from({ length: CONCURRENCY }, () =>
+        Promise.resolve(watcher!.current())
+      )
+    );
+
+    for (const cfg of results) {
+      expect(cfg.general.projectName).toBe("v2");
+    }
+  });
+
+  it("concurrent current() calls during rapid refresh() cycles always return a consistent config", async () => {
+    const configs = ["alpha", "beta", "gamma"].map((name) => {
+      const c = structuredClone(DEFAULT_CONFIG);
+      c.general.projectName = name;
+      return c;
+    });
+
+    mockLoadConfig.mockReturnValue(configs[0]);
+    watcher = new ConfigWatcher(tempDir);
+    watcher.current(); // prime cache
+
+    // Fire refresh + concurrent reads in interleaved microtasks
+    const snapshots: string[] = [];
+    for (const cfg of configs) {
+      mockLoadConfig.mockReturnValue(cfg);
+      watcher.refresh();
+      // Ten simultaneous readers after each refresh
+      const batch = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          Promise.resolve(watcher!.current().general.projectName)
+        )
+      );
+      snapshots.push(...batch);
+    }
+
+    // Every snapshot must be one of the known config names — no undefined/stale values
+    const knownNames = new Set(["alpha", "beta", "gamma"]);
+    for (const name of snapshots) {
+      expect(knownNames.has(name)).toBe(true);
+    }
+
+    // Final value after last refresh must be the last config applied
+    expect(watcher.current().general.projectName).toBe("gamma");
+  });
 });

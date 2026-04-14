@@ -13,7 +13,7 @@ import type { ProjectConfig, AQConfig, DashboardAuthConfig } from "../types/conf
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
@@ -23,6 +23,8 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
+import { zValidator } from "@hono/zod-validator";
+import type { ZodError } from "zod";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -191,6 +193,27 @@ export function cleanupDashboardResources(): void {
 function isValidSessionToken(token: string): boolean {
   return sessionManager.validate(token);
 }
+
+/**
+ * Common validation hook for zValidator middleware.
+ * Returns a 400 response with formatted error details when validation fails.
+ */
+export function zodValidationHook(
+  result: { success: true } | { success: false; error: ZodError },
+  c: Context
+): Response | void {
+  if (!result.success) {
+    return c.json(
+      {
+        error: "Invalid request body",
+        details: formatZodError(result.error),
+      },
+      400
+    );
+  }
+}
+
+export { zValidator };
 
 /**
  * Validates and normalizes path parameters to prevent path traversal attacks.
@@ -444,7 +467,19 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     });
 
     // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
+    // Deny-by-default: all /api/* routes require auth except public and SSE paths
     const bearerAuth = async (c: Context, next: Next) => {
+      const path = c.req.path;
+      // Public routes — no auth required
+      if (path === "/api/auth") {
+        await next();
+        return;
+      }
+      // SSE routes — handled by sseTokenAuth below
+      if (path === "/api/events" || /^\/api\/jobs\/[^/]+\/logs\/stream$/.test(path)) {
+        await next();
+        return;
+      }
       const auth = c.req.header("Authorization");
       const expected = Buffer.from(`Bearer ${apiKey}`);
       const actual = Buffer.from(auth ?? "");
@@ -454,20 +489,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       await next();
     };
 
-    api.use("/api/jobs", bearerAuth);
-    api.use("/api/jobs/*", bearerAuth);
-    api.use("/api/stats", bearerAuth);
-    api.use("/api/stats/costs", bearerAuth);
-    api.use("/api/stats/projects", bearerAuth);
-    api.use("/api/config", bearerAuth);
-    api.use("/api/projects", bearerAuth);
-    api.use("/api/projects/*", bearerAuth);
-    api.use("/api/version", bearerAuth);
-    api.use("/api/update", bearerAuth);
-    api.use("/api/health", bearerAuth);
-    api.use("/api/skip-events", bearerAuth);
-    api.use("/api/skip-events/*", bearerAuth);
-    api.use("/api/metrics/failure-reasons", bearerAuth);
+    api.use("/api/*", bearerAuth);
 
     // SSE endpoints use short-lived session token from ?token= query param
     const sseTokenAuth = async (c: Context, next: Next) => {
@@ -516,7 +538,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/config", (c) => {
     try {
       const projectRoot = process.cwd();
-      const config = loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(projectRoot);
       const maskedConfig = maskSensitiveConfig(config);
       return c.json({ config: maskedConfig });
     } catch (error: unknown) {
@@ -528,23 +550,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   const configPath = `${projectRoot}/config.yml`;
 
   // Update configuration
-  api.put("/api/config", async (c) => {
+  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema, zodValidationHook), async (c) => {
     try {
-      const body = await c.req.json();
-
-      // Zod 스키마 검증
-      const parseResult = UpdateConfigRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
+      const body = c.req.valid('json');
 
       // Update configuration file
       // Filter out undefined values and complex sections (projects, hooks)
       // that should not be updated via this endpoint
-      const { projects, hooks, ...safeData } = parseResult.data as Record<string, unknown>;
+      const { projects, hooks, ...safeData } = body as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,
@@ -555,12 +568,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       ) as Partial<AQConfig>;
 
       updateConfigSection(process.cwd(), cleanedData);
+      configWatcher?.refresh();
 
       // Apply runtime changes if configWatcher is available
       if (configWatcher) {
         try {
           // Load updated config for runtime application
-          const newConfig = loadConfig(projectRoot);
+          const newConfig = configWatcher.current();
 
           // Apply runtime changes immediately (force update)
           if (body.general?.concurrency !== undefined) {
@@ -596,7 +610,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/projects", (c) => {
     try {
       const projectRoot = process.cwd();
-      const config = loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(projectRoot);
 
       if (!config.projects || config.projects.length === 0) {
         return c.json({ projects: [] });
@@ -616,20 +630,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Add project to configuration
-  api.post("/api/projects", async (c) => {
+  api.post("/api/projects", zValidator('json', CreateProjectRequestSchema, zodValidationHook), async (c) => {
     try {
-      const body = await c.req.json();
-
-      // Zod 스키마 검증
-      const parseResult = CreateProjectRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const { repo, path, baseBranch, mode, commands } = parseResult.data;
+      const { repo, path, baseBranch, mode, commands } = c.req.valid('json');
 
       // Validate and normalize path
       let normalizedPath: string;
@@ -652,7 +655,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       };
 
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
@@ -661,9 +664,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       addProjectToConfig(configPath, project);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -688,7 +692,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -697,9 +701,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       removeProjectFromConfig(configPath, repo);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -714,32 +719,17 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Update project in configuration
-  api.put("/api/projects/:repo", async (c) => {
+  api.put("/api/projects/:repo", zValidator('json', UpdateProjectRequestSchema, zodValidationHook), async (c) => {
     try {
-      const repo = decodeURIComponent(c.req.param("repo"));
+      const repo = decodeURIComponent(c.req.param("repo") ?? "");
 
       if (!repo || repo.trim() === "") {
         return c.json({ error: "repo parameter is required" }, 400);
       }
 
-      let body: unknown;
-      try {
-        body = await c.req.json();
-      } catch {
-        return c.json({ error: "Invalid JSON body" }, 400);
-      }
-
-      const parseResult = UpdateProjectRequestSchema.safeParse(body);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid request body",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
       // Validate that project exists
       try {
-        const currentConfig = loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -747,7 +737,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
       }
 
-      const { path, baseBranch, mode, commands } = parseResult.data;
+      const { path, baseBranch, mode, commands } = c.req.valid('json');
       const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode' | 'commands'>> = {};
 
       if (path !== undefined) {
@@ -776,9 +766,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       updateProjectInConfig(configPath, repo, updates);
+      configWatcher?.refresh();
 
       try {
-        validateConfig(loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -827,8 +818,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
           }
           durationMs = body.durationMs;
         }
-      } catch {
-        // No body or invalid JSON — use default
+      } catch (err: unknown) {
+        getLogger().debug(`Optional body parse failed — using default: ${getErrorMessage(err)}`);
       }
 
       // Default: 30 minutes
@@ -930,32 +921,20 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Cancel a job
-  api.post("/api/jobs/:id/cancel", (c) => {
-    const id = c.req.param("id");
+  api.post("/api/jobs/:id/cancel", zValidator('json', CancelJobRequestSchema, zodValidationHook), (c) => {
+    const id = c.req.param("id") ?? "";
     const cancelled = queue.cancel(id);
     if (!cancelled) return c.json({ error: "Job not found or not cancellable" }, 404);
     return c.json({ status: "cancelled", id });
   });
 
   // Update job priority
-  api.put("/api/jobs/:id/priority", async (c) => {
-    const id = c.req.param("id");
+  api.put("/api/jobs/:id/priority", zValidator('json', UpdateJobPriorityRequestSchema, zodValidationHook), async (c) => {
+    const id = c.req.param("id") ?? "";
     const job = store.get(id);
     if (!job) return c.json({ error: "Job not found" }, 404);
 
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return c.json({ error: "Invalid JSON body" }, 400);
-    }
-
-    const parseResult = UpdateJobPriorityRequestSchema.safeParse(body);
-    if (!parseResult.success) {
-      return c.json({ error: "Invalid request body", details: formatZodError(parseResult.error) }, 400);
-    }
-
-    const { priority } = parseResult.data;
+    const { priority } = c.req.valid('json');
     const updatedJob = store.update(id, { priority });
     if (!updatedJob) return c.json({ error: "Failed to update priority" }, 500);
 
@@ -1232,8 +1211,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   });
 
   // Retry a failed job
-  api.post("/api/jobs/:id/retry", async (c) => {
-    const id = c.req.param("id");
+  api.post("/api/jobs/:id/retry", zValidator('json', RetryJobRequestSchema, zodValidationHook), async (c) => {
+    const id = c.req.param("id") ?? "";
     const job = store.get(id);
     if (!job) return c.json({ error: "Job not found" }, 404);
     if (job.status !== "failure" && job.status !== "cancelled") {
@@ -1319,7 +1298,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/version", async (c) => {
     try {
       const currentVersion = getCurrentVersion();
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
 
       try {
@@ -1351,14 +1330,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/claude-profile", async (c) => {
     const configDir = process.env.CLAUDE_CONFIG_DIR || "";
     const profile = configDir ? basename(configDir).replace(/^\.claude-?/, "") || "default" : "default";
-    const config = loadConfig(projectRoot);
+    const config = configWatcher?.current() ?? loadConfig(projectRoot);
     const models = config.commands.claudeCli.models;
 
     let cliVersion = "unknown";
     try {
       const result = await runCli(config.commands.claudeCli.path, ["--version"], { timeout: 5000 });
       if (result.exitCode === 0) cliVersion = result.stdout.trim();
-    } catch { /* ignore */ }
+    } catch { /* 비차단 버전 조회 — 실패 무시 */ }
 
     return c.json({
       profile,
@@ -1421,7 +1400,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Repositories API - project-level aggregated information with health and stats
   api.get("/api/repositories", async (c) => {
     try {
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1523,7 +1502,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Projects health check endpoint — all configured projects
   api.get("/api/projects/health", async (c) => {
     try {
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1602,7 +1581,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const project = decodeURIComponent(projectParam);
 
       // Load configuration to get project path and git settings
-      const config = loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
       const projectConfig = config.projects?.find(p => p.repo === project);
 
       if (!projectConfig) {

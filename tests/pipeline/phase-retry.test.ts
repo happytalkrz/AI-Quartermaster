@@ -532,6 +532,72 @@ describe("retryPhase", () => {
     });
   });
 
+  describe("empty output fallback — regression #699", () => {
+    it("(a) 빈 output + stderr fallback: output이 빈 문자열이면 fallback 메시지를 사용해야 함", async () => {
+      mockRunClaude.mockResolvedValue({ success: false, output: "", durationMs: 1000 });
+      mockClassifyError.mockReturnValue("UNKNOWN");
+
+      const ctx = makeContext();
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      // 빈 output일 때 fallback 메시지가 포함되어야 함 (빈 suffix 금지)
+      expect(result.error).toBe("[PHASE_RETRY_FAILED] Phase retry failed: empty Claude output (exitCode non-zero)");
+      expect(result.error).not.toMatch(/Phase retry failed:\s*$/);
+    });
+
+    it("(b) 빈 output + exitCode fallback: 공백만 있는 output도 trim 후 fallback을 적용해야 함", async () => {
+      mockRunClaude.mockResolvedValue({ success: false, output: "   \n  ", durationMs: 1000 });
+      mockClassifyError.mockReturnValue("UNKNOWN");
+
+      const ctx = makeContext();
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("[PHASE_RETRY_FAILED] Phase retry failed: empty Claude output (exitCode non-zero)");
+      expect(result.lastOutput).toBeTruthy();
+    });
+
+    it("(c) 완전 빈 output: error와 lastOutput 모두 비어있지 않아야 함", async () => {
+      mockRunClaude.mockResolvedValue({ success: false, output: "", durationMs: 0 });
+      mockClassifyError.mockReturnValue("UNKNOWN");
+
+      const ctx = makeContext();
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      // error가 truthy이고 콜론 뒤가 비어있으면 안 됨
+      expect(result.error).toBeTruthy();
+      expect(result.error).not.toMatch(/:\s*$/);
+      // lastOutput도 비어있으면 안 됨
+      expect(result.lastOutput).toBeTruthy();
+    });
+
+    it("(d) max_turns exceeded 출력은 MAX_TURNS_EXCEEDED로 분류되어야 함", async () => {
+      mockRunClaude.mockResolvedValue({
+        success: false,
+        output: "error_max_turns: maximum number of turns reached",
+        durationMs: 1000,
+      });
+      mockClassifyError.mockImplementation((msg: string) => {
+        const lower = msg.toLowerCase();
+        if (lower.includes("error_max_turns") || lower.includes("max turns exceeded") || lower.includes("maximum number of turns")) {
+          return "MAX_TURNS_EXCEEDED";
+        }
+        return "UNKNOWN";
+      });
+
+      const ctx = makeContext();
+      const result = await retryPhase(ctx);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCategory).toBe("MAX_TURNS_EXCEEDED");
+      expect(mockClassifyError).toHaveBeenCalledWith(
+        expect.stringContaining("error_max_turns")
+      );
+    });
+  });
+
   describe("partial retry", () => {
     it("should skip ensureCleanState when partialResult.partial is true", async () => {
       const ctx = makeContext({

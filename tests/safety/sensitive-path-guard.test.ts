@@ -164,6 +164,88 @@ describe("checkSensitivePaths", () => {
   });
 });
 
+describe("sender permission 검증 (2차 가드)", () => {
+  const patterns = [".env*", "**/*.pem", "**/secrets/**", ".github/workflows/**"];
+  const workflowFile = ".github/workflows/deploy.yml";
+  const issueBody = [
+    "## 관련 파일",
+    `- \`${workflowFile}\``,
+  ].join("\n");
+  const baseOptions = { labels: ["allow-ci"], issueBody };
+
+  it("admin 권한 → 통과 (allow-ci-label)", () => {
+    const result = checkSensitivePaths([workflowFile], patterns, {
+      ...baseOptions,
+      senderPermission: "admin",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].decision).toBe("allowed");
+    expect(result[0].reason).toBe("allow-ci-label");
+    expect(result[0].senderPermission).toBe("admin");
+  });
+
+  it("maintain 권한 → 통과 (allow-ci-label)", () => {
+    const result = checkSensitivePaths([workflowFile], patterns, {
+      ...baseOptions,
+      senderPermission: "maintain",
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].decision).toBe("allowed");
+    expect(result[0].reason).toBe("allow-ci-label");
+    expect(result[0].senderPermission).toBe("maintain");
+  });
+
+  it("write 권한 → 차단 (insufficient-permission)", () => {
+    expect(() =>
+      checkSensitivePaths([workflowFile], patterns, {
+        ...baseOptions,
+        senderPermission: "write",
+      })
+    ).toThrow("SensitivePathGuard");
+  });
+
+  it("senderPermission 미제공 → 기존 동작 유지 (하위 호환, 통과)", () => {
+    const result = checkSensitivePaths([workflowFile], patterns, baseOptions);
+    expect(result).toHaveLength(1);
+    expect(result[0].decision).toBe("allowed");
+    expect(result[0].reason).toBe("allow-ci-label");
+  });
+
+  it("차단 시 audit entry에 senderPermission/reason 기록", () => {
+    try {
+      checkSensitivePaths([workflowFile], patterns, {
+        ...baseOptions,
+        senderPermission: "write",
+      });
+    } catch (e: unknown) {
+      const err = e as SafetyViolationError;
+      const auditLog = err.details?.auditLog as Array<{
+        file: string;
+        decision: string;
+        reason: string;
+        senderPermission?: string;
+      }>;
+      const entry = auditLog.find((a) => a.file === workflowFile);
+      expect(entry?.decision).toBe("blocked");
+      expect(entry?.reason).toBe("insufficient-permission");
+      expect(entry?.senderPermission).toBe("write");
+    }
+  });
+
+  it("차단 메시지에 관리자 안내 문구 포함", () => {
+    try {
+      checkSensitivePaths([workflowFile], patterns, {
+        ...baseOptions,
+        senderPermission: "write",
+      });
+    } catch (e: unknown) {
+      const err = e as SafetyViolationError;
+      expect(err.message).toContain("admin or maintain repository permissions");
+      expect(err.message).toContain("관리자");
+    }
+  });
+});
+
 describe("parseRelatedFilesSection", () => {
   it("## 관련 파일 섹션에서 백틱 경로 추출", () => {
     const body = [

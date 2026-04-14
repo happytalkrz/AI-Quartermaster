@@ -10,6 +10,7 @@ import type { Plan, Phase, PhaseResult, ErrorCategory, ErrorHistoryEntry, ModelC
 import { classifyError } from "../errors/error-classifier.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
+import { DEFAULT_PHASE_MAX_RETRIES } from "./retry-config.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import { autoCommitIfDirty, getHeadHash } from "../../git/commit-helper.js";
 import { phaseProgress } from "../reporting/progress-tracker.js";
@@ -71,7 +72,7 @@ export interface PhaseRetryContext {
   errorCategory: ErrorCategory;
   errorHistory?: ErrorHistoryEntry[];
   attempt: number;
-  maxRetries: number;
+  maxRetries?: number;
   lastOutput?: string;
   claudeConfig: ClaudeCliConfig;
   promptsDir: string;
@@ -94,6 +95,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
   const startTime = Date.now();
   const startedAt = new Date().toISOString();
   const jl = ctx.jobLogger;
+  const maxRetries = ctx.maxRetries ?? DEFAULT_PHASE_MAX_RETRIES;
   let claudeResult: ClaudeRunResult | undefined;
 
   try {
@@ -147,7 +149,7 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
       },
       retry: {
         attempt: String(ctx.attempt),
-        maxRetries: String(ctx.maxRetries),
+        maxRetries: String(maxRetries),
         errorCategory: ctx.errorCategory,
         errorMessage,
         errorHistory: errorHistory as unknown as import("../../prompt/template-renderer.js").TemplateVariables,
@@ -181,7 +183,9 @@ export async function retryPhase(ctx: PhaseRetryContext): Promise<PhaseResult> {
     });
 
     if (!claudeResult.success) {
-      throw new PipelineError("PHASE_RETRY_FAILED", `Phase retry failed: ${claudeResult.output}`);
+      logger.warn(`Claude retry failed`, { output: claudeResult.output, durationMs: claudeResult.durationMs, model: claudeResult.model, usage: claudeResult.usage });
+      const failureMessage = claudeResult.output.trim() || 'empty Claude output (exitCode non-zero)';
+      throw new PipelineError("PHASE_RETRY_FAILED", `Phase retry failed: ${failureMessage}`);
     }
 
     // Auto-commit if needed

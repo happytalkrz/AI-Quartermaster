@@ -8,6 +8,7 @@ import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost,
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { resolveRetryBudget } from "../execution/retry-config.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
@@ -44,8 +45,8 @@ export function buildCostBreakdown(
   phaseResults: PhaseResult[],
   reviewCostUsd: number = 0,
 ): CostBreakdown {
-  // pseudo-phase(phaseIndex < 0)는 비용 집계에서 제외한다.
-  // 이미 planCostUsd 등 별도 항목으로 추적되므로 이중 계산 방지.
+  // pseudo-phase(phaseIndex < 0)는 phaseCosts에서 제외한다.
+  // plan 비용은 planCostUsd 파라미터로, setup/publish 비용은 별도 항목으로 집계한다.
   const phaseCosts = phaseResults.filter(r => r.phaseIndex >= 0).map(r => ({
     phaseIndex: r.phaseIndex,
     phaseName: r.phaseName,
@@ -54,6 +55,16 @@ export function buildCostBreakdown(
     retryCount: r.retryCount ?? 0,
     modelCosts: r.modelCosts ?? [],
   }));
+
+  // setup pseudo-phase 비용 집계 (setup:worktree, setup:dependency)
+  const setupCostUsd = phaseResults
+    .filter(r => r.phaseName === "setup:worktree" || r.phaseName === "setup:dependency")
+    .reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
+
+  // publish pseudo-phase 비용 집계 (publish:pr)
+  const publishCostUsd = phaseResults
+    .filter(r => r.phaseName === "publish:pr")
+    .reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
 
   // model별 비용 집계
   const modelMap = new Map<string, ModelCostEntry>();
@@ -83,7 +94,9 @@ export function buildCostBreakdown(
 
   const modelSummary = Array.from(modelMap.values());
   const phasesTotalCost = phaseCosts.reduce((sum, p) => sum + p.costUsd + p.retryCostUsd, 0);
-  const totalCostUsd = (planCostUsd ?? 0) + phasesTotalCost + reviewCostUsd;
+  const totalCostUsd = (planCostUsd ?? 0) + phasesTotalCost + reviewCostUsd + setupCostUsd + publishCostUsd;
+  // overhead: 위 항목으로 모두 설명되므로 0 (사후 mutate 시 pipeline-phases에서 재산출)
+  const overheadCostUsd = 0;
 
   return {
     planCostUsd: planCostUsd ?? 0,
@@ -91,6 +104,9 @@ export function buildCostBreakdown(
     reviewCostUsd,
     totalCostUsd,
     modelSummary,
+    setupCostUsd: setupCostUsd > 0 ? setupCostUsd : undefined,
+    publishCostUsd: publishCostUsd > 0 ? publishCostUsd : undefined,
+    overheadCostUsd: overheadCostUsd > 0 ? overheadCostUsd : undefined,
   };
 }
 
@@ -281,7 +297,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   const jl = ctx.jobLogger;
   jl?.setProgress(PROGRESS_PLAN_GENERATED);
   const phaseResults: PhaseResult[] = [...(ctx.previousPhaseResults ?? []), planGenerateResult];
-  const maxRetries = ctx.config.safety.maxRetries;
+  const maxRetries = resolveRetryBudget(ctx.config, "phase");
   const repoFull = `${ctx.repo.owner}/${ctx.repo.name}`;
 
   // Load past failures for this repo to inject into phase prompts

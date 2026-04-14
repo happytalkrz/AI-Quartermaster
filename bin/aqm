@@ -1,13 +1,79 @@
 #!/usr/bin/env bash
-AQM_HOME="${AQM_HOME:-$HOME/.ai-quartermaster}"
-AQM_PID_FILE="$AQM_HOME/.aqm-server.pid"
-AQM_LOG_FILE="$AQM_HOME/logs/server.log"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
-if [ ! -d "$AQM_HOME" ]; then
+# --- 설치 모드 감지 ---
+AQM_MODE=""
+AQM_ROOT=""
+
+# npm 글로벌 모드: bin 옆의 lib/node_modules/ai-quartermaster/dist/cli.js 존재 여부
+NPM_ROOT="$SCRIPT_DIR/../lib/node_modules/ai-quartermaster"
+if [ -f "$NPM_ROOT/dist/cli.js" ]; then
+  AQM_MODE="npm"
+  AQM_ROOT=$(cd "$NPM_ROOT" && pwd)
+fi
+
+# git-clone 모드: AQM_HOME 환경변수 + 디렉토리 존재
+if [ -z "$AQM_MODE" ] && [ -n "$AQM_HOME" ] && [ -d "$AQM_HOME" ]; then
+  AQM_MODE="git"
+  AQM_ROOT="$AQM_HOME"
+fi
+
+if [ -z "$AQM_MODE" ]; then
   echo "AI Quartermaster가 설치되어 있지 않습니다."
-  echo "설치: curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash"
+  echo ""
+  echo "npm 글로벌 설치:  npm install -g ai-quartermaster"
+  echo "git-clone 설치:   curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash"
   exit 1
 fi
+
+# PID/로그 파일은 항상 $HOME/.ai-quartermaster/ 고정
+AQM_DATA_DIR="$HOME/.ai-quartermaster"
+AQM_PID_FILE="$AQM_DATA_DIR/.aqm-server.pid"
+AQM_LOG_FILE="$AQM_DATA_DIR/logs/server.log"
+AQM_INSTALL_LOG="$AQM_DATA_DIR/logs/install.log"
+AQM_CLAUDE_PROFILE_FILE="$AQM_DATA_DIR/.claude-profile"
+
+# Resolve CLAUDE_CONFIG_DIR for the daemon so the dashboard shows the right profile.
+# Priority: current env > tmux global env > persisted .claude-profile file.
+resolve_claude_config_dir() {
+  if [ -n "$CLAUDE_CONFIG_DIR" ]; then
+    return 0
+  fi
+  if [ -n "$TMUX" ] && command -v tmux >/dev/null 2>&1; then
+    local tmux_val
+    tmux_val=$(tmux show-environment -g CLAUDE_CONFIG_DIR 2>/dev/null | grep -E '^CLAUDE_CONFIG_DIR=' | sed 's/^CLAUDE_CONFIG_DIR=//')
+    if [ -n "$tmux_val" ] && [ -d "$tmux_val" ]; then
+      export CLAUDE_CONFIG_DIR="$tmux_val"
+      return 0
+    fi
+  fi
+  if [ -f "$AQM_CLAUDE_PROFILE_FILE" ]; then
+    local file_val
+    file_val=$(head -n1 "$AQM_CLAUDE_PROFILE_FILE" | tr -d '[:space:]')
+    if [ -n "$file_val" ] && [ -d "$file_val" ]; then
+      export CLAUDE_CONFIG_DIR="$file_val"
+      return 0
+    fi
+  fi
+}
+resolve_claude_config_dir
+
+# CLI 실행 헬퍼
+run_cli() {
+  if [ "$AQM_MODE" = "npm" ]; then
+    node "$AQM_ROOT/dist/cli.js" "$@"
+  else
+    npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "$@"
+  fi
+}
+
+exec_cli() {
+  if [ "$AQM_MODE" = "npm" ]; then
+    exec node "$AQM_ROOT/dist/cli.js" "$@"
+  else
+    exec npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "$@"
+  fi
+}
 
 # Check if server is running (PID file + port-based detection)
 is_server_running() {
@@ -40,6 +106,13 @@ find_server_pid() {
 
 case "${1:-}" in
   update)
+    if [ "$AQM_MODE" = "npm" ]; then
+      echo "npm 글로벌 설치 환경에서는 아래 명령으로 업데이트하세요:"
+      echo ""
+      echo "  npm update -g ai-quartermaster"
+      exit 0
+    fi
+
     BRANCH="main"
     CLEAN_FLAG=false
 
@@ -64,7 +137,7 @@ case "${1:-}" in
     done
 
     echo "AI Quartermaster 업데이트 중... (브랜치: $BRANCH)"
-    cd "$AQM_HOME"
+    cd "$AQM_ROOT"
     BEFORE=$(git rev-parse HEAD)
     git fetch --quiet origin
     git checkout --quiet "$BRANCH"
@@ -88,17 +161,25 @@ case "${1:-}" in
     if [ "$BEFORE" = "$AFTER" ]; then
       echo "이미 최신 버전입니다."
     else
-      npm install --silent 2>/dev/null
-      echo "빌드 중..."
-      npm run build --silent 2>/dev/null
+      mkdir -p "$AQM_DATA_DIR/logs"
+      npm install --silent 2>>"$AQM_INSTALL_LOG"
       if [ $? -ne 0 ]; then
-        echo "빌드 실패! 로그를 확인하세요."
-        npm run build
+        echo "npm install 실패! 오류 로그:"
+        tail -n 50 "$AQM_INSTALL_LOG"
+        echo "(전체 로그: $AQM_INSTALL_LOG)"
+        exit 1
+      fi
+      echo "빌드 중..."
+      npm run build --silent 2>>"$AQM_INSTALL_LOG"
+      if [ $? -ne 0 ]; then
+        echo "빌드 실패! 오류 로그:"
+        tail -n 50 "$AQM_INSTALL_LOG"
+        echo "(전체 로그: $AQM_INSTALL_LOG)"
         exit 1
       fi
       # Update wrapper script
-      if [ -f "$AQM_HOME/bin/aqm" ]; then
-        cp "$AQM_HOME/bin/aqm" "$HOME/.local/bin/aqm"
+      if [ -f "$AQM_ROOT/bin/aqm" ]; then
+        cp "$AQM_ROOT/bin/aqm" "$HOME/.local/bin/aqm"
         chmod +x "$HOME/.local/bin/aqm"
       fi
       echo "업데이트 완료!"
@@ -113,25 +194,48 @@ case "${1:-}" in
       rm -f "$AQM_PID_FILE"
     fi
     echo "AI Quartermaster를 삭제합니다..."
-    rm -rf "$AQM_HOME"
+    rm -rf "$AQM_DATA_DIR"
     rm -f "$HOME/.local/bin/aqm"
     echo "삭제 완료."
     exit 0
     ;;
   version|--version|-v)
-    cd "$AQM_HOME"
-    VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).version)" 2>/dev/null || echo "unknown")
-    COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$AQM_ROOT/package.json','utf8')).version)" 2>/dev/null || echo "unknown")
+    if [ "$AQM_MODE" = "git" ]; then
+      COMMIT=$(git -C "$AQM_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    else
+      COMMIT="npm"
+    fi
     echo "AI Quartermaster v${VERSION} (${COMMIT})"
     exit 0
     ;;
   start)
-    # Check for --daemon flag
+    # Check for --daemon flag and --claude-config-dir
     DAEMON=false
     ARGS=()
+    SKIP_NEXT=false
+    PREV=""
     for arg in "${@:2}"; do
+      if [ "$SKIP_NEXT" = true ]; then
+        SKIP_NEXT=false
+        if [ "$PREV" = "--claude-config-dir" ]; then
+          if [ -d "$arg" ]; then
+            echo "$arg" > "$AQM_CLAUDE_PROFILE_FILE"
+            export CLAUDE_CONFIG_DIR="$arg"
+            echo "Claude profile 저장: $arg"
+          else
+            echo "오류: --claude-config-dir 경로가 존재하지 않습니다: $arg"
+            exit 1
+          fi
+        fi
+        PREV=""
+        continue
+      fi
       if [ "$arg" = "--daemon" ] || [ "$arg" = "-d" ]; then
         DAEMON=true
+      elif [ "$arg" = "--claude-config-dir" ]; then
+        SKIP_NEXT=true
+        PREV="$arg"
       else
         ARGS+=("$arg")
       fi
@@ -159,11 +263,15 @@ case "${1:-}" in
         exit 1
       fi
 
-      mkdir -p "$AQM_HOME/logs"
+      mkdir -p "$AQM_DATA_DIR/logs"
       echo "서버를 백그라운드에서 시작합니다..."
-      cd "$AQM_HOME"
-      nohup npx --prefix "$AQM_HOME" tsx "$AQM_HOME/src/cli.ts" start "${ARGS[@]}" \
-        >> "$AQM_LOG_FILE" 2>&1 &
+      if [ "$AQM_MODE" = "npm" ]; then
+        nohup node "$AQM_ROOT/dist/cli.js" start "${ARGS[@]}" \
+          >> "$AQM_LOG_FILE" 2>&1 &
+      else
+        nohup npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" start "${ARGS[@]}" \
+          >> "$AQM_LOG_FILE" 2>&1 &
+      fi
       echo $! > "$AQM_PID_FILE"
       sleep 2
 
@@ -182,14 +290,17 @@ case "${1:-}" in
     fi
 
     # Foreground mode — pass through
-    cd "$AQM_HOME"
-    exec npx --prefix "$AQM_HOME" tsx "$AQM_HOME/src/cli.ts" start "${ARGS[@]}"
+    exec_cli start "${ARGS[@]}"
     ;;
   stop)
     # Extract port from config or use default
     PORT=3000
-    if [ -f "$AQM_HOME/config.yml" ]; then
-      PORT=$(grep -E "^\s*port\s*:" "$AQM_HOME/config.yml" 2>/dev/null | sed -E 's/^\s*port\s*:\s*([0-9]+).*/\1/' | head -n1)
+    CONFIG_FILE="$AQM_DATA_DIR/config.yml"
+    if [ ! -f "$CONFIG_FILE" ] && [ "$AQM_MODE" = "git" ] && [ -f "$AQM_ROOT/config.yml" ]; then
+      CONFIG_FILE="$AQM_ROOT/config.yml"
+    fi
+    if [ -f "$CONFIG_FILE" ]; then
+      PORT=$(grep -E "^\s*port\s*:" "$CONFIG_FILE" 2>/dev/null | sed -E 's/^\s*port\s*:\s*([0-9]+).*/\1/' | head -n1)
       if [ -z "$PORT" ] || [ "$PORT" -eq 0 ] 2>/dev/null; then
         PORT=3000
       fi
@@ -240,5 +351,4 @@ case "${1:-}" in
 esac
 
 # Forward other commands to CLI
-cd "$AQM_HOME"
-exec npx --prefix "$AQM_HOME" tsx "$AQM_HOME/src/cli.ts" "$@"
+exec_cli "$@"

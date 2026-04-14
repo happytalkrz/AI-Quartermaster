@@ -1,5 +1,6 @@
 import { minimatch } from "minimatch";
 import { SafetyViolationError } from "../types/errors.js";
+import type { SenderPermission } from "../github/issue-fetcher.js";
 
 /**
  * 이슈 본문에서 `## 관련 파일` 섹션 아래 리스트 항목의
@@ -52,13 +53,15 @@ export interface SensitivePathAuditEntry {
   file: string;
   matchedPattern: string | null;
   decision: "allowed" | "blocked";
-  reason: "no-match" | "related-file" | "allow-ci-label" | "sensitive-violation";
+  reason: "no-match" | "related-file" | "allow-ci-label" | "sensitive-violation" | "insufficient-permission";
+  senderPermission?: SenderPermission;
 }
 
 /** checkSensitivePaths 확장 옵션 */
 export interface CheckSensitivePathsOptions {
   issueBody?: string;
   labels?: string[];
+  senderPermission?: SenderPermission;
 }
 
 const WORKFLOW_PATTERN = ".github/workflows/**";
@@ -86,9 +89,11 @@ export function checkSensitivePaths(
     : [];
   const labels = options?.labels ?? [];
   const hasAllowCi = labels.includes("allow-ci");
+  const senderPermission = options?.senderPermission;
 
   const auditLog: SensitivePathAuditEntry[] = [];
   const blockedFiles: string[] = [];
+  const insufficientPermissionFiles: string[] = [];
 
   for (const file of changedFiles) {
     const matchedPattern =
@@ -100,26 +105,40 @@ export function checkSensitivePaths(
       continue;
     }
 
+    const isWorkflow = minimatch(file, WORKFLOW_PATTERN, MINIMATCH_OPTS);
+    const workflowMeta = isWorkflow ? { senderPermission } : {};
+
     // 2. allow-ci 라벨 + 관련파일 명시 — .github/workflows/** 패턴에만 스코핑
-    if (hasAllowCi && relatedFiles.includes(file) && minimatch(file, WORKFLOW_PATTERN, MINIMATCH_OPTS)) {
-      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "allow-ci-label" });
+    if (hasAllowCi && relatedFiles.includes(file) && isWorkflow) {
+      const hasAdminPermission = senderPermission === "admin" || senderPermission === "maintain";
+
+      // senderPermission 미제공(undefined) 또는 admin/maintain → 허용
+      if (senderPermission === undefined || hasAdminPermission) {
+        auditLog.push({ file, matchedPattern, decision: "allowed", reason: "allow-ci-label", ...workflowMeta });
+        continue;
+      }
+
+      // senderPermission 제공됐지만 권한 부족 → 거부
+      auditLog.push({ file, matchedPattern, decision: "blocked", reason: "insufficient-permission", ...workflowMeta });
+      blockedFiles.push(file);
+      insufficientPermissionFiles.push(file);
       continue;
     }
 
     // 3. 이슈 본문 관련 파일로 명시된 경우
     if (relatedFiles.includes(file)) {
-      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "related-file" });
+      auditLog.push({ file, matchedPattern, decision: "allowed", reason: "related-file", ...workflowMeta });
       continue;
     }
 
     // 4. 차단
-    auditLog.push({ file, matchedPattern, decision: "blocked", reason: "sensitive-violation" });
+    auditLog.push({ file, matchedPattern, decision: "blocked", reason: "sensitive-violation", ...workflowMeta });
     blockedFiles.push(file);
   }
 
   // 5. 차단 파일이 있으면 수정 가이드 포함 에러 throw
   if (blockedFiles.length > 0) {
-    const guide = buildBlockGuideMessage(blockedFiles, hasAllowCi);
+    const guide = buildBlockGuideMessage(blockedFiles, hasAllowCi, insufficientPermissionFiles);
     throw new SafetyViolationError(
       "SensitivePathGuard",
       guide,
@@ -130,7 +149,11 @@ export function checkSensitivePaths(
   return auditLog;
 }
 
-function buildBlockGuideMessage(blockedFiles: string[], hasAllowCi: boolean): string {
+function buildBlockGuideMessage(
+  blockedFiles: string[],
+  hasAllowCi: boolean,
+  insufficientPermissionFiles: string[] = []
+): string {
   const lines: string[] = [
     `Sensitive files modified:\n${blockedFiles.join("\n")}`,
     "\nTo allow these files, add the missing paths under `## 관련 파일` in the issue body:",
@@ -145,6 +168,12 @@ function buildBlockGuideMessage(blockedFiles: string[], hasAllowCi: boolean): st
   );
   if (workflowBlocked.length > 0 && !hasAllowCi) {
     lines.push("\nFor workflow files, you can also add the `allow-ci` label to the issue.");
+  }
+
+  if (insufficientPermissionFiles.length > 0) {
+    lines.push(
+      "\nWorkflow file changes via `allow-ci` require admin or maintain repository permissions. repository 관리자에게 요청하세요."
+    );
   }
 
   return lines.join("\n");

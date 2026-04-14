@@ -46,6 +46,19 @@ export async function notifySuccess(
 }
 
 /**
+ * errorCategory에 따라 권장 액션 인사이트 텍스트를 반환합니다.
+ */
+function getActionInsight(errorCategory?: string): string {
+  if (errorCategory === "MAX_TURNS_EXCEEDED") {
+    return "이슈가 너무 복잡합니다. **이슈 분할**을 권장하거나, config의 `maxTurns` 값을 높여 주세요.";
+  }
+  if (errorCategory === "TIMEOUT") {
+    return "Phase 타임아웃이 발생했습니다. **이슈 분할**을 권장하거나, config의 phase timeout 설정을 확인해 주세요.";
+  }
+  return "수동 확인이 필요합니다.";
+}
+
+/**
  * Notifies failure on an issue.
  */
 export async function notifyFailure(
@@ -60,7 +73,8 @@ export async function notifyFailure(
     ? `\n<details><summary>마지막 출력 (최대 50줄)</summary>\n\n\`\`\`\n${options.lastOutput.split("\n").slice(-50).join("\n")}\n\`\`\`\n</details>\n`
     : "";
   const rollback = options?.rollbackInfo ? `\n**롤백**: ${options.rollbackInfo}\n` : "";
-  const message = `## AI Quartermaster${instancePrefix} - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n수동 확인이 필요합니다.`;
+  const actionInsight = getActionInsight(options?.errorCategory);
+  const message = `## AI Quartermaster${instancePrefix} - 파이프라인 실패\n\n자동 구현에 실패했습니다.\n\n${category}**에러**: ${error.slice(0, 500)}\n${rollback}${output}\n${actionInsight}`;
   await notifyIssue(repo, issueNumber, message, options);
 }
 

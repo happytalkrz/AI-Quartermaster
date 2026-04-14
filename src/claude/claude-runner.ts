@@ -3,6 +3,7 @@ import type { ClaudeCliConfig } from "../types/config.js";
 import { withRetry } from "../utils/rate-limiter.js";
 import { classifyError } from "../pipeline/errors/error-classifier.js";
 import { calculateCostFromUsage } from "./token-pricing.js";
+import { getLogger } from "../utils/logger.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
 
@@ -22,6 +23,29 @@ export function getLastActivityMs(): number {
 
 export function getActiveProcessPids(): number[] {
   return Array.from(activeProcesses.keys());
+}
+
+export async function killAllActiveProcesses(): Promise<void> {
+  if (activeProcesses.size === 0) return;
+
+  const logger = getLogger();
+  const entries = Array.from(activeProcesses.entries());
+
+  logger.info(`[claude-runner] Sending SIGTERM to ${entries.length} active process(es)...`);
+
+  for (const [pid, { process: child }] of entries) {
+    logger.info(`[claude-runner] SIGTERM → PID ${pid}`);
+    child.kill("SIGTERM");
+  }
+
+  await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+
+  for (const [pid, { process: child }] of entries) {
+    if (!child.killed && activeProcesses.has(pid)) {
+      logger.warn(`[claude-runner] PID ${pid} did not exit after SIGTERM — sending SIGKILL`);
+      child.kill("SIGKILL");
+    }
+  }
 }
 
 import type { UsageInfo } from "../types/pipeline.js";

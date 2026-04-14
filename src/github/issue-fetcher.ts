@@ -3,6 +3,12 @@ import { sanitizeGhError, sanitizeErrorMessage } from "../utils/error-sanitizer.
 import { memoize, deleteCached } from "./github-cache.js";
 
 /**
+ * GitHub repository permission levels.
+ * https://docs.github.com/en/rest/collaborators/collaborators#get-repository-permissions-for-a-user
+ */
+export type SenderPermission = "admin" | "maintain" | "write" | "triage" | "read";
+
+/**
  * 캐시 정책: 이슈/PR 메타데이터는 5분 TTL로 캐시합니다.
  *
  * - 근거: 파이프라인 평균 실행 시간(~3분) 내에서는 일관성을 보장하면서,
@@ -138,6 +144,52 @@ async function fetchPRInternal(
   };
 }
 
+async function fetchSenderPermissionInternal(
+  repo: string,
+  username: string,
+  options?: { ghPath?: string; timeout?: number }
+): Promise<SenderPermission> {
+  const ghPath = options?.ghPath ?? "gh";
+  const cliOptions: CliRunOptions = {
+    timeout: options?.timeout,
+  };
+
+  const result = await runCli(
+    ghPath,
+    ["api", `repos/${repo}/collaborators/${username}/permission`],
+    cliOptions
+  );
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Failed to fetch permission for ${username} in ${repo}: ${sanitizeGhError(result.stderr, result.stdout, "api")}`
+    );
+  }
+
+  let parsed: { permission: string };
+
+  try {
+    parsed = JSON.parse(result.stdout) as { permission: string };
+  } catch (err: unknown) {
+    throw new Error(
+      `Failed to parse permission response for ${username}: ${sanitizeErrorMessage(result.stdout)}`
+    );
+  }
+
+  const permission = parsed.permission;
+  if (
+    permission !== "admin" &&
+    permission !== "maintain" &&
+    permission !== "write" &&
+    permission !== "triage" &&
+    permission !== "read"
+  ) {
+    throw new Error(`Unknown permission level "${permission}" for ${username} in ${repo}`);
+  }
+
+  return permission;
+}
+
 // Memoized versions with TTL and custom key functions
 export const fetchIssue = memoize(fetchIssueInternal, {
   ttl: ISSUE_CACHE_TTL_MS,
@@ -149,6 +201,12 @@ export const fetchPR = memoize(fetchPRInternal, {
   ttl: ISSUE_CACHE_TTL_MS,
   keyFn: (repo: string, prNumber: number, options?: { ghPath?: string; timeout?: number }) =>
     `pr:${repo}:${prNumber}`,
+});
+
+export const fetchSenderPermission = memoize(fetchSenderPermissionInternal, {
+  ttl: ISSUE_CACHE_TTL_MS,
+  keyFn: (repo: string, username: string, options?: { ghPath?: string; timeout?: number }) =>
+    `permission:${repo}:${username}`,
 });
 
 /**

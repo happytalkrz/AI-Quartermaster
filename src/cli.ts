@@ -13,6 +13,7 @@ import { getErrorMessage } from "./utils/error-utils.js";
 import { JobStore } from "./queue/job-store.js";
 import { JobQueue } from "./queue/job-queue.js";
 import { createWebhookApp, startServer } from "./server/webhook-server.js";
+import { killAllActiveProcesses } from "./claude/claude-runner.js";
 import { createDashboardRoutes, cleanupDashboardResources } from "./server/dashboard-api.js";
 import { createHealthRoutes } from "./server/health.js";
 import { writePidFile, cleanupStalePid, removePidFile, readPidFile } from "./server/pid-manager.js";
@@ -93,8 +94,9 @@ export async function checkForUpdates(aqRoot: string): Promise<void> {
     if (behind > 0) {
       console.log(`\n  📦 업데이트 ${behind}개 사용 가능 — aqm update 로 업데이트하세요\n`);
     }
-  } catch {
-    // 네트워크 실패 등 무시
+  } catch (err: unknown) {
+    // 네트워크 실패 등 무시 (업데이트 확인 실패가 시작을 막지 않아야 함)
+    getLogger().debug(`업데이트 확인 실패 (무시): ${getErrorMessage(err)}`);
   }
 }
 
@@ -102,7 +104,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
 
   // Check for updates (non-blocking)
-  checkForUpdates(aqRoot).catch(() => {});
+  checkForUpdates(aqRoot).catch(() => {}); // 비동기 업데이트 확인 — 실패해도 시작에 영향 없음 (의도적 무시)
 
   // Load .env
   const envPath = resolve(aqRoot, ".env");
@@ -406,12 +408,14 @@ export async function startCommand(args: CliArgs): Promise<void> {
     console.error("       export DASHBOARD_ALLOW_INSECURE=true\n");
     process.exit(1);
   }
-  const wslReadOnly = !isLocalBind && !apiKey && isWSL;
-  if (wslReadOnly) {
+  // WSL 자동 read-only 가드 제거 — WSL은 사실상 개인 개발 환경이고,
+  // 가드가 켜지면 잡 삭제/취소 등 기본 동작이 silently 막혀 사용 불가.
+  // 외부 노출이 우려되는 환경은 DASHBOARD_API_KEY 또는 server.host=127.0.0.1로 명시 통제.
+  const wslReadOnly = false;
+  if (!isLocalBind && !apiKey && isWSL) {
     logger.warn(
-      `WSL 환경 감지: 대시보드를 ${host}:${port}에 read-only 모드로 바인딩합니다. ` +
-      `쓰기 작업(config 수정, 잡 취소 등)은 차단됩니다. ` +
-      `full access가 필요하면 DASHBOARD_API_KEY를 설정하세요.`
+      `WSL 환경에서 비로컬 바인드(${host}:${port}) 감지 — read-only 가드는 비활성화되어 있습니다. ` +
+      `LAN 노출 환경이라면 server.host=127.0.0.1로 변경하거나 DASHBOARD_API_KEY를 설정하세요.`
     );
   }
 
@@ -464,7 +468,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     process.exit(1);
   }
 
-  startServer(app, port, host);
+  const server = startServer(app, port, host);
   initDispatcher(scheduler);
   scheduler.start();
   writePidFile(pidPath);
@@ -472,14 +476,34 @@ export async function startCommand(args: CliArgs): Promise<void> {
   const cleanup = () => removePidFile(pidPath);
   process.on("exit", cleanup);
 
+  let isShuttingDown = false;
   const gracefulShutdown = async (signal: string) => {
-    logger.info(`${signal} received — shutting down gracefully, waiting for running jobs...`);
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.info(`${signal} received — shutting down gracefully...`);
+
+    logger.info("[shutdown] 1/6 poller/scheduler 중지 중...");
     poller?.stop();
     scheduler.stop();
     configWatcher.stopWatching();
-    cleanupDashboardResources();
+
+    logger.info("[shutdown] 2/6 HTTP 서버 종료 중 (새 요청 차단)...");
+    server.close();
+
+    logger.info("[shutdown] 3/6 실행 중인 job 완료 대기 중 (최대 30초)...");
     await queue.shutdown(30000);
+
+    logger.info("[shutdown] 4/6 남은 Claude 서브프로세스 정리 중...");
+    await killAllActiveProcesses();
+
+    logger.info("[shutdown] 5/6 JobStore 종료 중...");
+    store.close();
+
+    logger.info("[shutdown] 6/6 대시보드 리소스 정리 및 PID 파일 제거...");
+    cleanupDashboardResources();
     cleanup();
+
+    logger.info("Shutdown complete.");
     process.exit(0);
   };
 

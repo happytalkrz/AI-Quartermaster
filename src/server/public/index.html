@@ -161,6 +161,50 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         to { opacity: 1; transform: scale(1) translateY(0); }
     }
 
+    /* Toast notifications */
+    .aqm-toast {
+        max-width: 360px;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: Inter, sans-serif;
+        line-height: 1.4;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        animation: aqm-toast-in 0.2s ease forwards;
+        cursor: pointer;
+    }
+    .aqm-toast-error {
+        background: #3d1a1c;
+        color: #ffa198;
+        border: 1px solid #f8514933;
+    }
+    .aqm-toast-success {
+        background: #12261e;
+        color: #56d364;
+        border: 1px solid #3fb95033;
+    }
+    .aqm-toast-out {
+        animation: aqm-toast-out 0.3s ease forwards;
+    }
+    @keyframes aqm-toast-in {
+        from { opacity: 0; transform: translateX(20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes aqm-toast-out {
+        from { opacity: 1; transform: translateX(0); }
+        to { opacity: 0; transform: translateX(20px); }
+    }
+    html:not(.dark) .aqm-toast-error {
+        background: #fff0ee;
+        color: #cf2f24;
+        border-color: #f851491a;
+    }
+    html:not(.dark) .aqm-toast-success {
+        background: #edfbf0;
+        color: #1a7f37;
+        border-color: #3fb9501a;
+    }
+
     /* Responsive Sidebar — DISABLED: 태블릿 모드 디자인 미완성으로 비활성화 */
     /* @media (max-width: 1080px) { */
     @media (max-width: 0px) { /* effectively disabled */

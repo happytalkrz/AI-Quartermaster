@@ -34,7 +34,8 @@ function parsePackageJson(projectPath: string): Record<string, string> {
     const raw = readFileSync(pkgPath, "utf-8");
     const pkg = JSON.parse(raw) as { scripts?: Record<string, string> };
     return pkg.scripts ?? {};
-  } catch {
+  } catch (err: unknown) {
+    getLogger().debug(`package.json 파싱 실패 (무시): ${err instanceof Error ? err.message : String(err)}`);
     return {};
   }
 }
@@ -216,8 +217,9 @@ export async function detectBaseBranch(projectPath: string): Promise<string> {
         const branch = result.stdout.trim().split("/").pop();
         if (branch) return branch;
       }
-    } catch {
+    } catch (err: unknown) {
       // 다음 방법으로 폴백
+      getLogger().debug(`git symbolic-ref 감지 실패, 다음 방법으로 폴백 (무시): ${err instanceof Error ? err.message : String(err)}`);
     }
 
     try {

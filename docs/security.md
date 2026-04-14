@@ -140,6 +140,88 @@ aqm start --host 0.0.0.0
 
 ---
 
+## Sensitive Path Guard 정책
+
+AQM은 민감한 경로(`.github/workflows/**` 등)를 수정하는 이슈가 자동으로 처리되는 것을 방지하기 위해 **Sensitive Path Guard**를 내장하고 있습니다.
+
+### 판정 매트릭스
+
+파일별로 아래 순서대로 판정합니다:
+
+| 단계 | 조건 | 결과 | reason |
+|------|------|------|--------|
+| 1 | 민감 패턴에 매칭되지 않음 | **허용** | `no-match` |
+| 2 | `.github/workflows/**` + `allow-ci` 라벨 + 관련파일 명시 + **admin/maintain 권한** | **허용** | `allow-ci-label` |
+| 2-거부 | 조건 2와 동일하나 권한이 write/read/none | **차단** | `insufficient-permission` |
+| 3 | 이슈 본문 `## 관련 파일` 섹션에 명시된 경로 | **허용** | `related-file` |
+| 4 | 그 외 민감 패턴 매칭 | **차단** | `sensitive-violation` |
+
+> **참고**: `senderPermission`이 제공되지 않은 경우(API 미설정 등) 단계 2는 권한 미확인으로 허용됩니다.
+
+### `.github/workflows/**` 예외 조건
+
+워크플로 파일(`.github/workflows/**`)은 세 가지 조건을 **모두** 충족해야 예외가 적용됩니다:
+
+1. **`allow-ci` 라벨** — 이슈에 `allow-ci` 라벨이 붙어 있어야 합니다.
+2. **관련 파일 명시** — 이슈 본문의 `## 관련 파일` 섹션에 해당 워크플로 파일 경로가 백틱으로 명시되어 있어야 합니다.
+3. **admin 또는 maintain 권한** — 이슈 작성자(sender)가 해당 repository에서 `admin` 또는 `maintain` 권한을 보유해야 합니다.
+
+**이슈 본문 예시:**
+
+```markdown
+## 관련 파일
+- `.github/workflows/ci.yml`
+- `src/utils/helper.ts`
+```
+
+### sender permission level별 동작 매트릭스
+
+| 권한 수준 | 워크플로 파일 (`allow-ci` + 관련파일 명시) | 일반 민감 파일 |
+|----------|------------------------------------------|--------------|
+| `admin` | 허용 (`allow-ci-label`) | 관련파일 명시 시 허용 |
+| `maintain` | 허용 (`allow-ci-label`) | 관련파일 명시 시 허용 |
+| `write` | **차단** (`insufficient-permission`) | 관련파일 명시 시 허용 |
+| `read` | **차단** (`insufficient-permission`) | 관련파일 명시 시 허용 |
+| `none` | **차단** (`insufficient-permission`) | 관련파일 명시 시 허용 |
+| 미확인 (undefined) | 허용 (`allow-ci-label`) | 관련파일 명시 시 허용 |
+
+### allow-ci 라벨 보호 설정 (GitHub Label Protection)
+
+`allow-ci` 라벨은 repository owner 또는 maintainer만 적용할 수 있도록 GitHub에서 라벨 접근을 제한하는 것을 권장합니다.
+
+**설정 방법:**
+
+1. **Branch Protection 규칙 활용**: `.github/workflows/**`를 수정하는 PR은 별도 리뷰어 승인을 요구하도록 branch protection rules에 `CODEOWNERS` 파일을 추가합니다.
+
+   ```
+   # .github/CODEOWNERS
+   .github/workflows/ @your-org/maintainers
+   ```
+
+2. **Label 관리 제한**: GitHub repository settings에서 collaborators의 역할을 `Triage` 이하로 제한하면 `write` 미만 권한을 가진 사용자가 라벨을 추가할 수 없습니다.
+
+3. **자동화 검증**: AQM의 `senderPermission` 검증이 GitHub Collaborators API를 통해 실시간으로 권한을 확인하므로, 라벨이 붙어 있더라도 권한 부족 시 자동으로 차단됩니다.
+
+### 권한 부족 시 대응 방법
+
+워크플로 파일 수정이 `insufficient-permission`으로 차단된 경우:
+
+1. **repository 관리자에게 요청** — `admin` 또는 `maintain` 권한을 보유한 사람이 이슈를 직접 제출하거나 권한을 부여받아야 합니다.
+2. **이슈 재제출** — 권한을 가진 계정으로 이슈를 다시 생성합니다.
+3. **수동 처리** — 워크플로 파일 변경은 자동화 파이프라인 대신 수동 PR로 처리합니다.
+
+에러 메시지 예시:
+
+```
+Sensitive files modified:
+.github/workflows/ci.yml
+
+Workflow file changes via `allow-ci` require admin or maintain repository permissions.
+repository 관리자에게 요청하세요.
+```
+
+---
+
 ## 관련 환경변수
 
 | 변수 | 기본값 | 설명 |

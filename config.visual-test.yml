@@ -1,0 +1,12 @@
+# Playwright 비주얼 회귀 테스트 전용 최소 설정
+# playwright.config.ts webServer 및 generate-visual-baseline CI 잡에서 사용
+general:
+  logLevel: "warn"
+
+projects:
+  - repo: "ai-quartermaster/visual-test"
+    path: "."
+
+git:
+  allowedRepos: []
+  defaultBaseBranch: "main"

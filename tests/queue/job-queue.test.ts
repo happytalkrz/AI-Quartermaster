@@ -1602,7 +1602,7 @@ describe("JobQueue", () => {
 
     it("should apply runtime limit change independently per repo", async () => {
       const handler: JobHandler = vi.fn().mockImplementation(async () => {
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 500));
         return { prUrl: "https://test-pr" };
       });
 
@@ -1618,13 +1618,13 @@ describe("JobQueue", () => {
       queue.enqueue(4, "org/repo-y");
       queue.enqueue(5, "org/repo-y");
 
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, 100));
 
       // repo-x: 1 running, 1 pending; repo-y: 2 running, 1 pending
       expect(queue.getStatus().running).toBe(3);
       expect(queue.getStatus().pending).toBe(2);
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 1200));
       expect(handler).toHaveBeenCalledTimes(5);
     });
   });

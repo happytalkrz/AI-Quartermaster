@@ -8,12 +8,36 @@ GitHub Issue에 라벨을 붙이면 Claude가 자동으로 구현하고 Draft PR
 curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash
 ```
 
+**지원 플랫폼:**
+
+| 플랫폼 | 지원 여부 | 비고 |
+|--------|----------|------|
+| Linux (glibc, Ubuntu/Debian/RHEL 계열) | ✅ | 권장 환경 |
+| macOS arm64 (Apple Silicon) | ✅ | Node.js 20+ 필수 |
+| macOS x86_64 | ✅ | |
+| WSL2 (Windows Subsystem for Linux) | ✅ | glibc 기반 배포판 사용 |
+| Windows 네이티브 | ❌ | 미지원 |
+| Alpine Linux / musl libc | ❌ | better-sqlite3 prebuilt binary 미지원 |
+
+> **Alpine/musl 환경 주의**: better-sqlite3는 musl libc 환경에서 prebuilt binary를 제공하지 않으며, 소스 빌드 시에도 호환성 문제가 발생할 수 있습니다.
+
 **필수 요구사항:**
-- macOS / Linux / WSL (Windows 네이티브 미지원)
 - Node.js 20+
 - Git
 - [GitHub CLI](https://cli.github.com) (`gh auth login` 완료)
 - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (Claude Max 요금제 권장)
+- **Native build 도구** (시스템에 없으면 `install.sh`가 설치를 안내합니다):
+  - `python3`
+  - `make`
+  - `g++` (또는 `build-essential` 패키지)
+
+> better-sqlite3는 prebuilt binary가 현재 Node.js 버전과 맞지 않을 경우 소스 빌드(node-gyp)를 시도합니다. 위 도구가 없으면 설치가 실패할 수 있습니다.
+
+> **macOS bash 버전 주의**
+> macOS 기본 bash는 3.2입니다. `install.sh` 실행에는 문제없으나, 호환성과 일반적인 개발 환경을 위해 bash 4+ 사용을 권장합니다.
+> ```bash
+> brew install bash
+> ```
 
 **Public / Private 레포 모두 지원** — `gh auth login` 인증 토큰에 repo 접근 권한이 있으면 Private 레포에서도 동작합니다.
 
@@ -367,6 +391,76 @@ aqm doctor
 ```
 
 git, gh, claude CLI 설치 여부, 인증 상태, 프로젝트 경로, 포트 가용성 등을 자동 점검합니다.
+
+## 설치 트러블슈팅
+
+### `aqm: command not found` — PATH 미등록
+
+```bash
+# 설치 후 PATH를 갱신하세요
+source ~/.bashrc   # bash
+source ~/.zshrc    # zsh
+
+# 여전히 안 되면 직접 확인
+echo $PATH | grep -o '[^:]*aqm[^:]*'   # aqm 경로가 있는지 확인
+ls ~/.local/bin/aqm 2>/dev/null || ls /usr/local/bin/aqm 2>/dev/null
+```
+
+### `permission denied` — 실행 권한 없음
+
+```bash
+chmod +x ~/.local/bin/aqm
+# 또는 설치 경로에 맞게 조정
+```
+
+### native binding 빌드 실패 (node-gyp / python / gcc)
+
+일부 Node.js 패키지(SQLite 등)는 컴파일이 필요합니다.
+
+```bash
+# macOS
+xcode-select --install          # Xcode Command Line Tools 설치
+brew install python3
+
+# Ubuntu/Debian
+sudo apt install -y build-essential python3 gcc
+
+# RHEL/Fedora
+sudo dnf install -y gcc-c++ make python3
+```
+
+설치 후 다시 시도:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh | bash
+```
+
+### bash 버전 문제 (macOS)
+
+macOS 기본 bash(3.2)에서 `install.sh`가 실패하는 경우:
+
+```bash
+brew install bash
+/opt/homebrew/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/happytalkrz/AI-Quartermaster/main/install.sh)"
+```
+
+### WSL1에서 실행 — WSL2로 업그레이드
+
+WSL1은 지원하지 않습니다. PowerShell에서 WSL2로 업그레이드하세요:
+
+```powershell
+wsl --set-version <배포판 이름> 2   # 예: wsl --set-version Ubuntu 2
+wsl --set-default-version 2
+```
+
+### `gh auth login` 인증 오류
+
+```bash
+gh auth login        # 재인증
+gh auth status       # 현재 상태 확인
+```
+
+위 항목으로 해결되지 않으면 `aqm doctor`로 전체 환경을 점검하세요.
 
 ## 보안 고려사항
 

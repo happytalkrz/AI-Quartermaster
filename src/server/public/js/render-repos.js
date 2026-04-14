@@ -226,7 +226,7 @@ function cleanOldData() {
     if (!ok) return;
     apiFetch('/api/jobs?status=archived', { method: 'DELETE' })
       .then(function() { loadRepositories(); })
-      .catch(function() {});
+      .catch(function(err) { handleMutationError(err, '데이터 정리 실패'); });
   });
 }
 
@@ -240,8 +240,9 @@ function deleteRepo(repo) {
     apiFetch('/api/projects/' + encodeURIComponent(repo), { method: 'DELETE' })
       .then(function(r) {
         if (r.ok) loadRepositories();
+        else return r.json().then(function(body) { handleMutationError(new Error(body.error || '저장소 삭제 실패'), '저장소 삭제 실패'); });
       })
-      .catch(function() {});
+      .catch(function(err) { handleMutationError(err, '저장소 삭제 실패'); });
   });
 }
 

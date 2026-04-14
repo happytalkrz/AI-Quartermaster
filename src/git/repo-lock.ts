@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { mkdir, open, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { AQM_HOME } from '../config/project-resolver.js';
+import { getLogger } from '../utils/logger.js';
+import { getErrorMessage } from '../utils/error-utils.js';
 
 const LOCKS_DIR = resolve(AQM_HOME, 'locks');
 
@@ -30,9 +32,12 @@ async function acquireFlockFile(lockPath: string): Promise<() => Promise<void>> 
       const fd = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_RDWR);
       await fd.close();
       return async () => {
-        try { await unlink(lockPath); } catch { /* 이미 삭제된 경우 무시 */ }
+        try { await unlink(lockPath); } catch (err: unknown) {
+          getLogger().debug(`락 파일 삭제 실패 (이미 삭제된 경우 무시): ${getErrorMessage(err)}`);
+        }
       };
     } catch {
+      // 락 획득 실패 — 다른 프로세스가 점유 중, 재시도 대기 (의도적 무시)
       if (attempt === MAX_RETRIES) {
         throw new Error(`Timeout: could not acquire repo lock at ${lockPath}`);
       }

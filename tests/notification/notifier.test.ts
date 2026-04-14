@@ -251,6 +251,68 @@ describe("notifier", () => {
       const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
       expect(body.length).toBeLessThan(longError.length + 200); // Message should be truncated
     });
+
+    it("should show MAX_TURNS_EXCEEDED insight when errorCategory is MAX_TURNS_EXCEEDED", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyFailure("owner/repo", 123, "Too many turns", {
+        errorCategory: "MAX_TURNS_EXCEEDED"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("이슈 분할");
+      expect(body).toContain("maxTurns");
+      expect(body).not.toContain("수동 확인이 필요합니다");
+    });
+
+    it("should show TIMEOUT insight when errorCategory is TIMEOUT", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyFailure("owner/repo", 123, "Phase timed out", {
+        errorCategory: "TIMEOUT"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("타임아웃");
+      expect(body).toContain("이슈 분할");
+      expect(body).not.toContain("수동 확인이 필요합니다");
+    });
+
+    it("should show default insight for other error categories", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyFailure("owner/repo", 123, "Type error", {
+        errorCategory: "TS_ERROR"
+      });
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("수동 확인이 필요합니다");
+    });
+
+    it("should show default insight when no errorCategory provided", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "Success",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await notifyFailure("owner/repo", 123, "Unknown error");
+
+      const [, , , , , , body] = mockRunCli.mock.calls[0][1] as string[];
+      expect(body).toContain("수동 확인이 필요합니다");
+    });
   });
 
   describe("notifyPlanRetryContext", () => {

@@ -25,6 +25,7 @@ import {
 } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
+import type { SenderPermission } from "../../github/issue-fetcher.js";
 import type { PipelineState, PhaseResult } from "../../types/pipeline.js";
 import type { OrchestratorInput } from "../core/pipeline-context.js";
 import type { CoreLoopResult } from "../core/core-loop.js";
@@ -105,6 +106,7 @@ export interface PostProcessingContext {
   hookRegistry?: HookRegistry;
   hookExecutor?: HookExecutor;
   accumulatedPhaseResults?: PhaseResult[];
+  senderPermission?: SenderPermission;
 }
 
 /**
@@ -118,8 +120,10 @@ export async function executeInitialSetupPhases(
 ): Promise<InitialSetupResult> {
   const { issueNumber, repo } = input;
   const jl = input.jobLogger;
+  const phaseResults: PhaseResult[] = [];
 
   // Phase 1: Resolve project setup
+  const projectStart = new Date();
   const setupResult = resolveResolvedProject(
     repo,
     config,
@@ -127,7 +131,6 @@ export async function executeInitialSetupPhases(
     input.resumeFrom?.projectRoot,
     aqRoot
   );
-
   const { projectRoot, promptsDir, gitConfig } = setupResult;
 
   // Start pipeline-level timer
@@ -159,6 +162,7 @@ export async function executeInitialSetupPhases(
   }
 
   // Phase 3: Fetch and validate issue
+  const validationStart = new Date();
   const issueResult = await fetchAndValidateIssue(
     repo,
     issueNumber,
@@ -175,7 +179,6 @@ export async function executeInitialSetupPhases(
     },
     config.general.instanceLabel
   );
-
   const { issue, checkpoint } = issueResult;
   const mode = issueResult.mode;
   const executionMode = issueResult.executionMode;
@@ -273,7 +276,6 @@ export async function executeEnvironmentSetup(
       repoStructure: "",
     };
   }
-
   return {
     projectConventions: envPrepResult.projectConventions,
     skillsContext: envPrepResult.skillsContext,
@@ -629,11 +631,16 @@ export async function executePostProcessingPhases(
   }
 
   // Update costBreakdown with review costs collected during post-processing
-  const updatedTotalCostUsd = (coreResult.totalCostUsd ?? 0) + reviewCostUsd;
+  // totalCostUsd를 breakdown 구성요소(retryCostUsd + setup + publish 포함)에서 재산출하여 정합성 보장
   if (coreResult.costBreakdown) {
-    coreResult.costBreakdown.reviewCostUsd = reviewCostUsd;
-    coreResult.costBreakdown.totalCostUsd = updatedTotalCostUsd;
+    const cb = coreResult.costBreakdown;
+    cb.reviewCostUsd = reviewCostUsd;
+    const phasesTotal = cb.phaseCosts.reduce((sum, p) => sum + p.costUsd + p.retryCostUsd, 0);
+    cb.totalCostUsd = cb.planCostUsd + phasesTotal + reviewCostUsd
+      + (cb.setupCostUsd ?? 0) + (cb.publishCostUsd ?? 0);
+    cb.overheadCostUsd = undefined;
   }
+  const updatedTotalCostUsd = coreResult.costBreakdown?.totalCostUsd ?? (coreResult.totalCostUsd ?? 0) + reviewCostUsd;
 
   const publishContext = {
     issueNumber,
@@ -652,6 +659,7 @@ export async function executePostProcessingPhases(
     totalUsage: coreResult.totalUsage,
     totalCostUsd: updatedTotalCostUsd,
     costBreakdown: coreResult.costBreakdown,
+    senderPermission: context.senderPermission,
   };
 
   const publishStartedAt = nowIso();

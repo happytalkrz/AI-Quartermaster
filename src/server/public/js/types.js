@@ -66,6 +66,9 @@
  * @property {number} reviewCostUsd
  * @property {number} totalCostUsd
  * @property {ModelCostEntry[]} modelSummary
+ * @property {number} [setupCostUsd]
+ * @property {number} [publishCostUsd]
+ * @property {number} [overheadCostUsd]
  */
 
 /**

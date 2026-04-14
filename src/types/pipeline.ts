@@ -388,6 +388,7 @@ export interface AssembledPrompt {
 
 export type PipelineEventType =
   | "pr-merged"
+  | "draft-pr-created"
   | "phase-failed"
   | "pipeline-complete"
   | "pipeline-failed";
@@ -398,6 +399,15 @@ export interface PrMergedPayload {
   prNumber: number;
   prUrl: string;
   mergedAt: string;
+}
+
+export interface DraftPrCreatedPayload {
+  issueNumber: number;
+  repo: string;
+  prNumber: number;
+  prUrl: string;
+  branchName: string;
+  createdAt: string;
 }
 
 export interface PhaseFailedPayload {
@@ -429,6 +439,7 @@ export interface PipelineFailedPayload {
 
 export type PipelineEventPayload =
   | PrMergedPayload
+  | DraftPrCreatedPayload
   | PhaseFailedPayload
   | PipelineCompletePayload
   | PipelineFailedPayload;
@@ -437,13 +448,15 @@ export interface PipelineEvent<T extends PipelineEventType = PipelineEventType> 
   type: T;
   payload: T extends "pr-merged"
     ? PrMergedPayload
-    : T extends "phase-failed"
-      ? PhaseFailedPayload
-      : T extends "pipeline-complete"
-        ? PipelineCompletePayload
-        : T extends "pipeline-failed"
-          ? PipelineFailedPayload
-          : never;
+    : T extends "draft-pr-created"
+      ? DraftPrCreatedPayload
+      : T extends "phase-failed"
+        ? PhaseFailedPayload
+        : T extends "pipeline-complete"
+          ? PipelineCompletePayload
+          : T extends "pipeline-failed"
+            ? PipelineFailedPayload
+            : never;
   triggeredAt: string;
 }
 

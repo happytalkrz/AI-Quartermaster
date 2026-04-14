@@ -73,11 +73,18 @@ const modelRoutingUpdateSchema = z.object({
   fallback: z.string(),
 }).partial();
 
+const maxTurnsPerModeUpdateSchema = z.object({
+  economy: z.number().int().min(1).max(500),
+  standard: z.number().int().min(1).max(500),
+  thorough: z.number().int().min(1).max(500),
+}).partial().optional();
+
 const claudeCliConfigUpdateSchema = z.object({
   path: z.string(),
   model: z.string(),
   models: modelRoutingUpdateSchema,
-  maxTurns: z.number().int().positive(),
+  maxTurns: z.number().int().min(1).max(500),
+  maxTurnsPerMode: maxTurnsPerModeUpdateSchema,
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),
 }).partial();

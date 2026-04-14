@@ -77,6 +77,56 @@
     <div class="settings-tab-content">
       <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
         <div id="general-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+
+        <!-- Claude CLI Turn Limits Section -->
+        <div class="mt-6 pt-6 border-t border-outline-variant/30">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="material-symbols-outlined text-primary text-sm">tune</span>
+            <span class="text-[10px] font-black uppercase text-primary tracking-widest">Claude CLI — Turn Limits</span>
+            <span class="ml-auto text-[10px] text-outline/60 flex items-center gap-1" title="설정 저장 시 즉시 반영됩니다 (hot reload)">
+              <span class="material-symbols-outlined text-[12px]">bolt</span>
+              hot reload
+            </span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <label class="block">
+              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns</span>
+              <span class="text-[10px] text-outline block mb-2">Claude CLI 호출 1회당 기본 최대 턴 수</span>
+              <input type="number"
+                     id="field-commands-claudeCli-maxTurns"
+                     data-config-path="commands.claudeCli.maxTurns"
+                     min="1" max="500" step="1"
+                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Economy</span>
+              <span class="text-[10px] text-outline block mb-2">economy 모드 최대 턴 수 (미설정 시 Max Turns 적용)</span>
+              <input type="number"
+                     id="field-commands-claudeCli-maxTurnsPerMode-economy"
+                     data-config-path="commands.claudeCli.maxTurnsPerMode.economy"
+                     min="1" max="500" step="1"
+                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Standard</span>
+              <span class="text-[10px] text-outline block mb-2">standard 모드 최대 턴 수</span>
+              <input type="number"
+                     id="field-commands-claudeCli-maxTurnsPerMode-standard"
+                     data-config-path="commands.claudeCli.maxTurnsPerMode.standard"
+                     min="1" max="500" step="1"
+                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+            </label>
+            <label class="block">
+              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Thorough</span>
+              <span class="text-[10px] text-outline block mb-2">thorough 모드 최대 턴 수</span>
+              <input type="number"
+                     id="field-commands-claudeCli-maxTurnsPerMode-thorough"
+                     data-config-path="commands.claudeCli.maxTurnsPerMode.thorough"
+                     min="1" max="500" step="1"
+                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+            </label>
+          </div>
+        </div>
       </div>
       <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
         <div id="safety-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>

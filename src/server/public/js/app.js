@@ -421,6 +421,29 @@ function collectFormData() {
     result[section] = sectionData;
   });
 
+  // commands.claudeCli 필드 수집 (maxTurns, maxTurnsPerMode)
+  var commandsCliData = /** @type {Record<string, *>} */ ({});
+
+  var maxTurnsEl = /** @type {HTMLInputElement|null} */ (document.getElementById('field-commands-claudeCli-maxTurns'));
+  if (maxTurnsEl && maxTurnsEl.value !== '') {
+    var maxTurnsVal = parseInt(maxTurnsEl.value, 10);
+    if (!isNaN(maxTurnsVal)) commandsCliData.maxTurns = maxTurnsVal;
+  }
+
+  var perModeData = /** @type {Record<string, number>} */ ({});
+  ['economy', 'standard', 'thorough'].forEach(function(mode) {
+    var el = /** @type {HTMLInputElement|null} */ (document.getElementById('field-commands-claudeCli-maxTurnsPerMode-' + mode));
+    if (el && el.value !== '') {
+      var val = parseInt(el.value, 10);
+      if (!isNaN(val)) perModeData[mode] = val;
+    }
+  });
+  if (Object.keys(perModeData).length > 0) commandsCliData.maxTurnsPerMode = perModeData;
+
+  if (Object.keys(commandsCliData).length > 0) {
+    result.commands = { claudeCli: commandsCliData };
+  }
+
   return result;
 }
 

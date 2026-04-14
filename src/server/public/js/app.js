@@ -1490,10 +1490,22 @@ function loadSkipEvents() {
       var totalEl = document.getElementById('skip-events-total');
       if (totalEl) totalEl.textContent = String(total);
 
+      var tableEl = document.getElementById('skip-events-table');
+      var emptyEl = document.getElementById('skip-events-empty');
       if (events.length === 0) {
-        el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">스킵된 이벤트가 없습니다.</td></tr>';
+        if (tableEl) tableEl.classList.add('hidden');
+        if (emptyEl) {
+          emptyEl.classList.remove('hidden');
+          emptyEl.innerHTML = renderEmptyState({
+            icon: 'block',
+            title: '스킵된 이벤트가 없습니다',
+            description: '이벤트가 스킵 없이 정상적으로 처리되고 있습니다.'
+          });
+        }
         return;
       }
+      if (tableEl) tableEl.classList.remove('hidden');
+      if (emptyEl) emptyEl.classList.add('hidden');
       el.innerHTML = events.map(renderSkipEventRow).join('');
     })
     .catch(function() {

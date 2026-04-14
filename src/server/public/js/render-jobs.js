@@ -706,7 +706,14 @@ function renderFromState() {
 
   if (allJobs.length === 0) {
     if (listEl) listEl.classList.add('hidden');
-    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    if (emptyEl) {
+      emptyEl.innerHTML = renderEmptyState({
+        icon: 'inbox',
+        title: '아직 작업이 없습니다',
+        description: 'GitHub 이슈에 /aq implement 명령을 남기면 자동으로 파이프라인이 시작됩니다.'
+      });
+      emptyEl.classList.remove('hidden');
+    }
     var detailEl0 = $id('job-detail');
     if (detailEl0) detailEl0.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     renderMobileActivityLog(null);

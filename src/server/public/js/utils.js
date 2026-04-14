@@ -199,6 +199,76 @@ function asForm(el) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Toast Notifications
+   ══════════════════════════════════════════════════════════════ */
+/**
+ * Show a toast notification in the top-right corner.
+ * @param {string} message
+ * @param {'error' | 'success'} [type]
+ */
+function showToast(message, type) {
+  var container = $id('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+    document.body.appendChild(container);
+  }
+
+  var toast = document.createElement('div');
+  toast.className = 'aqm-toast aqm-toast-' + (type || 'error');
+  toast.textContent = message;
+  toast.style.pointerEvents = 'auto';
+  container.appendChild(toast);
+
+  // Auto-dismiss after 5 seconds
+  var timer = setTimeout(function() { removeToast(toast); }, 5000);
+
+  toast.addEventListener('click', function() {
+    clearTimeout(timer);
+    removeToast(toast);
+  });
+}
+
+/**
+ * @param {HTMLElement} toast
+ */
+function removeToast(toast) {
+  toast.classList.add('aqm-toast-out');
+  setTimeout(function() {
+    if (toast.parentNode) toast.parentNode.removeChild(toast);
+  }, 300);
+}
+
+/**
+ * Extract error message from a fetch Response or Error and show a toast.
+ * @param {unknown} error
+ * @param {string} fallbackMessage
+ * @returns {Promise<void>}
+ */
+async function handleMutationError(error, fallbackMessage) {
+  if (error instanceof Response) {
+    var msg = fallbackMessage;
+    try {
+      /** @type {unknown} */
+      var body = await error.json();
+      if (body && typeof body === 'object' && 'error' in body && typeof (/** @type {{error:unknown}} */(body)).error === 'string') {
+        msg = (/** @type {{error:string}} */(body)).error + ' (' + error.status + ')';
+      } else {
+        msg = fallbackMessage + ' (' + error.status + ')';
+      }
+    } catch (_) {
+      msg = fallbackMessage + ' (' + error.status + ')';
+    }
+    showToast(msg, 'error');
+  } else if (error instanceof Error) {
+    showToast(error.message || fallbackMessage, 'error');
+  } else {
+    showToast(fallbackMessage, 'error');
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
    Log Colorizer
    ══════════════════════════════════════════════════════════════ */
 /**

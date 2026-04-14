@@ -134,15 +134,15 @@ describe("resolveModelWithExecutionMode", () => {
 
 describe("resolveMaxTurnsForMode", () => {
   it("should return economy mode maxTurns default", () => {
-    expect(resolveMaxTurnsForMode(baseConfig, "economy")).toBe(30);
+    expect(resolveMaxTurnsForMode(baseConfig, "economy")).toBe(50);
   });
 
   it("should return standard mode maxTurns default", () => {
-    expect(resolveMaxTurnsForMode(baseConfig, "standard")).toBe(60);
+    expect(resolveMaxTurnsForMode(baseConfig, "standard")).toBe(100);
   });
 
   it("should return thorough mode maxTurns default", () => {
-    expect(resolveMaxTurnsForMode(baseConfig, "thorough")).toBe(120);
+    expect(resolveMaxTurnsForMode(baseConfig, "thorough")).toBe(180);
   });
 
   it("should use config maxTurnsPerMode override when set", () => {
@@ -161,7 +161,7 @@ describe("configForTaskWithMode", () => {
   it("should set correct model and maxTurns for economy plan", () => {
     const result = configForTaskWithMode(baseConfig, "plan", "economy");
     expect(result.model).toBe(CLAUDE_MODELS.SONNET);
-    expect(result.maxTurns).toBe(30);
+    expect(result.maxTurns).toBe(50);
   });
 
   it("should set disallowedTools for review worker role", () => {

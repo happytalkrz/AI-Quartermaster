@@ -97,11 +97,11 @@ commands:                                # [선택] 명령어 설정 (모든 필
       phase: "claude-sonnet-4-20250514"  # [선택] Phase 구현용 모델 (코딩)
       review: "claude-haiku-4-5-20251001" # [선택] 리뷰/검증용 모델
       fallback: "claude-sonnet-4-20250514" # [선택] 실패 시 폴백 모델
-    maxTurns: 60                         # [선택] 최대 턴 수 (기본값: 60)
-    maxTurnsPerMode:                     # [선택] 실행 모드별 최대 턴 수 (기본값: economy=30, standard=60, thorough=120)
-      economy: 30                        # [선택] Economy 모드 최대 턴 수
-      standard: 60                       # [선택] Standard 모드 최대 턴 수
-      thorough: 120                      # [선택] Thorough 모드 최대 턴 수
+    maxTurns: 100                        # [선택] 최대 턴 수 (기본값: 100)
+    maxTurnsPerMode:                     # [선택] 실행 모드별 최대 턴 수 (기본값: economy=50, standard=100, thorough=180)
+      economy: 50                        # [선택] Economy 모드 최대 턴 수
+      standard: 100                      # [선택] Standard 모드 최대 턴 수
+      thorough: 180                      # [선택] Thorough 모드 최대 턴 수
     timeout: 600000                      # [선택] 타임아웃 ms (기본값: 600000)
     additionalArgs: []                   # [선택] 추가 인수 (기본값: [])
     # retry:                             # [선택] 재시도 설정

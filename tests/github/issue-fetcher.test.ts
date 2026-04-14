@@ -8,7 +8,7 @@ vi.mock("../../src/github/github-cache.js", async () => {
   return await vi.importActual("../../src/github/github-cache.js");
 });
 
-import { fetchIssue, fetchPR, invalidateIssueCache, invalidatePRCache } from "../../src/github/issue-fetcher.js";
+import { fetchIssue, fetchPR, fetchSenderPermission, invalidateIssueCache, invalidatePRCache } from "../../src/github/issue-fetcher.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 import { clearCache } from "../../src/github/github-cache.js";
 
@@ -439,6 +439,94 @@ describe("fetchIssue", () => {
       await fetchIssue("test/repo", 1004);
       await fetchIssue("test/repo", 1005);
       expect(mockRunCli).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("fetchSenderPermission", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      clearCache();
+    });
+
+    it("admin 권한 응답을 정상 파싱", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify({ permission: "admin" }),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      const result = await fetchSenderPermission("test/repo", "octocat");
+
+      expect(result).toBe("admin");
+      expect(mockRunCli).toHaveBeenCalledWith(
+        "gh",
+        ["api", "repos/test/repo/collaborators/octocat/permission"],
+        { timeout: undefined }
+      );
+    });
+
+    it("write 권한 응답을 정상 파싱", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify({ permission: "write" }),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      const result = await fetchSenderPermission("test/repo", "dev-user");
+
+      expect(result).toBe("write");
+    });
+
+    it("ghPath 옵션 적용", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify({ permission: "maintain" }),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await fetchSenderPermission("test/repo", "maintainer", { ghPath: "/custom/gh" });
+
+      expect(mockRunCli).toHaveBeenCalledWith(
+        "/custom/gh",
+        ["api", "repos/test/repo/collaborators/maintainer/permission"],
+        { timeout: undefined }
+      );
+    });
+
+    it("CLI 실패 시 에러 throw", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "",
+        stderr: "Not Found",
+        exitCode: 1,
+      });
+
+      await expect(
+        fetchSenderPermission("test/repo", "unknown-user")
+      ).rejects.toThrow("Failed to fetch permission for unknown-user in test/repo");
+    });
+
+    it("JSON 파싱 실패 시 에러 throw", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: "not-json",
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await expect(
+        fetchSenderPermission("test/repo", "octocat")
+      ).rejects.toThrow("Failed to parse permission response for octocat");
+    });
+
+    it("알 수 없는 권한 레벨 시 에러 throw", async () => {
+      mockRunCli.mockResolvedValue({
+        stdout: JSON.stringify({ permission: "owner" }),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      await expect(
+        fetchSenderPermission("test/repo", "owner-user")
+      ).rejects.toThrow('Unknown permission level "owner"');
     });
   });
 

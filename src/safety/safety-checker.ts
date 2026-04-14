@@ -7,7 +7,7 @@ import { collectDiff } from "../git/diff-collector.js";
 import { getLogger } from "../utils/logger.js";
 import type { SafetyConfig, GitConfig } from "../types/config.js";
 import type { Plan } from "../types/pipeline.js";
-import type { GitHubIssue } from "../github/issue-fetcher.js";
+import type { GitHubIssue, SenderPermission } from "../github/issue-fetcher.js";
 import { SafetyViolationError } from "../types/errors.js";
 
 const logger = getLogger();
@@ -19,6 +19,7 @@ export interface SafetyContext {
   baseBranch: string;
   issueBody?: string;
   issueLabels?: string[];
+  senderPermission?: SenderPermission;
 }
 
 /**
@@ -65,6 +66,7 @@ export async function validateBeforePush(ctx: SafetyContext): Promise<void> {
   checkSensitivePaths(diffStats.changedFiles, ctx.safetyConfig.sensitivePaths, {
     issueBody: ctx.issueBody,
     labels: ctx.issueLabels,
+    senderPermission: ctx.senderPermission,
   });
 
   // Check change limits — warn only, do not block (draft PR can be discarded)

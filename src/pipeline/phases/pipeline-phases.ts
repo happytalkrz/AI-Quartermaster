@@ -25,6 +25,7 @@ import {
 } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
+import type { SenderPermission } from "../../github/issue-fetcher.js";
 import type { PipelineState, PhaseResult } from "../../types/pipeline.js";
 import type { OrchestratorInput } from "../core/pipeline-context.js";
 import type { CoreLoopResult } from "../core/core-loop.js";
@@ -105,6 +106,7 @@ export interface PostProcessingContext {
   hookRegistry?: HookRegistry;
   hookExecutor?: HookExecutor;
   accumulatedPhaseResults?: PhaseResult[];
+  senderPermission?: SenderPermission;
 }
 
 /**
@@ -652,6 +654,7 @@ export async function executePostProcessingPhases(
     totalUsage: coreResult.totalUsage,
     totalCostUsd: updatedTotalCostUsd,
     costBreakdown: coreResult.costBreakdown,
+    senderPermission: context.senderPermission,
   };
 
   const publishStartedAt = nowIso();

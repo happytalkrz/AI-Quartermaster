@@ -214,6 +214,9 @@ describe("pushAndCreatePR", () => {
       gitConfig: context.gitConfig,
       cwd: "/tmp/wt/42-fix-bug",
       baseBranch: "main",
+      issueBody: "",
+      issueLabels: [],
+      senderPermission: undefined,
     });
     expect(mockPushBranch).toHaveBeenCalledWith(
       context.gitConfig,

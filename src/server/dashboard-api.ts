@@ -23,6 +23,8 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
+import { zValidator } from "@hono/zod-validator";
+import type { ZodError } from "zod";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -191,6 +193,27 @@ export function cleanupDashboardResources(): void {
 function isValidSessionToken(token: string): boolean {
   return sessionManager.validate(token);
 }
+
+/**
+ * Common validation hook for zValidator middleware.
+ * Returns a 400 response with formatted error details when validation fails.
+ */
+export function zodValidationHook(
+  result: { success: true } | { success: false; error: ZodError },
+  c: Context
+): Response | void {
+  if (!result.success) {
+    return c.json(
+      {
+        error: "Invalid request body",
+        details: formatZodError(result.error),
+      },
+      400
+    );
+  }
+}
+
+export { zValidator };
 
 /**
  * Validates and normalizes path parameters to prevent path traversal attacks.

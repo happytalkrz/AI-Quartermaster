@@ -24,6 +24,34 @@ vi.mock("../../src/config/loader.js", () => ({
   loadConfig: vi.fn(),
 }));
 
+vi.mock("../../src/claude/claude-runner.js", () => ({
+  runClaude: vi.fn(),
+}));
+
+vi.mock("../../src/git/commit-helper.js", () => ({
+  getHeadHash: vi.fn().mockResolvedValue("deadbeef000"),
+  autoCommitIfDirty: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock("../../src/prompt/template-renderer.js", () => ({
+  assemblePrompt: vi.fn().mockReturnValue({ content: "mock prompt content" }),
+  loadTemplate: vi.fn().mockReturnValue("mock template"),
+  buildBaseLayer: vi.fn().mockReturnValue({}),
+  buildProjectLayer: vi.fn().mockReturnValue({}),
+  buildIssueLayer: vi.fn().mockReturnValue({}),
+  buildLearningLayer: vi.fn().mockReturnValue({}),
+}));
+
+vi.mock("../../src/review/token-estimator.js", () => ({
+  analyzeTokenUsage: vi.fn().mockReturnValue({
+    exceedsLimit: false,
+    estimatedTokens: 100,
+    usagePercentage: 5,
+    effectiveLimit: 2000,
+  }),
+  summarizeForBudget: vi.fn().mockReturnValue("summary"),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
@@ -43,6 +71,10 @@ import { JobQueue, type JobHandler } from "../../src/queue/job-queue.js";
 import { JobStore } from "../../src/queue/job-store.js";
 import { ConfigWatcher, type ConfigChangeEvent } from "../../src/config/config-watcher.js";
 import { loadConfig } from "../../src/config/loader.js";
+import { runClaude } from "../../src/claude/claude-runner.js";
+import { executePhase, type PhaseExecutorContext } from "../../src/pipeline/execution/phase-executor.js";
+import type { PhaseResult, Plan, Phase } from "../../src/types/pipeline.js";
+import type { ClaudeCliConfig, GitConfig } from "../../src/types/config.js";
 
 // ---------------------------------------------------------------------------
 // Common helpers
@@ -140,6 +172,117 @@ describe("Integration: retry budget exhaustion", () => {
       const reason = retryBudgetExhaustedReason("plan", 0);
       expect(reason).toContain("[RETRY_BUDGET_EXHAUSTED]");
       expect(reason).toContain("0");
+    });
+  });
+
+  describe("executePhase — Claude CLI always fails → PhaseResult.success=false", () => {
+    const mockRunClaude = vi.mocked(runClaude);
+
+    function makeCtx(): PhaseExecutorContext {
+      const phase: Phase = {
+        index: 0,
+        name: "Test Phase",
+        description: "Test description",
+        targetFiles: ["src/test.ts"],
+        commitStrategy: "single",
+        verificationCriteria: [],
+      };
+      const plan: Plan = {
+        issueNumber: 1,
+        title: "Test Plan",
+        problemDefinition: "Test problem",
+        requirements: [],
+        affectedFiles: [],
+        risks: [],
+        phases: [phase],
+        verificationPoints: [],
+        stopConditions: [],
+      };
+      const claudeConfig: ClaudeCliConfig = {
+        path: "claude",
+        model: "claude-sonnet-4-5",
+        models: {
+          plan: "claude-opus-4-5",
+          phase: "claude-sonnet-4-5",
+          review: "claude-haiku-4-5-20251001",
+          fallback: "claude-sonnet-4-5",
+        },
+        maxTurns: 5,
+        timeout: 0,
+        additionalArgs: [],
+      };
+      const gitConfig: GitConfig = {
+        defaultBaseBranch: "main",
+        branchTemplate: "aq/{{issueNumber}}-{{slug}}",
+        commitMessageTemplate: "[#{{issueNumber}}] {{title}}",
+        remoteAlias: "origin",
+        allowedRepos: [],
+        gitPath: "git",
+        fetchDepth: 1,
+        signCommits: false,
+      };
+      return {
+        issue: { number: 1, title: "Test Issue", body: "Test body", labels: [] },
+        plan,
+        phase,
+        previousResults: [],
+        claudeConfig,
+        promptsDir: "/mock/prompts",
+        cwd: "/mock/cwd",
+        testCommand: "",
+        lintCommand: "",
+        gitPath: "git",
+        gitConfig,
+      };
+    }
+
+    beforeEach(() => {
+      mockRunClaude.mockResolvedValue({
+        success: false,
+        output: "Claude CLI exited with code 1",
+        durationMs: 0,
+      });
+    });
+
+    afterEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it("returns success=false when runClaude always fails", async () => {
+      const result = await executePhase(makeCtx());
+      expect(result.success).toBe(false);
+    });
+
+    it("completes within 5 seconds — no infinite loop", async () => {
+      const start = Date.now();
+      const result = await executePhase(makeCtx());
+      const elapsed = Date.now() - start;
+      expect(result.success).toBe(false);
+      expect(elapsed).toBeLessThan(5000);
+    });
+
+    it("runClaude is called exactly once per executePhase invocation", async () => {
+      await executePhase(makeCtx());
+      expect(mockRunClaude).toHaveBeenCalledTimes(1);
+    });
+
+    it(`all ${DEFAULT_PHASE_MAX_RETRIES} retry budget attempts return success=false within 5 seconds`, async () => {
+      const start = Date.now();
+      const results: PhaseResult[] = [];
+      for (let i = 0; i < DEFAULT_PHASE_MAX_RETRIES; i++) {
+        mockRunClaude.mockResolvedValue({
+          success: false,
+          output: `Claude CLI failed on attempt ${i + 1}`,
+          durationMs: 0,
+        });
+        results.push(await executePhase(makeCtx()));
+      }
+      const elapsed = Date.now() - start;
+      expect(results).toHaveLength(DEFAULT_PHASE_MAX_RETRIES);
+      expect(results.every((r) => !r.success)).toBe(true);
+      expect(elapsed).toBeLessThan(5000);
+      // runClaude invoked once per attempt — no internal retry loop inside executePhase
+      expect(mockRunClaude).toHaveBeenCalledTimes(DEFAULT_PHASE_MAX_RETRIES);
     });
   });
 });

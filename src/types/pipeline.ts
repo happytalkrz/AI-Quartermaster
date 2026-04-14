@@ -156,6 +156,8 @@ export interface PhaseResult {
   retryCostUsd?: number;
   retryCount?: number;
   modelCosts?: ModelCostEntry[];
+  /** fallback 체인으로 최종 성공한 모델 (기본 모델과 다를 때만 존재) */
+  usedModel?: string;
   /** 재시도가 필요한 실패 파일 목록 (partial=true일 때 유효) */
   failedFiles?: string[];
   /** 성공적으로 처리된 파일 목록 (partial=true일 때 유효) */

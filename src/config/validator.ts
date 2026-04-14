@@ -267,6 +267,7 @@ const claudeCliConfigSchema = z.object({
   path: z.string(),
   model: z.string(),
   models: modelRoutingSchema,
+  modelFallbackChain: z.array(z.string()).min(1).optional(),
   maxTurns: z.number().int().positive(),
   timeout: z.number().positive(),
   additionalArgs: z.array(z.string()),

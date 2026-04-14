@@ -27,23 +27,37 @@ export interface PrContext {
   instanceLabel?: string;
 }
 
-export function buildPhaseCostTable(breakdown?: CostBreakdown): string {
+export function buildPhaseCostTable(breakdown?: CostBreakdown, phaseResults?: PhaseResult[]): string {
   if (!breakdown) return '';
+  const usedModelMap = new Map<number, string>();
+  if (phaseResults) {
+    for (const r of phaseResults) {
+      if (r.usedModel) usedModelMap.set(r.phaseIndex, r.usedModel);
+    }
+  }
+  const hasModel = usedModelMap.size > 0;
   const rows: string[] = [];
   for (const p of breakdown.phaseCosts) {
-    rows.push(`| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |`);
+    const modelCell = hasModel ? ` ${usedModelMap.get(p.phaseIndex) ?? '-'} |` : '';
+    rows.push(`| ${p.phaseName} | $${p.costUsd.toFixed(4)} | ${p.retryCount} | $${p.retryCostUsd.toFixed(4)} |${modelCell}`);
   }
   if (breakdown.setupCostUsd && breakdown.setupCostUsd > 0) {
-    rows.push(`| setup | $${breakdown.setupCostUsd.toFixed(4)} | - | - |`);
+    const modelCell = hasModel ? ` - |` : '';
+    rows.push(`| setup | $${breakdown.setupCostUsd.toFixed(4)} | - | - |${modelCell}`);
   }
   if (breakdown.publishCostUsd && breakdown.publishCostUsd > 0) {
-    rows.push(`| publish | $${breakdown.publishCostUsd.toFixed(4)} | - | - |`);
+    const modelCell = hasModel ? ` - |` : '';
+    rows.push(`| publish | $${breakdown.publishCostUsd.toFixed(4)} | - | - |${modelCell}`);
   }
   if (breakdown.overheadCostUsd && breakdown.overheadCostUsd > 0) {
-    rows.push(`| overhead | $${breakdown.overheadCostUsd.toFixed(4)} | - | - |`);
+    const modelCell = hasModel ? ` - |` : '';
+    rows.push(`| overhead | $${breakdown.overheadCostUsd.toFixed(4)} | - | - |${modelCell}`);
   }
   if (!rows.length) return '';
-  return `\n### Phase Cost Breakdown\n\n| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|\n${rows.join('\n')}\n`;
+  const header = hasModel
+    ? `| Phase | Cost | Retries | Retry Cost | Model |\n|-------|------|---------|------------|-------|`
+    : `| Phase | Cost | Retries | Retry Cost |\n|-------|------|---------|------------|`;
+  return `\n### Phase Cost Breakdown\n\n${header}\n${rows.join('\n')}\n`;
 }
 
 export function buildModelSummary(breakdown?: CostBreakdown): string {
@@ -102,7 +116,7 @@ export async function createDraftPR(
         outputTokens: ctx.totalUsage?.output_tokens || 0,
         cacheCreationTokens: ctx.totalUsage?.cache_creation_input_tokens || 0,
         cacheReadTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
-        phaseCostTable: buildPhaseCostTable(ctx.costBreakdown),
+        phaseCostTable: buildPhaseCostTable(ctx.costBreakdown, ctx.phaseResults),
         modelSummary: buildModelSummary(ctx.costBreakdown),
         reviewCostUsd: ctx.costBreakdown?.reviewCostUsd?.toFixed(4) || '0.0000',
       },

@@ -63,6 +63,11 @@ function navigateTo(view) {
   if (view === 'skip-events') {
     loadSkipEvents();
   }
+
+  // If navigating to new-issue view, initialize form
+  if (view === 'new-issue') {
+    initNewIssue();
+  }
 }
 
 // Bind navigation clicks

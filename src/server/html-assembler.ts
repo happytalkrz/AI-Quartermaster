@@ -9,6 +9,7 @@ const LAYOUT_ORDER = [
   "logs.html",
   "repositories.html",
   "automations.html",
+  "new-issue.html",
   "settings.html",
   "_layout-footer.html",
 ] as const;

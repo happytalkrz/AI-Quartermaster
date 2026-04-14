@@ -143,7 +143,8 @@ process.exit(1);
 
     await new Promise<void>((r) => setTimeout(r, HOLD_MS));
 
-    // 부모가 락 해제
+    // 부모가 락 해제 — 해제 시점 기록
+    const releasedAt = Date.now();
     try { await unlink(flockPath); } catch { /* cleanup */ }
 
     // 자식이 완료될 때까지 대기
@@ -155,8 +156,9 @@ process.exit(1);
     });
 
     const childAcquiredAt = parseInt(await readFile(resultFile, "utf8"));
-    // 자식은 부모가 락을 해제한 후(~HOLD_MS 이후)에야 획득할 수 있어야 함
-    expect(childAcquiredAt - startTime).toBeGreaterThanOrEqual(HOLD_MS - 50);
+    // 자식은 부모가 락을 해제한 후에야 획득할 수 있어야 함
+    // (startTime 기준 대신 releasedAt 기준으로 비교 — WSL2 프로세스 간 clock skew 회피)
+    expect(childAcquiredAt).toBeGreaterThanOrEqual(releasedAt - 100);
 
     await rm(tmpDir, { recursive: true, force: true });
   }, 10000);

@@ -82,18 +82,30 @@ verify_better_sqlite3() {
 }
 
 # 2. Install or update
+NPM_LOG=$(mktemp /tmp/aqm-install-XXXXXX.log)
+
 if [ -d "$AQM_HOME" ]; then
   echo -e "${YELLOW}2. 기존 설치 업데이트...${NC}"
   cd "$AQM_HOME"
   git pull --quiet
-  npm install --silent 2>/dev/null
+  npm install --silent 2>"$NPM_LOG" || {
+    echo -e "  ${RED}✗ npm install 실패${NC}"
+    echo -e "  ${YELLOW}→ 로그: $NPM_LOG${NC}"
+    echo -e "  ${YELLOW}→ tail -20 $NPM_LOG${NC}"
+    exit 1
+  }
   echo -e "  ${GREEN}✓ 업데이트 완료${NC}"
   verify_better_sqlite3
 else
   echo -e "${YELLOW}2. AI Quartermaster 설치...${NC}"
   git clone --depth 1 "$REPO_URL" "$AQM_HOME" --quiet
   cd "$AQM_HOME"
-  npm install --silent 2>/dev/null
+  npm install --silent 2>"$NPM_LOG" || {
+    echo -e "  ${RED}✗ npm install 실패${NC}"
+    echo -e "  ${YELLOW}→ 로그: $NPM_LOG${NC}"
+    echo -e "  ${YELLOW}→ tail -20 $NPM_LOG${NC}"
+    exit 1
+  }
   echo -e "  ${GREEN}✓ 설치 완료: $AQM_HOME${NC}"
   verify_better_sqlite3
 fi

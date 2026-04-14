@@ -389,8 +389,11 @@ function cancelJob(id) {
  */
 function retryJob(id) {
   apiFetch('/api/jobs/' + encodeURIComponent(id) + '/retry', { method: 'POST' })
-    .then(function() { return apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData); })
-    .catch(function() {});
+    .then(function(r) {
+      if (!r.ok) return r.json().then(function(body) { throw new Error(body.error || '재시도 실패'); });
+      return apiFetch(buildJobsUrl()).then(function(r2) { return r2.json(); }).then(handleData);
+    })
+    .catch(function(err) { handleMutationError(err, '재시도 실패'); });
 }
 
 /**
@@ -400,12 +403,11 @@ function retryJob(id) {
 function deleteJob(id) {
   apiFetch('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' })
     .then(function(r) {
-      if (r.ok) {
-        if (selectedJobId === id) selectedJobId = null;
-        apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
-      }
+      if (!r.ok) return r.json().then(function(body) { throw new Error(body.error || '삭제 실패'); });
+      if (selectedJobId === id) selectedJobId = null;
+      return apiFetch(buildJobsUrl()).then(function(r2) { return r2.json(); }).then(handleData);
     })
-    .catch(function() {});
+    .catch(function(err) { handleMutationError(err, '삭제 실패'); });
 }
 
 /** @returns {void} */
@@ -414,10 +416,14 @@ function clearAllJobs() {
     if (!ok) return;
     var deletable = currentJobs.filter(function(j) { return j.status === 'success' || j.status === 'failure' || j.status === 'cancelled' || j.status === 'archived'; });
     Promise.all(deletable.map(function(j) {
-      return apiFetch('/api/jobs/' + encodeURIComponent(j.id), { method: 'DELETE' }).catch(function() {});
+      return apiFetch('/api/jobs/' + encodeURIComponent(j.id), { method: 'DELETE' })
+        .then(function(r) {
+          if (!r.ok) return r.json().then(function(body) { throw new Error(body.error || '삭제 실패'); });
+        })
+        .catch(function(err) { handleMutationError(err, '삭제 실패'); });
     })).then(function() {
       selectedJobId = null;
-      apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function() {});
+      apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData).catch(function(err) { handleMutationError(err, '목록 조회 실패'); });
     });
   });
 }
@@ -686,14 +692,13 @@ function deleteProject(id) {
     if (!ok) return;
     apiFetch('/api/projects/' + encodeURIComponent(id), { method: 'DELETE' })
       .then(function(r) {
-        if (r.ok) {
-          // Reload settings to refresh project list
-          if (currentView === 'settings') {
-            loadSettings();
-          }
+        if (!r.ok) return r.json().then(function(body) { throw new Error(body.error || '프로젝트 삭제 실패'); });
+        // Reload settings to refresh project list
+        if (currentView === 'settings') {
+          loadSettings();
         }
       })
-      .catch(function() {});
+      .catch(function(err) { handleMutationError(err, '프로젝트 삭제 실패'); });
   });
 }
 

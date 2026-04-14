@@ -311,86 +311,88 @@ hooks:                                   # [선택] 파이프라인 훅 설정
 # 트리거(trigger), 조건(conditions), 액션(actions)으로 자동화 규칙을 선언적으로 정의합니다.
 #
 # trigger 타입:
-#   cron       — 주기적 실행 (schedule: daily | weekly)
-#   event      — 이벤트 기반 실행 (event: pr-merged | phase-failed)
-#   rate-limit — 처리량 기반 실행 (threshold: 최대 허용 건수)
+#   cron            — 주기적 실행 (schedule: daily | weekly)
+#   issue-labeled   — 이슈에 라벨 추가 시 (label: 특정 라벨명, 선택)
+#   issue-created   — 이슈 생성 시
+#   pipeline-failed — 파이프라인 실패 시 (repo: 저장소명, 선택)
 #
-# conditions (선택):
-#   expression — 조건 표현식 (예: "failureCount > 3", "repo == 'owner/repo'", "label == 'urgent'")
+# conditions 타입 (선택):
+#   label-match   — 라벨 조건 (labels: 라벨 목록, operator: and | or)
+#   path-match    — 경로 조건 (patterns: glob 패턴 목록)
+#   keyword-match — 키워드 조건 (keywords: 키워드 목록, fields: title | body, operator: and | or)
 #
-# actions:
-#   notify     — 알림 전송 (params.message: 알림 메시지)
-#   pause      — 파이프라인 일시 중지 (params.duration: 중지 시간 ms)
-#   retry      — 실패한 Phase 재시도 (params.maxRetries: 최대 재시도 횟수)
-#   label      — GitHub 이슈에 라벨 추가 (params.label: 라벨 이름)
-#   close      — GitHub 이슈 닫기
+# actions 타입:
+#   add-label     — GitHub 이슈에 라벨 추가 (labels: 라벨 목록)
+#   start-job     — 파이프라인 잡 시작 (repo: 저장소명, 선택)
+#   pause-project — 프로젝트 일시 중지 (reason: 사유, 선택)
 
 automations:                             # [선택] 자동화 규칙 목록 (기본값: [])
 
   # --- cron 타입 예시: 매일 실행 ---
-  - id: "daily-report"                   # [필수] 규칙 식별자 (고유)
+  - id: "daily-label"                    # [필수] 규칙 식별자 (고유)
+    name: "매일 라벨 정리"               # [필수] 규칙 이름
     enabled: true                        # [선택] 활성화 여부 (기본값: true)
     trigger:
-      type: "cron"                       # [필수] 트리거 타입: cron | event | rate-limit
+      type: "cron"                       # [필수] 트리거 타입: cron | issue-labeled | issue-created | pipeline-failed
       schedule: "daily"                  # [cron 필수] 실행 주기: daily | weekly
-    conditions:                          # [선택] 실행 조건 (모두 만족 시 액션 실행)
-      - expression: "repo == 'owner/repo-name'"  # [필수] 조건 표현식 (예: "failureCount > 3", "label == 'urgent'")
     actions:                             # [필수] 실행할 액션 목록
-      - type: "notify"                   # [필수] 액션 타입: notify | pause | retry | label | close
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          message: "일일 처리 현황 리포트"
+      - type: "add-label"                # [필수] 액션 타입: add-label | start-job | pause-project
+        labels: ["needs-review"]         # [add-label 필수] 추가할 라벨 목록
 
   # --- cron 타입 예시: 매주 실행 ---
-  - id: "weekly-cleanup"
+  - id: "weekly-job"
+    name: "매주 잡 재시작"
     enabled: true
     trigger:
       type: "cron"
       schedule: "weekly"                 # [cron 필수] weekly: 매주 실행
     actions:
-      - type: "label"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          label: "needs-review"          # [label 필수] 추가할 라벨 이름
+      - type: "start-job"               # 파이프라인 잡 시작
+        repo: "owner/repo-name"          # [start-job 선택] 대상 저장소
 
-  # --- event 타입 예시: PR 머지 시 ---
-  - id: "on-pr-merged"
+  # --- issue-labeled 타입 예시: 특정 라벨 추가 시 ---
+  - id: "on-urgent-label"
+    name: "urgent 라벨 시 잡 즉시 시작"
     enabled: true
     trigger:
-      type: "event"
-      event: "pr-merged"                 # [event 필수] 트리거 이벤트: pr-merged | phase-failed
+      type: "issue-labeled"
+      label: "urgent"                    # [issue-labeled 선택] 감지할 라벨명
+    conditions:                          # [선택] 실행 조건 (모두 만족 시 액션 실행)
+      - type: "keyword-match"            # [필수] 조건 타입: label-match | path-match | keyword-match
+        keywords: ["bug", "critical"]    # [keyword-match 필수] 감지할 키워드 목록
+        fields: ["title", "body"]        # [keyword-match 선택] 검색 대상 필드
+        operator: "or"                   # [keyword-match 선택] and | or (기본값: or)
     actions:
-      - type: "notify"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          message: "PR이 머지되었습니다."
-      - type: "label"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          label: "merged"
+      - type: "start-job"
+      - type: "add-label"
+        labels: ["aqm"]
 
-  # --- event 타입 예시: Phase 실패 시 ---
-  - id: "on-phase-failed"
+  # --- pipeline-failed 타입 예시: 파이프라인 실패 시 ---
+  - id: "on-pipeline-failed"
+    name: "파이프라인 실패 시 프로젝트 일시 중지"
     enabled: true
     trigger:
-      type: "event"
-      event: "phase-failed"              # [event 필수] phase-failed: Phase 구현 실패 시 트리거
+      type: "pipeline-failed"
+      repo: "owner/repo-name"            # [pipeline-failed 선택] 감지할 저장소
     conditions:
-      - expression: "errorCount > 3"     # [필수] 조건 표현식 (예: "failureCount > 3", "label == 'urgent'")
+      - type: "label-match"              # 특정 라벨이 있는 이슈만
+        labels: ["aqm"]                  # [label-match 필수] 라벨 목록
+        operator: "and"                  # [label-match 선택] and | or (기본값: or)
     actions:
-      - type: "retry"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          maxRetries: 2                  # [retry 선택] 최대 재시도 횟수 (기본값: 1)
-      - type: "notify"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          message: "Phase 실패: 재시도 중 (최대 2회)"
+      - type: "pause-project"
+        reason: "파이프라인 반복 실패"   # [pause-project 선택] 일시 중지 사유
+      - type: "add-label"
+        labels: ["pipeline-failed"]
 
-  # --- rate-limit 타입 예시: 처리량 제한 ---
-  - id: "rate-limit-guard"
+  # --- issue-created 타입 예시: 이슈 생성 시 ---
+  - id: "on-issue-created"
+    name: "이슈 생성 시 라벨 자동 추가"
     enabled: true
     trigger:
-      type: "rate-limit"
-      threshold: 10                      # [rate-limit 필수] 최대 허용 처리 건수
+      type: "issue-created"
+    conditions:
+      - type: "path-match"               # 특정 경로 패턴에 해당하는 이슈만
+        patterns: ["src/**", "tests/**"] # [path-match 필수] glob 패턴 목록
     actions:
-      - type: "pause"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          duration: 3600000              # [pause 선택] 일시 중지 시간 ms (기본값: 60000, 여기서는 1시간)
-      - type: "notify"
-        params:                          # [선택] 액션에 전달할 추가 파라미터
-          message: "처리량 한도 초과: 1시간 대기"
+      - type: "add-label"
+        labels: ["aqm", "needs-review"]

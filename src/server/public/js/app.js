@@ -375,8 +375,11 @@ function cancelJob(id) {
   showConfirm(t('cancelConfirm'), '').then(function(ok) {
     if (!ok) return;
     apiFetch('/api/jobs/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
-      .then(function() { return apiFetch(buildJobsUrl()).then(function(r) { return r.json(); }).then(handleData); })
-      .catch(function() {});
+      .then(function(r) {
+        if (!r.ok) return r.json().then(function(body) { throw new Error(body.error || '취소 실패'); });
+        return apiFetch(buildJobsUrl()).then(function(r2) { return r2.json(); }).then(handleData);
+      })
+      .catch(function(err) { handleMutationError(err, '취소 실패'); });
   });
 }
 

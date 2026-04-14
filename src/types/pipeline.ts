@@ -90,6 +90,7 @@ export type ErrorCategory =
   | "SAFETY_VIOLATION"
   | "RATE_LIMIT"
   | "PROMPT_TOO_LONG"
+  | "MAX_TURNS_EXCEEDED"
   | "UNKNOWN";
 
 /**

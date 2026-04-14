@@ -11,6 +11,9 @@ export function classifyError(error: string): ErrorCategory {
   if (lower.includes("prompt is too long") || lower.includes("prompt too long") || lower.includes("context length") || lower.includes("token limit")) {
     return "PROMPT_TOO_LONG";
   }
+  if (lower.includes("max turns exceeded") || lower.includes("error_max_turns") || lower.includes("maximum number of turns")) {
+    return "MAX_TURNS_EXCEEDED";
+  }
   if (lower.includes("timeout") || lower.includes("timed out") || lower.includes("sigterm")) {
     return "TIMEOUT";
   }

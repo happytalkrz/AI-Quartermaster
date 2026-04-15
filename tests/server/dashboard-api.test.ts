@@ -573,9 +573,10 @@ describe("Dashboard API - PUT /api/config", () => {
         body: JSON.stringify(updates),
       });
 
-      expect(response.status).toBe(500); // Korean validation error doesn't contain "validation" word
+      expect(response.status).toBe(400); // Korean validation error now properly returns 400 with structured errors
       const result = await response.json();
-      expect(result.error).toBe("Failed to update configuration: 설정 파일에 오류가 있습니다: 최대 페이즈 수는 20 이하여야 합니다.");
+      expect(result.errors).toBeDefined();
+      expect(Array.isArray(result.errors)).toBe(true);
     });
   });
 });

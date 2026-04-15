@@ -207,6 +207,21 @@ function isValidSessionToken(token: string): boolean {
 }
 
 /**
+ * Parses the formatted validation error string from validateConfig into structured errors.
+ * The format produced by formatValidationError is lines like: "❌ field.path: message"
+ */
+function parseConfigValidationErrors(rawMessage: string): { path: string; message: string }[] {
+  const errors: { path: string; message: string }[] = [];
+  for (const line of rawMessage.split('\n')) {
+    const match = line.match(/^❌ (.+?): (.+)/);
+    if (match) {
+      errors.push({ path: match[1].trim(), message: match[2].trim() });
+    }
+  }
+  return errors.length > 0 ? errors : [{ path: '(config)', message: sanitizeErrorMessage(rawMessage) }];
+}
+
+/**
  * Common validation hook for zValidator middleware.
  * Returns a 400 response with formatted error details when validation fails.
  */
@@ -611,7 +626,16 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json({ success: true, message: "Configuration updated successfully" });
     } catch (error: unknown) {
       const rawMessage = getErrorMessage(error);
-      const isValidationError = rawMessage.includes("validation") || rawMessage.includes("Invalid") || rawMessage.includes("not found");
+      const isConfigValidationError = rawMessage.includes("설정 파일에 오류가 있습니다");
+      const isValidationError = isConfigValidationError
+        || rawMessage.includes("validation")
+        || rawMessage.includes("Invalid")
+        || rawMessage.includes("not found");
+
+      if (isConfigValidationError) {
+        return c.json({ errors: parseConfigValidationErrors(rawMessage) }, 400);
+      }
+
       const status = isValidationError ? 400 : 500;
       const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
       return c.json({ error: `${prefix}: ${sanitizeErrorMessage(rawMessage)}` }, status);

@@ -103,6 +103,9 @@ function renderSettingsView(config) {
   // 저장된 탭 선택 복원 또는 기본 탭 설정
   var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
   setSettingsTab(savedTab);
+
+  // 프리셋 드롭다운 초기화
+  initPresetDropdown();
 }
 
 /**
@@ -415,4 +418,300 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          esc(objectText) +
          '</textarea>' +
          '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Preset Logic
+   ══════════════════════════════════════════════════════════════ */
+
+/** @type {Record<string, string>} */
+var PRESET_DESCRIPTIONS = {
+  economy:  '빠른 구현에 집중. 리뷰 스킵으로 토큰 소비 최소화',
+  standard: '균형 잡힌 품질과 효율성. 1라운드 리뷰로 기본적인 품질 보장',
+  thorough: '최고 수준의 코드 품질 보장. 보안 및 아키텍처 변경에 적합',
+  team:     '팀 운영에 최적화. 병렬 처리로 여러 이슈를 동시에 처리',
+  solo:     '개인 개발자에 최적화. 단일 작업에 집중하며 빠른 피드백 루프',
+};
+
+/**
+ * Basic 탭 대상 프리셋 값 (src/config/presets.ts의 JS 미러)
+ * @type {Record<string, {maxConcurrentJobs:number, reviewEnabled:boolean, reviewRounds:number, reviewUnifiedMode:boolean, simplifyEnabled:boolean, executionMode:string, claudeTimeout:number}>}
+ */
+var PRESET_DATA = {
+  economy:  { maxConcurrentJobs: 1, reviewEnabled: false, reviewRounds: 0, reviewUnifiedMode: false, simplifyEnabled: false, executionMode: 'economy',  claudeTimeout: 300000 },
+  standard: { maxConcurrentJobs: 1, reviewEnabled: true,  reviewRounds: 1, reviewUnifiedMode: false, simplifyEnabled: true,  executionMode: 'standard', claudeTimeout: 600000 },
+  thorough: { maxConcurrentJobs: 1, reviewEnabled: true,  reviewRounds: 3, reviewUnifiedMode: true,  simplifyEnabled: true,  executionMode: 'thorough', claudeTimeout: 900000 },
+  team:     { maxConcurrentJobs: 3, reviewEnabled: true,  reviewRounds: 1, reviewUnifiedMode: false, simplifyEnabled: true,  executionMode: 'standard', claudeTimeout: 600000 },
+  solo:     { maxConcurrentJobs: 1, reviewEnabled: true,  reviewRounds: 1, reviewUnifiedMode: false, simplifyEnabled: false, executionMode: 'economy',  claudeTimeout: 300000 },
+};
+
+/** @type {Record<string, string>} */
+var PRESET_FIELD_LABELS = {
+  maxConcurrentJobs: '동시 작업 수',
+  reviewEnabled:     '리뷰 활성화',
+  reviewRounds:      '리뷰 라운드',
+  reviewUnifiedMode: '통합 리뷰 모드',
+  simplifyEnabled:   '코드 간소화',
+  executionMode:     '실행 모드',
+  claudeTimeout:     'Claude 타임아웃(ms)',
+};
+
+/** @type {Record<string, string>} config PATCH 경로 매핑 (Basic 탭 대상 필드만) */
+var PRESET_FIELD_CONFIG_PATHS = {
+  maxConcurrentJobs: 'general.concurrency',
+  reviewEnabled:     'review.enabled',
+  reviewUnifiedMode: 'review.unifiedMode',
+  simplifyEnabled:   'review.simplify.enabled',
+  executionMode:     'executionMode',
+  claudeTimeout:     'commands.claudeCli.timeout',
+};
+
+/** @type {string|null} */
+var currentPresetName = null;
+
+/** @type {Array<{field:string, label:string, currentValue:*, presetValue:*}>} */
+var currentPresetDiff = [];
+
+/**
+ * AQConfig 객체에서 프리셋 비교 대상 필드를 추출한다.
+ * @param {*} config
+ * @returns {Record<string, *>}
+ */
+function extractPresetFieldsFromConfig(config) {
+  return {
+    maxConcurrentJobs: config.general ? config.general.concurrency : undefined,
+    reviewEnabled:     config.review  ? config.review.enabled      : undefined,
+    reviewRounds:      (config.review && Array.isArray(config.review.rounds)) ? config.review.rounds.length : undefined,
+    reviewUnifiedMode: config.review  ? (config.review.unifiedMode || false) : undefined,
+    simplifyEnabled:   (config.review && config.review.simplify) ? config.review.simplify.enabled : undefined,
+    executionMode:     config.executionMode,
+    claudeTimeout:     (config.commands && config.commands.claudeCli) ? config.commands.claudeCli.timeout : undefined,
+  };
+}
+
+/**
+ * 현재 config 대비 프리셋 diff를 계산한다.
+ * @param {*} config
+ * @param {string} presetName
+ * @returns {Array<{field:string, label:string, currentValue:*, presetValue:*}>}
+ */
+function computePresetDiffJs(config, presetName) {
+  var preset = PRESET_DATA[presetName];
+  if (!preset) return [];
+  var current = extractPresetFieldsFromConfig(config);
+  var diff = [];
+  var fields = Object.keys(PRESET_FIELD_LABELS);
+  fields.forEach(function(field) {
+    var currentVal = current[field];
+    var presetVal  = preset[field];
+    if (currentVal !== undefined && currentVal !== presetVal) {
+      diff.push({ field: field, label: PRESET_FIELD_LABELS[field], currentValue: currentVal, presetValue: presetVal });
+    }
+  });
+  return diff;
+}
+
+/**
+ * @param {*} val
+ * @returns {string}
+ */
+function formatPresetValue(val) {
+  if (typeof val === 'boolean') return val ? 'true' : 'false';
+  return String(val);
+}
+
+/**
+ * diff 배열을 HTML로 렌더링한다.
+ * @param {Array<{field:string, label:string, currentValue:*, presetValue:*}>} diff
+ * @returns {string}
+ */
+function renderPresetDiffContent(diff) {
+  if (diff.length === 0) {
+    return '<div class="text-outline text-center py-2">변경사항 없음 — 현재 설정이 이미 이 프리셋과 동일합니다.</div>';
+  }
+  var html = '';
+  diff.forEach(function(entry) {
+    html += '<div class="flex justify-between items-center gap-2">';
+    html += '<span class="text-outline truncate flex-shrink-0">' + esc(entry.label) + '</span>';
+    html += '<div class="flex items-center gap-1.5 flex-shrink-0">';
+    html += '<span class="text-error line-through">' + esc(formatPresetValue(entry.currentValue)) + '</span>';
+    html += '<span class="material-symbols-outlined text-[10px] text-outline">arrow_forward</span>';
+    html += '<span class="text-primary">' + esc(formatPresetValue(entry.presetValue)) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+  return html;
+}
+
+/** @returns {void} */
+function togglePresetDiffPopover() {
+  var popover = document.getElementById('preset-diff-popover');
+  if (popover) popover.classList.toggle('hidden');
+}
+
+/** @returns {void} */
+function closePresetDiffPopover() {
+  var popover = document.getElementById('preset-diff-popover');
+  if (popover) popover.classList.add('hidden');
+}
+
+/** @returns {void} */
+function applyPreset() {
+  if (!currentPresetName || !currentPresetDiff) {
+    closePresetDiffPopover();
+    return;
+  }
+
+  /** @type {Record<string, *>} */
+  var patches = {};
+  currentPresetDiff.forEach(function(entry) {
+    var configPath = PRESET_FIELD_CONFIG_PATHS[entry.field];
+    if (configPath) {
+      patches[configPath] = entry.presetValue;
+    }
+  });
+
+  // reviewRounds는 PATCH 경로가 없으므로 별도 처리 없음 (서버측 프리셋 적용 시 처리)
+  fetch('/api/config', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patches),
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('PATCH failed: ' + res.status);
+    return res.json();
+  })
+  .then(function() {
+    closePresetDiffPopover();
+    var presetName = currentPresetName || '';
+    // 적용된 필드에 preset 칩 렌더
+    currentPresetDiff.forEach(function(entry) {
+      var configPath = PRESET_FIELD_CONFIG_PATHS[entry.field];
+      if (configPath) renderPresetChipForField(configPath, presetName);
+    });
+    // 이후 개별 수정 시 custom 칩으로 변경
+    bindPresetFieldChangeListeners();
+    // 피드백 표시
+    var descEl = document.getElementById('preset-desc');
+    if (descEl) {
+      descEl.textContent = '✓ ' + presetName + ' 프리셋 적용됨';
+      descEl.className = 'text-xs text-primary italic';
+    }
+  })
+  .catch(function(err) {
+    console.error('[AQM] preset apply failed:', err);
+  });
+}
+
+/**
+ * 필드 라벨 옆에 preset 칩을 렌더링한다.
+ * @param {string} configPath  e.g. "general.concurrency"
+ * @param {string} presetName
+ * @returns {void}
+ */
+function renderPresetChipForField(configPath, presetName) {
+  var fieldId = 'field-' + configPath.replace(/\./g, '-');
+  var el = document.getElementById(fieldId);
+  if (!el) return;
+  var label = el.closest('label');
+  if (!label) return;
+
+  // 기존 칩 제거
+  var existing = label.querySelector('.aqm-preset-chip');
+  if (existing) existing.remove();
+
+  var chip = document.createElement('span');
+  chip.className = 'aqm-preset-chip px-1.5 py-0.5 text-[9px] bg-primary/10 text-primary rounded-sm font-mono border border-primary/20 ml-1 align-middle';
+  chip.dataset.configPath = configPath;
+  chip.textContent = 'PRESET:' + presetName.toUpperCase();
+
+  var labelText = label.querySelector('span.text-\\[10px\\]');
+  if (labelText) {
+    labelText.appendChild(chip);
+  } else {
+    // fallback: 라벨 첫 span에 붙이기
+    var firstSpan = label.querySelector('span');
+    if (firstSpan) firstSpan.appendChild(chip);
+  }
+}
+
+/**
+ * 적용된 필드의 change 이벤트를 바인딩하여 수정 시 CUSTOM 칩으로 교체한다.
+ * @returns {void}
+ */
+function bindPresetFieldChangeListeners() {
+  currentPresetDiff.forEach(function(entry) {
+    var configPath = PRESET_FIELD_CONFIG_PATHS[entry.field];
+    if (!configPath) return;
+    var fieldId = 'field-' + configPath.replace(/\./g, '-');
+    var el = document.getElementById(fieldId);
+    if (!el) return;
+
+    /** @type {EventListener} */
+    var handler = function onFieldChange() {
+      var label = el.closest('label');
+      if (!label) return;
+      var chip = label.querySelector('.aqm-preset-chip');
+      if (chip) {
+        chip.className = 'aqm-preset-chip px-1.5 py-0.5 text-[9px] bg-tertiary/10 text-tertiary rounded-sm font-mono border border-tertiary/20 ml-1 align-middle';
+        chip.textContent = 'CUSTOM';
+      }
+      el.removeEventListener('change', handler);
+    };
+    el.addEventListener('change', handler);
+  });
+}
+
+/**
+ * 프리셋 드롭다운 이벤트를 초기화한다. renderSettingsView에서 호출된다.
+ * @returns {void}
+ */
+function initPresetDropdown() {
+  var select = document.getElementById('preset-select');
+  if (!select) return;
+
+  // 중복 바인딩 방지
+  select.removeEventListener('change', onPresetSelectChange);
+  select.addEventListener('change', onPresetSelectChange);
+}
+
+/** @returns {void} */
+function onPresetSelectChange() {
+  var select = /** @type {HTMLSelectElement} */ (document.getElementById('preset-select'));
+  if (!select) return;
+  var presetName = select.value;
+  var descEl     = document.getElementById('preset-desc');
+  var wrapper    = document.getElementById('preset-diff-wrapper');
+
+  if (!presetName) {
+    if (wrapper) wrapper.style.display = 'none';
+    if (descEl)  { descEl.textContent = ''; descEl.className = 'text-xs text-outline italic'; }
+    currentPresetName = null;
+    currentPresetDiff = [];
+    return;
+  }
+
+  currentPresetName = presetName;
+  if (descEl) {
+    descEl.textContent = PRESET_DESCRIPTIONS[presetName] || '';
+    descEl.className   = 'text-xs text-outline italic';
+  }
+
+  // 현재 config fetch → diff 계산
+  fetch('/api/config')
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var config = data.config || data;
+      currentPresetDiff = computePresetDiffJs(config, presetName);
+
+      var titleEl   = document.getElementById('preset-diff-title');
+      var contentEl = document.getElementById('preset-diff-content');
+      if (titleEl)   titleEl.textContent  = 'PRESET DIFF: ' + presetName.toUpperCase();
+      if (contentEl) contentEl.innerHTML  = renderPresetDiffContent(currentPresetDiff);
+
+      if (wrapper) wrapper.style.display = '';
+    })
+    .catch(function(err) {
+      console.error('[AQM] preset config fetch failed:', err);
+    });
 }

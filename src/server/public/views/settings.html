@@ -57,6 +57,52 @@
         <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface" data-i18n="globalConfig">Global Configuration</h2>
       </div>
 
+    <!-- Preset Bar -->
+    <div id="preset-bar" class="flex flex-wrap items-center gap-4 mb-6 p-4 bg-surface-container-low rounded-xl border border-outline-variant/20">
+      <div class="flex flex-col gap-1">
+        <label class="text-[10px] text-outline block uppercase tracking-widest font-bold">프리셋 적용</label>
+        <div class="flex items-center gap-3">
+          <select id="preset-select"
+            class="bg-surface-container-high border-none text-on-surface text-sm font-medium h-10 px-4 min-w-[160px] focus:ring-1 focus:ring-primary cursor-pointer rounded-sm">
+            <option value="">-- 선택 --</option>
+            <option value="economy">economy</option>
+            <option value="standard">standard</option>
+            <option value="thorough">thorough</option>
+            <option value="team">team</option>
+            <option value="solo">solo</option>
+          </select>
+          <!-- Diff Preview Button + Popover -->
+          <div class="relative" id="preset-diff-wrapper" style="display:none">
+            <button id="preset-preview-btn" type="button" onclick="togglePresetDiffPopover()"
+              class="flex items-center gap-2 text-xs text-primary bg-primary/5 hover:bg-primary/10 px-3 py-2 rounded-sm transition-colors border border-primary/20">
+              <span class="material-symbols-outlined text-sm">compare_arrows</span>
+              변경 사항 미리보기
+            </button>
+            <!-- Popover -->
+            <div id="preset-diff-popover"
+              class="absolute left-0 top-12 w-80 bg-surface-container/95 backdrop-blur-xl p-4 border border-outline-variant/30 hidden z-50 rounded-lg shadow-2xl">
+              <h4 id="preset-diff-title"
+                class="text-[10px] uppercase tracking-widest font-bold mb-3 border-b border-outline-variant/30 pb-2 text-on-surface">
+                PRESET DIFF
+              </h4>
+              <div id="preset-diff-content" class="space-y-3 font-mono text-[11px] mb-4"></div>
+              <div class="flex gap-2 pt-2 border-t border-outline-variant/20">
+                <button type="button" onclick="applyPreset()"
+                  class="flex-1 bg-primary text-on-primary text-xs font-bold py-2 px-3 rounded-sm hover:brightness-110 active:scale-95 transition-all">
+                  적용
+                </button>
+                <button type="button" onclick="closePresetDiffPopover()"
+                  class="px-3 py-2 text-xs text-outline hover:text-on-surface transition-colors">
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="preset-desc" class="text-xs text-outline italic"></div>
+    </div>
+
     <!-- Settings Tab Navigation -->
     <nav class="flex gap-2 bg-surface-container-low p-1 rounded-lg mb-8 w-fit">
       <button class="settings-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"

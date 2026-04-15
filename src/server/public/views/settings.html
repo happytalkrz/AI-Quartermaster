@@ -57,6 +57,21 @@
         <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface" data-i18n="globalConfig">Global Configuration</h2>
       </div>
 
+    <!-- Main Tab Toggle: BASIC / ADVANCED -->
+    <nav class="flex bg-surface-container-low p-1 rounded-full border border-outline-variant/10 w-fit mb-8">
+      <button class="main-tab-btn px-8 py-2 rounded-full text-xs font-bold tracking-widest transition-all bg-primary-container text-on-primary-container shadow-lg shadow-primary-container/20"
+              data-main-tab="basic" onclick="setMainTab('basic')">
+        <span data-i18n="settings.basic">일반 (BASIC)</span>
+      </button>
+      <button class="main-tab-btn px-8 py-2 rounded-full text-xs font-bold tracking-widest transition-all text-on-surface-variant hover:text-on-surface"
+              data-main-tab="advanced" onclick="setMainTab('advanced')">
+        <span data-i18n="settings.advanced">고급 (ADVANCED)</span>
+      </button>
+    </nav>
+
+    <!-- BASIC Tab Panel -->
+    <div id="main-tab-basic" class="main-tab-panel">
+
     <!-- Settings Tab Navigation -->
     <nav class="flex gap-2 bg-surface-container-low p-1 rounded-lg mb-8 w-fit">
       <button class="settings-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"
@@ -135,6 +150,168 @@
         <div id="review-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
       </div>
     </div>
+
+    </div><!-- end main-tab-basic -->
+
+    <!-- ADVANCED Tab Panel -->
+    <div id="main-tab-advanced" class="main-tab-panel hidden">
+
+      <!-- Header row with warning badge -->
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-3">
+          <span class="material-symbols-outlined text-on-surface-variant">settings_input_component</span>
+          <h3 class="font-headline text-lg font-semibold tracking-tight" data-i18n="settings.advanced.title">Advanced Configurations</h3>
+        </div>
+        <span class="bg-error/10 text-error text-[10px] px-2 py-1 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+      </div>
+
+      <!-- config.yml path bar -->
+      <div class="flex items-center gap-2 mb-6 p-3 bg-surface-container-low rounded-sm border border-outline-variant/20">
+        <span class="material-symbols-outlined text-sm text-outline">folder_open</span>
+        <span class="text-xs font-mono text-outline" id="config-yml-path">~/.config/aqm/config.yml</span>
+        <button class="ml-auto flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigYmlPath()">
+          <span class="material-symbols-outlined text-sm">content_copy</span>
+          경로 복사
+        </button>
+      </div>
+
+      <!-- Collapsible Cards -->
+      <div class="space-y-3">
+
+        <!-- hooks -->
+        <div class="bg-surface-container-lowest rounded-sm overflow-hidden border border-outline-variant/10">
+          <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none" onclick="toggleAdvancedCard('hooks')">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm">hooks</span>
+              <span class="bg-error/10 text-error text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigSectionPath(event, 'hooks')">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                config.yml
+              </button>
+              <span class="material-symbols-outlined transition-transform duration-200" id="advanced-icon-hooks">expand_more</span>
+            </div>
+          </div>
+          <div class="hidden px-4 pb-4" id="advanced-body-hooks">
+            <textarea
+              class="w-full bg-surface-container-high border border-outline-variant/30 rounded-sm p-3 text-sm font-mono text-on-surface resize-y min-h-[120px] focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder='{ "onPipelineStart": [], "onPipelineEnd": [], "onError": [] }'
+              id="advanced-field-hooks"
+              data-advanced-section="hooks"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- retryPolicy -->
+        <div class="bg-surface-container-lowest rounded-sm overflow-hidden border border-outline-variant/10">
+          <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none" onclick="toggleAdvancedCard('retryPolicy')">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm">retryPolicy</span>
+              <span class="bg-error/10 text-error text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigSectionPath(event, 'retryPolicy')">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                config.yml
+              </button>
+              <span class="material-symbols-outlined transition-transform duration-200" id="advanced-icon-retryPolicy">expand_more</span>
+            </div>
+          </div>
+          <div class="hidden px-4 pb-4" id="advanced-body-retryPolicy">
+            <textarea
+              class="w-full bg-surface-container-high border border-outline-variant/30 rounded-sm p-3 text-sm font-mono text-on-surface resize-y min-h-[120px] focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder='{ "maxAttempts": 3, "backoffMs": 1000, "backoffMultiplier": 2 }'
+              id="advanced-field-retryPolicy"
+              data-advanced-section="retryPolicy"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- models -->
+        <div class="bg-surface-container-lowest rounded-sm overflow-hidden border border-outline-variant/10">
+          <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none" onclick="toggleAdvancedCard('models')">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm">models</span>
+              <span class="bg-error/10 text-error text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigSectionPath(event, 'models')">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                config.yml
+              </button>
+              <span class="material-symbols-outlined transition-transform duration-200" id="advanced-icon-models">expand_more</span>
+            </div>
+          </div>
+          <div class="hidden px-4 pb-4" id="advanced-body-models">
+            <textarea
+              class="w-full bg-surface-container-high border border-outline-variant/30 rounded-sm p-3 text-sm font-mono text-on-surface resize-y min-h-[120px] focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder='{ "primary": "claude-opus-4-5", "review": "claude-sonnet-4-5" }'
+              id="advanced-field-models"
+              data-advanced-section="models"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- allowedTools -->
+        <div class="bg-surface-container-lowest rounded-sm overflow-hidden border border-outline-variant/10">
+          <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none" onclick="toggleAdvancedCard('allowedTools')">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm">allowedTools</span>
+              <span class="bg-error/10 text-error text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigSectionPath(event, 'allowedTools')">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                config.yml
+              </button>
+              <span class="material-symbols-outlined transition-transform duration-200" id="advanced-icon-allowedTools">expand_more</span>
+            </div>
+          </div>
+          <div class="hidden px-4 pb-4" id="advanced-body-allowedTools">
+            <textarea
+              class="w-full bg-surface-container-high border border-outline-variant/30 rounded-sm p-3 text-sm font-mono text-on-surface resize-y min-h-[120px] focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder='["Bash", "Read", "Write", "Edit", "Glob", "Grep"]'
+              id="advanced-field-allowedTools"
+              data-advanced-section="allowedTools"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- sensitivePaths -->
+        <div class="bg-surface-container-lowest rounded-sm overflow-hidden border border-outline-variant/10">
+          <div class="flex items-center justify-between p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none" onclick="toggleAdvancedCard('sensitivePaths')">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-sm">sensitivePaths</span>
+              <span class="bg-error/10 text-error text-[10px] px-2 py-0.5 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="flex items-center gap-1 text-[10px] text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-2 py-1 rounded-sm transition-colors border border-primary-container/20" onclick="copyConfigSectionPath(event, 'sensitivePaths')">
+                <span class="material-symbols-outlined text-sm">content_copy</span>
+                config.yml
+              </button>
+              <span class="material-symbols-outlined transition-transform duration-200" id="advanced-icon-sensitivePaths">expand_more</span>
+            </div>
+          </div>
+          <div class="hidden px-4 pb-4" id="advanced-body-sensitivePaths">
+            <textarea
+              class="w-full bg-surface-container-high border border-outline-variant/30 rounded-sm p-3 text-sm font-mono text-on-surface resize-y min-h-[120px] focus:outline-none focus:border-primary/50 transition-colors"
+              placeholder='[".env", "*.pem", "*.key", "secrets/**"]'
+              id="advanced-field-sensitivePaths"
+              data-advanced-section="sensitivePaths"
+            ></textarea>
+          </div>
+        </div>
+
+      </div><!-- end collapsible cards -->
+
+      <!-- config.yml direct edit link -->
+      <div class="mt-6 flex items-center gap-2 text-xs font-bold text-primary-container cursor-pointer" onclick="copyConfigYmlPath()">
+        <span class="material-symbols-outlined text-sm">code</span>
+        config.yml 직접 편집
+      </div>
+
+    </div><!-- end main-tab-advanced -->
 
     <!-- Save Button -->
     <div class="flex justify-end mt-8 pt-6 border-t border-outline-variant/30">

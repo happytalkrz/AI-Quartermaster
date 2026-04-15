@@ -64,20 +64,47 @@ resolve_claude_config_dir() {
 }
 resolve_claude_config_dir
 
+# --config는 반드시 서브커맨드 뒤에 삽입한다.
+# parseArgs()가 argv[0]을 command로 간주하므로 --config를 맨 앞에 두면
+# command 인식이 깨진다. 첫 인자(서브커맨드) 뒤에 끼워넣는다.
+# 사용자가 "$@"가 비어 있거나 첫 인자가 플래그인 경우는 주입하지 않는다.
+inject_default_config() {
+  INJECTED_ARGS=("$@")
+  if [ ! -f "$AQM_ROOT/config.yml" ]; then
+    return 0
+  fi
+  if [ $# -eq 0 ]; then
+    return 0
+  fi
+  case "$1" in
+    --*) return 0 ;;
+  esac
+  for arg in "$@"; do
+    case "$arg" in
+      --config|--config=*) return 0 ;;
+    esac
+  done
+  local subcmd="$1"
+  shift
+  INJECTED_ARGS=("$subcmd" --config "$AQM_ROOT/config.yml" "$@")
+}
+
 # CLI 실행 헬퍼
 run_cli() {
+  inject_default_config "$@"
   if [ "$AQM_MODE" = "npm" ]; then
-    node "$AQM_ROOT/dist/cli.js" "$@"
+    node "$AQM_ROOT/dist/cli.js" "${INJECTED_ARGS[@]}"
   else
-    npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "$@"
+    npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "${INJECTED_ARGS[@]}"
   fi
 }
 
 exec_cli() {
+  inject_default_config "$@"
   if [ "$AQM_MODE" = "npm" ]; then
-    exec node "$AQM_ROOT/dist/cli.js" "$@"
+    exec node "$AQM_ROOT/dist/cli.js" "${INJECTED_ARGS[@]}"
   else
-    exec npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "$@"
+    exec npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "${INJECTED_ARGS[@]}"
   fi
 }
 
@@ -271,11 +298,12 @@ case "${1:-}" in
 
       mkdir -p "$AQM_DATA_DIR/logs"
       echo "서버를 백그라운드에서 시작합니다..."
+      inject_default_config start "${ARGS[@]}"
       if [ "$AQM_MODE" = "npm" ]; then
-        nohup node "$AQM_ROOT/dist/cli.js" start "${ARGS[@]}" \
+        nohup node "$AQM_ROOT/dist/cli.js" "${INJECTED_ARGS[@]}" \
           >> "$AQM_LOG_FILE" 2>&1 &
       else
-        nohup npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" start "${ARGS[@]}" \
+        nohup npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "${INJECTED_ARGS[@]}" \
           >> "$AQM_LOG_FILE" 2>&1 &
       fi
       echo $! > "$AQM_PID_FILE"

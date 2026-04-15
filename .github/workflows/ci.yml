@@ -73,7 +73,9 @@ jobs:
   visual-regression:
     name: visual-regression (advisory)
     runs-on: ubuntu-latest
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'workflow_dispatch'
+    if: |
+      ((github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'workflow_dispatch')
+      && !startsWith(github.head_ref || '', 'hotfix/')
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

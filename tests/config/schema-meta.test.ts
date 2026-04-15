@@ -7,8 +7,8 @@ import {
 } from "../../src/config/schema-meta.js";
 
 describe("BASIC_FIELD_METAS", () => {
-  it("화이트리스트 필드가 정확히 7개 포함된다", () => {
-    expect(BASIC_FIELD_METAS).toHaveLength(7);
+  it("화이트리스트 필드가 정확히 8개 포함된다", () => {
+    expect(BASIC_FIELD_METAS).toHaveLength(8);
   });
 
   it("모든 필드에 key, type, label이 존재한다", () => {

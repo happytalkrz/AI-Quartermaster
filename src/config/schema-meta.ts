@@ -89,6 +89,13 @@ export const BASIC_FIELD_METAS: FieldMeta[] = [
     helperText: "PR의 대상 브랜치 이름 (baseBranch)",
     default: "main",
   },
+  {
+    key: "commands.claudeCli.maxTurns",
+    type: "number",
+    label: "최대 턴 수",
+    helperText: "Claude CLI 한 실행당 최대 턴 수",
+    default: 100,
+  },
 ];
 
 /**

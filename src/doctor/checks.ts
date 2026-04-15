@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { access, constants } from 'fs/promises';
 import { homedir } from 'os';
+import { join } from 'path';
 
 function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {

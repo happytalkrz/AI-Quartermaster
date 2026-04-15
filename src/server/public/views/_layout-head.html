@@ -149,6 +149,28 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         border-left: 3px solid #0969da;
     }
 
+    /* Stitch custom select — appearance-none + custom chevron arrow */
+    .aqm-select {
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b919d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 10px center;
+        padding-right: 32px !important;
+        cursor: pointer;
+    }
+    .aqm-select option {
+        background-color: #1c2026;
+        color: #dfe2eb;
+    }
+    html:not(.dark) .aqm-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23656d76' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    }
+    html:not(.dark) .aqm-select option {
+        background-color: #f0f2f5;
+        color: #1f2328;
+    }
+
     /* hide views by default */
     .view-panel { display: none; }
     .view-panel.active { display: block; }

@@ -276,7 +276,7 @@ function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
  */
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none',
     isReadonly,
     isMasked ? 'bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]' : ''
   );
@@ -297,7 +297,7 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
  */
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none',
     isReadonly
   );
 
@@ -316,7 +316,7 @@ function renderNumberInput(fieldId, value, configPath, isReadonly) {
  * @returns {string}
  */
 function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
-  var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-1 focus:ring-primary bg-surface-container-highest/40';
+  var classes = 'w-4 h-4 text-primary border border-outline-variant/30 rounded focus:ring-0 bg-surface-container-highest/40';
   if (isReadonly) {
     classes += ' opacity-60 cursor-not-allowed';
   }
@@ -340,7 +340,7 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
  */
 function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none',
     isReadonly
   );
   var commaSeparated = Array.isArray(value) ? value.join(', ') : '';
@@ -364,7 +364,7 @@ function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
  */
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var arrayText = JSON.stringify(value, null, 2);
@@ -412,7 +412,7 @@ function bindCommandsCliFields(config) {
  */
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var objectText = JSON.stringify(value, null, 2);
@@ -550,7 +550,7 @@ function renderBasicNumberControl(fieldId, configPath, value, min, max) {
   var attrs = 'type="number" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + numVal + '"';
   if (typeof min === 'number') attrs += ' min="' + min + '"';
   if (typeof max === 'number') attrs += ' max="' + max + '"';
-  return '<input ' + attrs + ' class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+  return '<input ' + attrs + ' class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none" />';
 }
 
 /**
@@ -578,7 +578,7 @@ function renderBasicToggleControl(fieldId, configPath, checked) {
  */
 function renderBasicDropdownControl(fieldId, configPath, value, options) {
   var html = '<select id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' +
-             'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
+             'class="aqm-select w-full bg-surface-container-low border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
   options.forEach(function(opt) {
     html += '<option value="' + esc(opt) + '"' + (opt === value ? ' selected' : '') + '>' + esc(opt) + '</option>';
   });
@@ -595,22 +595,24 @@ function renderBasicDropdownControl(fieldId, configPath, value, options) {
 function renderBasicChipInputControl(fieldId, configPath, values) {
   var chipsHtml = '';
   values.forEach(function(val, idx) {
-    chipsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+    chipsHtml += '<span class="inline-flex items-center gap-1.5 px-3 py-1 bg-surface-container-high rounded text-xs text-on-surface border border-outline-variant/30">' +
                  esc(val) +
                  '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
-                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>' +
                  '</span>';
   });
 
-  return '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">' + chipsHtml + '</div>' +
+  return '<div class="bg-surface-container-lowest recessed-well p-3 rounded-lg">' +
+         '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-2 mb-3 min-h-[28px]">' + chipsHtml + '</div>' +
          '<input type="hidden" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" data-input-type="chip-array" value="' + esc(JSON.stringify(values)) + '" />' +
          '<div class="flex gap-1">' +
          '<input type="text" id="' + fieldId + '-input" placeholder="값 입력 후 Enter" ' +
-         'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" ' +
+         'class="flex-1 bg-transparent border-0 border-b border-outline-variant/30 py-1.5 px-2 text-sm text-on-surface focus:border-primary outline-none transition-colors" ' +
          'onkeydown="addBasicChipOnEnter(event,\'' + fieldId + '\')" />' +
          '<button type="button" onclick="addBasicChip(\'' + fieldId + '\')" ' +
-         'class="px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors">' +
+         'class="px-2 py-1 text-primary border border-primary/30 hover:bg-primary/10 rounded transition-colors">' +
          '<span class="material-symbols-outlined text-sm">add</span></button>' +
+         '</div>' +
          '</div>';
 }
 
@@ -622,7 +624,7 @@ function renderBasicChipInputControl(fieldId, configPath, values) {
  */
 function renderBasicTextControl(fieldId, configPath, value) {
   return '<input type="text" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + esc(value) + '" ' +
-         'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+         'class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none" />';
 }
 
 /**
@@ -761,7 +763,7 @@ function renderAdvancedJsonCard(sectionId, label, value, configPath) {
   html += '<textarea id="' + fieldId + '" ' +
           'data-config-path="' + esc(configPath) + '" ' +
           'rows="8" ' +
-          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono">' +
+          'class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-0 transition-colors rounded-t outline-none font-mono">' +
           esc(jsonText) +
           '</textarea>';
   html += '<div id="' + fieldId + '-error" class="hidden mt-1 text-xs text-[#f85149] font-mono"></div>';
@@ -1097,10 +1099,10 @@ function _refreshChipsDisplay(fieldId, values) {
   if (!chipsContainer) return;
   var html = '';
   values.forEach(function(val, idx) {
-    html += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+    html += '<span class="inline-flex items-center gap-1.5 px-3 py-1 bg-surface-container-high rounded text-xs text-on-surface border border-outline-variant/30">' +
             esc(val) +
             '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
-            'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+            'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>' +
             '</span>';
   });
   chipsContainer.innerHTML = html;

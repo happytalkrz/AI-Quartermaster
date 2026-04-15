@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html class="dark" lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AQM Setup Wizard — 설정 확인</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "tertiary-fixed-dim": "#ffba42",
+          "error": "#ffb4ab",
+          "surface": "#10141a",
+          "on-error-container": "#ffdad6",
+          "primary-fixed-dim": "#a2c9ff",
+          "surface-container-high": "#262a31",
+          "on-secondary-fixed": "#161c23",
+          "on-tertiary-container": "#4f3400",
+          "on-surface": "#dfe2eb",
+          "on-primary-fixed": "#001c38",
+          "primary-container": "#58a6ff",
+          "inverse-primary": "#0060aa",
+          "on-primary-container": "#003a6b",
+          "surface-dim": "#10141a",
+          "surface-tint": "#a2c9ff",
+          "secondary-fixed-dim": "#c1c7d0",
+          "on-primary": "#00315c",
+          "secondary-fixed": "#dde3ec",
+          "inverse-surface": "#dfe2eb",
+          "secondary-container": "#41474f",
+          "surface-container-highest": "#31353c",
+          "outline": "#8b919d",
+          "secondary": "#c1c7d0",
+          "on-tertiary-fixed": "#281800",
+          "on-secondary": "#2b3138",
+          "on-error": "#690005",
+          "on-tertiary": "#432c00",
+          "surface-container": "#1c2026",
+          "on-tertiary-fixed-variant": "#614000",
+          "on-secondary-fixed-variant": "#41474f",
+          "on-surface-variant": "#c0c7d4",
+          "surface-bright": "#353940",
+          "surface-container-lowest": "#0a0e14",
+          "on-background": "#dfe2eb",
+          "surface-variant": "#31353c",
+          "outline-variant": "#414752",
+          "background": "#10141a",
+          "tertiary-container": "#da9600",
+          "inverse-on-surface": "#2d3137",
+          "primary": "#a2c9ff",
+          "tertiary": "#ffba42",
+          "on-primary-fixed-variant": "#004882",
+          "surface-container-low": "#181c22",
+          "tertiary-fixed": "#ffddaf",
+          "error-container": "#93000a",
+          "on-secondary-container": "#b0b5be",
+          "primary-fixed": "#d3e4ff"
+        },
+        borderRadius: {
+          "DEFAULT": "0.125rem",
+          "lg": "0.25rem",
+          "xl": "0.5rem",
+          "full": "0.75rem"
+        },
+        fontFamily: {
+          "headline": ["Space Grotesk"],
+          "body": ["Inter"],
+          "label": ["Inter"],
+          "mono": ["JetBrains Mono"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    display: inline-block;
+    vertical-align: middle;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .spin { animation: spin 1s linear infinite; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #10141a; }
+  ::-webkit-scrollbar-thumb { background: #31353c; border-radius: 10px; }
+</style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary/30 min-h-screen overflow-x-hidden">
+
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#181c22] flex justify-between items-center px-6 py-4 h-16">
+  <div class="flex items-center gap-4">
+    <span class="text-xl font-black tracking-widest text-[#a2c9ff] uppercase font-headline">AQM</span>
+    <div class="h-4 w-px bg-outline-variant/30"></div>
+    <span class="font-headline font-bold tracking-tight text-on-surface">Setup Wizard</span>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="material-symbols-outlined text-on-surface-variant/40 text-sm">lock</span>
+    <span class="font-mono text-[10px] text-on-surface-variant/40 uppercase tracking-widest">Step 5 / 5</span>
+  </div>
+</nav>
+
+<!-- Side Progress Rail -->
+<aside class="h-screen w-16 fixed left-0 top-0 pt-20 flex flex-col items-center bg-surface-container-low z-40">
+  <div class="flex flex-col gap-10 items-center py-8">
+    <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+    <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+    <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+    <div class="w-1.5 h-1.5 rounded-full bg-primary/40"></div>
+    <!-- Step 5 active -->
+    <div class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(162,201,255,0.8)]"></div>
+  </div>
+</aside>
+
+<main class="pl-16 pt-16 min-h-screen pb-10">
+
+  <!-- Horizontal Stepper -->
+  <header class="w-full bg-surface-container px-12 py-8">
+    <div class="flex items-center justify-between max-w-5xl mx-auto w-full">
+      <div class="flex flex-col items-center gap-2 opacity-40">
+        <span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface font-bold">Step 01</span>
+        <span class="text-on-surface font-medium text-sm">GitHub 연결</span>
+      </div>
+      <div class="h-px grow mx-4 bg-primary/30"></div>
+      <div class="flex flex-col items-center gap-2 opacity-40">
+        <span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface font-bold">Step 02</span>
+        <span class="text-on-surface font-medium text-sm">저장소 선택</span>
+      </div>
+      <div class="h-px grow mx-4 bg-primary/30"></div>
+      <div class="flex flex-col items-center gap-2 opacity-40">
+        <span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface font-bold">Step 03</span>
+        <span class="text-on-surface font-medium text-sm">라벨 자동 생성</span>
+      </div>
+      <div class="h-px grow mx-4 bg-primary/30"></div>
+      <div class="flex flex-col items-center gap-2 opacity-40">
+        <span class="font-headline text-[10px] uppercase tracking-[0.2em] text-on-surface font-bold">Step 04</span>
+        <span class="text-on-surface font-medium text-sm">소유자/권한</span>
+      </div>
+      <div class="h-px grow mx-4 bg-primary/30"></div>
+      <!-- Step 5: Active -->
+      <div class="flex flex-col items-center gap-2">
+        <span class="font-headline text-[10px] uppercase tracking-[0.2em] text-primary font-bold">Step 05</span>
+        <span class="text-primary font-bold text-sm">확인</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Content -->
+  <section class="p-12 max-w-7xl mx-auto">
+
+    <!-- Heading -->
+    <div class="flex flex-col gap-2 mb-8">
+      <h1 class="font-headline text-4xl font-bold tracking-tighter text-on-surface">설정 확인</h1>
+      <p class="text-on-surface-variant font-light leading-relaxed">
+        변경될 config.yml을 확인하고 적용하세요.
+        토큰은 config.yml이 아닌 별도 credentials 파일에 안전하게 저장됩니다.
+      </p>
+    </div>
+
+    <!-- Status Bar -->
+    <div id="preview-status" class="mb-6 p-4 bg-surface-container rounded-lg flex items-center gap-3">
+      <span class="material-symbols-outlined text-primary spin" style="font-size:18px">progress_activity</span>
+      <span class="text-sm text-on-surface-variant">YAML 미리보기 로딩 중...</span>
+    </div>
+
+    <!-- Split Diff View (hidden until loaded) -->
+    <div id="diff-view" class="hidden">
+
+      <!-- Legend -->
+      <div class="flex items-center gap-6 mb-4">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full" style="background:#3fb950"></span>
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-widest">추가됨</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full" style="background:#f85149"></span>
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-widest">제거됨</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-outline-variant/40"></span>
+          <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-widest">변경 없음</span>
+        </div>
+      </div>
+
+      <!-- Two-panel layout -->
+      <div class="grid grid-cols-2 gap-6">
+
+        <!-- Left: Current config.yml -->
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" style="background:#f85149"></span>
+            <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-tighter">현재 config.yml</span>
+          </div>
+          <div class="bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant/10 relative shadow-inner">
+            <div class="absolute top-0 left-0 w-0.5 h-full" style="background:rgba(248,81,73,0.3)"></div>
+            <div id="current-yaml" class="font-mono overflow-auto pl-2 py-3 pr-3" style="max-height:460px;font-size:11px;line-height:1.6"></div>
+          </div>
+        </div>
+
+        <!-- Right: Proposed config.yml -->
+        <div class="flex flex-col gap-3">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" style="background:#3fb950"></span>
+            <span class="font-mono text-[10px] text-on-surface-variant uppercase tracking-tighter">새 config.yml</span>
+          </div>
+          <div class="bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant/10 relative shadow-inner">
+            <div class="absolute top-0 left-0 w-0.5 h-full" style="background:rgba(63,185,80,0.3)"></div>
+            <div id="proposed-yaml" class="font-mono overflow-auto pl-2 py-3 pr-3" style="max-height:460px;font-size:11px;line-height:1.6"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Navigation Controls -->
+    <div class="flex items-center justify-between mt-10 border-t border-outline-variant/10 pt-8">
+      <button onclick="history.back()"
+              class="px-8 py-3 rounded-lg bg-surface-container-high text-on-surface-variant font-bold text-sm hover:bg-surface-bright transition-all flex items-center gap-2 group">
+        <span class="material-symbols-outlined text-sm" style="transition:transform 0.15s" onmouseenter="this.style.transform='translateX(-3px)'" onmouseleave="this.style.transform=''">arrow_back</span>
+        이전
+      </button>
+      <button id="apply-btn" onclick="applyConfig()"
+              disabled
+              class="px-10 py-3 rounded-lg font-bold text-sm flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style="background:linear-gradient(135deg,#a2c9ff 0%,#58a6ff 100%);color:#00315c;box-shadow:0 4px 14px rgba(162,201,255,0.2)">
+        설정 적용
+        <span class="material-symbols-outlined text-sm">check_circle</span>
+      </button>
+    </div>
+
+  </section>
+</main>
+
+<!-- Telemetry Footer -->
+<footer class="fixed bottom-0 left-16 right-0 h-8 bg-surface-container-lowest flex items-center px-6 z-40">
+  <div class="flex items-center gap-4 w-full">
+    <div class="flex items-center gap-2">
+      <div class="w-1.5 h-1.5 rounded-full bg-tertiary" style="animation:pulse 2s cubic-bezier(0.4,0,0.6,1) infinite"></div>
+      <span class="font-mono text-[9px] text-tertiary uppercase tracking-widest">Step 5</span>
+    </div>
+    <div class="h-3 w-px bg-outline-variant/20"></div>
+    <span id="footer-status" class="font-mono text-[9px] text-on-surface-variant/50">YAML DIFF LOADING...</span>
+  </div>
+</footer>
+
+<script src="/js/setup.js"></script>
+</body>
+</html>

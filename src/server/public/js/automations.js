@@ -49,16 +49,12 @@ function renderAutomationRules() {
   if (!container) return;
 
   if (automationRules.length === 0) {
-    container.innerHTML =
-      '<div class="flex flex-col items-center justify-center py-16 text-center">' +
-        '<span class="material-symbols-outlined text-5xl text-outline/30 mb-4">smart_toy</span>' +
-        '<p class="text-sm font-bold text-on-surface mb-1">자동화 규칙이 없습니다</p>' +
-        '<p class="text-xs text-outline mb-4">규칙을 추가하면 이벤트 발생 시 자동으로 액션이 실행됩니다.</p>' +
-        '<button onclick="showAddRuleModal()" class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg text-sm font-bold hover:bg-primary/90 transition-colors">' +
-          '<span class="material-symbols-outlined text-sm">add</span>' +
-          '<span>첫 번째 규칙 추가</span>' +
-        '</button>' +
-      '</div>';
+    container.innerHTML = renderEmptyState({
+      icon: 'smart_toy',
+      title: '자동화 규칙이 없습니다',
+      description: '규칙을 추가하면 이벤트 발생 시 자동으로 액션이 실행됩니다.',
+      primaryAction: { label: '첫 번째 규칙 추가', onclick: 'showAddRuleModal()' }
+    });
     return;
   }
 

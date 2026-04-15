@@ -631,7 +631,11 @@ function renderLogsView(job) {
   }
 
   if (!job || !job.logs || job.logs.length === 0) {
-    container.innerHTML = '<div class="text-outline text-center py-12">' + (job ? '이 작업에 대한 로그가 없습니다.' : '작업을 선택하세요.') + '</div>';
+    container.innerHTML = renderEmptyState({
+      icon: job ? 'article' : 'touch_app',
+      title: job ? '로그가 없습니다' : '작업을 선택하세요',
+      description: job ? '이 작업에 대한 로그가 없습니다.' : '좌측 목록에서 작업을 선택하면 로그를 확인할 수 있습니다.'
+    });
     return;
   }
 

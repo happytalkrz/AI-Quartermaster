@@ -176,7 +176,7 @@ function renderKanbanCard(job) {
 function renderKanbanColumn(col, jobs) {
   var cardsHtml = jobs.length > 0
     ? jobs.map(renderKanbanCard).join('')
-    : '<div class="text-center text-outline text-xs font-mono py-8">EMPTY</div>';
+    : renderEmptyState({ icon: 'inbox', title: '빈 컬럼', description: '이 단계에 작업이 없습니다.' });
 
   var listClass = 'flex-1 p-3 space-y-3 overflow-y-auto custom-scrollbar' +
     (col.id === 'done' ? ' opacity-70 hover:opacity-100 transition-opacity' : '');

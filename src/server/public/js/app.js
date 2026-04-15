@@ -486,6 +486,36 @@ function collectFormData() {
     result.commands = { claudeCli: commandsCliData };
   }
 
+  // Advanced 탭 JSON textarea 수집 (Basic 탭 값이 최종적으로 우선함)
+  /** @type {Array<{id: string, configPath: string}>} */
+  var advancedCardSections = [
+    { id: 'hooks', configPath: 'hooks' },
+    { id: 'retryPolicy', configPath: 'commands.claudeCli.retry' },
+    { id: 'models', configPath: 'commands.claudeCli.models' },
+    { id: 'allowedTools', configPath: 'allowedTools' },
+    { id: 'sensitivePaths', configPath: 'safety.sensitivePaths' },
+  ];
+  advancedCardSections.forEach(function(section) {
+    var textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('advanced-json-' + section.id));
+    if (!textarea) return;
+    var errorEl = document.getElementById('advanced-json-' + section.id + '-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+    var trimmed = textarea.value.trim();
+    if (!trimmed || trimmed === 'null') return;
+    try {
+      var parsed = JSON.parse(trimmed);
+      setNestedValue(result, section.configPath, parsed);
+    } catch (e) {
+      if (errorEl) {
+        errorEl.textContent = 'JSON 파싱 오류: ' + (e instanceof Error ? e.message : String(e));
+        errorEl.classList.remove('hidden');
+      }
+    }
+  });
+
   // Basic 탭 필드 수집 및 해당 섹션에 병합 (Basic 탭 값이 Advanced 탭 값보다 우선)
   var basicForm = document.getElementById('basic-settings-form');
   if (basicForm) {

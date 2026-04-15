@@ -588,14 +588,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   const configPath = `${projectRoot}/config.yml`;
 
   // Update configuration
-  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema, zodValidationHook), async (c) => {
+  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema.passthrough(), zodValidationHook), async (c) => {
     try {
       const body = c.req.valid('json');
 
       // Update configuration file
-      // Filter out undefined values and complex sections (projects, hooks)
-      // that should not be updated via this endpoint
-      const { projects, hooks, ...safeData } = body as Record<string, unknown>;
+      // Filter out undefined values and complex sections (projects)
+      // hooks is passed through via the passthrough schema and saved to config
+      const { projects, ...safeData } = body as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,

@@ -103,6 +103,9 @@ function renderSettingsView(config) {
   // Basic 탭 렌더링
   renderBasicTab(config);
 
+  // Advanced 탭 JSON 카드 렌더링
+  renderAdvancedTab(config);
+
   // 저장된 모드 탭 복원 (Basic/Advanced)
   var savedModeTab = localStorage.getItem('aqm-selected-mode-tab') || 'basic';
   setSettingsModeTab(savedModeTab);
@@ -669,6 +672,144 @@ function removeBasicChip(fieldId, idx) {
   current.splice(idx, 1);
   hiddenInput.value = JSON.stringify(current);
   _refreshChipsDisplay(fieldId, current);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Advanced Tab JSON Cards Rendering
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Advanced 탭의 5개 JSON 섹션을 collapsible 카드로 렌더링한다.
+ * 섹션: hooks, retryPolicy, models, allowedTools, sensitivePaths
+ * @param {AqmConfig} config
+ * @returns {void}
+ */
+function renderAdvancedTab(config) {
+  var container = document.getElementById('advanced-json-cards-list');
+  if (!container) return;
+
+  var anyConfig = /** @type {any} */ (config);
+
+  /** @type {Array<{id: string, label: string, value: *, configPath: string}>} */
+  var sections = [
+    {
+      id: 'hooks',
+      label: 'hooks',
+      value: anyConfig.hooks,
+      configPath: 'hooks',
+    },
+    {
+      id: 'retryPolicy',
+      label: 'retryPolicy',
+      value: anyConfig.commands && anyConfig.commands.claudeCli ? anyConfig.commands.claudeCli.retry : undefined,
+      configPath: 'commands.claudeCli.retry',
+    },
+    {
+      id: 'models',
+      label: 'models',
+      value: anyConfig.commands && anyConfig.commands.claudeCli ? anyConfig.commands.claudeCli.models : undefined,
+      configPath: 'commands.claudeCli.models',
+    },
+    {
+      id: 'allowedTools',
+      label: 'allowedTools',
+      value: anyConfig.allowedTools,
+      configPath: 'allowedTools',
+    },
+    {
+      id: 'sensitivePaths',
+      label: 'sensitivePaths',
+      value: anyConfig.safety ? anyConfig.safety.sensitivePaths : undefined,
+      configPath: 'safety.sensitivePaths',
+    },
+  ];
+
+  var html = '';
+  sections.forEach(function(section) {
+    html += renderAdvancedJsonCard(section.id, section.label, section.value, section.configPath);
+  });
+  container.innerHTML = html;
+}
+
+/**
+ * @param {string} sectionId
+ * @param {string} label
+ * @param {*} value
+ * @param {string} configPath
+ * @returns {string}
+ */
+function renderAdvancedJsonCard(sectionId, label, value, configPath) {
+  var jsonText = value !== undefined && value !== null
+    ? JSON.stringify(value, null, 2)
+    : 'null';
+  var fieldId = 'advanced-json-' + sectionId;
+  var bodyId = 'advanced-card-body-' + sectionId;
+  var iconId = 'advanced-card-icon-' + sectionId;
+
+  var html = '<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-sm overflow-hidden">';
+
+  // 카드 헤더 (접힌 상태)
+  html += '<button type="button" ' +
+          'class="w-full p-4 flex items-center justify-between hover:bg-surface-container-low transition-colors" ' +
+          'onclick="toggleAdvancedCard(\'' + sectionId + '\')">';
+  html += '<span class="font-mono text-sm text-on-surface">' + esc(label) + '</span>';
+  html += '<span class="material-symbols-outlined text-outline transition-transform" id="' + iconId + '">expand_more</span>';
+  html += '</button>';
+
+  // 카드 본문 (펼쳐진 상태, 기본 숨김)
+  html += '<div id="' + bodyId + '" class="hidden px-4 pb-4">';
+  html += '<textarea id="' + fieldId + '" ' +
+          'data-config-path="' + esc(configPath) + '" ' +
+          'rows="8" ' +
+          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono">' +
+          esc(jsonText) +
+          '</textarea>';
+  html += '<div id="' + fieldId + '-error" class="hidden mt-1 text-xs text-[#f85149] font-mono"></div>';
+  html += '<button type="button" ' +
+          'class="mt-3 flex items-center gap-2 text-xs font-bold text-primary-container hover:text-primary transition-colors" ' +
+          'onclick="copyAdvancedConfigPath(\'' + esc(configPath) + '\')">';
+  html += '<span class="material-symbols-outlined text-sm">code</span>';
+  html += '<span>config.yml 경로 복사</span>';
+  html += '</button>';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Advanced JSON 카드를 토글한다 (접기/펼치기).
+ * @param {string} sectionId
+ * @returns {void}
+ */
+function toggleAdvancedCard(sectionId) {
+  var body = document.getElementById('advanced-card-body-' + sectionId);
+  var icon = document.getElementById('advanced-card-icon-' + sectionId);
+  if (!body || !icon) return;
+
+  var isHidden = body.classList.contains('hidden');
+  if (isHidden) {
+    body.classList.remove('hidden');
+    icon.style.transform = 'rotate(180deg)';
+  } else {
+    body.classList.add('hidden');
+    icon.style.transform = '';
+  }
+}
+
+/**
+ * config.yml 키 경로를 클립보드에 복사한다.
+ * @param {string} configPath
+ * @returns {void}
+ */
+function copyAdvancedConfigPath(configPath) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(configPath).then(function() {
+      // 복사 성공 — 별도 토스트 없음
+    }).catch(function() {
+      // 조용히 실패
+    });
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════

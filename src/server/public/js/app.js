@@ -69,6 +69,11 @@ function navigateTo(view) {
     initNewIssue();
   }
 
+  // If navigating to doctor view, run checks
+  if (view === 'doctor') {
+    runDoctorCheck();
+  }
+
   // If navigating to setup view, init wizard
   if (view === 'setup') {
     initSetupView();

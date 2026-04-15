@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
-import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport } from "../types/pipeline.js";
+import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport, UserSummary } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
 import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
@@ -16,7 +16,7 @@ import type { AQMTask } from "../tasks/aqm-task.js";
 
 const logger = getLogger();
 
-export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string; diagnosis?: DiagnosisReport }>;
+export type JobHandler = (job: Job) => Promise<{ prUrl?: string; error?: string; diagnosis?: DiagnosisReport; userSummary?: UserSummary }>;
 
 /**
  * StoreJob을 새로운 discriminated union Job 타입으로 변환
@@ -855,7 +855,7 @@ export class JobQueue {
         return;
       }
 
-      let result: { prUrl?: string; error?: string; diagnosis?: DiagnosisReport };
+      let result: { prUrl?: string; error?: string; diagnosis?: DiagnosisReport; userSummary?: UserSummary };
 
       if (this.taskFactory) {
         // TaskFactory 경로: AQMTask 생성 후 run() 호출
@@ -886,6 +886,7 @@ export class JobQueue {
           completedAt: new Date().toISOString(),
           error: result.error,
           ...(result.diagnosis ? { diagnosis: result.diagnosis } : {}),
+          ...(result.userSummary ? { userSummary: result.userSummary } : {}),
         });
         // Don't track project failure if it was stuck aborted
         if (!wasStuckAborted) {

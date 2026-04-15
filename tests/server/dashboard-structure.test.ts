@@ -65,7 +65,7 @@ describe("dashboard HTML structure (regression guard for index.html refactor)", 
       const sidebarContent = sidebarSection.slice(0, navClose);
 
       const matches = sidebarContent.match(/data-nav="/g) ?? [];
-      expect(matches.length).toBe(7);
+      expect(matches.length).toBe(8);
     });
   });
 

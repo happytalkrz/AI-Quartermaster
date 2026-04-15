@@ -197,9 +197,16 @@ function renderRepositoriesView(repos, storageData) {
   var repoList = Array.isArray(repos) ? repos : [];
   if (repoList.length === 0) {
     grid.insertAdjacentHTML('beforeend',
-      '<div class="repo-card-dynamic bg-surface-container rounded-xl p-6 flex flex-col items-center justify-center min-h-[200px] ring-1 ring-outline-variant/10">' +
-        '<span class="material-symbols-outlined text-4xl text-outline/20 mb-3">inventory_2</span>' +
-        '<p class="text-sm text-outline font-body">등록된 레포지토리가 없습니다.</p>' +
+      '<div class="repo-card-dynamic">' +
+        renderEmptyState({
+          icon: 'inventory_2',
+          title: '등록된 레포지토리가 없습니다',
+          description: '새 Git 레포지토리를 연결하여 AQM이 자동으로 이슈를 처리하도록 설정하세요.',
+          primaryAction: {
+            label: '레포지토리 추가',
+            onclick: 'showAddRepositoryDialog()'
+          }
+        }) +
       '</div>'
     );
   } else {

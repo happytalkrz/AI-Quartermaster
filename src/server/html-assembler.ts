@@ -11,6 +11,7 @@ const LAYOUT_ORDER = [
   "automations.html",
   "doctor.html",
   "settings.html",
+  "setup.html",
   "_layout-footer.html",
 ] as const;
 

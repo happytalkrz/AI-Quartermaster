@@ -398,6 +398,13 @@ export interface AssembledPrompt {
 
 // Pipeline Event Types
 
+export type NotificationType =
+  | "job_queued"
+  | "job_started"
+  | "job_success"
+  | "job_failure"
+  | "job_cancelled";
+
 export type PipelineEventType =
   | "pr-merged"
   | "draft-pr-created"

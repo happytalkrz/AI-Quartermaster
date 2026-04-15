@@ -10,6 +10,7 @@ import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromC
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import { getBasicFieldMetas } from "../config/schema-meta.js";
+import { getPresets } from "../config/presets.js";
 import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
@@ -576,6 +577,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Get Basic tab field metadata (type, default, min/max, options)
   api.get("/api/config/schema-meta", (c) => {
     return c.json({ fields: getBasicFieldMetas() });
+  });
+
+  // Get config presets list
+  api.get("/api/config/presets", (c) => {
+    return c.json({ presets: getPresets() });
   });
 
   const projectRoot = process.cwd();

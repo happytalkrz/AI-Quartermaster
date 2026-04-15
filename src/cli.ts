@@ -245,9 +245,33 @@ export async function startCommand(args: CliArgs): Promise<void> {
         shell: true,
       });
       smee.stdout?.on("data", (d: Buffer) => logger.info(`[smee] ${d.toString().trim()}`));
-      smee.stderr?.on("data", (d: Buffer) => logger.warn(`[smee] ${d.toString().trim()}`));
+      smee.stderr?.on("data", (d: Buffer) => {
+        const msg = d.toString().trim();
+        // smee-client 연결 실패/끊김은 info 레벨로 — 폴링 모드에서는 무관하고
+        // Node v24의 unhandled rejection 경고를 유발하지 않도록 조용히 처리
+        if (msg.includes('Connection closed') || msg.includes('ECONNREFUSED') || msg.includes('ErrorEvent')) {
+          logger.info(`[smee] 연결 끊김 — 재시도 대기 중`);
+        } else {
+          logger.warn(`[smee] ${msg}`);
+        }
+      });
       smee.on("error", (err) => logger.warn(`smee-client 시작 실패: ${err.message}`));
+      smee.on("close", (code) => {
+        if (code !== 0 && code !== null) {
+          logger.info(`[smee] 프로세스 종료 (code: ${code}) — webhook 수신 불가, 폴링 모드는 정상`);
+        }
+      });
       process.on("exit", () => { try { smee.kill(); } catch { /* ignore */ } });
+      // Node v24+ unhandled rejection 방지: smee 프로세스 내부 reject 무시
+      process.on("unhandledRejection", (reason) => {
+        const msg = String(reason);
+        if (msg.includes('ErrorEvent') || msg.includes('smee')) {
+          logger.info(`[smee] 연결 오류 무시 (폴링 모드 정상 동작)`);
+          return;
+        }
+        // smee 외의 unhandled rejection은 기존대로 전파
+        throw reason;
+      });
       logger.info(`Smee 프록시 연결: ${smeeUrl}`);
     } else {
       logger.warn("SMEE_URL 미설정 — webhook을 받으려면 .env에 SMEE_URL을 설정하세요");

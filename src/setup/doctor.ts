@@ -4,6 +4,7 @@ import * as net from "net";
 import { runCli } from "../utils/cli-runner.js";
 import { AQConfig } from "../types/config.js";
 import { TryLoadConfigResult } from "../config/loader.js";
+import { DoctorCheck } from "../doctor/heal.js";
 
 const MIN_CLAUDE_VERSION = "1.0.0";
 
@@ -239,6 +240,119 @@ function checkDiskWritable(aqRoot: string): void {
       }
     }
   }
+}
+
+/**
+ * 기존 doctor 체크들을 DoctorCheck 형태로 매핑하여 반환한다.
+ * 각 체크는 healLevel과 autoFixCommand/healCommand/guide가 부여된다.
+ * status는 실제 체크 실행 전이므로 "pending"으로 초기화된다.
+ */
+export function buildDoctorChecks(config: AQConfig | null, aqRoot: string): DoctorCheck[] {
+  const checks: DoctorCheck[] = [
+    // 사전 요구사항 — git/gh는 수동 설치 필요(Level3), claude는 자동 업데이트 가능(Level1)
+    {
+      id: "prereq-git",
+      name: "git CLI",
+      status: "pending",
+      healLevel: 3,
+      guide: "git를 설치하세요: https://git-scm.com/downloads",
+      docsUrl: "https://git-scm.com/downloads",
+    },
+    {
+      id: "prereq-gh",
+      name: "gh CLI",
+      status: "pending",
+      healLevel: 3,
+      guide: "GitHub CLI를 설치하세요: https://cli.github.com",
+      docsUrl: "https://cli.github.com",
+    },
+    {
+      id: "prereq-claude",
+      name: "claude CLI",
+      status: "pending",
+      healLevel: 1,
+      autoFixCommand: ["claude", "update"],
+      guide: "claude CLI를 설치하거나 업데이트하세요",
+    },
+    // GitHub 인증
+    {
+      id: "gh-auth",
+      name: "gh auth",
+      status: "pending",
+      healLevel: 3,
+      guide: "'gh auth login'으로 GitHub에 로그인하세요",
+    },
+    {
+      id: "git-credential-helper",
+      name: "git credential helper",
+      status: "pending",
+      healLevel: 1,
+      autoFixCommand: ["gh", "auth", "setup-git"],
+      guide: "'gh auth setup-git'을 실행하세요",
+    },
+    // 포트 가용성
+    {
+      id: "port-3000",
+      name: "포트 3000",
+      status: "pending",
+      healLevel: 3,
+      guide: "포트 3000을 사용 중인 프로세스를 종료하거나 다른 포트를 사용하세요",
+    },
+    // 디스크 쓰기 권한
+    {
+      id: "disk-data",
+      name: "data/ 쓰기 권한",
+      status: "pending",
+      healLevel: 2,
+      healCommand: ["chmod", "755", resolve(aqRoot, "data")],
+      guide: `chmod 755 ${resolve(aqRoot, "data")}`,
+    },
+    {
+      id: "disk-logs",
+      name: "logs/ 쓰기 권한",
+      status: "pending",
+      healLevel: 2,
+      healCommand: ["chmod", "755", resolve(aqRoot, "logs")],
+      guide: `chmod 755 ${resolve(aqRoot, "logs")}`,
+    },
+  ];
+
+  // 프로젝트별 체크
+  const projects = config?.projects ?? [];
+  for (const project of projects) {
+    checks.push({
+      id: `project-path-${project.repo}`,
+      name: `경로 & git 저장소 (${project.repo})`,
+      status: "pending",
+      healLevel: 3,
+      guide: `${project.path} 경로와 git 저장소를 확인하세요`,
+    });
+    checks.push({
+      id: `git-safe-directory-${project.repo}`,
+      name: `git safe.directory (${project.repo})`,
+      status: "pending",
+      healLevel: 1,
+      autoFixCommand: ["git", "config", "--global", "--add", "safe.directory", project.path],
+      guide: `git config --global --add safe.directory ${project.path}`,
+    });
+    checks.push({
+      id: `git-objects-permission-${project.repo}`,
+      name: `git 권한 (${project.repo})`,
+      status: "pending",
+      healLevel: 2,
+      healCommand: ["chown", "-R", process.env["USER"] ?? "$(whoami)", resolve(project.path, ".git")],
+      guide: `sudo chown -R $(whoami) ${resolve(project.path, ".git")}`,
+    });
+    checks.push({
+      id: `remote-url-${project.repo}`,
+      name: `remote URL (${project.repo})`,
+      status: "pending",
+      healLevel: 3,
+      guide: `SSH 사용 권장: git remote set-url origin git@github.com:<owner>/<repo>.git`,
+    });
+  }
+
+  return checks;
 }
 
 export async function runDoctor(

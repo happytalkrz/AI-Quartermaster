@@ -121,17 +121,19 @@ describe("fields 값 유효성 검증", () => {
 });
 
 describe("개별 프리셋 필드 검증", () => {
-  it("economy: concurrency=3, timeout=300000, executionMode=economy", () => {
+  it("economy: concurrency=5, timeout=300000, maxTurns=50, executionMode=economy", () => {
     const preset = getPresetByName("economy")!;
-    expect(preset.fields["general.concurrency"]).toBe(3);
+    expect(preset.fields["general.concurrency"]).toBe(5);
     expect(preset.fields["commands.claudeCli.timeout"]).toBe(300000);
+    expect(preset.fields["commands.claudeCli.maxTurns"]).toBe(50);
     expect(preset.fields["executionMode"]).toBe("economy");
   });
 
-  it("standard: concurrency=1, timeout=600000, executionMode=standard", () => {
+  it("standard: concurrency=3, timeout=600000, maxTurns=100, executionMode=standard", () => {
     const preset = getPresetByName("standard")!;
-    expect(preset.fields["general.concurrency"]).toBe(1);
+    expect(preset.fields["general.concurrency"]).toBe(3);
     expect(preset.fields["commands.claudeCli.timeout"]).toBe(600000);
+    expect(preset.fields["commands.claudeCli.maxTurns"]).toBe(100);
     expect(preset.fields["executionMode"]).toBe("standard");
   });
 

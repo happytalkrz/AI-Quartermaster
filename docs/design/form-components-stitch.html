@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "inverse-surface": "#dfe2eb",
+                        "tertiary": "#ffba42",
+                        "surface-variant": "#31353c",
+                        "on-error-container": "#ffdad6",
+                        "surface-dim": "#10141a",
+                        "outline": "#8b919d",
+                        "on-tertiary": "#432c00",
+                        "surface": "#10141a",
+                        "tertiary-fixed": "#ffddaf",
+                        "surface-container-high": "#262a31",
+                        "surface-bright": "#353940",
+                        "inverse-primary": "#0060aa",
+                        "inverse-on-surface": "#2d3137",
+                        "primary": "#a2c9ff",
+                        "surface-tint": "#a2c9ff",
+                        "secondary": "#c1c7d0",
+                        "background": "#10141a",
+                        "outline-variant": "#414752",
+                        "error": "#ffb4ab",
+                        "surface-container": "#1c2026",
+                        "surface-container-lowest": "#0a0e14",
+                        "on-secondary": "#2b3138",
+                        "on-surface-variant": "#c0c7d4",
+                        "tertiary-container": "#da9600",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "on-secondary-container": "#b0b5be",
+                        "primary-container": "#58a6ff",
+                        "secondary-container": "#41474f",
+                        "secondary-fixed": "#dde3ec",
+                        "on-tertiary-container": "#4f3400",
+                        "surface-container-highest": "#31353c",
+                        "primary-fixed": "#d3e4ff",
+                        "on-primary-container": "#003a6b",
+                        "error-container": "#93000a",
+                        "surface-container-low": "#181c22",
+                        "on-secondary-fixed": "#161c23",
+                        "on-primary": "#00315c",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "on-error": "#690005",
+                        "on-tertiary-fixed": "#281800",
+                        "on-primary-fixed-variant": "#004882",
+                        "on-background": "#dfe2eb",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "on-surface": "#dfe2eb",
+                        "on-primary-fixed": "#001c38"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-gradient-primary {
+            background: linear-gradient(135deg, #a2c9ff 0%, #58a6ff 100%);
+        }
+        .glass-panel {
+            background: rgba(49, 53, 60, 0.7);
+            backdrop-filter: blur(12px);
+        }
+        .ghost-border-focus:focus-within {
+            outline: 2px solid rgba(162, 201, 255, 0.3);
+            border-bottom-color: #a2c9ff;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-8 h-16 w-full max-w-full bg-[#181c22] border-none font-['Space_Grotesk'] tracking-tight">
+<div class="text-xl font-bold uppercase tracking-widest text-[#dfe2eb]">KINETIC COMMAND</div>
+<div class="hidden md:flex gap-8 items-center h-full">
+<a class="text-[#a2c9ff] border-b-2 border-[#a2c9ff] pb-1 h-full flex items-center" href="#">COMPONENTS</a>
+<a class="text-[#dfe2eb] opacity-70 hover:bg-[#31353c] hover:text-[#a2c9ff] transition-colors duration-200 h-full flex items-center px-2" href="#">SYSTEMS</a>
+<a class="text-[#dfe2eb] opacity-70 hover:bg-[#31353c] hover:text-[#a2c9ff] transition-colors duration-200 h-full flex items-center px-2" href="#">TELEMETRY</a>
+<a class="text-[#dfe2eb] opacity-70 hover:bg-[#31353c] hover:text-[#a2c9ff] transition-colors duration-200 h-full flex items-center px-2" href="#">LOGS</a>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[#dfe2eb] opacity-70 cursor-pointer hover:text-[#a2c9ff]">notifications</span>
+<span class="material-symbols-outlined text-[#dfe2eb] opacity-70 cursor-pointer hover:text-[#a2c9ff]">settings</span>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img alt="User operator profile" data-alt="Close-up portrait of a tech professional in a dimly lit server room environment with cool blue highlights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCp66y-GQ03xjRA0UJJVufovuHYnPfKUP-ihEV2yxPUZ5aKWQtkowpzsTPOuVB-4GXO5t5knaifJ3GwZec02NvMgJA_Kma8esw6VJUgGIbYxfUTfn2e1t3PqhrKYdJyP-p3klNWvNHozgkO2mXY1b1lKghm8XL8bGmSqmcLSD_OgJvFL3wJMN4d1wFJsbtijzjDElk6DCctbIQgzlwxazcsPnq-dV3LPANkzefDBViWmBuOK7Qj40YmIThpYZX0amyQEFC5oDtQ8S0"/>
+</div>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-[#181c22] flex flex-col py-6 gap-2 font-['JetBrains_Mono'] text-xs uppercase tracking-tighter">
+<div class="px-6 mb-8">
+<div class="font-['Space_Grotesk'] font-black text-[#58a6ff] text-lg">QUARTERMASTER</div>
+<div class="opacity-50 text-[10px]">FORM_REF_V1.0</div>
+</div>
+<nav class="flex-1">
+<div class="flex items-center px-6 py-3 gap-3 bg-[#31353c] text-[#a2c9ff] border-l-4 border-[#58a6ff] transition-all duration-150 ease-in-out">
+<span class="material-symbols-outlined text-base">input</span>
+<span>INPUT_SYSTEMS</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">tune</span>
+<span>CONTROLS</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">label</span>
+<span>DATA_CHIPS</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">switch_right</span>
+<span>TOGGLES</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">verified_user</span>
+<span>VALIDATION</span>
+</div>
+</nav>
+<div class="mt-auto border-t border-outline-variant/10 pt-4">
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">menu_book</span>
+<span>DOCUMENTATION</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-3 text-[#dfe2eb] opacity-60 hover:bg-[#1c2026] hover:opacity-100 transition-all duration-150 ease-in-out cursor-pointer">
+<span class="material-symbols-outlined text-base">contact_support</span>
+<span>SUPPORT</span>
+</div>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 mt-16 p-10 min-h-screen bg-surface">
+<header class="mb-12">
+<h1 class="font-headline text-5xl font-bold text-on-surface tracking-tight mb-2">Form Components</h1>
+<p class="text-on-surface-variant font-mono text-sm opacity-60 uppercase tracking-widest">System Reference Guide / v1.2.4</p>
+</header>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+<!-- Custom Select Section -->
+<section class="xl:col-span-3 space-y-6">
+<div class="flex items-center gap-4">
+<h2 class="font-headline text-2xl font-semibold">1. Custom Select/Dropdown</h2>
+<div class="h-px flex-1 bg-surface-container-highest"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Default State -->
+<div class="bg-surface-container-low p-8 rounded-lg space-y-4">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Default</span>
+<div class="relative">
+<div class="bg-surface-container-lowest h-12 flex items-center justify-between px-4 border-b-2 border-outline-variant">
+<span class="text-on-surface opacity-40">레포지토리 선택</span>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Open State (Glassmorphic) -->
+<div class="bg-surface-container-low p-8 rounded-lg space-y-4 relative overflow-visible">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Open / Hover</span>
+<div class="relative z-10">
+<div class="bg-surface-container-lowest h-12 flex items-center justify-between px-4 border-b-2 border-primary">
+<span class="text-on-surface opacity-40">레포지토리 선택</span>
+<span class="material-symbols-outlined text-primary">expand_less</span>
+</div>
+<div class="glass-panel absolute top-full left-0 w-full mt-1 rounded-lg py-2 border border-outline-variant/10 shadow-2xl">
+<div class="px-4 py-3 bg-primary/10 text-primary cursor-pointer transition-colors">anthropics/claude-code</div>
+<div class="px-4 py-3 hover:bg-surface-bright text-on-surface cursor-pointer transition-colors">torvalds/linux</div>
+<div class="px-4 py-3 hover:bg-surface-bright text-on-surface cursor-pointer transition-colors">microsoft/vscode</div>
+</div>
+</div>
+</div>
+<!-- Selected State -->
+<div class="bg-surface-container-low p-8 rounded-lg space-y-4">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Selected</span>
+<div class="relative">
+<div class="bg-surface-container-lowest h-12 flex items-center justify-between px-4 border-b-2 border-outline-variant">
+<span class="text-primary font-medium">anthropics/claude-code</span>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Text Input Section -->
+<section class="xl:col-span-3 space-y-6">
+<div class="flex items-center gap-4">
+<h2 class="font-headline text-2xl font-semibold">2. Text Input System</h2>
+<div class="h-px flex-1 bg-surface-container-highest"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<!-- Default -->
+<div class="bg-surface-container-low p-6 rounded-lg space-y-6">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Default States</span>
+<div class="space-y-4">
+<div class="space-y-1">
+<label class="text-[10px] uppercase tracking-tighter text-on-surface-variant">Branch Name</label>
+<input class="w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 focus:ring-0" placeholder="main" type="text"/>
+</div>
+<div class="space-y-1">
+<label class="text-[10px] uppercase tracking-tighter text-on-surface-variant">Description</label>
+<textarea class="w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant p-3 focus:ring-0 resize-none" placeholder="Enter system log description..." rows="3"></textarea>
+</div>
+</div>
+</div>
+<!-- Focused -->
+<div class="bg-surface-container-low p-6 rounded-lg space-y-6">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Focused State</span>
+<div class="space-y-4">
+<div class="space-y-1 ghost-border-focus transition-all duration-200">
+<label class="text-[10px] uppercase tracking-tighter text-primary">Search Assets</label>
+<div class="flex items-center bg-surface-container-lowest border-none border-b-2 border-primary h-10 px-3 shadow-[0_4px_12px_rgba(162,201,255,0.1)]">
+<span class="material-symbols-outlined text-primary text-lg mr-2">search</span>
+<input class="bg-transparent border-none p-0 focus:ring-0 text-on-surface w-full" type="text" value="Quarter"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Filled -->
+<div class="bg-surface-container-low p-6 rounded-lg space-y-6">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Filled State</span>
+<div class="space-y-4">
+<div class="space-y-1">
+<label class="text-[10px] uppercase tracking-tighter text-on-surface-variant">Commit Message</label>
+<div class="bg-surface-container-lowest h-10 flex items-center px-3 border-b-2 border-outline-variant">
+<span class="text-on-surface">feat: 새 기능 추가</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Error -->
+<div class="bg-surface-container-low p-6 rounded-lg space-y-6">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Validation Error</span>
+<div class="space-y-4">
+<div class="space-y-1">
+<label class="text-[10px] uppercase tracking-tighter text-error">System Key</label>
+<div class="flex items-center bg-surface-container-lowest border-none border-b-2 border-error h-10 px-3">
+<input class="bg-transparent border-none p-0 focus:ring-0 text-error w-full" type="text" value="invalid_token_#!"/>
+<span class="material-symbols-outlined text-error text-lg ml-2">error</span>
+</div>
+<p class="text-[9px] text-error mt-1 opacity-80 font-mono">CRITICAL: ILLEGAL_CHARS_DETECTED</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Chip Input Section -->
+<section class="xl:col-span-2 space-y-6">
+<div class="flex items-center gap-4">
+<h2 class="font-headline text-2xl font-semibold">3. Chip Input &amp; Tagging</h2>
+<div class="h-px flex-1 bg-surface-container-highest"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Expanded -->
+<div class="bg-surface-container p-6 rounded-lg space-y-4">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Expanded Wrap</span>
+<div class="bg-surface-container-lowest min-h-[120px] p-4 rounded-lg flex flex-wrap gap-2 content-start">
+<div class="flex items-center gap-2 bg-error/10 text-error px-3 py-1 rounded-full text-xs font-medium border border-error/20">
+<span>bug</span>
+<span class="material-symbols-outlined text-sm cursor-pointer">close</span>
+</div>
+<div class="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-medium border border-primary/20">
+<span>priority:high</span>
+<span class="material-symbols-outlined text-sm cursor-pointer">close</span>
+</div>
+<div class="flex items-center gap-2 bg-secondary/10 text-secondary px-3 py-1 rounded-full text-xs font-medium border border-secondary/20">
+<span>v2.0-stable</span>
+<span class="material-symbols-outlined text-sm cursor-pointer">close</span>
+</div>
+<div class="flex items-center gap-1">
+<input class="bg-transparent border-none p-0 px-2 focus:ring-0 text-xs w-24" placeholder="라벨 추가..." type="text"/>
+<button class="w-6 h-6 flex items-center justify-center rounded-full bg-surface-container-highest text-primary hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Compact -->
+<div class="bg-surface-container p-6 rounded-lg space-y-4">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Compact Scroll</span>
+<div class="bg-surface-container-lowest h-14 p-3 rounded-lg flex items-center overflow-x-auto no-scrollbar gap-2 whitespace-nowrap">
+<div class="flex items-center gap-2 bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-xs font-medium border border-tertiary/20">
+<span>enhancement</span>
+</div>
+<div class="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-medium border border-primary/20">
+<span>UI/UX</span>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-highest text-on-surface px-3 py-1 rounded-full text-xs font-medium">
+<span>documentation</span>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-highest text-on-surface px-3 py-1 rounded-full text-xs font-medium">
+<span>testing</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Toggle Switch Section -->
+<section class="xl:col-span-1 space-y-6">
+<div class="flex items-center gap-4">
+<h2 class="font-headline text-2xl font-semibold">4. Toggle Controls</h2>
+<div class="h-px flex-1 bg-surface-container-highest"></div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-lg space-y-8">
+<!-- ON/OFF States -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<div class="space-y-1">
+<span class="font-medium text-sm">자동 실행</span>
+<p class="text-[10px] text-on-surface-variant opacity-60">Enable continuous automated deployment</p>
+</div>
+<!-- ON -->
+<div class="kinetic-gradient-primary w-12 h-6 rounded-full relative flex items-center px-1 shadow-[0_0_12px_rgba(162,201,255,0.4)] cursor-pointer">
+<div class="bg-white w-4 h-4 rounded-full ml-auto"></div>
+</div>
+</div>
+<div class="flex items-center justify-between opacity-80">
+<span class="text-sm">알림 수신</span>
+<!-- OFF -->
+<div class="bg-surface-container-highest w-12 h-6 rounded-full relative flex items-center px-1 cursor-pointer">
+<div class="bg-on-surface/40 w-4 h-4 rounded-full"></div>
+</div>
+</div>
+</div>
+<!-- Sizes -->
+<div class="space-y-4 pt-6 border-t border-outline-variant/10">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Scale reference</span>
+<div class="flex items-center gap-6">
+<div class="kinetic-gradient-primary w-16 h-8 rounded-full flex items-center px-1.5"><div class="bg-white w-5 h-5 rounded-full ml-auto"></div></div>
+<div class="kinetic-gradient-primary w-12 h-6 rounded-full flex items-center px-1"><div class="bg-white w-4 h-4 rounded-full ml-auto"></div></div>
+<div class="kinetic-gradient-primary w-8 h-4 rounded-full flex items-center px-0.5"><div class="bg-white w-3 h-3 rounded-full ml-auto"></div></div>
+</div>
+</div>
+<!-- Disabled -->
+<div class="space-y-4 pt-4">
+<span class="font-mono text-[10px] text-primary opacity-60 uppercase">Disabled State</span>
+<div class="flex items-center justify-between opacity-30 grayscale cursor-not-allowed">
+<span class="text-sm">시스템 강제 종료</span>
+<div class="bg-surface-container-highest w-12 h-6 rounded-full relative flex items-center px-1">
+<div class="bg-on-surface/40 w-4 h-4 rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Color Token Strip -->
+<footer class="mt-20 border-t border-outline-variant/10 pt-10 pb-20">
+<h3 class="font-headline text-lg mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">palette</span>
+                Kinetic Color Tokens
+            </h3>
+<div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1">
+<div class="space-y-1">
+<div class="h-12 bg-[#10141a]"></div>
+<p class="font-mono text-[9px] uppercase">#10141a<br/>surface</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#181c22]"></div>
+<p class="font-mono text-[9px] uppercase">#181c22<br/>low</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#1c2026]"></div>
+<p class="font-mono text-[9px] uppercase">#1c2026<br/>container</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#31353c]"></div>
+<p class="font-mono text-[9px] uppercase">#31353c<br/>highest</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#a2c9ff]"></div>
+<p class="font-mono text-[9px] uppercase">#a2c9ff<br/>primary</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#58a6ff]"></div>
+<p class="font-mono text-[9px] uppercase">#58a6ff<br/>container</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#ffba42]"></div>
+<p class="font-mono text-[9px] uppercase">#ffba42<br/>tertiary</p>
+</div>
+<div class="space-y-1">
+<div class="h-12 bg-[#ffb4ab]"></div>
+<p class="font-mono text-[9px] uppercase">#ffb4ab<br/>error</p>
+</div>
+</div>
+</footer>
+</main>
+<!-- FAB Suppression Applied as per mandate for Detail/Reference pages -->
+</body></html>

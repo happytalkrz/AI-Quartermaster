@@ -10,6 +10,7 @@ import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromC
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import { getBasicFieldMetas } from "../config/schema-meta.js";
+import { getPresets } from "../config/presets.js";
 import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
@@ -596,18 +597,23 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     return c.json({ fields: getBasicFieldMetas() });
   });
 
+  // Get config presets list
+  api.get("/api/config/presets", (c) => {
+    return c.json({ presets: getPresets() });
+  });
+
   const projectRoot = process.cwd();
   const configPath = `${projectRoot}/config.yml`;
 
   // Update configuration
-  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema, zodValidationHook), async (c) => {
+  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema.passthrough(), zodValidationHook), async (c) => {
     try {
       const body = c.req.valid('json');
 
       // Update configuration file
-      // Filter out undefined values and complex sections (projects, hooks)
-      // that should not be updated via this endpoint
-      const { projects, hooks, ...safeData } = body as Record<string, unknown>;
+      // Filter out undefined values and complex sections (projects)
+      // hooks is passed through via the passthrough schema and saved to config
+      const { projects, ...safeData } = body as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,

@@ -98,3 +98,19 @@ export const BASIC_FIELD_METAS: FieldMeta[] = [
 export function getBasicFieldMetas(): FieldMeta[] {
   return BASIC_FIELD_METAS;
 }
+
+/**
+ * Advanced 탭 5개 JSON 섹션의 configPath 목록.
+ * 렌더러(render-settings.js)와 테스트가 공유하는 단일 소스.
+ *
+ * 각 항목은 AQConfig 내 실제 dotted 경로를 나타낸다.
+ */
+export const ADVANCED_SECTION_KEYS = [
+  "hooks",
+  "commands.claudeCli.retry",
+  "commands.claudeCli.models",
+  "allowedTools",
+  "safety.sensitivePaths",
+] as const;
+
+export type AdvancedSectionKey = (typeof ADVANCED_SECTION_KEYS)[number];

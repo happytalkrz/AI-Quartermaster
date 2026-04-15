@@ -103,6 +103,9 @@ function renderSettingsView(config) {
   // Basic 탭 렌더링
   renderBasicTab(config);
 
+  // Advanced 탭 JSON 카드 렌더링
+  renderAdvancedTab(config);
+
   // 저장된 모드 탭 복원 (Basic/Advanced)
   var savedModeTab = localStorage.getItem('aqm-selected-mode-tab') || 'basic';
   setSettingsModeTab(savedModeTab);
@@ -457,6 +460,7 @@ function renderBasicTab(config) {
         html += renderBasicField(meta, value);
       });
       /** @type {HTMLElement} */ (container).innerHTML = html;
+      loadPresetsDropdown();
     })
     .catch(function() {
       /** @type {HTMLElement} */ (container).innerHTML = '<div class="col-span-full flex items-center justify-center py-12 text-outline text-sm gap-2">' +
@@ -493,7 +497,7 @@ function renderBasicField(meta, value) {
   var html = '<div class="space-y-1">';
 
   // Label + 배지 행
-  html += '<div class="flex items-center gap-2 flex-wrap">';
+  html += '<div id="' + fieldId + '-badges" class="flex items-center gap-2 flex-wrap">';
   html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest">' + esc(meta.label) + '</span>';
   if (meta.default !== undefined && meta.default !== null) {
     html += '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary/10 text-secondary font-mono">기본: ' + esc(String(meta.default)) + '</span>';
@@ -668,6 +672,418 @@ function removeBasicChip(fieldId, idx) {
   current.splice(idx, 1);
   hiddenInput.value = JSON.stringify(current);
   _refreshChipsDisplay(fieldId, current);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Advanced Tab JSON Cards Rendering
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Advanced 탭의 5개 JSON 섹션을 collapsible 카드로 렌더링한다.
+ * 섹션: hooks, retryPolicy, models, allowedTools, sensitivePaths
+ * @param {AqmConfig} config
+ * @returns {void}
+ */
+function renderAdvancedTab(config) {
+  var container = document.getElementById('advanced-json-cards-list');
+  if (!container) return;
+
+  var anyConfig = /** @type {any} */ (config);
+
+  /** @type {Array<{id: string, label: string, value: *, configPath: string}>} */
+  var sections = [
+    {
+      id: 'hooks',
+      label: 'hooks',
+      value: anyConfig.hooks,
+      configPath: 'hooks',
+    },
+    {
+      id: 'retryPolicy',
+      label: 'retryPolicy',
+      value: anyConfig.commands && anyConfig.commands.claudeCli ? anyConfig.commands.claudeCli.retry : undefined,
+      configPath: 'commands.claudeCli.retry',
+    },
+    {
+      id: 'models',
+      label: 'models',
+      value: anyConfig.commands && anyConfig.commands.claudeCli ? anyConfig.commands.claudeCli.models : undefined,
+      configPath: 'commands.claudeCli.models',
+    },
+    {
+      id: 'allowedTools',
+      label: 'allowedTools',
+      value: anyConfig.allowedTools,
+      configPath: 'allowedTools',
+    },
+    {
+      id: 'sensitivePaths',
+      label: 'sensitivePaths',
+      value: anyConfig.safety ? anyConfig.safety.sensitivePaths : undefined,
+      configPath: 'safety.sensitivePaths',
+    },
+  ];
+
+  var html = '';
+  sections.forEach(function(section) {
+    html += renderAdvancedJsonCard(section.id, section.label, section.value, section.configPath);
+  });
+  container.innerHTML = html;
+}
+
+/**
+ * @param {string} sectionId
+ * @param {string} label
+ * @param {*} value
+ * @param {string} configPath
+ * @returns {string}
+ */
+function renderAdvancedJsonCard(sectionId, label, value, configPath) {
+  var jsonText = value !== undefined && value !== null
+    ? JSON.stringify(value, null, 2)
+    : 'null';
+  var fieldId = 'advanced-json-' + sectionId;
+  var bodyId = 'advanced-card-body-' + sectionId;
+  var iconId = 'advanced-card-icon-' + sectionId;
+
+  var html = '<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-sm overflow-hidden">';
+
+  // 카드 헤더 (접힌 상태)
+  html += '<button type="button" ' +
+          'class="w-full p-4 flex items-center justify-between hover:bg-surface-container-low transition-colors" ' +
+          'onclick="toggleAdvancedCard(\'' + sectionId + '\')">';
+  html += '<span class="font-mono text-sm text-on-surface">' + esc(label) + '</span>';
+  html += '<span class="material-symbols-outlined text-outline transition-transform" id="' + iconId + '">expand_more</span>';
+  html += '</button>';
+
+  // 카드 본문 (펼쳐진 상태, 기본 숨김)
+  html += '<div id="' + bodyId + '" class="hidden px-4 pb-4">';
+  html += '<textarea id="' + fieldId + '" ' +
+          'data-config-path="' + esc(configPath) + '" ' +
+          'rows="8" ' +
+          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono">' +
+          esc(jsonText) +
+          '</textarea>';
+  html += '<div id="' + fieldId + '-error" class="hidden mt-1 text-xs text-[#f85149] font-mono"></div>';
+  html += '<button type="button" ' +
+          'class="mt-3 flex items-center gap-2 text-xs font-bold text-primary-container hover:text-primary transition-colors" ' +
+          'onclick="copyAdvancedConfigPath(\'' + esc(configPath) + '\')">';
+  html += '<span class="material-symbols-outlined text-sm">code</span>';
+  html += '<span>config.yml 경로 복사</span>';
+  html += '</button>';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Advanced JSON 카드를 토글한다 (접기/펼치기).
+ * @param {string} sectionId
+ * @returns {void}
+ */
+function toggleAdvancedCard(sectionId) {
+  var body = document.getElementById('advanced-card-body-' + sectionId);
+  var icon = document.getElementById('advanced-card-icon-' + sectionId);
+  if (!body || !icon) return;
+
+  var isHidden = body.classList.contains('hidden');
+  if (isHidden) {
+    body.classList.remove('hidden');
+    icon.style.transform = 'rotate(180deg)';
+  } else {
+    body.classList.add('hidden');
+    icon.style.transform = '';
+  }
+}
+
+/**
+ * config.yml 키 경로를 클립보드에 복사한다.
+ * @param {string} configPath
+ * @returns {void}
+ */
+function copyAdvancedConfigPath(configPath) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(configPath).then(function() {
+      // 복사 성공 — 별도 토스트 없음
+    }).catch(function() {
+      // 조용히 실패
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Preset Dropdown + Diff Popover
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * @typedef {{ name: string, label: string, description: string, fields: Record<string, unknown> }} ConfigPreset
+ */
+
+/** @type {ConfigPreset[]} */
+var _loadedPresets = [];
+
+/**
+ * 필드별 칩 상태: configPath → 'custom' | preset 이름
+ * @type {Record<string, string>}
+ */
+var _presetFieldState = {};
+
+/**
+ * /api/config/presets를 fetch하여 드롭다운 옵션을 채운다.
+ * renderBasicTab 완료 후 호출한다.
+ * @returns {void}
+ */
+function loadPresetsDropdown() {
+  apiFetch('/api/config/presets')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      _loadedPresets = data.presets || [];
+      var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
+      if (!select) return;
+      // 첫 번째 placeholder 옵션은 유지
+      while (select.options.length > 1) {
+        select.remove(1);
+      }
+      var selectEl = select;
+      _loadedPresets.forEach(function(preset) {
+        var opt = document.createElement('option');
+        opt.value = preset.name;
+        opt.textContent = preset.label + ' — ' + preset.description;
+        selectEl.appendChild(opt);
+      });
+    })
+    .catch(function() {
+      // 프리셋 로드 실패 시 드롭다운 비활성화
+      var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
+      if (select) select.disabled = true;
+    });
+}
+
+/**
+ * Basic 탭 현재 폼 필드 값을 {configPath: value} 맵으로 수집한다.
+ * @returns {Record<string, unknown>}
+ */
+function collectBasicFieldValues() {
+  var result = /** @type {Record<string, unknown>} */ ({});
+  var form = document.getElementById('basic-settings-form');
+  if (!form) return result;
+
+  var inputs = form.querySelectorAll('[data-config-path]');
+  inputs.forEach(function(el) {
+    var path = el.getAttribute('data-config-path');
+    if (!path) return;
+    if (el instanceof HTMLInputElement) {
+      if (el.type === 'checkbox') {
+        result[path] = el.checked;
+      } else if (el.type === 'number') {
+        result[path] = el.value !== '' ? Number(el.value) : undefined;
+      } else if (el.dataset.inputType === 'chip-array') {
+        try { result[path] = JSON.parse(el.value); } catch (e) { result[path] = []; }
+      } else {
+        result[path] = el.value;
+      }
+    } else if (el instanceof HTMLSelectElement) {
+      result[path] = el.value;
+    } else if (el instanceof HTMLTextAreaElement) {
+      result[path] = el.value;
+    }
+  });
+  return result;
+}
+
+/**
+ * 선택된 프리셋과 현재 폼 값의 diff를 계산하여 popover를 표시한다.
+ * @returns {void}
+ */
+function previewPreset() {
+  var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
+  if (!select || !select.value) return;
+
+  var previewPresetName = select.value;
+  var preset = _loadedPresets.find(function(p) { return p.name === previewPresetName; });
+  if (!preset) return;
+
+  var current = collectBasicFieldValues();
+  var diffRows = /** @type {Array<{key: string, before: string, after: string}>} */ ([]);
+  var previewFields = preset.fields;
+
+  Object.keys(previewFields).forEach(function(key) {
+    var beforeRaw = current[key];
+    var afterRaw = previewFields[key];
+    var before = beforeRaw !== undefined ? String(beforeRaw) : '(없음)';
+    var after = afterRaw !== undefined ? String(afterRaw) : '(없음)';
+    if (before !== after) {
+      diffRows.push({ key: key, before: before, after: after });
+    }
+  });
+
+  var contentEl = document.getElementById('preset-diff-content');
+  var popover = document.getElementById('preset-diff-popover');
+  if (!contentEl || !popover) return;
+
+  if (diffRows.length === 0) {
+    contentEl.innerHTML =
+      '<div class="flex items-center gap-2 text-sm text-outline py-2">' +
+      '<span class="material-symbols-outlined text-base">check_circle</span>' +
+      '변경 없음 — 현재 설정과 동일합니다.</div>';
+  } else {
+    var html = '<div class="overflow-x-auto">';
+    html += '<table class="w-full text-xs border-collapse">';
+    html += '<thead><tr class="text-[10px] uppercase text-outline tracking-widest">';
+    html += '<th class="text-left py-1 pr-4 font-bold">필드</th>';
+    html += '<th class="text-left py-1 pr-4 font-bold text-error/80">현재값</th>';
+    html += '<th class="text-left py-1 font-bold text-primary/80">변경 후</th>';
+    html += '</tr></thead><tbody>';
+    diffRows.forEach(function(row) {
+      html += '<tr class="border-t border-outline-variant/20">';
+      html += '<td class="py-1.5 pr-4 font-mono text-on-surface-variant">' + esc(row.key) + '</td>';
+      html += '<td class="py-1.5 pr-4 font-mono text-error/80 line-through">' + esc(row.before) + '</td>';
+      html += '<td class="py-1.5 font-mono text-primary font-bold">' + esc(row.after) + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    contentEl.innerHTML = html;
+  }
+
+  popover.classList.remove('hidden');
+}
+
+/**
+ * diff popover를 닫는다.
+ * @returns {void}
+ */
+function closeDiffPopover() {
+  var popover = document.getElementById('preset-diff-popover');
+  if (popover) popover.classList.add('hidden');
+}
+
+/**
+ * 특정 필드 옆에 preset/custom 칩 배지를 표시하거나 갱신한다.
+ * @param {string} configPath
+ * @param {string} chipLabel  'custom' 또는 preset 이름
+ * @returns {void}
+ */
+function _setFieldPresetChip(configPath, chipLabel) {
+  var fieldId = 'basic-field-' + configPath.replace(/\./g, '-');
+  var badgesEl = document.getElementById(fieldId + '-badges');
+  if (!badgesEl) return;
+
+  var existingChip = document.getElementById(fieldId + '-preset-chip');
+  if (existingChip) existingChip.remove();
+
+  var chip = document.createElement('span');
+  chip.id = fieldId + '-preset-chip';
+  if (chipLabel === 'custom') {
+    chip.className = 'text-[9px] px-1.5 py-0.5 rounded-full bg-outline/10 text-outline font-mono';
+    chip.textContent = 'custom';
+  } else {
+    chip.className = 'text-[9px] px-1.5 py-0.5 rounded-full bg-tertiary/10 text-tertiary font-mono';
+    chip.textContent = 'preset: ' + chipLabel;
+  }
+  badgesEl.appendChild(chip);
+}
+
+/**
+ * 모든 필드의 preset 칩을 제거하고 상태를 초기화한다.
+ * @returns {void}
+ */
+function _clearAllFieldPresetChips() {
+  Object.keys(_presetFieldState).forEach(function(configPath) {
+    var fieldId = 'basic-field-' + configPath.replace(/\./g, '-');
+    var chip = document.getElementById(fieldId + '-preset-chip');
+    if (chip) chip.remove();
+  });
+  _presetFieldState = {};
+}
+
+/**
+ * 선택된 프리셋의 fields를 Basic 탭 폼 필드에 적용한다.
+ * 적용 후 active chip을 표시하고, 이후 필드 변경 시 custom 칩으로 전환한다.
+ * @returns {void}
+ */
+function applyPreset() {
+  var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
+  if (!select || !select.value) return;
+
+  var applyPresetName = select.value;
+  var preset = _loadedPresets.find(function(p) { return p.name === applyPresetName; });
+  if (!preset) return;
+
+  var form = document.getElementById('basic-settings-form');
+  if (!form) return;
+
+  _clearAllFieldPresetChips();
+  var currentValues = collectBasicFieldValues();
+  var applyFields = preset.fields;
+  var appliedName = preset.name;
+  var formEl = form;
+
+  Object.keys(applyFields).forEach(function(key) {
+    var el = formEl.querySelector('[data-config-path="' + key + '"]');
+    if (!el) return;
+    var val = applyFields[key];
+
+    if (el instanceof HTMLInputElement) {
+      if (el.type === 'checkbox') {
+        el.checked = Boolean(val);
+      } else if (el.type === 'number') {
+        el.value = String(typeof val === 'number' ? val : Number(val));
+      } else {
+        el.value = String(val !== null && val !== undefined ? val : '');
+      }
+    } else if (el instanceof HTMLSelectElement) {
+      el.value = String(val !== null && val !== undefined ? val : '');
+    } else if (el instanceof HTMLTextAreaElement) {
+      el.value = String(val !== null && val !== undefined ? val : '');
+    }
+
+    var before = currentValues[key] !== undefined ? String(currentValues[key]) : '(없음)';
+    var after = val !== undefined ? String(val) : '(없음)';
+    if (before !== after) {
+      _presetFieldState[key] = appliedName;
+      _setFieldPresetChip(key, appliedName);
+      el.addEventListener('change', function onPresetFieldChange() {
+        _presetFieldState[key] = 'custom';
+        _setFieldPresetChip(key, 'custom');
+      }, { once: true });
+    }
+  });
+
+  closeDiffPopover();
+  _showPresetChip(preset.label);
+  _attachBasicFieldChangeListeners();
+}
+
+/**
+ * active preset 칩을 표시한다.
+ * @param {string} label
+ * @returns {void}
+ */
+function _showPresetChip(label) {
+  var chip = document.getElementById('preset-active-chip');
+  var chipLabel = document.getElementById('preset-active-chip-label');
+  if (chip && chipLabel) {
+    chipLabel.textContent = label;
+    chip.classList.remove('hidden');
+    chip.classList.add('inline-flex');
+  }
+}
+
+/**
+ * 프리셋 적용 후 Basic 필드가 변경되면 chip을 'custom'으로 전환한다.
+ * @returns {void}
+ */
+function _attachBasicFieldChangeListeners() {
+  var form = document.getElementById('basic-settings-form');
+  if (!form) return;
+  var inputs = form.querySelectorAll('[data-config-path]');
+  inputs.forEach(function(el) {
+    el.addEventListener('change', function onFieldChange() {
+      _showPresetChip('custom');
+      el.removeEventListener('change', onFieldChange);
+    }, { once: true });
+  });
 }
 
 /**

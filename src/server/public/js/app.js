@@ -1760,7 +1760,12 @@ function fetchAndRenderNotifications() {
   if (emptyEl) emptyEl.classList.add('hidden');
   if (paginEl) paginEl.classList.add('hidden');
 
-  apiFetch('/api/notifications?limit=' + NOTIF_PAGE_SIZE + '&offset=' + notifCurrentOffset)
+  var typeParam = '';
+  if (notifCurrentFilter === 'job_success') typeParam = '&type=job_success';
+  else if (notifCurrentFilter === 'job_failure') typeParam = '&type=job_failure';
+  else if (notifCurrentFilter === 'job_started') typeParam = '&type=job_started';
+
+  apiFetch('/api/notifications?limit=' + NOTIF_PAGE_SIZE + '&offset=' + notifCurrentOffset + typeParam)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!contentEl) return;
@@ -1771,16 +1776,8 @@ function fetchAndRenderNotifications() {
 
       updateNotificationBadge(unread);
 
-      var filtered = all.filter(function(n) {
-        if (notifCurrentFilter === 'all') return true;
-        if (notifCurrentFilter === 'job_success') return n.type === 'job_success';
-        if (notifCurrentFilter === 'job_failure') return n.type === 'job_failure';
-        if (notifCurrentFilter === 'job_started') return n.type === 'job_started' || n.type === 'job_queued';
-        return true;
-      });
-
       contentEl.innerHTML = '';
-      if (filtered.length === 0) {
+      if (all.length === 0) {
         if (emptyEl) {
           emptyEl.classList.remove('hidden');
           emptyEl.innerHTML = renderEmptyState({
@@ -1793,7 +1790,7 @@ function fetchAndRenderNotifications() {
         }
       } else {
         if (emptyEl) emptyEl.classList.add('hidden');
-        contentEl.innerHTML = filtered.map(renderNotificationCard).join('');
+        contentEl.innerHTML = all.map(renderNotificationCard).join('');
       }
 
       if (paginEl && notifTotal > NOTIF_PAGE_SIZE) {

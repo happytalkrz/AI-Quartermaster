@@ -405,6 +405,17 @@ export type NotificationType =
   | "job_failure"
   | "job_cancelled";
 
+const STATUS_TO_NOTIFICATION_TYPE: Partial<Record<JobStatus, NotificationType>> = {
+  running: "job_started",
+  success: "job_success",
+  failure: "job_failure",
+  cancelled: "job_cancelled",
+};
+
+export function statusToNotificationType(status: JobStatus): NotificationType | undefined {
+  return STATUS_TO_NOTIFICATION_TYPE[status];
+}
+
 export type PipelineEventType =
   | "pr-merged"
   | "draft-pr-created"

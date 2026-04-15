@@ -19,6 +19,7 @@ import type {
   SkipEvent,
   NotificationType
 } from "../types/pipeline.js";
+import { statusToNotificationType } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -602,13 +603,7 @@ export class JobStore extends EventEmitter {
 
     // 상태 변화 감지 → 알림 생성
     if (previousJob.status !== updatedJob.status) {
-      const statusToType: Partial<Record<Job["status"], NotificationType>> = {
-        running: 'job_started',
-        success: 'job_success',
-        failure: 'job_failure',
-        cancelled: 'job_cancelled',
-      };
-      const notifType = statusToType[updatedJob.status];
+      const notifType = statusToNotificationType(updatedJob.status);
       if (notifType) {
         this.createJobNotification(updatedJob, notifType);
       }

@@ -288,6 +288,7 @@ async function checkSqlite3(): Promise<DoctorCheck> {
   }
 }
 
+// 알림 기능이 ~/.aqm 디렉토리를 사용하므로 재활성화
 async function checkAqmDirWrite(): Promise<DoctorCheck> {
   const aqmDir = `${homedir()}/.aqm`;
   try {

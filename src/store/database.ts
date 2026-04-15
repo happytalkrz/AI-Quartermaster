@@ -832,13 +832,18 @@ export class AQDatabase {
     return result.lastInsertRowid as number;
   }
 
-  listNotifications(filter?: { isRead?: boolean; limit?: number; offset?: number }): DatabaseNotification[] {
+  listNotifications(filter?: { isRead?: boolean; type?: string; limit?: number; offset?: number }): DatabaseNotification[] {
     const conditions: string[] = [];
     const params: (string | number)[] = [];
 
     if (filter?.isRead !== undefined) {
       conditions.push("is_read = ?");
       params.push(filter.isRead ? 1 : 0);
+    }
+
+    if (filter?.type !== undefined) {
+      conditions.push("type = ?");
+      params.push(filter.type);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -864,12 +869,22 @@ export class AQDatabase {
     return row.count;
   }
 
-  countNotifications(filter?: { isRead?: boolean }): number {
+  countNotifications(filter?: { isRead?: boolean; type?: string }): number {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
     if (filter?.isRead !== undefined) {
-      const row = this.db.prepare("SELECT COUNT(*) as count FROM notifications WHERE is_read = ?").get(filter.isRead ? 1 : 0) as { count: number };
-      return row.count;
+      conditions.push("is_read = ?");
+      params.push(filter.isRead ? 1 : 0);
     }
-    const row = this.db.prepare("SELECT COUNT(*) as count FROM notifications").get() as { count: number };
+
+    if (filter?.type !== undefined) {
+      conditions.push("type = ?");
+      params.push(filter.type);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const row = this.db.prepare(`SELECT COUNT(*) as count FROM notifications ${whereClause}`).get(...params) as { count: number };
     return row.count;
   }
 

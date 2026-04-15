@@ -28,6 +28,7 @@ import { healLevel1, healLevel2, writeToActiveHealProcess } from "../doctor/heal
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
+import { statusToNotificationType } from "../types/pipeline.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
@@ -510,13 +511,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
   store.on('jobUpdated', (updatedJob: Job, previousJob: Job) => {
     if (previousJob?.status !== updatedJob.status) {
-      const statusToNotifType: Partial<Record<Job["status"], string>> = {
-        running: 'job_started',
-        success: 'job_success',
-        failure: 'job_failure',
-        cancelled: 'job_cancelled',
-      };
-      const notifType = statusToNotifType[updatedJob.status];
+      const notifType = statusToNotificationType(updatedJob.status);
       if (notifType) {
         broadcastToAllClients('notificationCreated', {
           jobId: updatedJob.id,
@@ -2059,6 +2054,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const queryParams = {
         isRead: c.req.query("isRead"),
+        type: c.req.query("type"),
         limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
         offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
       };
@@ -2071,11 +2067,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }, 400);
       }
 
-      const { isRead, limit, offset } = parseResult.data;
+      const { isRead, type: typeFilter, limit, offset } = parseResult.data;
       const aqDb = store.getAqDb();
       const isReadFilter = isRead === "true" ? true : isRead === "false" ? false : undefined;
-      const notifications = aqDb.listNotifications({ isRead: isReadFilter, limit, offset });
-      const total = aqDb.countNotifications(isReadFilter !== undefined ? { isRead: isReadFilter } : undefined);
+      const notifFilter: { isRead?: boolean; type?: string } = {};
+      if (isReadFilter !== undefined) notifFilter.isRead = isReadFilter;
+      if (typeFilter !== undefined) notifFilter.type = typeFilter;
+      const notifications = aqDb.listNotifications({ ...notifFilter, limit, offset });
+      const total = aqDb.countNotifications(notifFilter);
       const unreadCount = aqDb.countUnreadNotifications();
       const start = offset ?? 0;
 

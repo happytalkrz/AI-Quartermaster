@@ -482,6 +482,7 @@ export type Notification = z.infer<typeof NotificationSchema>;
 // GetNotifications 쿼리 스키마 (GET /api/notifications)
 export const GetNotificationsQuerySchema = z.object({
   isRead: z.enum(["true", "false"]).optional(),
+  type: z.enum(["job_queued", "job_started", "job_success", "job_failure", "job_cancelled"]).optional(),
   limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().nonnegative().optional(),
 }).strict();

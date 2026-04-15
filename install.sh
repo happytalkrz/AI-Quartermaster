@@ -213,6 +213,13 @@ if [ "$AQM_INSTALL_MODE" = "git" ]; then
 else
   # ── npm global 모드 (기본) ─────────────────────────────────────────
   echo -e "${YELLOW}2. AI Quartermaster 설치 (npm global)...${NC}"
+  # npm 패키지 존재 여부 먼저 확인
+  if ! npm view ai-quartermaster version 2>/dev/null | grep -q .; then
+    echo -e "  ${RED}✗ npm 패키지 'ai-quartermaster'를 찾을 수 없습니다${NC}"
+    echo -e "  ${YELLOW}→ 패키지가 아직 배포되지 않았거나 npm 레지스트리에 없습니다${NC}"
+    echo -e "  ${YELLOW}→ 소스 설치 방법: INSTALL_MODE=source bash <(curl -fsSL $INSTALL_URL)${NC}"
+    exit 1
+  fi
   npm install -g ai-quartermaster 2>"$NPM_LOG" || {
     echo -e "  ${RED}✗ npm install -g 실패${NC}"
     echo -e "  ${YELLOW}→ 로그: $NPM_LOG${NC}"
@@ -259,9 +266,18 @@ echo ""
 
 # ── aqm setup 자동 호출 ────────────────────────────────────────────────
 if command -v aqm &>/dev/null; then
-  echo -e "${YELLOW}초기 설정을 시작합니다...${NC}"
-  echo ""
-  aqm setup
+  if [ -t 0 ]; then
+    # 터미널에서 직접 실행 시: 대화형 설정 진행
+    echo -e "${YELLOW}초기 설정을 시작합니다...${NC}"
+    echo ""
+    aqm setup
+  else
+    # curl | bash 파이프 실행 시: stdin이 파이프이므로 대화형 프롬프트 불가
+    echo -e "${YELLOW}설치 완료! 설정을 시작하려면 새 터미널에서 실행하세요:${NC}"
+    echo ""
+    echo "  aqm setup"
+    echo ""
+  fi
 else
   echo "설치 후 새 터미널을 열고 다음 명령어로 초기 설정을 완료하세요:"
   echo ""

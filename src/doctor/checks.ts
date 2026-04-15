@@ -14,6 +14,8 @@ export interface DoctorCheck {
   detail: string;
   fixSteps: string[];
   docsUrl?: string;
+  healLevel?: 1 | 2 | 3;
+  autoFixCommand?: string;
 }
 
 async function checkClaudeCli(): Promise<DoctorCheck> {
@@ -39,6 +41,8 @@ async function checkClaudeCli(): Promise<DoctorCheck> {
         'PATH 환경변수에 claude 바이너리 경로가 포함되어 있는지 확인하세요.',
       ],
       docsUrl: 'https://docs.anthropic.com/claude/docs/claude-code',
+      healLevel: 2,
+      autoFixCommand: 'npm install -g @anthropic-ai/claude-code',
     };
   }
 }
@@ -66,6 +70,7 @@ async function checkGhCli(): Promise<DoctorCheck> {
         'PATH 환경변수에 gh 바이너리 경로가 포함되어 있는지 확인하세요.',
       ],
       docsUrl: 'https://cli.github.com/',
+      healLevel: 3,
     };
   }
 }
@@ -96,6 +101,7 @@ async function checkNodeVersion(): Promise<DoctorCheck> {
       'nvm을 사용하는 경우: nvm install 20 && nvm use 20',
     ],
     docsUrl: 'https://nodejs.org/',
+    healLevel: 3,
   };
 }
 

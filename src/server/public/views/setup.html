@@ -51,25 +51,31 @@
           </div>
         </div>
 
-        <!-- Token Input -->
-        <div class="space-y-4">
-          <label class="block">
-            <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Personal Access Token</span>
+        <!-- Token Input (Recessed Well) -->
+        <div class="bg-surface-container-lowest p-8 rounded-xl shadow-inner relative overflow-hidden group">
+          <div class="absolute top-0 left-0 w-1 h-full bg-primary/20 group-focus-within:bg-primary transition-all"></div>
+          <label class="block font-headline text-xs font-bold uppercase tracking-widest text-primary mb-4" for="setup-github-token">Personal Access Token</label>
+          <div class="flex items-center gap-3">
             <input
               type="password"
               id="setup-github-token"
-              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono"
-              placeholder="ghp_..."
+              class="flex-1 bg-transparent border-none focus:ring-0 font-mono text-lg text-on-surface placeholder:text-outline-variant/40 py-2 outline-none"
+              placeholder="ghp_xxxxxxxxxxxx"
               autocomplete="off"
               spellcheck="false"
             />
-          </label>
-          <div class="flex items-center justify-between">
+            <!-- Inline validation badge -->
+            <div id="setup-token-badge" class="hidden shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
+              <span id="setup-token-badge-icon" class="material-symbols-outlined text-sm"></span>
+              <span id="setup-token-badge-text"></span>
+            </div>
+          </div>
+          <div class="mt-6 flex items-center justify-between border-t border-outline-variant/10 pt-6">
             <a
               href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=AI-Quartermaster"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+              class="flex items-center gap-2 text-xs font-bold text-on-surface-variant hover:text-primary transition-colors"
             >
               <span class="material-symbols-outlined text-sm">open_in_new</span>
               토큰 만들기
@@ -85,8 +91,8 @@
           </div>
         </div>
 
-        <!-- Validation Result Area -->
-        <div id="setup-validate-result" class="hidden mt-6 p-4 rounded-xl">
+        <!-- Validation Result Area (detailed message below well) -->
+        <div id="setup-validate-result" class="hidden mt-4 p-4 rounded-xl">
           <div id="setup-validate-content" class="flex items-start gap-3 text-sm"></div>
         </div>
       </div>
@@ -99,12 +105,16 @@
       var btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('setup-validate-btn'));
       var resultEl = document.getElementById('setup-validate-result');
       var contentEl = document.getElementById('setup-validate-content');
+      var badgeEl = document.getElementById('setup-token-badge');
+      var badgeIconEl = document.getElementById('setup-token-badge-icon');
+      var badgeTextEl = document.getElementById('setup-token-badge-text');
 
-      if (!tokenInput || !btn || !resultEl || !contentEl) return;
+      if (!tokenInput || !btn || !resultEl || !contentEl || !badgeEl || !badgeIconEl || !badgeTextEl) return;
 
       var token = tokenInput.value.trim();
       if (!token) {
-        resultEl.className = 'mt-6 p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/20';
+        badgeEl.className = 'hidden shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider';
+        resultEl.className = 'mt-4 p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/20';
         contentEl.innerHTML =
           '<span class="material-symbols-outlined text-outline text-base mt-0.5">info</span>' +
           '<span class="text-outline">토큰을 입력하세요.</span>';
@@ -113,11 +123,12 @@
       }
 
       btn.disabled = true;
-      resultEl.className = 'mt-6 p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/20';
-      contentEl.innerHTML =
-        '<span class="material-symbols-outlined text-primary text-base mt-0.5 animate-spin">progress_activity</span>' +
-        '<span class="text-outline">검증 중...</span>';
-      resultEl.classList.remove('hidden');
+      badgeEl.className = 'shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-surface-container-high';
+      badgeIconEl.className = 'material-symbols-outlined text-sm text-primary animate-spin';
+      badgeIconEl.textContent = 'progress_activity';
+      badgeTextEl.className = 'text-outline';
+      badgeTextEl.textContent = '검증 중';
+      resultEl.classList.add('hidden');
 
       try {
         var resp = await fetch('/api/setup/validate-token', {
@@ -126,31 +137,55 @@
         var data = await resp.json();
 
         if (resp.ok && data.username) {
-          resultEl.className = 'mt-6 p-4 rounded-xl bg-[#238636]/10 ring-1 ring-[#238636]/30';
+          badgeEl.className = 'shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-tertiary/10';
+          badgeIconEl.className = 'material-symbols-outlined text-sm text-tertiary';
+          badgeIconEl.style.fontVariationSettings = "'FILL' 1";
+          badgeIconEl.textContent = 'check_circle';
+          badgeTextEl.className = 'text-tertiary';
+          badgeTextEl.textContent = '유효한 토큰';
+
+          resultEl.className = 'mt-4 p-4 rounded-xl bg-[#238636]/10 ring-1 ring-[#238636]/30';
           contentEl.innerHTML =
             '<span class="material-symbols-outlined text-[#3fb950] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">check_circle</span>' +
             '<div>' +
               '<div class="font-bold text-on-surface">연결 성공</div>' +
               '<div class="text-xs text-outline mt-0.5">@' + escapeHtml(data.username) + '</div>' +
             '</div>';
+          resultEl.classList.remove('hidden');
         } else {
           var msg = (data && data.error) ? data.error : '토큰 검증에 실패했습니다.';
-          resultEl.className = 'mt-6 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
+          badgeEl.className = 'shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#f85149]/10';
+          badgeIconEl.className = 'material-symbols-outlined text-sm text-[#f85149]';
+          badgeIconEl.style.fontVariationSettings = "'FILL' 1";
+          badgeIconEl.textContent = 'cancel';
+          badgeTextEl.className = 'text-[#f85149]';
+          badgeTextEl.textContent = '검증 실패';
+
+          resultEl.className = 'mt-4 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
           contentEl.innerHTML =
             '<span class="material-symbols-outlined text-[#f85149] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">cancel</span>' +
             '<div>' +
               '<div class="font-bold text-on-surface">검증 실패</div>' +
               '<div class="text-xs text-outline mt-0.5">' + escapeHtml(msg) + '</div>' +
             '</div>';
+          resultEl.classList.remove('hidden');
         }
       } catch (err) {
-        resultEl.className = 'mt-6 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
+        badgeEl.className = 'shrink-0 flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#f85149]/10';
+        badgeIconEl.className = 'material-symbols-outlined text-sm text-[#f85149]';
+        badgeIconEl.style.fontVariationSettings = "'FILL' 1";
+        badgeIconEl.textContent = 'error';
+        badgeTextEl.className = 'text-[#f85149]';
+        badgeTextEl.textContent = '오류';
+
+        resultEl.className = 'mt-4 p-4 rounded-xl bg-[#f85149]/10 ring-1 ring-[#f85149]/30';
         contentEl.innerHTML =
           '<span class="material-symbols-outlined text-[#f85149] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">error</span>' +
           '<div>' +
             '<div class="font-bold text-on-surface">요청 오류</div>' +
             '<div class="text-xs text-outline mt-0.5">서버에 연결할 수 없습니다.</div>' +
           '</div>';
+        resultEl.classList.remove('hidden');
       } finally {
         btn.disabled = false;
       }

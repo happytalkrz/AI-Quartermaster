@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { access, constants } from 'fs/promises';
 import { homedir } from 'os';
+import { join } from 'path';
 
 function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -288,7 +289,6 @@ async function checkSqlite3(): Promise<DoctorCheck> {
   }
 }
 
-// 알림 기능이 ~/.aqm 디렉토리를 사용하므로 재활성화
 async function checkAqmDirWrite(): Promise<DoctorCheck> {
   const aqmDir = `${homedir()}/.aqm`;
   try {
@@ -301,13 +301,16 @@ async function checkAqmDirWrite(): Promise<DoctorCheck> {
       detail: `${aqmDir} 디렉토리에 쓰기 권한이 있습니다.`,
       fixSteps: [],
     };
-  } catch {
+  } catch (err) {
+    const isEnoent = err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
     return {
       id: 'aqm-dir-write',
       label: 'AQM 디렉토리 쓰기 권한',
       severity: 'critical',
       status: 'fail',
-      detail: `${aqmDir} 디렉토리에 쓰기 권한이 없거나 존재하지 않습니다.`,
+      detail: isEnoent
+        ? `${aqmDir} 디렉토리가 존재하지 않습니다.`
+        : `${aqmDir} 디렉토리에 쓰기 권한이 없습니다.`,
       fixSteps: [
         `mkdir -p ${aqmDir} 명령어로 디렉토리를 생성하세요.`,
         `chmod u+w ${aqmDir} 명령어로 쓰기 권한을 부여하세요.`,

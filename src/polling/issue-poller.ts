@@ -30,6 +30,7 @@ export class IssuePoller {
   private onUpdateAvailable?: UpdateAvailableCallback;
   private pollingErrors = new Map<string, { count: number; lastErrorAt: number }>(); // repo -> error state
   private lastActivityAt: number = Date.now(); // 마지막 이슈 발견 시각
+  private lastPollAt: number = 0; // 마지막 폴링 실행 시각
   private readonly IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5분 idle 임계값
   private readonly IDLE_INTERVAL_MS = 5 * 60 * 1000; // 5분 idle 폴링 간격
   private hasWarnedNoOwners = false; // instanceOwners 미설정 경고 중복 방지
@@ -85,7 +86,12 @@ export class IssuePoller {
     }, intervalMs);
   }
 
+  getLastPollAt(): number {
+    return this.lastPollAt;
+  }
+
   private async poll(): Promise<void> {
+    this.lastPollAt = Date.now();
     const owners = this.config.general.instanceOwners ?? [];
 
     // instanceOwners 미설정 시 이슈 픽업 전체 차단 (스팸 방지: 최초 1회만 경고)

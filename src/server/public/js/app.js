@@ -350,6 +350,28 @@ function setSettingsTab(tabName) {
   localStorage.setItem('aqm-selected-tab', tabName);
 }
 
+/**
+ * Basic/Advanced 모드 탭 전환
+ * @param {string} modeTabName
+ * @returns {void}
+ */
+function setSettingsModeTab(modeTabName) {
+  var activeClasses = ['bg-primary/10', 'text-primary', 'shadow-sm'];
+  var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
+  document.querySelectorAll('.settings-mode-tab-btn').forEach(function(btn) {
+    var isActive = /** @type {HTMLElement} */ (btn).dataset.modeTab === modeTabName;
+    activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
+    inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
+  });
+
+  document.querySelectorAll('.settings-mode-tab-panel').forEach(function(panel) {
+    var isActive = panel.id === 'settings-mode-tab-' + modeTabName;
+    panel.classList.toggle('hidden', !isActive);
+  });
+
+  localStorage.setItem('aqm-selected-mode-tab', modeTabName);
+}
+
 /** @type {string|null} */
 var _btnOriginal = null;
 /** @type {ReturnType<typeof setTimeout>|null} */
@@ -459,6 +481,26 @@ function collectFormData() {
     result.commands = { claudeCli: commandsCliData };
   }
 
+  // Basic 탭 필드 수집 및 해당 섹션에 병합 (Basic 탭 값이 Advanced 탭 값보다 우선)
+  var basicForm = document.getElementById('basic-settings-form');
+  if (basicForm) {
+    var basicInputs = basicForm.querySelectorAll('[data-config-path]');
+    basicInputs.forEach(function(inputEl) {
+      var input = /** @type {HTMLInputElement|HTMLSelectElement} */ (inputEl);
+      var path = input.dataset.configPath;
+      if (!path) return;
+      var dotIdx = path.indexOf('.');
+      if (dotIdx === -1) return;
+      var section = path.slice(0, dotIdx);
+      var subKey = path.slice(dotIdx + 1);
+      var value = getInputValue(input);
+      if (!result[section]) {
+        result[section] = cfg[section] ? JSON.parse(JSON.stringify(cfg[section])) : {};
+      }
+      setNestedValue(/** @type {Record<string, *>} */ (result[section]), subKey, value);
+    });
+  }
+
   return result;
 }
 
@@ -473,6 +515,10 @@ function getInputValue(input) {
     case 'number':
       return parseInt(input.value, 10) || 0;
     default:
+      // chip-array 타입 처리 (Basic 탭 chip-input 필드)
+      if (input.dataset.inputType === 'chip-array') {
+        try { return JSON.parse(input.value); } catch (e) { return []; }
+      }
       // comma-array 타입 처리 (예: instanceOwners)
       if (input.dataset.inputType === 'comma-array') {
         return input.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
@@ -1535,6 +1581,7 @@ function loadSkipEvents() {
 window.loadSkipEvents = loadSkipEvents;
 
 window.setSettingsTab = setSettingsTab;
+window.setSettingsModeTab = setSettingsModeTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
 window.closeEditProjectModal = closeEditProjectModal;

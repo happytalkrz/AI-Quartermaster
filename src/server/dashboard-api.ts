@@ -9,6 +9,7 @@ import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
+import { getBasicFieldMetas } from "../config/schema-meta.js";
 import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
@@ -570,6 +571,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     } catch (error: unknown) {
       return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
+  });
+
+  // Get Basic tab field metadata (type, default, min/max, options)
+  api.get("/api/config/schema-meta", (c) => {
+    return c.json({ fields: getBasicFieldMetas() });
   });
 
   const projectRoot = process.cwd();

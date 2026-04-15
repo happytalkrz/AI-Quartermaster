@@ -100,7 +100,14 @@ function renderSettingsView(config) {
   // Claude CLI maxTurns / maxTurnsPerMode 필드 바인딩
   bindCommandsCliFields(config);
 
-  // 저장된 탭 선택 복원 또는 기본 탭 설정
+  // Basic 탭 렌더링
+  renderBasicTab(config);
+
+  // 저장된 모드 탭 복원 (Basic/Advanced)
+  var savedModeTab = localStorage.getItem('aqm-selected-mode-tab') || 'basic';
+  setSettingsModeTab(savedModeTab);
+
+  // 저장된 서브 탭 복원 (general/safety/review)
   var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
   setSettingsTab(savedTab);
 }
@@ -415,4 +422,270 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          esc(objectText) +
          '</textarea>' +
          '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Basic Tab Rendering
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Basic 탭 렌더링: /api/config/schema-meta에서 메타데이터를 fetch하고 필드를 렌더링한다.
+ * @param {AqmConfig} config
+ * @returns {void}
+ */
+function renderBasicTab(config) {
+  var container = document.getElementById('basic-settings-form');
+  if (!container) return;
+  container.innerHTML = '<div class="col-span-full flex items-center justify-center py-12 text-outline text-sm gap-2">' +
+    '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span>' +
+    '<span>로딩 중...</span></div>';
+
+  apiFetch('/api/config/schema-meta')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      /**
+       * @type {Array<{key: string, type: string, label: string, helperText?: string, default?: *, min?: number, max?: number, options?: string[]}>}
+       */
+      var fields = data.fields || [];
+      if (fields.length === 0) {
+        /** @type {HTMLElement} */ (container).innerHTML = '<div class="col-span-full text-outline text-sm text-center py-8">표시할 필드가 없습니다.</div>';
+        return;
+      }
+      var html = '';
+      fields.forEach(function(meta) {
+        var value = getConfigValueByPath(/** @type {Record<string, *>} */ (config), meta.key);
+        html += renderBasicField(meta, value);
+      });
+      /** @type {HTMLElement} */ (container).innerHTML = html;
+    })
+    .catch(function() {
+      /** @type {HTMLElement} */ (container).innerHTML = '<div class="col-span-full flex items-center justify-center py-12 text-outline text-sm gap-2">' +
+        '<span class="material-symbols-outlined text-base">error</span>' +
+        '<span>메타데이터를 불러올 수 없습니다.</span></div>';
+    });
+}
+
+/**
+ * dotted path로 config 객체에서 값을 추출한다. (예: "general.concurrency" → config.general.concurrency)
+ * @param {Record<string, *>} config
+ * @param {string} path
+ * @returns {*}
+ */
+function getConfigValueByPath(config, path) {
+  var parts = path.split('.');
+  var current = /** @type {*} */ (config);
+  for (var i = 0; i < parts.length; i++) {
+    if (current === null || current === undefined || typeof current !== 'object') return undefined;
+    current = current[parts[i]];
+  }
+  return current;
+}
+
+/**
+ * @param {{key: string, type: string, label: string, helperText?: string, default?: *, min?: number, max?: number, options?: string[]}} meta
+ * @param {*} value
+ * @returns {string}
+ */
+function renderBasicField(meta, value) {
+  var fieldId = 'basic-field-' + meta.key.replace(/\./g, '-');
+  var displayValue = (value !== undefined && value !== null) ? value : meta.default;
+
+  var html = '<div class="space-y-1">';
+
+  // Label + 배지 행
+  html += '<div class="flex items-center gap-2 flex-wrap">';
+  html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest">' + esc(meta.label) + '</span>';
+  if (meta.default !== undefined && meta.default !== null) {
+    html += '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary/10 text-secondary font-mono">기본: ' + esc(String(meta.default)) + '</span>';
+  }
+  if (typeof meta.min === 'number') {
+    html += '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-outline/10 text-outline font-mono">min: ' + meta.min + '</span>';
+  }
+  if (typeof meta.max === 'number') {
+    html += '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-outline/10 text-outline font-mono">max: ' + meta.max + '</span>';
+  }
+  html += '</div>';
+
+  // Helper text
+  if (meta.helperText) {
+    html += '<span class="text-[10px] text-outline block mb-1">' + esc(meta.helperText) + '</span>';
+  }
+
+  // type별 컨트롤 렌더링
+  switch (meta.type) {
+    case 'number':
+      html += renderBasicNumberControl(fieldId, meta.key, displayValue, meta.min, meta.max);
+      break;
+    case 'toggle':
+      html += renderBasicToggleControl(fieldId, meta.key, Boolean(displayValue));
+      break;
+    case 'dropdown':
+      html += renderBasicDropdownControl(fieldId, meta.key, String(displayValue !== undefined ? displayValue : ''), meta.options || []);
+      break;
+    case 'chip-input':
+      html += renderBasicChipInputControl(fieldId, meta.key, Array.isArray(displayValue) ? displayValue : []);
+      break;
+    default: // text
+      html += renderBasicTextControl(fieldId, meta.key, String(displayValue !== undefined ? displayValue : ''));
+  }
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * @param {string} fieldId
+ * @param {string} configPath
+ * @param {*} value
+ * @param {number|undefined} min
+ * @param {number|undefined} max
+ * @returns {string}
+ */
+function renderBasicNumberControl(fieldId, configPath, value, min, max) {
+  var numVal = typeof value === 'number' ? value : (parseInt(String(value), 10) || 0);
+  var attrs = 'type="number" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + numVal + '"';
+  if (typeof min === 'number') attrs += ' min="' + min + '"';
+  if (typeof max === 'number') attrs += ' max="' + max + '"';
+  return '<input ' + attrs + ' class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+}
+
+/**
+ * @param {string} fieldId
+ * @param {string} configPath
+ * @param {boolean} checked
+ * @returns {string}
+ */
+function renderBasicToggleControl(fieldId, configPath, checked) {
+  return '<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg">' +
+         '<span class="text-sm font-bold">' + (checked ? (t('enabled') || 'Enabled') : (t('disabled') || 'Disabled')) + '</span>' +
+         '<label class="relative inline-flex items-center cursor-pointer">' +
+         '<input type="checkbox" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' + (checked ? 'checked' : '') + ' class="sr-only peer" />' +
+         '<div class="w-11 h-6 bg-outline-variant/40 rounded-full peer peer-checked:bg-primary peer-checked:after:translate-x-full after:content-[\'\'] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all"></div>' +
+         '</label>' +
+         '</div>';
+}
+
+/**
+ * @param {string} fieldId
+ * @param {string} configPath
+ * @param {string} value
+ * @param {string[]} options
+ * @returns {string}
+ */
+function renderBasicDropdownControl(fieldId, configPath, value, options) {
+  var html = '<select id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' +
+             'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
+  options.forEach(function(opt) {
+    html += '<option value="' + esc(opt) + '"' + (opt === value ? ' selected' : '') + '>' + esc(opt) + '</option>';
+  });
+  html += '</select>';
+  return html;
+}
+
+/**
+ * @param {string} fieldId
+ * @param {string} configPath
+ * @param {string[]} values
+ * @returns {string}
+ */
+function renderBasicChipInputControl(fieldId, configPath, values) {
+  var chipsHtml = '';
+  values.forEach(function(val, idx) {
+    chipsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+                 esc(val) +
+                 '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
+                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+                 '</span>';
+  });
+
+  return '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">' + chipsHtml + '</div>' +
+         '<input type="hidden" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" data-input-type="chip-array" value="' + esc(JSON.stringify(values)) + '" />' +
+         '<div class="flex gap-1">' +
+         '<input type="text" id="' + fieldId + '-input" placeholder="값 입력 후 Enter" ' +
+         'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" ' +
+         'onkeydown="addBasicChipOnEnter(event,\'' + fieldId + '\')" />' +
+         '<button type="button" onclick="addBasicChip(\'' + fieldId + '\')" ' +
+         'class="px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors">' +
+         '<span class="material-symbols-outlined text-sm">add</span></button>' +
+         '</div>';
+}
+
+/**
+ * @param {string} fieldId
+ * @param {string} configPath
+ * @param {string} value
+ * @returns {string}
+ */
+function renderBasicTextControl(fieldId, configPath, value) {
+  return '<input type="text" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + esc(value) + '" ' +
+         'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+}
+
+/**
+ * chip-input: Enter 키로 항목 추가
+ * @param {KeyboardEvent} event
+ * @param {string} fieldId
+ * @returns {void}
+ */
+function addBasicChipOnEnter(event, fieldId) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    addBasicChip(fieldId);
+  }
+}
+
+/**
+ * chip-input: 항목 추가
+ * @param {string} fieldId
+ * @returns {void}
+ */
+function addBasicChip(fieldId) {
+  var textInput = /** @type {HTMLInputElement|null} */ (document.getElementById(fieldId + '-input'));
+  var hiddenInput = /** @type {HTMLInputElement|null} */ (document.getElementById(fieldId));
+  if (!textInput || !hiddenInput) return;
+  var val = textInput.value.trim();
+  if (!val) return;
+  var current = /** @type {string[]} */ ([]);
+  try { current = JSON.parse(hiddenInput.value); } catch (e) { current = []; }
+  if (current.indexOf(val) !== -1) { textInput.value = ''; return; }
+  current.push(val);
+  hiddenInput.value = JSON.stringify(current);
+  textInput.value = '';
+  _refreshChipsDisplay(fieldId, current);
+}
+
+/**
+ * chip-input: 항목 삭제
+ * @param {string} fieldId
+ * @param {number} idx
+ * @returns {void}
+ */
+function removeBasicChip(fieldId, idx) {
+  var hiddenInput = /** @type {HTMLInputElement|null} */ (document.getElementById(fieldId));
+  if (!hiddenInput) return;
+  var current = /** @type {string[]} */ ([]);
+  try { current = JSON.parse(hiddenInput.value); } catch (e) { current = []; }
+  current.splice(idx, 1);
+  hiddenInput.value = JSON.stringify(current);
+  _refreshChipsDisplay(fieldId, current);
+}
+
+/**
+ * chip-input: 칩 목록 UI 갱신
+ * @param {string} fieldId
+ * @param {string[]} values
+ * @returns {void}
+ */
+function _refreshChipsDisplay(fieldId, values) {
+  var chipsContainer = document.getElementById(fieldId + '-chips');
+  if (!chipsContainer) return;
+  var html = '';
+  values.forEach(function(val, idx) {
+    html += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+            esc(val) +
+            '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
+            'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+            '</span>';
+  });
+  chipsContainer.innerHTML = html;
 }

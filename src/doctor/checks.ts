@@ -288,6 +288,34 @@ async function checkSqlite3(): Promise<DoctorCheck> {
   }
 }
 
+async function checkAqmDirWrite(): Promise<DoctorCheck> {
+  const aqmDir = `${homedir()}/.aqm`;
+  try {
+    await access(aqmDir, constants.W_OK);
+    return {
+      id: 'aqm-dir-write',
+      label: 'AQM 디렉토리 쓰기 권한',
+      severity: 'critical',
+      status: 'pass',
+      detail: `${aqmDir} 디렉토리에 쓰기 권한이 있습니다.`,
+      fixSteps: [],
+    };
+  } catch {
+    return {
+      id: 'aqm-dir-write',
+      label: 'AQM 디렉토리 쓰기 권한',
+      severity: 'critical',
+      status: 'fail',
+      detail: `${aqmDir} 디렉토리에 쓰기 권한이 없습니다.`,
+      fixSteps: [
+        `mkdir -p ${aqmDir} 명령어로 디렉토리를 생성하세요.`,
+        `chmod u+w ${aqmDir} 명령어로 쓰기 권한을 부여하세요.`,
+      ],
+      healLevel: 1,
+    };
+  }
+}
+
 async function checkGitHubApiPing(): Promise<DoctorCheck> {
   try {
     const { stdout } = await execFileAsync('gh', ['api', '/user', '--jq', '.login']);
@@ -356,6 +384,7 @@ export async function runAllChecks(options: RunAllChecksOptions = {}): Promise<D
     checkNodeVersion(),
     checkGitIdentity(),
     checkSqlite3(),
+    checkAqmDirWrite(),
     checkGitHubApiPing(),
   ];
 

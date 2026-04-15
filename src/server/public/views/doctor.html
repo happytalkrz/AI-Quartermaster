@@ -1,0 +1,143 @@
+  <!-- ============ Doctor View ============ -->
+  <div id="view-doctor" class="view-panel">
+
+    <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
+      <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+      Doctor Diagnostics
+    </h2>
+
+    <!-- Hero Section -->
+    <section class="mb-8">
+      <div class="flex flex-col md:flex-row items-center gap-8 bg-surface-container-low p-8 rounded-xl relative overflow-hidden">
+        <div class="absolute -right-16 -top-16 w-64 h-64 bg-primary/5 rounded-full blur-[60px] pointer-events-none"></div>
+        <!-- Status Ring -->
+        <div class="relative w-36 h-36 flex items-center justify-center shrink-0">
+          <svg class="w-full h-full -rotate-90" viewBox="0 0 112 112">
+            <circle class="text-surface-container-highest" cx="56" cy="56" fill="transparent" r="48"
+              stroke="currentColor" stroke-width="6"/>
+            <circle id="doctor-ring-fill" class="text-primary transition-all duration-700" cx="56" cy="56"
+              fill="transparent" r="48" stroke="currentColor"
+              stroke-dasharray="301.6" stroke-dashoffset="301.6"
+              stroke-linecap="round" stroke-width="8"/>
+          </svg>
+          <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+            <span id="doctor-ring-label" class="text-xl font-black font-headline text-on-surface">—</span>
+            <span id="doctor-ring-sublabel" class="text-[10px] font-bold text-outline uppercase tracking-widest mt-0.5"></span>
+          </div>
+        </div>
+        <!-- Title + Buttons -->
+        <div class="flex-1">
+          <h1 class="text-2xl font-black font-headline tracking-tighter mb-1 text-on-surface">AQM Doctor</h1>
+          <p id="doctor-last-run" class="text-xs font-mono text-outline mb-6 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-outline/40 inline-block"></span>
+            아직 검사하지 않았습니다
+          </p>
+          <div class="flex flex-wrap gap-3">
+            <button onclick="loadDoctorChecks()"
+              class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm rounded-lg hover:brightness-110 transition-all active:scale-95 shadow-lg shadow-primary/20">
+              <span class="material-symbols-outlined text-sm">refresh</span> 다시 검사
+            </button>
+            <button onclick="doctorRunAllLevel1()"
+              class="flex items-center gap-2 px-5 py-2.5 bg-tertiary/10 text-tertiary border border-tertiary/20 font-bold text-sm rounded-lg hover:bg-tertiary/20 transition-all active:scale-95">
+              <span class="material-symbols-outlined text-sm">auto_fix_high</span> 자동 복구 실행
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Checks Section -->
+    <section>
+      <div class="mb-4 flex justify-between items-end">
+        <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest">System Integrity Checks</h2>
+      </div>
+      <div id="doctor-checks-list" class="space-y-2">
+        <div class="flex items-center justify-center py-12 text-outline text-sm">
+          <span class="material-symbols-outlined text-lg mr-2">monitor_heart</span>
+          검사를 시작하려면 '다시 검사'를 클릭하세요
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Level2 Heal Modal (glass-panel, hidden by default) -->
+  <div id="doctor-heal-modal" class="fixed inset-0 z-[120] hidden items-center justify-center p-6 bg-surface/80 backdrop-blur-sm">
+    <div class="w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row border border-outline-variant/20"
+      style="backdrop-filter:blur(20px);background:rgba(28,32,38,0.92)">
+      <!-- Terminal Well (monospace) -->
+      <div class="flex-1 bg-surface-container-lowest p-6 font-mono text-sm min-h-[360px] flex flex-col">
+        <div class="flex items-center gap-2 mb-4 shrink-0">
+          <div class="w-3 h-3 rounded-full bg-error"></div>
+          <div class="w-3 h-3 rounded-full bg-tertiary"></div>
+          <div class="w-3 h-3 rounded-full bg-tertiary-fixed-dim"></div>
+          <span class="ml-4 text-xs text-on-surface-variant font-bold uppercase tracking-widest">HEAL_SHELL</span>
+          <button onclick="closeDoctorHealModal()" class="ml-auto text-outline hover:text-on-surface transition-colors" title="닫기">
+            <span class="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
+        <div id="doctor-heal-output" class="flex-1 overflow-y-auto space-y-0 leading-5 text-primary/90"></div>
+        <div id="doctor-heal-cursor" class="mt-3 animate-pulse inline-block w-2 h-4 bg-primary align-middle"></div>
+      </div>
+      <!-- Guide & CTA Panel -->
+      <div class="w-full md:w-72 p-6 flex flex-col justify-between border-l border-outline-variant/20 shrink-0">
+        <div>
+          <h3 class="text-base font-bold font-headline mb-3 flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-sm">auto_fix</span>
+            <span id="doctor-modal-title">자동 복구</span>
+          </h3>
+          <p id="doctor-modal-desc" class="text-xs text-on-surface-variant mb-4 leading-relaxed"></p>
+        </div>
+        <div class="space-y-2">
+          <div id="doctor-modal-status" class="text-xs text-outline flex items-center gap-1.5 mb-2">
+            <span class="material-symbols-outlined text-sm animate-spin">sync</span> 복구 중...
+          </div>
+          <button id="doctor-modal-recheck-btn" onclick="doctorRecheckFromModal()" disabled
+            class="w-full py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg text-sm transition-transform active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed">
+            재검사
+          </button>
+          <button onclick="closeDoctorHealModal()"
+            class="w-full py-2.5 bg-surface-container-highest text-on-surface border border-outline-variant/30 rounded-lg font-bold text-sm hover:bg-surface-bright transition-all active:scale-95">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level3 Guide Panel (hidden by default) -->
+  <div id="doctor-guide-panel" class="fixed inset-0 z-[120] hidden items-center justify-center p-6 bg-surface/80 backdrop-blur-sm">
+    <div class="w-full max-w-lg rounded-2xl shadow-2xl border border-outline-variant/20 p-8"
+      style="backdrop-filter:blur(20px);background:rgba(28,32,38,0.95)">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-base font-bold font-headline flex items-center gap-2">
+          <span class="material-symbols-outlined text-tertiary text-sm">menu_book</span>
+          <span id="doctor-guide-title">수동 복구 가이드</span>
+        </h3>
+        <button onclick="closeDoctorGuidePanel()" class="text-outline hover:text-on-surface transition-colors" title="닫기">
+          <span class="material-symbols-outlined text-sm">close</span>
+        </button>
+      </div>
+      <div id="doctor-guide-content"
+        class="text-sm text-on-surface-variant leading-relaxed mb-5 whitespace-pre-wrap font-mono bg-surface-container-lowest p-4 rounded-lg max-h-64 overflow-y-auto">
+      </div>
+      <div id="doctor-guide-docs" class="mb-5 hidden">
+        <a id="doctor-guide-docs-link" href="#" target="_blank" rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+          <span class="material-symbols-outlined text-sm">open_in_new</span> 문서 보기
+        </a>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="doctorGuideDone()"
+          class="flex-1 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold rounded-lg text-sm transition-transform active:scale-95 shadow-lg shadow-primary/20">
+          완료했어요
+        </button>
+        <button onclick="closeDoctorGuidePanel()"
+          class="px-4 py-2.5 bg-surface-container-highest text-on-surface border border-outline-variant/30 rounded-lg font-bold text-sm hover:bg-surface-bright transition-all active:scale-95">
+          닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/doctor.js"></script>

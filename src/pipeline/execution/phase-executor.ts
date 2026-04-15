@@ -1,5 +1,5 @@
 import { resolve } from "path";
-import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../../prompt/template-renderer.js";
+import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer, extractDesignReferences } from "../../prompt/template-renderer.js";
 import type { PromptLayers } from "../../prompt/layer-types.js";
 import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
 import { configForTask, resolveFallbackChain } from "../../claude/model-router.js";
@@ -80,6 +80,25 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
 
     const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
+    // Extract design file references from issue body and pre-inject into template
+    const { designFiles } = extractDesignReferences(ctx.issue.body, ctx.cwd);
+    const uiKeywords = /ui|frontend|컴포넌트|디자인|대시보드|알림|form|button|input|select|page|화면|view/i;
+    const phaseContext = [ctx.phase.name, ctx.phase.description, ...ctx.phase.targetFiles].join(" ");
+    const isUiRelated = uiKeywords.test(phaseContext) || ctx.phase.targetFiles.some(f => f.endsWith(".html") || f.includes("design"));
+
+    let designFilesSection = "";
+    if (designFiles.length > 0 && isUiRelated) {
+      designFilesSection = [
+        "## 디자인 파일 참조",
+        "",
+        "이슈 본문에서 참조된 디자인 파일이 있습니다. **반드시 아래 파일들을 Read하여 디자인을 참조하세요. 기존 디자인 파일을 자체적으로 생성하거나 커밋하지 마세요.**",
+        "",
+        ...designFiles.map(f => `- \`${f}\``),
+        "",
+      ].join("\n");
+    }
+    const processedTemplate = template.replace("{{designFilesSection}}", designFilesSection);
+
     const fallbackChain = ctx.claudeConfig.models
       ? resolveFallbackChain(ctx.claudeConfig)
       : (ctx.claudeConfig.modelFallbackChain ?? []);
@@ -133,7 +152,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     });
 
     let optimizedPreviousSummary = previousSummary;
-    let rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), template).content;
+    let rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), processedTemplate).content;
 
     // Check token usage and optimize if budget exceeded
     const tokenUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
@@ -149,7 +168,7 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
         logger.warn(`Attempting to reduce previousResults context to fit budget...`);
         const targetTokens = Math.floor(tokenUsage.effectiveLimit * 0.1);
         optimizedPreviousSummary = summarizeForBudget(previousSummary, targetTokens, ctx.locale || 'en');
-        rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), template).content;
+        rendered = assemblePrompt(buildLayers(optimizedPreviousSummary), processedTemplate).content;
 
         const optimizedUsage = analyzeTokenUsage(rendered, modelName, ctx.locale || 'en');
         if (!optimizedUsage.exceedsLimit) {

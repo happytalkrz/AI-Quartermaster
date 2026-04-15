@@ -24,6 +24,7 @@
 
 {{previousPhases.summary}}
 
+{{designFilesSection}}
 ## 프로젝트 컨벤션
 
 {{projectConventions}}

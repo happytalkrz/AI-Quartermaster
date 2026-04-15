@@ -23,6 +23,7 @@ export interface DoctorCheck {
   fixSteps: string[];
   autoFixCommand?: string;
   docsUrl?: string;
+  healLevel?: 1 | 2 | 3;
 }
 
 export interface RunAllChecksOptions {
@@ -53,6 +54,7 @@ async function checkClaudeCli(): Promise<DoctorCheck> {
       ],
       autoFixCommand: 'npm install -g @anthropic-ai/claude-code',
       docsUrl: 'https://docs.anthropic.com/claude/docs/claude-code',
+      healLevel: 2,
     };
   }
 }
@@ -120,6 +122,7 @@ async function checkGhCli(): Promise<DoctorCheck> {
       ],
       autoFixCommand: 'brew install gh',
       docsUrl: 'https://cli.github.com/',
+      healLevel: 3,
     };
   }
 }
@@ -196,6 +199,7 @@ async function checkNodeVersion(): Promise<DoctorCheck> {
     ],
     autoFixCommand: 'nvm install 20 && nvm use 20',
     docsUrl: 'https://nodejs.org/',
+    healLevel: 3,
   };
 }
 

@@ -6,7 +6,7 @@ import { readFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
+import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig, applySetupConfig, generateSetupConfigYaml } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
@@ -25,7 +25,17 @@ import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
-import type { ZodError } from "zod";
+import { z, type ZodError } from "zod";
+
+// Setup wizard request schema (POST /api/setup/preview and /api/setup/apply)
+const SetupApplyRequestSchema = z.object({
+  githubToken: z.string().optional(),
+  repo: z.string().min(1),
+  path: z.string().min(1),
+  baseBranch: z.string().optional(),
+  instanceOwners: z.array(z.string()).optional(),
+  allowedLabels: z.array(z.string()).optional(),
+});
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -1592,6 +1602,37 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json({ projects: projectsWithStats, summary });
     } catch (error: unknown) {
       return c.json({ error: `Projects health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // POST /api/setup/preview — 읽기 전용 YAML 미리보기 생성
+  api.post("/api/setup/preview", zValidator('json', SetupApplyRequestSchema, zodValidationHook), (c) => {
+    try {
+      const input = c.req.valid('json');
+      const previewYaml = generateSetupConfigYaml(input);
+      let currentYaml: string | null = null;
+      if (existsSync(configPath)) {
+        currentYaml = readFileSync(configPath, 'utf-8');
+      }
+      return c.json({ previewYaml, currentYaml });
+    } catch (error: unknown) {
+      return c.json({ error: `Preview 생성 실패: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // POST /api/setup/apply — 백업 → Zod 검증 → 쓰기 → 토큰 분리 저장
+  api.post("/api/setup/apply", zValidator('json', SetupApplyRequestSchema, zodValidationHook), (c) => {
+    try {
+      const input = c.req.valid('json');
+      const result = applySetupConfig(projectRoot, input);
+      configWatcher?.refresh();
+      return c.json({
+        success: true,
+        backupPath: result.backupPath,
+        credentialsWritten: result.credentialsWritten,
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Setup 적용 실패: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

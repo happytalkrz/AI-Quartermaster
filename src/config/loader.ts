@@ -750,3 +750,87 @@ export function updateConfigSection(projectRoot: string, updates: Partial<AQConf
 
   writeFileSync(configPath, yamlContent, 'utf-8');
 }
+
+/** Setup Wizard Step1~4에서 수집한 입력 데이터 */
+export interface SetupConfigInput {
+  githubToken?: string;
+  repo: string;
+  path: string;
+  baseBranch?: string;
+  instanceOwners?: string[];
+  allowedLabels?: string[];
+}
+
+export interface ApplySetupConfigResult {
+  backupPath: string | null;
+  credentialsWritten: boolean;
+  configYaml: string;
+}
+
+/**
+ * Setup Wizard 입력 데이터를 config.yml YAML 문자열로 직렬화 (토큰 제외)
+ */
+export function generateSetupConfigYaml(input: SetupConfigInput): string {
+  const project: Record<string, unknown> = {
+    repo: input.repo,
+    path: input.path,
+  };
+  if (input.baseBranch) project.baseBranch = input.baseBranch;
+
+  const configObj: Record<string, unknown> = {
+    projects: [project],
+  };
+
+  if (input.instanceOwners && input.instanceOwners.length > 0) {
+    configObj.general = { instanceOwners: input.instanceOwners };
+  }
+
+  if (input.allowedLabels && input.allowedLabels.length > 0) {
+    configObj.safety = { allowedLabels: input.allowedLabels };
+  }
+
+  return stringifyYaml(configObj);
+}
+
+/**
+ * Setup Wizard 설정을 적용한다.
+ * 1. config.yml 백업 (config.yml.bak.{timestamp})
+ * 2. Zod 검증 (defaults와 병합 후)
+ * 3. config.yml 쓰기 (토큰 제외)
+ * 4. 토큰 분리 저장 (AQM_HOME/credentials)
+ */
+export function applySetupConfig(projectRoot: string, input: SetupConfigInput): ApplySetupConfigResult {
+  const logger = getLogger();
+  const configPath = `${projectRoot}/config.yml`;
+
+  // 1. 기존 config.yml 백업
+  let backupPath: string | null = null;
+  if (existsSync(configPath)) {
+    backupPath = `${configPath}.bak.${Date.now()}`;
+    writeFileSync(backupPath, readFileSync(configPath, 'utf-8'), 'utf-8');
+    logger.info(`config.yml 백업: ${backupPath}`);
+  }
+
+  // 2. YAML 생성 (토큰 제외)
+  const configYaml = generateSetupConfigYaml(input);
+
+  // 3. Zod 검증 (defaults와 병합 후 전체 검증)
+  const rawConfig = parseYamlSafely(configYaml, configPath);
+  const merged = deepMerge(structuredClone(DEFAULT_CONFIG), rawConfig);
+  validateConfig(merged); // 실패 시 ConfigError throw
+
+  // 4. config.yml 쓰기
+  writeFileSync(configPath, configYaml, 'utf-8');
+  logger.info(`config.yml 저장: ${configPath}`);
+
+  // 5. 토큰 분리 저장 (AQM_HOME/credentials)
+  let credentialsWritten = false;
+  if (input.githubToken) {
+    const credentialsPath = `${projectRoot}/credentials`;
+    writeFileSync(credentialsPath, `GITHUB_TOKEN=${input.githubToken}\n`, { encoding: 'utf-8', mode: 0o600 });
+    logger.info(`credentials 저장: ${credentialsPath}`);
+    credentialsWritten = true;
+  }
+
+  return { backupPath, credentialsWritten, configYaml };
+}

@@ -276,7 +276,7 @@ function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
  */
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none',
     isReadonly,
     isMasked ? 'bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]' : ''
   );
@@ -297,7 +297,7 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
  */
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none',
     isReadonly
   );
 
@@ -340,7 +340,7 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
  */
 function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none',
     isReadonly
   );
   var commaSeparated = Array.isArray(value) ? value.join(', ') : '';
@@ -364,7 +364,7 @@ function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
  */
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var arrayText = JSON.stringify(value, null, 2);
@@ -412,7 +412,7 @@ function bindCommandsCliFields(config) {
  */
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono',
     isReadonly
   );
   var objectText = JSON.stringify(value, null, 2);
@@ -550,7 +550,7 @@ function renderBasicNumberControl(fieldId, configPath, value, min, max) {
   var attrs = 'type="number" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + numVal + '"';
   if (typeof min === 'number') attrs += ' min="' + min + '"';
   if (typeof max === 'number') attrs += ' max="' + max + '"';
-  return '<input ' + attrs + ' class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+  return '<input ' + attrs + ' class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none" />';
 }
 
 /**
@@ -606,7 +606,7 @@ function renderBasicChipInputControl(fieldId, configPath, values) {
          '<input type="hidden" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" data-input-type="chip-array" value="' + esc(JSON.stringify(values)) + '" />' +
          '<div class="flex gap-1">' +
          '<input type="text" id="' + fieldId + '-input" placeholder="값 입력 후 Enter" ' +
-         'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" ' +
+         'class="flex-1 bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none" ' +
          'onkeydown="addBasicChipOnEnter(event,\'' + fieldId + '\')" />' +
          '<button type="button" onclick="addBasicChip(\'' + fieldId + '\')" ' +
          'class="px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors">' +
@@ -622,7 +622,7 @@ function renderBasicChipInputControl(fieldId, configPath, values) {
  */
 function renderBasicTextControl(fieldId, configPath, value) {
   return '<input type="text" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + esc(value) + '" ' +
-         'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+         'class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none" />';
 }
 
 /**
@@ -761,7 +761,7 @@ function renderAdvancedJsonCard(sectionId, label, value, configPath) {
   html += '<textarea id="' + fieldId + '" ' +
           'data-config-path="' + esc(configPath) + '" ' +
           'rows="8" ' +
-          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono">' +
+          'class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono">' +
           esc(jsonText) +
           '</textarea>';
   html += '<div id="' + fieldId + '-error" class="hidden mt-1 text-xs text-[#f85149] font-mono"></div>';

@@ -998,6 +998,21 @@ function connectSSE() {
       }
     } catch (_) {}
   });
+  es.addEventListener('notificationCreated', function() {
+    apiFetch('/api/notifications/unread-count')
+      .then(function(r) { return r.json(); })
+      .then(function(d) { updateNotificationBadge(d.unreadCount || 0); })
+      .catch(function() {});
+    if (currentView === 'notifications') {
+      fetchAndRenderNotifications();
+    }
+  });
+  es.addEventListener('notificationsReadAll', function() {
+    updateNotificationBadge(0);
+    if (currentView === 'notifications') {
+      fetchAndRenderNotifications();
+    }
+  });
   es.onerror = function() {
     setConnState('disconnected');
     if (es) es.close();
@@ -1299,6 +1314,12 @@ initProjectSelection();
 loadInstanceLabel();
 loadClaudeProfile();
 
+// Load initial notification unread count for sidebar badge
+apiFetch('/api/notifications/unread-count')
+  .then(function(r) { return r.json(); })
+  .then(function(d) { updateNotificationBadge(d.unreadCount || 0); })
+  .catch(function() {});
+
 connectSSE();
 
 // 탭 활성화 시 SSE 재연결
@@ -1575,19 +1596,273 @@ function renderSkipEventRow(ev) {
    Notifications
    ══════════════════════════════════════════════════════════════ */
 
+/** @type {string} */
+var notifCurrentFilter = 'all';
+/** @type {number} */
+var notifCurrentOffset = 0;
+/** @type {number} */
+var NOTIF_PAGE_SIZE = 20;
+/** @type {number} */
+var notifTotal = 0;
+
+/**
+ * @typedef {{
+ *   id: number,
+ *   jobId: string,
+ *   type: string,
+ *   title: string,
+ *   message: string,
+ *   isRead: boolean,
+ *   createdAt: string,
+ *   repo?: string,
+ *   issueNumber?: number
+ * }} NotificationItem
+ */
+
+/**
+ * @param {NotificationItem} n
+ * @returns {string}
+ */
+function renderNotificationCard(n) {
+  /** @type {string} */ var borderColor;
+  /** @type {string} */ var bgIcon;
+  /** @type {string} */ var iconColor;
+  /** @type {string} */ var iconName;
+  /** @type {string} */ var labelColor;
+  /** @type {string} */ var labelText;
+  /** @type {string} */ var iconSpin = '';
+
+  if (n.type === 'job_success') {
+    borderColor = 'border-emerald-500/50'; bgIcon = 'bg-emerald-500/10'; iconColor = 'text-emerald-400';
+    iconName = 'check_circle'; labelColor = 'text-emerald-400'; labelText = 'SUCCESS';
+  } else if (n.type === 'job_failure') {
+    borderColor = 'border-error/50'; bgIcon = 'bg-error/10'; iconColor = 'text-error';
+    iconName = 'cancel'; labelColor = 'text-error'; labelText = 'FAILED';
+  } else if (n.type === 'job_started') {
+    borderColor = 'border-primary/50'; bgIcon = 'bg-primary/10'; iconColor = 'text-primary';
+    iconName = 'refresh'; labelColor = 'text-primary'; labelText = 'RUNNING'; iconSpin = ' animate-spin';
+  } else if (n.type === 'job_cancelled') {
+    borderColor = 'border-outline-variant/30'; bgIcon = 'bg-surface-container-highest'; iconColor = 'text-on-surface-variant';
+    iconName = 'do_not_disturb_on'; labelColor = 'text-on-surface-variant'; labelText = 'CANCELLED';
+  } else {
+    borderColor = 'border-outline-variant/30'; bgIcon = 'bg-surface-container-highest'; iconColor = 'text-on-surface-variant';
+    iconName = 'schedule'; labelColor = 'text-on-surface-variant'; labelText = 'QUEUED';
+  }
+
+  var readOpacity = n.isRead ? ' opacity-60' : '';
+  var readBtn = n.isRead ? '' :
+    '<button onclick="markNotificationRead(' + n.id + ')" ' +
+      'class="mt-4 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-primary hover:underline transition-opacity">' +
+      '<span class="material-symbols-outlined text-[14px]">done_all</span>' +
+      '읽음 표시' +
+    '</button>';
+  var repoSpan = n.repo
+    ? '<span class="text-xs text-on-surface-variant">•</span>' +
+      '<span class="text-xs font-mono text-on-surface-variant">' + esc(n.repo) + '</span>'
+    : '';
+
+  return (
+    '<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 ' +
+      borderColor + ' hover:bg-surface-container-high transition-all duration-300' + readOpacity + '" ' +
+      'data-notif-id="' + n.id + '">' +
+      '<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg ' + bgIcon + ' ' + iconColor + '">' +
+        '<span class="material-symbols-outlined' + iconSpin + '">' + iconName + '</span>' +
+      '</div>' +
+      '<div class="flex-1 min-w-0">' +
+        '<div class="flex items-center gap-2 mb-1">' +
+          '<span class="font-mono text-xs font-bold ' + labelColor + ' uppercase tracking-wider">' + labelText + '</span>' +
+          repoSpan +
+        '</div>' +
+        '<h3 class="text-sm font-bold text-on-surface mb-1">' + esc(n.title) + '</h3>' +
+        '<p class="text-xs text-on-surface-variant">' + esc(n.message) + '</p>' +
+      '</div>' +
+      '<div class="text-right">' +
+        '<p class="text-[10px] text-on-surface-variant font-mono">' + formatNotifTime(n.createdAt) + '</p>' +
+        readBtn +
+      '</div>' +
+    '</div>'
+  );
+}
+
+/**
+ * @param {string} isoStr
+ * @returns {string}
+ */
+function formatNotifTime(isoStr) {
+  var diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (diff < 60) return '방금';
+  if (diff < 3600) return Math.floor(diff / 60) + '분 전';
+  if (diff < 86400) return Math.floor(diff / 3600) + '시간 전';
+  if (diff < 172800) return '어제';
+  return Math.floor(diff / 86400) + '일 전';
+}
+
+/**
+ * @param {number} count
+ * @returns {void}
+ */
+function updateNotificationBadge(count) {
+  var navLink = document.querySelector('#sidebar-nav a[data-nav="notifications"]');
+  if (!navLink) return;
+  var existing = navLink.querySelector('.notif-badge');
+  if (count > 0) {
+    if (!existing) {
+      var badge = document.createElement('span');
+      badge.className = 'notif-badge ml-auto text-[10px] font-bold bg-primary text-on-primary rounded-full px-1.5 py-0.5 leading-none';
+      navLink.appendChild(badge);
+      existing = badge;
+    }
+    existing.textContent = count > 99 ? '99+' : String(count);
+  } else {
+    if (existing) existing.remove();
+  }
+}
+
 /** @returns {void} */
 function loadNotifications() {
+  notifCurrentOffset = 0;
+  fetchAndRenderNotifications();
+
+  // Bind filter buttons
+  var filterBar = document.getElementById('notifications-filter-bar');
+  if (filterBar && !filterBar.dataset.bound) {
+    filterBar.dataset.bound = '1';
+    filterBar.addEventListener('click', function(e) {
+      var btn = e.target instanceof Element ? /** @type {HTMLElement|null} */ (e.target.closest('[data-notif-filter]')) : null;
+      if (!btn) return;
+      var filter = btn.dataset.notifFilter;
+      if (!filter || filter === notifCurrentFilter) return;
+      notifCurrentFilter = filter;
+      notifCurrentOffset = 0;
+      filterBar.querySelectorAll('.notif-filter-btn').forEach(function(b) {
+        var el = /** @type {HTMLElement} */ (b);
+        if (el.dataset.notifFilter === filter) {
+          el.className = 'notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium bg-primary text-on-primary';
+        } else {
+          el.className = 'notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors';
+        }
+      });
+      fetchAndRenderNotifications();
+    });
+  }
+}
+
+/** @returns {void} */
+function fetchAndRenderNotifications() {
+  var contentEl = document.getElementById('notifications-content');
   var emptyEl = document.getElementById('notifications-empty');
-  if (!emptyEl) return;
-  emptyEl.innerHTML = renderEmptyState({
-    icon: 'notifications_off',
-    title: '알림 없음',
-    description: '새 잡 상태 변화가 있으면 여기에 표시됩니다',
-    secondaryLink: { label: '알림 설정', href: '#settings' }
-  });
+  var paginEl = document.getElementById('notifications-pagination');
+  if (!contentEl) return;
+
+  contentEl.innerHTML = '<div class="flex items-center justify-center py-12 text-outline text-sm">' +
+    '<span class="material-symbols-outlined text-lg mr-2 animate-spin align-middle">sync</span>로딩 중...</div>';
+  if (emptyEl) emptyEl.classList.add('hidden');
+  if (paginEl) paginEl.classList.add('hidden');
+
+  apiFetch('/api/notifications?limit=' + NOTIF_PAGE_SIZE + '&offset=' + notifCurrentOffset)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      /** @type {NotificationItem[]} */
+      var all = data.notifications || [];
+      var unread = typeof data.unreadCount === 'number' ? data.unreadCount : 0;
+      notifTotal = typeof data.total === 'number' ? data.total : all.length;
+
+      updateNotificationBadge(unread);
+
+      var filtered = all.filter(function(n) {
+        if (notifCurrentFilter === 'all') return true;
+        if (notifCurrentFilter === 'job_success') return n.type === 'job_success';
+        if (notifCurrentFilter === 'job_failure') return n.type === 'job_failure';
+        if (notifCurrentFilter === 'job_started') return n.type === 'job_started' || n.type === 'job_queued';
+        return true;
+      });
+
+      contentEl.innerHTML = '';
+      if (filtered.length === 0) {
+        if (emptyEl) {
+          emptyEl.classList.remove('hidden');
+          emptyEl.innerHTML = renderEmptyState({
+            icon: 'notifications_off',
+            title: '알림 없음',
+            description: notifCurrentFilter === 'all'
+              ? '새 잡 상태 변화가 있으면 여기에 표시됩니다'
+              : '해당 필터에 맞는 알림이 없습니다',
+          });
+        }
+      } else {
+        if (emptyEl) emptyEl.classList.add('hidden');
+        contentEl.innerHTML = filtered.map(renderNotificationCard).join('');
+      }
+
+      if (paginEl && notifTotal > NOTIF_PAGE_SIZE) {
+        paginEl.classList.remove('hidden');
+        var pageInfo = document.getElementById('notifications-page-info');
+        var prevBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('notifications-prev-btn'));
+        var nextBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('notifications-next-btn'));
+        var currentPage = Math.floor(notifCurrentOffset / NOTIF_PAGE_SIZE) + 1;
+        var totalPages = Math.ceil(notifTotal / NOTIF_PAGE_SIZE);
+        if (pageInfo) pageInfo.textContent = currentPage + ' / ' + totalPages;
+        if (prevBtn) prevBtn.disabled = notifCurrentOffset === 0;
+        if (nextBtn) nextBtn.disabled = notifCurrentOffset + NOTIF_PAGE_SIZE >= notifTotal;
+      }
+    })
+    .catch(function() {
+      contentEl.innerHTML = '<div class="flex items-center justify-center py-12 text-error text-sm">' +
+        '<span class="material-symbols-outlined text-lg mr-2 align-middle">error</span>알림을 불러오지 못했습니다.</div>';
+    });
+}
+
+/**
+ * @param {number} delta
+ * @returns {void}
+ */
+function loadNotificationsPage(delta) {
+  notifCurrentOffset = Math.max(0, notifCurrentOffset + delta * NOTIF_PAGE_SIZE);
+  fetchAndRenderNotifications();
+}
+
+/**
+ * @param {number} id
+ * @returns {void}
+ */
+function markNotificationRead(id) {
+  apiFetch('/api/notifications/' + id + '/read', { method: 'POST' })
+    .then(function(r) {
+      if (!r.ok) return;
+      var card = document.querySelector('[data-notif-id="' + id + '"]');
+      if (card) {
+        card.classList.add('opacity-60');
+        var btn = card.querySelector('button[onclick]');
+        if (btn) btn.remove();
+      }
+      apiFetch('/api/notifications/unread-count')
+        .then(function(r2) { return r2.json(); })
+        .then(function(d) { updateNotificationBadge(d.unreadCount || 0); })
+        .catch(function() {});
+    })
+    .catch(function() {});
+}
+
+/** @returns {void} */
+function markAllNotificationsRead() {
+  var btn = /** @type {HTMLButtonElement|null} */ (document.getElementById('notifications-read-all-btn'));
+  if (btn) btn.disabled = true;
+  apiFetch('/api/notifications/read-all', { method: 'POST' })
+    .then(function(r) {
+      if (btn) btn.disabled = false;
+      if (!r.ok) return;
+      updateNotificationBadge(0);
+      fetchAndRenderNotifications();
+    })
+    .catch(function() {
+      if (btn) btn.disabled = false;
+    });
 }
 
 window.loadNotifications = loadNotifications;
+window.markNotificationRead = markNotificationRead;
+window.markAllNotificationsRead = markAllNotificationsRead;
+window.loadNotificationsPage = loadNotificationsPage;
 
 /** @returns {void} */
 function loadSkipEvents() {

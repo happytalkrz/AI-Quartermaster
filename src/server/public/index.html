@@ -728,14 +728,14 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
         <span class="w-1 h-4 bg-primary-container rounded-full"></span>
-        <span>Skip Events</span>
+        <span>거부된 이슈</span>
         <span id="skip-events-total" class="text-xs font-mono text-outline ml-2">0</span>
       </h2>
       <button onclick="loadSkipEvents()" class="flex items-center gap-1.5 px-3 py-1.5 bg-surface-container-high text-outline text-xs font-bold rounded-lg ring-1 ring-outline-variant/20 hover:bg-surface-bright transition-colors">
         <span class="material-symbols-outlined text-sm">refresh</span> 새로고침
       </button>
     </div>
-    <div class="bg-surface-container rounded-xl ring-1 ring-outline-variant/10 overflow-hidden">
+    <div id="skip-events-table" class="bg-surface-container rounded-xl ring-1 ring-outline-variant/10 overflow-hidden">
       <table class="w-full text-left">
         <thead>
           <tr class="border-b border-outline-variant/20 bg-surface-container-high">
@@ -752,6 +752,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
         </tbody>
       </table>
     </div>
+    <div id="skip-events-empty" class="hidden"></div>
   </div>
 
   <div id="view-settings" class="view-panel">
@@ -861,6 +862,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <script src="js/api.js"></script>
 <script src="js/state.js"></script>
 <script src="js/modal.js"></script>
+<script src="js/render-empty.js"></script>
 <script src="js/render-jobs.js"></script>
 <script src="js/render-settings.js"></script>
 <script src="js/render-repos.js"></script>

@@ -186,27 +186,77 @@ function updatePreview() {
   previewEl.innerHTML = renderMarkdown(md);
 }
 
+/**
+ * @param {string} repo
+ * @returns {void}
+ */
+function selectRepo(repo) {
+  var hiddenInput = /** @type {HTMLInputElement|null} */ (document.getElementById('new-issue-repo'));
+  var display = document.getElementById('new-issue-repo-display');
+  var dropdown = document.getElementById('new-issue-repo-dropdown');
+  var chevron = document.getElementById('new-issue-repo-chevron');
+  var trigger = document.getElementById('new-issue-repo-trigger');
+  if (hiddenInput) hiddenInput.value = repo;
+  if (display) {
+    display.textContent = repo;
+    display.className = 'text-sm text-primary font-medium';
+  }
+  if (dropdown) dropdown.classList.add('hidden');
+  if (chevron) chevron.textContent = 'expand_more';
+  if (trigger) trigger.classList.remove('border-primary');
+}
+
 /** @returns {void} */
 function loadNewIssueRepos() {
-  var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('new-issue-repo'));
-  if (!select) return;
-  var selectEl = /** @type {HTMLSelectElement} */ (select);
+  var dropdown = document.getElementById('new-issue-repo-dropdown');
+  if (!dropdown) return;
   apiFetch('/api/projects')
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!Array.isArray(data.projects)) return;
-      selectEl.innerHTML = '<option value="">저장소 선택...</option>';
+      dropdown.innerHTML = '';
       data.projects.forEach(function(/** @type {{repo: string}} */ p) {
-        var opt = document.createElement('option');
-        opt.value = p.repo;
-        opt.textContent = p.repo;
-        selectEl.appendChild(opt);
+        var item = document.createElement('div');
+        item.className = 'px-4 py-3 hover:bg-surface-bright text-on-surface cursor-pointer transition-colors text-sm';
+        item.textContent = p.repo;
+        item.addEventListener('click', function() { selectRepo(p.repo); });
+        dropdown.appendChild(item);
       });
       if (data.projects.length === 1) {
-        selectEl.value = data.projects[0].repo;
+        selectRepo(data.projects[0].repo);
       }
     })
     .catch(function() {});
+}
+
+/** @returns {void} */
+function initCustomRepoSelect() {
+  var trigger = document.getElementById('new-issue-repo-trigger');
+  var dropdown = document.getElementById('new-issue-repo-dropdown');
+  var chevron = document.getElementById('new-issue-repo-chevron');
+  var wrapper = document.getElementById('new-issue-repo-wrapper');
+  if (!trigger || !dropdown) return;
+
+  trigger.addEventListener('click', function() {
+    var isOpen = !dropdown.classList.contains('hidden');
+    if (isOpen) {
+      dropdown.classList.add('hidden');
+      if (chevron) chevron.textContent = 'expand_more';
+      trigger.classList.remove('border-primary');
+    } else {
+      dropdown.classList.remove('hidden');
+      if (chevron) chevron.textContent = 'expand_less';
+      trigger.classList.add('border-primary');
+    }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (wrapper && !wrapper.contains(/** @type {Node} */ (e.target))) {
+      dropdown.classList.add('hidden');
+      if (chevron) chevron.textContent = 'expand_more';
+      trigger.classList.remove('border-primary');
+    }
+  });
 }
 
 /** @returns {void} */

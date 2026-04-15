@@ -276,7 +276,7 @@ function buildInputClasses(baseClasses, isReadonly, additionalClasses) {
  */
 function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none',
     isReadonly,
     isMasked ? 'bg-[#f85149]/5 border-[#f85149]/20 text-[#f85149]' : ''
   );
@@ -297,7 +297,7 @@ function renderTextInput(fieldId, value, configPath, isReadonly, isMasked) {
  */
 function renderNumberInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none',
     isReadonly
   );
 
@@ -340,7 +340,7 @@ function renderCheckboxInput(fieldId, value, configPath, isReadonly) {
  */
 function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none',
+    'w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none',
     isReadonly
   );
   var commaSeparated = Array.isArray(value) ? value.join(', ') : '';
@@ -364,7 +364,7 @@ function renderInstanceOwnersInput(fieldId, value, configPath, isReadonly) {
  */
 function renderArrayInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant py-3 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none font-mono',
     isReadonly
   );
   var arrayText = JSON.stringify(value, null, 2);
@@ -412,7 +412,7 @@ function bindCommandsCliFields(config) {
  */
 function renderObjectInput(fieldId, value, configPath, isReadonly) {
   var classes = buildInputClasses(
-    'w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono',
+    'w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant py-3 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none font-mono',
     isReadonly
   );
   var objectText = JSON.stringify(value, null, 2);
@@ -550,7 +550,7 @@ function renderBasicNumberControl(fieldId, configPath, value, min, max) {
   var attrs = 'type="number" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + numVal + '"';
   if (typeof min === 'number') attrs += ' min="' + min + '"';
   if (typeof max === 'number') attrs += ' max="' + max + '"';
-  return '<input ' + attrs + ' class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+  return '<input ' + attrs + ' class="w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none" />';
 }
 
 /**
@@ -577,12 +577,15 @@ function renderBasicToggleControl(fieldId, configPath, checked) {
  * @returns {string}
  */
 function renderBasicDropdownControl(fieldId, configPath, value, options) {
-  var html = '<select id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' +
-             'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
+  var html = '<div class="relative">';
+  html += '<select id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' +
+          'class="w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-12 px-4 text-sm text-on-surface focus:border-primary transition-colors outline-none appearance-none cursor-pointer">';
   options.forEach(function(opt) {
     html += '<option value="' + esc(opt) + '"' + (opt === value ? ' selected' : '') + '>' + esc(opt) + '</option>';
   });
   html += '</select>';
+  html += '<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">expand_more</span>';
+  html += '</div>';
   return html;
 }
 
@@ -595,18 +598,18 @@ function renderBasicDropdownControl(fieldId, configPath, value, options) {
 function renderBasicChipInputControl(fieldId, configPath, values) {
   var chipsHtml = '';
   values.forEach(function(val, idx) {
-    chipsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+    chipsHtml += '<span class="inline-flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-medium border border-primary/20">' +
                  esc(val) +
                  '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
-                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-sm cursor-pointer">close</span></button>' +
                  '</span>';
   });
 
-  return '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">' + chipsHtml + '</div>' +
+  return '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-2 mb-2 min-h-[28px]">' + chipsHtml + '</div>' +
          '<input type="hidden" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" data-input-type="chip-array" value="' + esc(JSON.stringify(values)) + '" />' +
          '<div class="flex gap-1">' +
          '<input type="text" id="' + fieldId + '-input" placeholder="값 입력 후 Enter" ' +
-         'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" ' +
+         'class="flex-1 bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none" ' +
          'onkeydown="addBasicChipOnEnter(event,\'' + fieldId + '\')" />' +
          '<button type="button" onclick="addBasicChip(\'' + fieldId + '\')" ' +
          'class="px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors">' +
@@ -622,7 +625,7 @@ function renderBasicChipInputControl(fieldId, configPath, values) {
  */
 function renderBasicTextControl(fieldId, configPath, value) {
   return '<input type="text" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" value="' + esc(value) + '" ' +
-         'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />';
+         'class="w-full bg-surface-container-lowest border-none border-b-2 border-outline-variant h-10 px-3 text-sm text-on-surface focus:border-primary transition-colors outline-none" />';
 }
 
 /**

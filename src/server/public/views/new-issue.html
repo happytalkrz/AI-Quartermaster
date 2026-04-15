@@ -59,17 +59,24 @@
         <!-- Repo Selector -->
         <div>
           <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">저장소</label>
-          <select id="new-issue-repo"
-            class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none appearance-none">
-            <option value="">저장소 선택...</option>
-          </select>
+          <div class="relative" id="new-issue-repo-wrapper">
+            <button type="button" id="new-issue-repo-trigger"
+              class="w-full bg-surface-container-lowest h-12 flex items-center justify-between px-4 border-b-2 border-outline-variant hover:border-primary/60 transition-colors text-left">
+              <span id="new-issue-repo-display" class="text-sm text-on-surface/40">저장소 선택...</span>
+              <span class="material-symbols-outlined text-on-surface-variant text-base" id="new-issue-repo-chevron">expand_more</span>
+            </button>
+            <div id="new-issue-repo-dropdown"
+              class="hidden absolute top-full left-0 right-0 mt-1 rounded-lg py-2 border border-outline-variant/10 shadow-2xl z-10 max-h-48 overflow-y-auto bg-surface-container-highest/80 backdrop-blur-md">
+            </div>
+            <input type="hidden" id="new-issue-repo" value="" />
+          </div>
         </div>
 
         <!-- Title -->
         <div>
           <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">제목</label>
           <input type="text" id="new-issue-title" placeholder="이슈 제목을 입력하세요"
-            class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none" />
+            class="w-full bg-surface-container-lowest border-b-2 border-outline-variant h-12 px-4 text-sm text-on-surface placeholder:text-on-surface/20 focus:border-primary transition-colors outline-none" />
         </div>
 
         <!-- Structured Fields -->
@@ -77,22 +84,22 @@
           <div>
             <label id="new-issue-what-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">무엇이 잘못되었나요?</label>
             <textarea id="new-issue-what" rows="3" placeholder="구체적으로 설명하세요"
-              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+              class="w-full bg-surface-container-lowest border-b-2 border-outline-variant py-3 px-4 text-sm text-on-surface placeholder:text-on-surface/20 focus:border-primary transition-colors outline-none resize-none"></textarea>
           </div>
           <div>
             <label id="new-issue-where-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">어디서 발생하나요?</label>
             <textarea id="new-issue-where" rows="2" placeholder="파일, 함수, 컴포넌트 등"
-              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+              class="w-full bg-surface-container-lowest border-b-2 border-outline-variant py-3 px-4 text-sm text-on-surface placeholder:text-on-surface/20 focus:border-primary transition-colors outline-none resize-none"></textarea>
           </div>
           <div>
             <label id="new-issue-how-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">재현 방법 / 원인 분석</label>
             <textarea id="new-issue-how" rows="3" placeholder="단계별로 설명하세요"
-              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+              class="w-full bg-surface-container-lowest border-b-2 border-outline-variant py-3 px-4 text-sm text-on-surface placeholder:text-on-surface/20 focus:border-primary transition-colors outline-none resize-none"></textarea>
           </div>
           <div>
             <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">관련 파일</label>
             <input type="text" id="new-issue-files" placeholder="src/foo.ts, src/bar.ts (쉼표로 구분)"
-              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none" />
+              class="w-full bg-surface-container-lowest border-b-2 border-outline-variant h-12 px-4 text-sm text-on-surface placeholder:text-on-surface/20 focus:border-primary transition-colors outline-none" />
           </div>
         </div>
 

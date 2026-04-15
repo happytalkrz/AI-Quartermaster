@@ -100,6 +100,13 @@ function renderSettingsView(config) {
   // Claude CLI maxTurns / maxTurnsPerMode 필드 바인딩
   bindCommandsCliFields(config);
 
+  // Advanced 탭 렌더링
+  renderAdvancedTab(config);
+
+  // 저장된 메인 탭 복원 (기본: basic)
+  var savedMainTab = localStorage.getItem('aqm-selected-main-tab') || 'basic';
+  setMainTab(savedMainTab);
+
   // 저장된 탭 선택 복원 또는 기본 탭 설정
   var savedTab = localStorage.getItem('aqm-selected-tab') || 'general';
   setSettingsTab(savedTab);
@@ -415,4 +422,257 @@ function renderObjectInput(fieldId, value, configPath, isReadonly) {
          esc(objectText) +
          '</textarea>' +
          '<div class="text-[10px] text-outline/70 mt-1">JSON</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Advanced Tab
+   ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Advanced 섹션 → config 경로 매핑
+ * get: config에서 값을 추출
+ * put: PUT /api/config 바디를 생성 (null이면 UI 저장 불가)
+ * @type {Record<string, {get: function(*): *, put: (function(*): Record<string, *>)|null}>}
+ */
+var ADVANCED_SECTION_MAP = {
+  hooks: {
+    get: function(cfg) {
+      var v = /** @type {*} */ (cfg).hooks;
+      return (v !== undefined && v !== null) ? v : null;
+    },
+    put: null  // hooks는 PUT /api/config 핸들러에서 제외됨
+  },
+  retryPolicy: {
+    get: function(cfg) {
+      var c = /** @type {*} */ (cfg);
+      var retry = (c.commands && c.commands.claudeCli) ? c.commands.claudeCli.retry : undefined;
+      return (retry !== undefined && retry !== null) ? retry : null;
+    },
+    put: function(v) { return { commands: { claudeCli: { retry: v } } }; }
+  },
+  models: {
+    get: function(cfg) {
+      var c = /** @type {*} */ (cfg);
+      var models = (c.commands && c.commands.claudeCli) ? c.commands.claudeCli.models : undefined;
+      return (models !== undefined && models !== null) ? models : null;
+    },
+    put: function(v) { return { commands: { claudeCli: { models: v } } }; }
+  },
+  allowedTools: {
+    get: function(cfg) {
+      var c = /** @type {*} */ (cfg);
+      var tools = (c.commands && c.commands.claudeCli) ? c.commands.claudeCli.additionalArgs : undefined;
+      return (tools !== undefined && tools !== null) ? tools : null;
+    },
+    put: function(v) { return { commands: { claudeCli: { additionalArgs: v } } }; }
+  },
+  sensitivePaths: {
+    get: function(cfg) {
+      var c = /** @type {*} */ (cfg);
+      var paths = c.safety ? c.safety.sensitivePaths : undefined;
+      return (paths !== undefined && paths !== null) ? paths : null;
+    },
+    put: function(v) { return { safety: { sensitivePaths: v } }; }
+  }
+};
+
+/**
+ * Advanced 탭 렌더링 — 각 섹션 textarea에 config 값 채우기 + 저장 버튼/에러 컨테이너 동적 삽입
+ * @param {AqmConfig} config
+ * @returns {void}
+ */
+function renderAdvancedTab(config) {
+  var sections = Object.keys(ADVANCED_SECTION_MAP);
+  sections.forEach(function(sectionKey) {
+    var body = document.getElementById('advanced-body-' + sectionKey);
+    var textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('advanced-field-' + sectionKey));
+    if (!body || !textarea) return;
+
+    // textarea에 config 값 채우기
+    var sectionDef = ADVANCED_SECTION_MAP[sectionKey];
+    var value = sectionDef.get(config);
+    if (value !== null) {
+      textarea.value = JSON.stringify(value, null, 2);
+    }
+
+    // 에러 컨테이너 삽입 (중복 방지)
+    if (!document.getElementById('advanced-error-' + sectionKey)) {
+      var errorDiv = document.createElement('div');
+      errorDiv.id = 'advanced-error-' + sectionKey;
+      errorDiv.className = 'hidden text-xs mt-2 px-1 whitespace-pre-wrap';
+      errorDiv.style.color = 'var(--md-sys-color-error, #f85149)';
+      body.insertBefore(errorDiv, textarea);
+    }
+
+    // 저장 버튼 삽입 (저장 가능한 섹션만, 중복 방지)
+    if (sectionDef.put && !document.getElementById('advanced-save-' + sectionKey)) {
+      var saveBtn = document.createElement('button');
+      saveBtn.id = 'advanced-save-' + sectionKey;
+      saveBtn.type = 'button';
+      saveBtn.className = 'mt-2 flex items-center gap-1 text-[10px] text-primary bg-primary/5 hover:bg-primary/10 px-2 py-1 rounded-sm transition-colors border border-primary/20';
+      saveBtn.innerHTML = '<span class="material-symbols-outlined text-sm">save</span>저장';
+      var capturedKey = sectionKey;
+      saveBtn.onclick = function() { saveAdvancedSection(capturedKey); };
+      body.appendChild(saveBtn);
+    }
+  });
+}
+
+/**
+ * Advanced 카드 열기/닫기 토글
+ * @param {string} sectionKey
+ * @returns {void}
+ */
+function toggleAdvancedCard(sectionKey) {
+  var body = document.getElementById('advanced-body-' + sectionKey);
+  var icon = document.getElementById('advanced-icon-' + sectionKey);
+  if (!body || !icon) return;
+
+  var isHidden = body.classList.contains('hidden');
+  body.classList.toggle('hidden', !isHidden);
+  icon.style.transform = isHidden ? 'rotate(180deg)' : '';
+}
+
+/**
+ * Advanced 섹션 개별 저장 — JSON.parse → PUT /api/config → 인라인 에러 표시
+ * @param {string} sectionKey
+ * @returns {void}
+ */
+function saveAdvancedSection(sectionKey) {
+  var textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('advanced-field-' + sectionKey));
+  var errorEl = document.getElementById('advanced-error-' + sectionKey);
+  if (!textarea) return;
+
+  // 에러 초기화
+  if (errorEl) errorEl.classList.add('hidden');
+
+  // JSON 파싱
+  var parsed;
+  try {
+    parsed = JSON.parse(textarea.value.trim() || 'null');
+  } catch (parseErr) {
+    if (errorEl) {
+      errorEl.textContent = 'JSON 파싱 오류: ' + (parseErr instanceof Error ? parseErr.message : String(parseErr));
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  var sectionDef = ADVANCED_SECTION_MAP[sectionKey];
+  if (!sectionDef || !sectionDef.put) {
+    if (errorEl) {
+      errorEl.textContent = '이 섹션은 UI 저장이 지원되지 않습니다. config.yml을 직접 편집하세요.';
+      errorEl.classList.remove('hidden');
+    }
+    return;
+  }
+
+  var putBody = sectionDef.put(parsed);
+
+  apiFetch('/api/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(putBody)
+  })
+    .then(function(r) {
+      return r.json().then(function(data) {
+        return { ok: r.ok, data: data };
+      });
+    })
+    .then(function(result) {
+      if (result.ok) {
+        // 성공 피드백 — 테두리 색상 일시적으로 강조
+        textarea.style.outline = '1px solid #3fb950';
+        setTimeout(function() { textarea.style.outline = ''; }, 1500);
+      } else {
+        var errLines = [];
+        if (result.data.errors && Array.isArray(result.data.errors)) {
+          result.data.errors.forEach(function(e) {
+            errLines.push((e.path || '') + ': ' + (e.message || ''));
+          });
+        } else if (result.data.error) {
+          errLines.push(result.data.error);
+        } else {
+          errLines.push('저장 실패');
+        }
+        if (errorEl) {
+          errorEl.textContent = errLines.join('\n');
+          errorEl.classList.remove('hidden');
+        }
+      }
+    })
+    .catch(function(fetchErr) {
+      if (errorEl) {
+        errorEl.textContent = '요청 실패: ' + (fetchErr instanceof Error ? fetchErr.message : String(fetchErr));
+        errorEl.classList.remove('hidden');
+      }
+    });
+}
+
+/**
+ * config.yml 절대경로를 클립보드에 복사
+ * @returns {void}
+ */
+function copyConfigYmlPath() {
+  var pathEl = document.getElementById('config-yml-path');
+  var path = pathEl ? (pathEl.textContent || '').trim() : '';
+  if (!path) return;
+
+  navigator.clipboard.writeText(path).catch(function() {
+    var ta = document.createElement('textarea');
+    ta.value = path;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+/**
+ * config.yml 내 섹션 경로를 클립보드에 복사 (카드 헤더 클릭 버블링 방지)
+ * @param {Event} event
+ * @param {string} sectionKey
+ * @returns {void}
+ */
+function copyConfigSectionPath(event, sectionKey) {
+  event.stopPropagation();
+  var pathEl = document.getElementById('config-yml-path');
+  var basePath = pathEl ? (pathEl.textContent || 'config.yml').trim() : 'config.yml';
+  var text = basePath + ' → ' + sectionKey;
+
+  navigator.clipboard.writeText(text).catch(function() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+}
+
+/**
+ * 메인 탭 전환 (BASIC ↔ ADVANCED)
+ * @param {string} tabName
+ * @returns {void}
+ */
+function setMainTab(tabName) {
+  var activeClasses = ['bg-primary-container', 'text-on-primary-container', 'shadow-lg', 'shadow-primary-container/20'];
+  var inactiveClasses = ['text-on-surface-variant', 'hover:text-on-surface'];
+
+  document.querySelectorAll('.main-tab-btn').forEach(function(btn) {
+    var isActive = /** @type {HTMLElement} */ (btn).dataset.mainTab === tabName;
+    activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
+    inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
+  });
+
+  document.querySelectorAll('.main-tab-panel').forEach(function(panel) {
+    var isActive = panel.id === 'main-tab-' + tabName;
+    panel.classList.toggle('hidden', !isActive);
+  });
+
+  localStorage.setItem('aqm-selected-main-tab', tabName);
 }

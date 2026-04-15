@@ -261,6 +261,7 @@ function initCustomRepoSelect() {
 
 /** @returns {void} */
 function initNewIssue() {
+  initCustomRepoSelect();
   loadNewIssueRepos();
   updateCategoryCardStyles();
   updateFieldLabels();
@@ -286,7 +287,7 @@ function initNewIssue() {
 function submitNewIssue() {
   var cat = getSelectedCategory();
   var title = /** @type {HTMLInputElement|null} */ (document.getElementById('new-issue-title'));
-  var repo = /** @type {HTMLSelectElement|null} */ (document.getElementById('new-issue-repo'));
+  var repo = /** @type {HTMLInputElement|null} */ (document.getElementById('new-issue-repo'));
   var what = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('new-issue-what'));
   var where = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('new-issue-where'));
   var how = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('new-issue-how'));

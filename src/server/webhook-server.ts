@@ -46,7 +46,7 @@ export function createWebhookApp(options: WebhookServerOptions): Hono {
       options.config.general.instanceLabel,
       options.config.safety.allowedLabels
     );
-    const result = dispatchEvent(
+    const result = await dispatchEvent(
       eventType,
       payload,
       triggerLabels,

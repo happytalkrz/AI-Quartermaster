@@ -26,7 +26,9 @@ import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import type { ZodError } from "zod";
+import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -394,6 +396,16 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
 
 const SSE_INITIAL_JOB_LIMIT = 20;
 
+const NewIssueRequestSchema = z.object({
+  category: z.enum(["bug", "feature", "refactor", "docs"]),
+  title: z.string().min(1),
+  repo: z.string().min(1),
+  what: z.string().min(1),
+  where: z.string().default(""),
+  how: z.string().default(""),
+  files: z.string().default(""),
+});
+
 /**
  * Returns jobs for SSE initial state:
  * - Excludes archived jobs
@@ -531,6 +543,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       api.use("/api/projects/*", readOnlyGuard);
       api.use("/api/jobs/*", readOnlyGuard);
       api.use("/api/update", readOnlyGuard);
+      api.use("/api/new-issue", readOnlyGuard);
       getLogger().info(
         "Dashboard is running in read-only mode. Write endpoints are disabled." +
         (!isLocalBind ? " Non-local bind is permitted in read-only mode." : "")
@@ -1690,6 +1703,40 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(healthResponse);
     } catch (error: unknown) {
       return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Create a new GitHub issue from dashboard
+  api.post("/api/new-issue", zValidator('json', NewIssueRequestSchema, zodValidationHook), async (c) => {
+    const logger = getLogger();
+    try {
+      const { category, title, repo, what, where, how, files } = c.req.valid('json');
+
+      const templatesDir = resolve(process.cwd(), "prompts/issue-templates");
+      const templatePath = resolve(templatesDir, `${category}.md`);
+      const template = loadTemplate(templatePath, templatesDir);
+      const body = renderTemplate(template, { what, where, how, files });
+
+      const result = await runCli("gh", [
+        "issue", "create",
+        "--repo", repo,
+        "--title", title,
+        "--body", body,
+        "--label", "aqm-by",
+      ]);
+
+      if (result.exitCode !== 0) {
+        return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(result.stderr)}` }, 500);
+      }
+
+      const url = result.stdout.trim();
+      const numberMatch = url.match(/\/issues\/(\d+)$/);
+      const number = numberMatch ? parseInt(numberMatch[1], 10) : undefined;
+
+      logger.info(`New issue created: ${url}`);
+      return c.json({ url, number });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

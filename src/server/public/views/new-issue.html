@@ -1,0 +1,125 @@
+  <!-- ============ New Issue View ============ -->
+  <div id="view-new-issue" class="view-panel">
+    <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
+      <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+      <span>New Issue</span>
+    </h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Left: Form -->
+      <div class="space-y-6">
+
+        <!-- Category Cards -->
+        <div>
+          <div class="text-[10px] font-black uppercase text-primary tracking-widest mb-3">카테고리</div>
+          <div class="grid grid-cols-2 gap-3" id="new-issue-category-cards">
+            <label class="new-issue-cat-card cursor-pointer" data-cat="bug">
+              <input type="radio" name="new-issue-category" value="bug" class="sr-only" checked />
+              <div class="flex items-center gap-2 p-3 rounded-xl border-2 border-outline-variant/30 bg-surface-container hover:border-primary/40 transition-colors new-issue-cat-inner">
+                <span class="material-symbols-outlined text-base text-outline">bug_report</span>
+                <div>
+                  <div class="text-xs font-bold text-on-surface">버그</div>
+                  <div class="text-[10px] text-outline">오동작 수정</div>
+                </div>
+              </div>
+            </label>
+            <label class="new-issue-cat-card cursor-pointer" data-cat="feature">
+              <input type="radio" name="new-issue-category" value="feature" class="sr-only" />
+              <div class="flex items-center gap-2 p-3 rounded-xl border-2 border-outline-variant/30 bg-surface-container hover:border-primary/40 transition-colors new-issue-cat-inner">
+                <span class="material-symbols-outlined text-base text-outline">add_circle</span>
+                <div>
+                  <div class="text-xs font-bold text-on-surface">기능</div>
+                  <div class="text-[10px] text-outline">새 기능 추가</div>
+                </div>
+              </div>
+            </label>
+            <label class="new-issue-cat-card cursor-pointer" data-cat="refactor">
+              <input type="radio" name="new-issue-category" value="refactor" class="sr-only" />
+              <div class="flex items-center gap-2 p-3 rounded-xl border-2 border-outline-variant/30 bg-surface-container hover:border-primary/40 transition-colors new-issue-cat-inner">
+                <span class="material-symbols-outlined text-base text-outline">build</span>
+                <div>
+                  <div class="text-xs font-bold text-on-surface">리팩터</div>
+                  <div class="text-[10px] text-outline">코드 개선</div>
+                </div>
+              </div>
+            </label>
+            <label class="new-issue-cat-card cursor-pointer" data-cat="docs">
+              <input type="radio" name="new-issue-category" value="docs" class="sr-only" />
+              <div class="flex items-center gap-2 p-3 rounded-xl border-2 border-outline-variant/30 bg-surface-container hover:border-primary/40 transition-colors new-issue-cat-inner">
+                <span class="material-symbols-outlined text-base text-outline">description</span>
+                <div>
+                  <div class="text-xs font-bold text-on-surface">문서</div>
+                  <div class="text-[10px] text-outline">문서화 작업</div>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- Repo Selector -->
+        <div>
+          <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">저장소</label>
+          <select id="new-issue-repo"
+            class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none appearance-none">
+            <option value="">저장소 선택...</option>
+          </select>
+        </div>
+
+        <!-- Title -->
+        <div>
+          <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">제목</label>
+          <input type="text" id="new-issue-title" placeholder="이슈 제목을 입력하세요"
+            class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none" />
+        </div>
+
+        <!-- Structured Fields -->
+        <div class="space-y-4">
+          <div>
+            <label id="new-issue-what-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">무엇이 잘못되었나요?</label>
+            <textarea id="new-issue-what" rows="3" placeholder="구체적으로 설명하세요"
+              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+          </div>
+          <div>
+            <label id="new-issue-where-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">어디서 발생하나요?</label>
+            <textarea id="new-issue-where" rows="2" placeholder="파일, 함수, 컴포넌트 등"
+              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+          </div>
+          <div>
+            <label id="new-issue-how-label" class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">재현 방법 / 원인 분석</label>
+            <textarea id="new-issue-how" rows="3" placeholder="단계별로 설명하세요"
+              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none resize-none"></textarea>
+          </div>
+          <div>
+            <label class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">관련 파일</label>
+            <input type="text" id="new-issue-files" placeholder="src/foo.ts, src/bar.ts (쉼표로 구분)"
+              class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none" />
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex items-center gap-3 pt-2">
+          <button id="new-issue-submit-btn" onclick="submitNewIssue()"
+            class="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary font-bold text-sm rounded-lg hover:bg-primary/90 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            <span class="material-symbols-outlined text-base">publish</span>
+            <span>이슈 발행</span>
+          </button>
+          <div id="new-issue-result" class="text-sm"></div>
+        </div>
+
+      </div>
+
+      <!-- Right: Preview Panel -->
+      <div class="lg:sticky lg:top-6 self-start">
+        <div class="bg-surface-container rounded-xl p-5 min-h-[400px]">
+          <div class="flex items-center justify-between mb-4">
+            <span class="text-[10px] font-black uppercase text-primary tracking-widest">미리보기</span>
+            <span id="new-issue-preview-title" class="text-xs text-outline truncate max-w-[200px]">(제목 없음)</span>
+          </div>
+          <div id="new-issue-preview"
+            class="prose prose-sm max-w-none text-on-surface text-sm leading-relaxed space-y-2 custom-scrollbar overflow-y-auto max-h-[600px]">
+            <p class="text-outline text-xs">카테고리를 선택하고 내용을 입력하면 미리보기가 표시됩니다.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

@@ -40,6 +40,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
   buildProjectLayer: vi.fn().mockReturnValue({}),
   buildIssueLayer: vi.fn().mockReturnValue({}),
   buildLearningLayer: vi.fn().mockReturnValue({}),
+  extractDesignReferences: vi.fn().mockReturnValue({ designFiles: [], references: [] }),
 }));
 
 vi.mock("../../src/review/token-estimator.js", () => ({

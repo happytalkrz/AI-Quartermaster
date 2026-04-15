@@ -385,7 +385,7 @@ function _setupInjectSteps() {
             '<span>저장소 불러오는 중...</span>' +
           '</div>' +
           '<select id="setup-repo" ' +
-          'class="hidden w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">' +
+          'class="aqm-select hidden w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">' +
             '<option value="">저장소 선택...</option>' +
           '</select>' +
         '</div>' +

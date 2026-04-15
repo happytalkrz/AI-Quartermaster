@@ -578,7 +578,7 @@ function renderBasicToggleControl(fieldId, configPath, checked) {
  */
 function renderBasicDropdownControl(fieldId, configPath, value, options) {
   var html = '<select id="' + fieldId + '" data-config-path="' + esc(configPath) + '" ' +
-             'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
+             'class="aqm-select w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">';
   options.forEach(function(opt) {
     html += '<option value="' + esc(opt) + '"' + (opt === value ? ' selected' : '') + '>' + esc(opt) + '</option>';
   });

@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { dispatchEvent } from "../../src/server/event-dispatcher.js";
 import type { AQConfig } from "../../src/types/config.js";
 import type { JobStore } from "../../src/queue/job-store.js";
 import type { Job } from "../../src/types/pipeline.js";
+import { checkDependencyPRsMerged } from "../../src/queue/dependency-resolver.js";
+
+vi.mock("../../src/queue/dependency-resolver.js", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    checkDependencyPRsMerged: vi.fn(),
+  };
+});
 
 const makePayload = (action: string, labels: string[], author = "user") => ({
   action,

@@ -81,6 +81,7 @@ async function checkClaudeLogin(): Promise<DoctorCheck> {
       detail: 'Claude에 로그인되어 있지 않습니다.',
       fixSteps: ['claude auth login 명령어로 로그인하세요.'],
       autoFixCommand: 'claude auth login',
+      healLevel: 2,
     };
   } catch {
     return {
@@ -94,6 +95,7 @@ async function checkClaudeLogin(): Promise<DoctorCheck> {
         'claude auth login 명령어로 로그인하세요.',
       ],
       autoFixCommand: 'claude auth login',
+      healLevel: 2,
     };
   }
 }
@@ -155,6 +157,7 @@ async function checkGhAuth(): Promise<DoctorCheck> {
         `gh auth refresh -s ${missing.join(',')} 명령어로 scope를 추가하세요.`,
       ],
       autoFixCommand: `gh auth refresh -s ${missing.join(',')}`,
+      healLevel: 2,
     };
   } catch {
     return {
@@ -168,6 +171,7 @@ async function checkGhAuth(): Promise<DoctorCheck> {
         'gh auth refresh -s repo,workflow 명령어로 필요한 scope를 추가하세요.',
       ],
       autoFixCommand: 'gh auth login',
+      healLevel: 2,
     };
   }
 }
@@ -238,6 +242,7 @@ async function checkGitIdentity(): Promise<DoctorCheck> {
         ...(!name ? ['git config --global user.name "Your Name"'] : []),
         ...(!email ? ['git config --global user.email "you@example.com"'] : []),
       ],
+      healLevel: 1,
     };
   } catch {
     return {
@@ -250,6 +255,7 @@ async function checkGitIdentity(): Promise<DoctorCheck> {
         'git config --global user.name "Your Name"',
         'git config --global user.email "you@example.com"',
       ],
+      healLevel: 3,
     };
   }
 }
@@ -277,6 +283,7 @@ async function checkSqlite3(): Promise<DoctorCheck> {
         'node-gyp 빌드 도구가 설치되어 있는지 확인하세요.',
       ],
       autoFixCommand: 'npm rebuild better-sqlite3',
+      healLevel: 1,
     };
   }
 }
@@ -305,6 +312,7 @@ async function checkAqmDirWrite(): Promise<DoctorCheck> {
         'chmod 755 ~/.aqm 명령어로 권한을 설정하세요.',
       ],
       autoFixCommand: 'mkdir -p ~/.aqm && chmod 755 ~/.aqm',
+      healLevel: 1,
     };
   }
 }
@@ -333,6 +341,7 @@ async function checkGitHubApiPing(): Promise<DoctorCheck> {
         '네트워크 연결 상태를 확인하세요.',
       ],
       autoFixCommand: 'gh auth login',
+      healLevel: 2,
     };
   }
 }
@@ -360,6 +369,7 @@ async function checkClaudePing(): Promise<DoctorCheck> {
         'npm install -g @anthropic-ai/claude-code 로 재설치하세요.',
       ],
       autoFixCommand: 'npm install -g @anthropic-ai/claude-code',
+      healLevel: 2,
     };
   }
 }

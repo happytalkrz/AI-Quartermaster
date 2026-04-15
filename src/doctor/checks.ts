@@ -62,7 +62,7 @@ async function checkClaudeCli(): Promise<DoctorCheck> {
 async function checkClaudeLogin(): Promise<DoctorCheck> {
   try {
     const { stdout } = await execFileAsync('claude', ['auth', 'status']);
-    const isLoggedIn = stdout.includes('Logged in') || stdout.includes('logged in');
+    const isLoggedIn = stdout.includes('Logged in') || stdout.includes('logged in') || stdout.includes('"loggedIn": true') || stdout.includes('"loggedIn":true');
     if (isLoggedIn) {
       return {
         id: 'claude-login',

@@ -763,6 +763,7 @@ function renderAdvancedJsonCard(sectionId, label, value, configPath) {
           'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none font-mono">' +
           esc(jsonText) +
           '</textarea>';
+  html += '<div id="' + fieldId + '-error" class="hidden mt-1 text-xs text-[#f85149] font-mono"></div>';
   html += '<button type="button" ' +
           'class="mt-3 flex items-center gap-2 text-xs font-bold text-primary-container hover:text-primary transition-colors" ' +
           'onclick="copyAdvancedConfigPath(\'' + esc(configPath) + '\')">';

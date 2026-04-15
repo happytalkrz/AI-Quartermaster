@@ -1737,7 +1737,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const configPath = resolve(process.cwd(), "config.yml");
       let backupPath: string | null = null;
       if (existsSync(configPath)) {
-        backupPath = `${configPath}.bak`;
+        // 타임스탬프 접미사로 이전 백업을 보존한다 (여러 번 apply 해도 직전 상태로 롤백 가능)
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        backupPath = `${configPath}.bak.${timestamp}`;
         copyFileSync(configPath, backupPath);
       }
       const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);

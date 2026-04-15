@@ -264,7 +264,7 @@ describe("POST /api/setup/apply", () => {
     expect(writtenContent).toContain('path: "/path/to/repo"');
   });
 
-  it("기존 config.yml 있는 경우 .bak 백업을 생성한다", async () => {
+  it("기존 config.yml 있는 경우 타임스탬프 접미사 백업을 생성한다", async () => {
     mockExistsSync.mockReturnValue(true);
 
     const app = makeApp();
@@ -276,12 +276,14 @@ describe("POST /api/setup/apply", () => {
     expect(res.status).toBe(200);
     const data = await res.json() as { success: boolean; backupPath: string };
     expect(data.success).toBe(true);
-    expect(data.backupPath).toMatch(/\.bak$/);
+    // 이전 백업을 덮어쓰지 않도록 타임스탬프 접미사 사용 (.bak.YYYY-MM-DDTHH-MM-SS-mmmZ)
+    expect(data.backupPath).toMatch(/\.bak\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/);
 
     // copyFileSync 호출 확인 (백업 생성)
     expect(mockCopyFileSync).toHaveBeenCalledOnce();
     const [src, dest] = mockCopyFileSync.mock.calls[0] as [string, string];
-    expect(dest).toBe(`${src}.bak`);
+    expect(dest.startsWith(`${src}.bak.`)).toBe(true);
+    expect(dest).toMatch(/\.bak\.\d{4}-\d{2}-\d{2}T/);
 
     // writeFileSync 호출 확인
     expect(mockWriteFileSync).toHaveBeenCalledOnce();

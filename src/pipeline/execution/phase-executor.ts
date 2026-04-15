@@ -1,5 +1,6 @@
-import { resolve } from "path";
-import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer, extractDesignReferences } from "../../prompt/template-renderer.js";
+import { resolve, join } from "path";
+import { existsSync } from "fs";
+import { assemblePrompt, loadTemplate, buildBaseLayer, buildProjectLayer, buildIssueLayer, buildLearningLayer } from "../../prompt/template-renderer.js";
 import type { PromptLayers } from "../../prompt/layer-types.js";
 import { runClaude, type ClaudeRunResult } from "../../claude/claude-runner.js";
 import { configForTask, resolveFallbackChain } from "../../claude/model-router.js";
@@ -81,7 +82,9 @@ export async function executePhase(ctx: PhaseExecutorContext): Promise<PhaseResu
     const sanitizedBody = `<USER_INPUT>\n${ctx.issue.body.replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;")}\n</USER_INPUT>`;
 
     // Extract design file references from issue body and pre-inject into template
-    const { designFiles } = extractDesignReferences(ctx.issue.body, ctx.cwd);
+    const designFilePattern = /docs\/design\/[^\s"'`<>[\]()\\]+\.html/g;
+    const designFiles = [...new Set(ctx.issue.body.match(designFilePattern) ?? [])]
+      .filter(p => existsSync(join(ctx.cwd, p)));
     const uiKeywords = /ui|frontend|컴포넌트|디자인|대시보드|알림|form|button|input|select|page|화면|view/i;
     const phaseContext = [ctx.phase.name, ctx.phase.description, ...ctx.phase.targetFiles].join(" ");
     const isUiRelated = uiKeywords.test(phaseContext) || ctx.phase.targetFiles.some(f => f.endsWith(".html") || f.includes("design"));

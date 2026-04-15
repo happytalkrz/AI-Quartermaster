@@ -18,7 +18,7 @@ import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, GetNotificationsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
@@ -28,6 +28,7 @@ import { healLevel1, healLevel2, writeToActiveHealProcess } from "../doctor/heal
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
+import { statusToNotificationType } from "../types/pipeline.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
@@ -506,6 +507,21 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
   store.on('jobCreated', (job: Job) => {
     broadcastToAllClients('jobCreated', { id: job.id, job });
+  });
+
+  store.on('jobUpdated', (updatedJob: Job, previousJob: Job) => {
+    if (previousJob?.status !== updatedJob.status) {
+      const notifType = statusToNotificationType(updatedJob.status);
+      if (notifType) {
+        broadcastToAllClients('notificationCreated', {
+          jobId: updatedJob.id,
+          type: notifType,
+          repo: updatedJob.repo,
+          issueNumber: updatedJob.issueNumber,
+          timestamp: Date.now(),
+        });
+      }
+    }
   });
 
   if (apiKey) {
@@ -2021,6 +2037,90 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         "Connection": "keep-alive",
       },
     });
+  });
+
+  // Notifications: unread count
+  api.get("/api/notifications/unread-count", (c) => {
+    try {
+      const unreadCount = store.getAqDb().countUnreadNotifications();
+      return c.json({ unreadCount });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch unread count: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: list with pagination
+  api.get("/api/notifications", (c) => {
+    try {
+      const queryParams = {
+        isRead: c.req.query("isRead"),
+        type: c.req.query("type"),
+        limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
+        offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
+      };
+
+      const parseResult = GetNotificationsQuerySchema.safeParse(queryParams);
+      if (!parseResult.success) {
+        return c.json({
+          error: "Invalid query parameters",
+          details: formatZodError(parseResult.error)
+        }, 400);
+      }
+
+      const { isRead, type: typeFilter, limit, offset } = parseResult.data;
+      const aqDb = store.getAqDb();
+      const isReadFilter = isRead === "true" ? true : isRead === "false" ? false : undefined;
+      const notifFilter: { isRead?: boolean; type?: string } = {};
+      if (isReadFilter !== undefined) notifFilter.isRead = isReadFilter;
+      if (typeFilter !== undefined) notifFilter.type = typeFilter;
+      const notifications = aqDb.listNotifications({ ...notifFilter, limit, offset });
+      const total = aqDb.countNotifications(notifFilter);
+      const unreadCount = aqDb.countUnreadNotifications();
+      const start = offset ?? 0;
+
+      return c.json({
+        notifications,
+        total,
+        unreadCount,
+        pagination: {
+          total,
+          offset: start,
+          limit: limit ?? total,
+          hasMore: start + notifications.length < total,
+        },
+      });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch notifications: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: mark all as read (static route before :id/read)
+  api.post("/api/notifications/read-all", (c) => {
+    try {
+      const count = store.getAqDb().markAllNotificationsRead();
+      broadcastToAllClients("notificationsReadAll", { count, timestamp: Date.now() });
+      return c.json({ status: "ok", count });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to mark all notifications as read: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: mark individual as read
+  api.post("/api/notifications/:id/read", (c) => {
+    try {
+      const idParam = c.req.param("id");
+      const id = parseInt(idParam, 10);
+      if (isNaN(id) || id <= 0) {
+        return c.json({ error: "Invalid notification id" }, 400);
+      }
+      const updated = store.getAqDb().markNotificationRead(id);
+      if (!updated) {
+        return c.json({ error: "Notification not found" }, 404);
+      }
+      return c.json({ status: "ok", id });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to mark notification as read: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
   });
 
   return api;

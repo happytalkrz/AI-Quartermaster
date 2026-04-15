@@ -68,6 +68,11 @@ function navigateTo(view) {
   if (view === 'new-issue') {
     initNewIssue();
   }
+
+  // If navigating to setup view, init wizard
+  if (view === 'setup') {
+    initSetupView();
+  }
 }
 
 // Bind navigation clicks
@@ -1495,10 +1500,26 @@ function loadSkipEvents() {
       var totalEl = document.getElementById('skip-events-total');
       if (totalEl) totalEl.textContent = String(total);
 
+      var tableEl = document.getElementById('skip-events-table');
+      var emptyEl = document.getElementById('skip-events-empty');
       if (events.length === 0) {
-        el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">스킵된 이벤트가 없습니다.</td></tr>';
+        if (tableEl) tableEl.classList.add('hidden');
+        if (emptyEl) {
+          emptyEl.classList.remove('hidden');
+          emptyEl.innerHTML = renderEmptyState({
+            icon: 'filter_alt_off',
+            title: '거부된 이슈 없음',
+            description: '라벨/권한/안전장치로 거부된 이슈가 여기에 표시됩니다.',
+            secondaryLink: {
+              label: 'allowedLabels / instanceOwners 편집',
+              href: '#settings'
+            }
+          });
+        }
         return;
       }
+      if (tableEl) tableEl.classList.remove('hidden');
+      if (emptyEl) emptyEl.classList.add('hidden');
       el.innerHTML = events.map(renderSkipEventRow).join('');
     })
     .catch(function() {

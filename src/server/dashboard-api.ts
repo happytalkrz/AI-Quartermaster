@@ -1608,6 +1608,46 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
+  // Setup wizard: validate GitHub personal access token
+  api.get("/api/setup/validate-token", async (c) => {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return c.json({ error: "Authorization header with Bearer token is required" }, 400);
+    }
+
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      return c.json({ error: "Token must not be empty" }, 400);
+    }
+
+    try {
+      const response = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "AI-Quartermaster",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          return c.json({ error: "Invalid GitHub token" }, 401);
+        }
+        return c.json({ error: `GitHub API error: ${response.status}` }, 502);
+      }
+
+      const data = (await response.json()) as Record<string, unknown>;
+      const username = typeof data.login === "string" ? data.login : null;
+      const avatarUrl = typeof data.avatar_url === "string" ? data.avatar_url : null;
+      const publicRepos = typeof data.public_repos === "number" ? data.public_repos : null;
+
+      return c.json({ username, avatar_url: avatarUrl, public_repos: publicRepos });
+    } catch (error: unknown) {
+      return c.json({ error: `Token validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
   // Health check endpoint
   api.get("/api/health", async (c) => {
     try {

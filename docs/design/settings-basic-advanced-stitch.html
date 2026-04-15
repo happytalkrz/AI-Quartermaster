@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AQM Settings | KINETIC COMMAND</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(49, 53, 60, 0.4);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #10141a;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #31353c;
+            border-radius: 10px;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-container": "#58a6ff",
+                      "surface": "#10141a",
+                      "on-surface-variant": "#c0c7d4",
+                      "on-primary-fixed-variant": "#004882",
+                      "surface-tint": "#a2c9ff",
+                      "on-primary-container": "#003a6b",
+                      "surface-container-high": "#262a31",
+                      "tertiary-container": "#da9600",
+                      "surface-container-lowest": "#0a0e14",
+                      "on-primary-fixed": "#001c38",
+                      "surface-dim": "#10141a",
+                      "error": "#ffb4ab",
+                      "primary-fixed": "#d3e4ff",
+                      "surface-bright": "#353940",
+                      "secondary": "#c1c7d0",
+                      "outline-variant": "#414752",
+                      "inverse-surface": "#dfe2eb",
+                      "surface-container": "#1c2026",
+                      "tertiary-fixed": "#ffddaf",
+                      "secondary-fixed": "#dde3ec",
+                      "on-tertiary": "#432c00",
+                      "surface-variant": "#31353c",
+                      "on-tertiary-container": "#4f3400",
+                      "on-error": "#690005",
+                      "outline": "#8b919d",
+                      "on-surface": "#dfe2eb",
+                      "error-container": "#93000a",
+                      "secondary-fixed-dim": "#c1c7d0",
+                      "secondary-container": "#41474f",
+                      "primary-fixed-dim": "#a2c9ff",
+                      "inverse-on-surface": "#2d3137",
+                      "surface-container-highest": "#31353c",
+                      "on-error-container": "#ffdad6",
+                      "tertiary": "#ffba42",
+                      "surface-container-low": "#181c22",
+                      "on-secondary": "#2b3138",
+                      "on-tertiary-fixed": "#281800",
+                      "background": "#10141a",
+                      "inverse-primary": "#0060aa",
+                      "on-secondary-fixed": "#161c23",
+                      "on-tertiary-fixed-variant": "#614000",
+                      "on-primary": "#00315c",
+                      "tertiary-fixed-dim": "#ffba42",
+                      "on-secondary-fixed-variant": "#41474f",
+                      "on-secondary-container": "#b0b5be",
+                      "primary": "#a2c9ff",
+                      "on-background": "#dfe2eb"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "fontFamily": {
+                      "headline": ["Space Grotesk"],
+                      "body": ["Inter"],
+                      "label": ["Inter"],
+                      "mono": ["JetBrains Mono"]
+              }
+            },
+          }
+        }
+      </script>
+</head>
+<body class="bg-surface text-on-surface font-body min-h-screen flex flex-col selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar from Shared Components -->
+<header class="fixed top-0 w-full z-50 bg-[#10141a] text-[#a2c9ff] font-['Space_Grotesk'] tracking-tight flex items-center justify-between px-6 h-16 w-full">
+<div class="flex items-center gap-8">
+<span class="text-xl font-bold tracking-tighter text-[#dfe2eb]">KINETIC COMMAND</span>
+<div class="hidden md:flex items-center gap-6">
+<nav class="flex gap-4">
+<a class="text-[#414752] hover:bg-[#31353c] transition-colors px-3 py-1 rounded-sm" href="#">Dashboard</a>
+<a class="text-[#414752] hover:bg-[#31353c] transition-colors px-3 py-1 rounded-sm" href="#">Telemetry</a>
+<a class="text-[#a2c9ff] border-b-2 border-[#a2c9ff] px-3 py-1" href="#">Settings</a>
+</nav>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex gap-2">
+<span class="material-symbols-outlined p-2 hover:bg-[#31353c] transition-colors rounded-sm cursor-pointer" data-icon="sensors">sensors</span>
+<span class="material-symbols-outlined p-2 hover:bg-[#31353c] transition-colors rounded-sm cursor-pointer" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined p-2 hover:bg-[#31353c] transition-colors rounded-sm cursor-pointer" data-icon="settings">settings</span>
+</div>
+<button class="bg-[#a2c9ff] text-[#00315c] px-4 py-1.5 font-bold text-sm tracking-widest active:scale-95 duration-100">SYSTEM ONLINE</button>
+</div>
+</header>
+<div class="flex pt-16 flex-1 h-[calc(100vh-64px)] overflow-hidden">
+<!-- SideNavBar from Shared Components -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-[#181c22] flex flex-col py-4 border-r border-outline-variant/10">
+<div class="px-6 mb-8">
+<h2 class="font-['Space_Grotesk'] text-[#dfe2eb] font-black tracking-tighter">QUARTERMASTER</h2>
+<p class="text-[10px] text-primary tracking-[0.2em] font-bold">V2.04 ACTIVE</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/60 font-['Inter'] text-sm uppercase tracking-widest hover:bg-[#31353c] hover:text-[#dfe2eb] transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="grid_view">grid_view</span>
+                    Dashboard
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/60 font-['Inter'] text-sm uppercase tracking-widest hover:bg-[#31353c] hover:text-[#dfe2eb] transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="precision_manufacturing">precision_manufacturing</span>
+                    Automation
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/60 font-['Inter'] text-sm uppercase tracking-widest hover:bg-[#31353c] hover:text-[#dfe2eb] transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+                    Telemetry
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#a2c9ff] font-bold border-l-4 border-[#a2c9ff] bg-[#1c2026] font-['Inter'] text-sm uppercase tracking-widest transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="psychology">psychology</span>
+                    Intelligence
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/60 font-['Inter'] text-sm uppercase tracking-widest hover:bg-[#31353c] hover:text-[#dfe2eb] transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="shield">shield</span>
+                    Security
+                </a>
+</nav>
+<div class="px-6 mt-auto pb-4 space-y-4">
+<button class="w-full bg-primary-container/10 border border-primary/20 text-primary py-2 text-xs font-bold tracking-widest hover:bg-primary-container/20 transition-all">
+                    NEW MISSION
+                </button>
+<div class="space-y-1 border-t border-outline-variant/10 pt-4">
+<a class="flex items-center gap-3 text-[#dfe2eb]/60 text-xs py-2 hover:text-[#dfe2eb]" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="potted_plant">potted_plant</span>
+                        Status
+                    </a>
+<a class="flex items-center gap-3 text-[#dfe2eb]/60 text-xs py-2 hover:text-error" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="logout">logout</span>
+                        Logout
+                    </a>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 flex flex-col bg-surface overflow-y-auto custom-scrollbar relative">
+<!-- Page Header / Top Control Bar -->
+<div class="sticky top-0 z-40 bg-surface/80 backdrop-blur-md px-8 py-6 flex items-center justify-between">
+<div class="flex items-center gap-6">
+<div class="relative group">
+<label class="text-[10px] text-outline block mb-1 uppercase tracking-widest font-bold">프리셋 적용</label>
+<div class="flex items-center gap-3">
+<select class="bg-surface-container-high border-none text-on-surface text-sm font-medium h-10 px-4 min-w-[160px] focus:ring-1 focus:ring-primary-container cursor-pointer appearance-none rounded-sm">
+<option>economy</option>
+<option selected="">standard</option>
+<option>thorough</option>
+<option>team</option>
+<option>solo</option>
+</select>
+<!-- Inline Diff Preview Popover -->
+<div class="relative group/popover">
+<button class="flex items-center gap-2 text-xs text-primary-container bg-primary-container/5 hover:bg-primary-container/10 px-3 py-2 rounded-sm transition-colors border border-primary-container/20">
+<span class="material-symbols-outlined text-sm" data-icon="compare_arrows">compare_arrows</span>
+                                    변경 사항 미리보기
+                                </button>
+<!-- Popover Content -->
+<div class="absolute left-0 top-12 w-[320px] glass-panel p-4 border border-outline-variant/30 hidden group-hover/popover:block z-50">
+<h4 class="text-[10px] uppercase tracking-widest font-bold mb-3 border-b border-outline-variant/30 pb-2">PRESET DIFF: STANDARD</h4>
+<div class="space-y-3 font-mono text-[11px]">
+<div class="flex justify-between">
+<span class="text-outline">concurrent_jobs</span>
+<div class="flex gap-2">
+<span class="text-error line-through">1</span>
+<span class="material-symbols-outlined text-[10px] self-center" data-icon="arrow_forward">arrow_forward</span>
+<span class="text-primary-container">4</span>
+</div>
+</div>
+<div class="flex justify-between">
+<span class="text-outline">claude_timeout</span>
+<div class="flex gap-2">
+<span class="text-error line-through">30</span>
+<span class="material-symbols-outlined text-[10px] self-center" data-icon="arrow_forward">arrow_forward</span>
+<span class="text-primary-container">60</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Main Tabs Navigation -->
+<div class="flex bg-surface-container-low p-1 rounded-full border border-outline-variant/10">
+<button class="px-8 py-2 rounded-full text-xs font-bold tracking-widest transition-all bg-primary-container text-on-primary-container shadow-lg shadow-primary-container/20">
+                        일반 (BASIC)
+                    </button>
+<button class="px-8 py-2 rounded-full text-xs font-bold tracking-widest transition-all text-on-surface-variant hover:text-on-surface">
+                        고급 (ADVANCED)
+                    </button>
+</div>
+</div>
+<!-- Settings Content Container -->
+<div class="px-8 pb-32 space-y-12">
+<!-- Section 1: 실행 (Execution) -->
+<section>
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="bolt">bolt</span>
+<h3 class="text-lg font-headline font-semibold tracking-tight">실행</h3>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<!-- Field 1 -->
+<div class="bg-surface-container-low p-6 rounded-lg relative overflow-hidden group">
+<div class="flex justify-between items-start mb-2">
+<label class="text-sm font-semibold">동시 잡 수</label>
+<div class="flex gap-2">
+<span class="px-2 py-0.5 text-[9px] bg-outline-variant/20 text-outline rounded-sm font-mono">DEFAULT: 2</span>
+<span class="px-2 py-0.5 text-[9px] bg-primary-container/10 text-primary-container rounded-sm font-mono border border-primary-container/20">PRESET:STANDARD</span>
+</div>
+</div>
+<div class="flex items-center gap-4 group">
+<div class="flex-1 relative">
+<input class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono" type="number" value="4"/>
+<span class="absolute right-4 top-3 text-[10px] text-outline font-bold">개</span>
+</div>
+</div>
+<p class="mt-3 text-xs text-secondary-fixed-dim leading-relaxed">병렬로 처리할 최대 자동화 작업 개수를 정의합니다.</p>
+</div>
+<!-- Field 2 -->
+<div class="bg-surface-container-low p-6 rounded-lg relative overflow-hidden group">
+<div class="flex justify-between items-start mb-2">
+<label class="text-sm font-semibold">Claude 타임아웃</label>
+<div class="flex gap-2">
+<span class="px-2 py-0.5 text-[9px] bg-tertiary-container/10 text-tertiary rounded-sm font-mono border border-tertiary/20">CUSTOM</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex-1 relative">
+<input class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono" type="number" value="45"/>
+<span class="absolute right-4 top-3 text-[10px] text-outline font-bold">초</span>
+</div>
+</div>
+<p class="mt-3 text-xs text-secondary-fixed-dim leading-relaxed">AI 모델 응답 대기 시간을 설정합니다. 네트워크 지연을 고려하세요.</p>
+</div>
+<!-- Field 3 -->
+<div class="bg-surface-container-low p-6 rounded-lg relative">
+<div class="flex justify-between items-start mb-2">
+<label class="text-sm font-semibold">폴링 주기</label>
+<span class="px-2 py-0.5 text-[9px] bg-outline-variant/20 text-outline rounded-sm font-mono">MIN: 500ms</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex-1 relative">
+<input class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono" type="number" value="1000"/>
+<span class="absolute right-4 top-3 text-[10px] text-outline font-bold">ms</span>
+</div>
+</div>
+<p class="mt-3 text-xs text-secondary-fixed-dim leading-relaxed">새로운 큐 확인을 위한 폴링 간격입니다. 낮을수록 빠른 반응이 가능합니다.</p>
+</div>
+<!-- Field 4 -->
+<div class="bg-surface-container-low p-6 rounded-lg relative">
+<div class="flex justify-between items-start mb-2">
+<label class="text-sm font-semibold">실행 모드</label>
+<span class="px-2 py-0.5 text-[9px] bg-primary-container/10 text-primary-container rounded-sm font-mono border border-primary-container/20">PRESET:STANDARD</span>
+</div>
+<select class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono appearance-none cursor-pointer">
+<option>economy</option>
+<option selected="">standard</option>
+<option>thorough</option>
+</select>
+<p class="mt-3 text-xs text-secondary-fixed-dim leading-relaxed">자동화 엔진의 리소스 할당 수준 및 작업 정밀도를 선택합니다.</p>
+</div>
+</div>
+</section>
+<!-- Section 2: 권한 (Permissions) -->
+<section>
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="lock_open">lock_open</span>
+<h3 class="text-lg font-headline font-semibold tracking-tight">권한</h3>
+</div>
+<div class="bg-surface-container p-8 rounded-lg space-y-8">
+<!-- Chip Input Field -->
+<div>
+<label class="text-xs font-bold uppercase tracking-widest text-outline block mb-3">인스턴스 소유자</label>
+<div class="flex flex-wrap gap-2 p-3 bg-surface-container-highest rounded-sm min-h-[50px] items-center border-b-2 border-primary-container/30">
+<span class="flex items-center gap-2 bg-primary-container/20 text-primary-container px-2 py-1 text-xs rounded-sm border border-primary-container/20">
+                                    admin@kinetic.io
+                                    <span class="material-symbols-outlined text-[14px] cursor-pointer" data-icon="close">close</span>
+</span>
+<span class="flex items-center gap-2 bg-primary-container/20 text-primary-container px-2 py-1 text-xs rounded-sm border border-primary-container/20">
+                                    lead_dev@kinetic.io
+                                    <span class="material-symbols-outlined text-[14px] cursor-pointer" data-icon="close">close</span>
+</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[120px]" placeholder="+ 계정 추가" type="text"/>
+</div>
+<p class="mt-2 text-xs text-secondary-fixed-dim">인스턴스 구성을 변경할 수 있는 권한을 가진 이메일 목록입니다.</p>
+</div>
+<div>
+<label class="text-xs font-bold uppercase tracking-widest text-outline block mb-3">허용 라벨</label>
+<div class="flex flex-wrap gap-2 p-3 bg-surface-container-highest rounded-sm min-h-[50px] items-center border-b-2 border-primary-container/30">
+<span class="flex items-center gap-2 bg-surface-variant text-on-surface px-2 py-1 text-xs rounded-sm">
+                                    autofix
+                                    <span class="material-symbols-outlined text-[14px] cursor-pointer" data-icon="close">close</span>
+</span>
+<span class="flex items-center gap-2 bg-surface-variant text-on-surface px-2 py-1 text-xs rounded-sm">
+                                    review-required
+                                    <span class="material-symbols-outlined text-[14px] cursor-pointer" data-icon="close">close</span>
+</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs flex-1 min-w-[120px]" placeholder="+ 라벨 추가" type="text"/>
+</div>
+<p class="mt-2 text-xs text-secondary-fixed-dim">자동화 작업이 허용된 GitHub/GitLab 이슈 라벨들입니다.</p>
+</div>
+<div>
+<label class="text-xs font-bold uppercase tracking-widest text-outline block mb-3">기본 브랜치</label>
+<div class="relative">
+<input class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono" type="text" value="main"/>
+<span class="absolute right-4 top-3.5 flex items-center gap-1.5 px-2 py-0.5 text-[9px] bg-primary-container/10 text-primary-container rounded-sm font-mono border border-primary-container/20 uppercase">preset:standard</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 3: 대시보드 (Dashboard) -->
+<section>
+<div class="flex items-center gap-3 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="dashboard">dashboard</span>
+<h3 class="text-lg font-headline font-semibold tracking-tight">대시보드</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="bg-surface-container-low p-6 rounded-lg">
+<label class="text-sm font-semibold block mb-4">대시보드 포트</label>
+<input class="w-full bg-surface-container-highest border-none border-b-2 border-transparent focus:border-primary-container transition-all px-4 py-3 text-sm font-mono" type="number" value="3000"/>
+<div class="mt-4 flex gap-2">
+<span class="px-2 py-0.5 text-[9px] bg-outline-variant/20 text-outline rounded-sm font-mono">DEFAULT: 3000</span>
+<span class="px-2 py-0.5 text-[9px] bg-primary-container/10 text-primary-container rounded-sm font-mono border border-primary-container/20">PRESET:STANDARD</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-lg flex flex-col justify-between">
+<label class="text-sm font-semibold block mb-6">알림 설정</label>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<span class="text-sm text-on-surface-variant">작업 완료 시 알림</span>
+<button class="w-10 h-5 rounded-full bg-primary-container relative flex items-center transition-colors">
+<div class="absolute right-1 w-3 h-3 bg-on-primary-container rounded-full"></div>
+</button>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-sm text-on-surface-variant">에러 발생 시 즉시 알림</span>
+<button class="w-10 h-5 rounded-full bg-surface-container-highest relative flex items-center transition-colors">
+<div class="absolute left-1 w-3 h-3 bg-outline rounded-full"></div>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Advanced Preview (Hidden logic but visible as preview) -->
+<section class="opacity-40 pointer-events-none grayscale">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span>
+<h3 class="text-lg font-headline font-semibold tracking-tight">Advanced Configurations</h3>
+</div>
+<span class="bg-error/10 text-error text-[10px] px-2 py-1 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+</div>
+<div class="space-y-3">
+<div class="bg-surface-container-lowest p-4 flex items-center justify-between rounded-sm">
+<span class="font-mono text-sm">hooks</span>
+<span class="material-symbols-outlined" data-icon="expand_more">expand_more</span>
+</div>
+<div class="bg-surface-container-lowest p-4 flex items-center justify-between rounded-sm">
+<span class="font-mono text-sm">retryPolicy</span>
+<span class="material-symbols-outlined" data-icon="expand_more">expand_more</span>
+</div>
+<div class="bg-surface-container-lowest p-4 flex items-center justify-between rounded-sm">
+<span class="font-mono text-sm">models</span>
+<span class="material-symbols-outlined" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-2 text-xs font-bold text-primary-container cursor-pointer underline underline-offset-4">
+<span class="material-symbols-outlined text-sm" data-icon="code">code</span>
+                        config.yml 직접 편집
+                    </div>
+</section>
+</div>
+<!-- Sticky Footer for Actions -->
+<footer class="fixed bottom-0 left-64 right-0 h-20 bg-surface-container-low/95 backdrop-blur-xl border-t border-outline-variant/10 px-8 flex items-center justify-end gap-4 z-50">
+<button class="px-6 py-2.5 text-sm font-bold tracking-widest text-outline hover:bg-surface-variant transition-colors rounded-sm">
+                    DISCARD
+                </button>
+<button class="px-8 py-2.5 bg-primary-container text-on-primary-container text-sm font-bold tracking-widest rounded-sm hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary-container/10">
+                    SAVE CHANGES
+                </button>
+</footer>
+</main>
+</div>
+<!-- Floating UI elements - Decorative/Status -->
+<div class="fixed bottom-24 right-8 z-50">
+<div class="bg-surface-container-highest border border-outline-variant/30 p-4 rounded-lg shadow-2xl flex items-center gap-4">
+<div class="relative w-3 h-3">
+<div class="absolute inset-0 bg-primary rounded-full animate-ping opacity-75"></div>
+<div class="relative bg-primary w-3 h-3 rounded-full"></div>
+</div>
+<div>
+<p class="text-[10px] text-outline uppercase tracking-widest font-bold">Engine Status</p>
+<p class="text-xs font-mono text-primary">REAL-TIME SYNC ACTIVE</p>
+</div>
+</div>
+</div>
+</body></html>

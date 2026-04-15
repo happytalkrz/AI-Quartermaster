@@ -615,8 +615,13 @@ function renderLogsView(job) {
     if (durEl) durEl.textContent = '';
   }
 
-  if (!job || !job.logs || job.logs.length === 0) {
-    container.innerHTML = '<div class="text-outline text-center py-12">' + (job ? '이 작업에 대한 로그가 없습니다.' : '작업을 선택하세요.') + '</div>';
+  if (!job) {
+    container.innerHTML = '<div class="text-outline text-center py-12">작업을 선택하세요.</div>';
+    return;
+  }
+
+  if (!job.logs || job.logs.length === 0) {
+    container.innerHTML = renderEmptyState('LOGS_EMPTY');
     return;
   }
 

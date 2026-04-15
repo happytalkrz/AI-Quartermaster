@@ -1,7 +1,7 @@
 import { getLogger } from "../utils/logger.js";
 import { listConfiguredRepos } from "../config/project-resolver.js";
 import type { AQConfig } from "../types/config.js";
-import { parseDependencies, checkCircularDependency } from "../queue/dependency-resolver.js";
+import { parseDependencies, checkCircularDependency, checkDependencyPRsMerged } from "../queue/dependency-resolver.js";
 import type { JobStore } from "../queue/job-store.js";
 import { isAllowedOwner, hasInstanceOwnersConfigured } from "../safety/label-filter.js";
 
@@ -36,13 +36,13 @@ export interface DispatchResult {
  * Evaluates a GitHub webhook event and determines if it should trigger a pipeline.
  * Only processes "issues" events with "labeled" action containing the trigger label.
  */
-export function dispatchEvent(
+export async function dispatchEvent(
   eventType: string,
   payload: GitHubIssueEvent,
   triggerLabels: string[],
   config?: AQConfig,
   store?: JobStore
-): DispatchResult {
+): Promise<DispatchResult> {
   // Defensive validation: ensure required fields are present
   if (!payload?.issue?.number || !Array.isArray(payload?.issue?.labels) || !payload?.repository?.full_name) {
     return { shouldProcess: false, reasonCode: "invalid_payload", reason: "Malformed payload: missing required fields" };
@@ -119,6 +119,24 @@ export function dispatchEvent(
         shouldProcess: false,
         reasonCode: "circular_dependency",
         reason: `Circular dependency detected for issue #${payload.issue.number}`,
+      };
+    }
+  }
+
+  // Check if dependency PRs are merged on GitHub (only when dependencies exist and config is available)
+  if (dependencies.length > 0 && config) {
+    const ghPath = config.commands.ghCli.path ?? "gh";
+    const prCheck = await checkDependencyPRsMerged(dependencies, repo, ghPath);
+    if (prCheck.unmerged.length > 0) {
+      const unmergedList = prCheck.unmerged.map(n => `#${n}`).join(", ");
+      logger.warn(
+        `Dependency PRs not merged for issue #${payload.issue.number} in ${repo}: ${unmergedList} — deferring`
+      );
+      return {
+        shouldProcess: false,
+        reasonCode: "dependency_pr_not_merged",
+        reason: `의존 PR 미머지: ${unmergedList}`,
+        dependencies,
       };
     }
   }

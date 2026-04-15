@@ -11,10 +11,13 @@ var _setupCurrentStep = 1;
 /**
  * @type {{
  *   githubToken?: string,
+ *   username?: string,
  *   repo?: string,
  *   repoPath?: string,
  *   baseBranch?: string,
- *   mode?: string
+ *   mode?: string,
+ *   instanceOwners?: string[],
+ *   allowedLabels?: string[]
  * }}
  */
 var _setupWizardData = {};
@@ -69,6 +72,7 @@ var validateGitHubToken = function () {
     .then(function (result) {
       if (result.ok && result.data.username) {
         _setupWizardData.githubToken = token;
+        _setupWizardData.username = result.data.username;
         safeResult.className = 'mt-6 p-4 rounded-xl bg-[#238636]/10 ring-1 ring-[#238636]/30';
         safeContent.innerHTML =
           '<span class="material-symbols-outlined text-[#3fb950] text-base mt-0.5" style="font-variation-settings: \'FILL\' 1;">check_circle</span>' +
@@ -135,6 +139,19 @@ function setupGoToStep(step) {
       }
     });
   }
+
+  if (step === 2) setupLoadRepos();
+  if (step === 3) setupRunLabelCreation();
+  if (step === 4) {
+    if (!_setupWizardData.instanceOwners) {
+      _setupWizardData.instanceOwners = _setupWizardData.username ? [_setupWizardData.username] : [];
+    }
+    if (!_setupWizardData.allowedLabels) {
+      _setupWizardData.allowedLabels = ['aqm-by'];
+    }
+    _setupRenderChips('setup-chips-owners');
+    _setupRenderChips('setup-chips-labels');
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -143,19 +160,19 @@ function setupGoToStep(step) {
 
 /** @returns {boolean} */
 function setupStep2Next() {
-  var repoInputEl = document.getElementById('setup-repo');
+  var repoSelectEl = document.getElementById('setup-repo');
   var pathInputEl = document.getElementById('setup-repo-path');
   var errorEl = document.getElementById('setup-step2-error');
 
-  if (!repoInputEl || !pathInputEl) return false;
-  var repoInput = /** @type {HTMLInputElement} */ (repoInputEl);
+  if (!repoSelectEl || !pathInputEl) return false;
+  var repoSelect = /** @type {HTMLSelectElement} */ (repoSelectEl);
   var pathInput = /** @type {HTMLInputElement} */ (pathInputEl);
 
-  var repo = repoInput.value.trim();
+  var repo = repoSelect.value.trim();
   var repoPath = pathInput.value.trim();
 
   if (!repo || !repo.includes('/')) {
-    if (errorEl) { errorEl.textContent = '저장소는 owner/repo 형식으로 입력하세요.'; errorEl.classList.remove('hidden'); }
+    if (errorEl) { errorEl.textContent = '저장소를 선택하세요.'; errorEl.classList.remove('hidden'); }
     return false;
   }
   if (!repoPath) {
@@ -361,12 +378,17 @@ function _setupInjectSteps() {
         '</div>' +
       '</div>' +
       '<div class="space-y-4">' +
-        '<label class="block">' +
-          '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">GitHub 저장소 (owner/repo)</span>' +
-          '<input type="text" id="setup-repo" ' +
-          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
-          'placeholder="owner/repo-name" autocomplete="off" spellcheck="false" />' +
-        '</label>' +
+        '<div class="block">' +
+          '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">GitHub 저장소</span>' +
+          '<div id="setup-repo-loading" class="flex items-center gap-2 py-3 px-4 text-sm text-outline">' +
+            '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>' +
+            '<span>저장소 불러오는 중...</span>' +
+          '</div>' +
+          '<select id="setup-repo" ' +
+          'class="hidden w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">' +
+            '<option value="">저장소 선택...</option>' +
+          '</select>' +
+        '</div>' +
         '<label class="block">' +
           '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">로컬 클론 경로</span>' +
           '<input type="text" id="setup-repo-path" ' +
@@ -388,7 +410,7 @@ function _setupInjectSteps() {
     container.appendChild(step2);
   }
 
-  // ── Step 3: Claude CLI ──────────────────────────────────────
+  // ── Step 3: Label Auto-Creation ─────────────────────────────
   if (!document.getElementById('setup-step-3')) {
     var step3 = document.createElement('div');
     step3.id = 'setup-step-3';
@@ -396,31 +418,35 @@ function _setupInjectSteps() {
     step3.innerHTML =
       '<div class="flex items-center gap-3 mb-6">' +
         '<div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">' +
-          '<span class="material-symbols-outlined text-primary">terminal</span>' +
+          '<span class="material-symbols-outlined text-primary">label</span>' +
         '</div>' +
         '<div>' +
-          '<h3 class="font-headline text-lg font-bold text-on-surface">Claude CLI 확인</h3>' +
-          '<p class="text-xs text-outline mt-0.5">Claude CLI가 설치되어 있어야 파이프라인이 동작합니다</p>' +
+          '<h3 class="font-headline text-lg font-bold text-on-surface">라벨 자동 생성</h3>' +
+          '<p class="text-xs text-outline mt-0.5">AQM에서 사용할 GitHub 라벨을 저장소에 자동으로 생성합니다</p>' +
         '</div>' +
       '</div>' +
-      '<div class="p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/10 text-sm text-on-surface-variant">' +
-        '<p class="text-xs">Claude CLI가 설치되어 있지 않다면 아래 명령어로 설치하세요:</p>' +
-        '<pre class="mt-2 font-mono text-[11px] text-primary bg-surface-container-highest/40 p-3 rounded-lg overflow-x-auto">npm install -g @anthropic-ai/claude-code</pre>' +
+      '<div class="bg-surface-container-low rounded-xl ring-1 ring-outline-variant/10 divide-y divide-outline-variant/10 px-4">' +
+        '<div id="setup-labels-list" class="py-3">' +
+          '<div class="text-outline text-xs flex items-center gap-2">' +
+            '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>' +
+            '<span>확인 중...</span>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
       '<div class="flex justify-between mt-8 pt-6 border-t border-outline-variant/10">' +
         '<button onclick="setupGoToStep(2)" ' +
         'class="flex items-center gap-2 px-5 py-2.5 bg-surface-container-high text-on-surface-variant font-bold text-sm rounded-lg hover:bg-surface-bright transition-all">' +
           '<span class="material-symbols-outlined text-base">arrow_back</span><span>이전</span>' +
         '</button>' +
-        '<button onclick="setupStep3Next()" ' +
-        'class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm rounded-lg transition-transform active:scale-95">' +
+        '<button id="setup-step3-next-btn" onclick="setupStep3Next()" disabled ' +
+        'class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-primary-container text-on-primary font-bold text-sm rounded-lg transition-transform active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">' +
           '<span>다음 단계로</span><span class="material-symbols-outlined text-base">arrow_forward</span>' +
         '</button>' +
       '</div>';
     container.appendChild(step3);
   }
 
-  // ── Step 4: Notifications ───────────────────────────────────
+  // ── Step 4: Instance Owners & Allowed Labels ────────────────
   if (!document.getElementById('setup-step-4')) {
     var step4 = document.createElement('div');
     step4.id = 'setup-step-4';
@@ -428,15 +454,42 @@ function _setupInjectSteps() {
     step4.innerHTML =
       '<div class="flex items-center gap-3 mb-6">' +
         '<div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">' +
-          '<span class="material-symbols-outlined text-primary">notifications</span>' +
+          '<span class="material-symbols-outlined text-primary">manage_accounts</span>' +
         '</div>' +
         '<div>' +
-          '<h3 class="font-headline text-lg font-bold text-on-surface">알림 설정</h3>' +
-          '<p class="text-xs text-outline mt-0.5">나중에 설정 페이지에서 변경할 수 있습니다</p>' +
+          '<h3 class="font-headline text-lg font-bold text-on-surface">소유자 / 권한 설정</h3>' +
+          '<p class="text-xs text-outline mt-0.5">AQM을 사용할 수 있는 계정과 트리거 라벨을 설정하세요</p>' +
         '</div>' +
       '</div>' +
-      '<div class="p-4 rounded-xl bg-surface-container-low ring-1 ring-outline-variant/10 text-sm text-on-surface-variant">' +
-        '<p class="text-xs">알림은 선택 사항입니다. 지금 건너뛰고 설정 페이지에서 나중에 구성할 수 있습니다.</p>' +
+      '<div class="space-y-6">' +
+        '<div>' +
+          '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">인스턴스 소유자 (instanceOwners)</span>' +
+          '<div id="setup-chips-owners" class="flex flex-wrap gap-2 mb-2 min-h-[28px]"></div>' +
+          '<div class="flex gap-2">' +
+            '<input type="text" id="setup-chip-owner-input" ' +
+            'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
+            'placeholder="GitHub 사용자명 입력 후 Enter" autocomplete="off" spellcheck="false" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_setupChipInputKeydown(\'setup-chip-owner-input\',\'setup-chips-owners\');}" />' +
+            '<button type="button" onclick="_setupChipInputKeydown(\'setup-chip-owner-input\',\'setup-chips-owners\')" ' +
+            'class="px-3 py-2 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/20 transition-colors">' +
+              '<span class="material-symbols-outlined text-sm">add</span>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div>' +
+          '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-2">허용 라벨 (allowedLabels)</span>' +
+          '<div id="setup-chips-labels" class="flex flex-wrap gap-2 mb-2 min-h-[28px]"></div>' +
+          '<div class="flex gap-2">' +
+            '<input type="text" id="setup-chip-label-input" ' +
+            'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
+            'placeholder="라벨명 입력 후 Enter" autocomplete="off" spellcheck="false" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_setupChipInputKeydown(\'setup-chip-label-input\',\'setup-chips-labels\');}" />' +
+            '<button type="button" onclick="_setupChipInputKeydown(\'setup-chip-label-input\',\'setup-chips-labels\')" ' +
+            'class="px-3 py-2 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/20 transition-colors">' +
+              '<span class="material-symbols-outlined text-sm">add</span>' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
       '<div class="flex justify-between mt-8 pt-6 border-t border-outline-variant/10">' +
         '<button onclick="setupGoToStep(3)" ' +
@@ -487,6 +540,184 @@ function _setupInjectSteps() {
       '</div>' +
       '<div id="setup-apply-status" class="hidden mt-4 text-xs text-outline text-center"></div>';
     container.appendChild(step5);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Step 2: Load repos from GitHub API
+   ────────────────────────────────────────────────────────────── */
+
+/** @returns {void} */
+function setupLoadRepos() {
+  var repoSelectEl = document.getElementById('setup-repo');
+  var repoLoadingEl = document.getElementById('setup-repo-loading');
+  if (!repoSelectEl || !repoLoadingEl) return;
+  var repoSelect = /** @type {HTMLSelectElement} */ (repoSelectEl);
+  var safeLoading = /** @type {HTMLElement} */ (repoLoadingEl);
+
+  repoSelect.innerHTML = '<option value="">저장소 선택...</option>';
+  repoSelect.classList.add('hidden');
+  safeLoading.classList.remove('hidden');
+  safeLoading.innerHTML =
+    '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>' +
+    '<span>저장소 불러오는 중...</span>';
+
+  fetch('/api/setup/repos', {
+    headers: { 'Authorization': 'Bearer ' + (_setupWizardData.githubToken || '') }
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      safeLoading.classList.add('hidden');
+      if (data.error || !Array.isArray(data.repos)) {
+        safeLoading.innerHTML =
+          '<span class="material-symbols-outlined text-sm text-[#f85149]">error</span>' +
+          '<span class="text-[#f85149]">저장소를 불러오지 못했습니다.</span>';
+        safeLoading.classList.remove('hidden');
+        return;
+      }
+      data.repos.forEach(function (/** @type {{full_name:string,private:boolean}} */ repo) {
+        var opt = document.createElement('option');
+        opt.value = repo.full_name;
+        opt.textContent = repo.full_name + (repo.private ? ' 🔒' : '');
+        repoSelect.appendChild(opt);
+      });
+      repoSelect.classList.remove('hidden');
+    })
+    .catch(function () {
+      safeLoading.innerHTML =
+        '<span class="material-symbols-outlined text-sm text-[#f85149]">error</span>' +
+        '<span class="text-[#f85149]">저장소를 불러오지 못했습니다.</span>';
+      safeLoading.classList.remove('hidden');
+    });
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Step 3: Label auto-creation
+   ────────────────────────────────────────────────────────────── */
+
+/** @returns {void} */
+function setupRunLabelCreation() {
+  var labelsEl = document.getElementById('setup-labels-list');
+  var nextBtn = /** @type {HTMLButtonElement|null} */ (document.getElementById('setup-step3-next-btn'));
+  if (!labelsEl) return;
+  var safeLabels = /** @type {HTMLElement} */ (labelsEl);
+
+  var labels = (_setupWizardData.allowedLabels && _setupWizardData.allowedLabels.length > 0)
+    ? _setupWizardData.allowedLabels
+    : ['aqm-by'];
+
+  safeLabels.innerHTML =
+    '<div class="text-outline text-xs flex items-center gap-2">' +
+    '<span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>' +
+    '<span>라벨 확인 중...</span></div>';
+  if (nextBtn) nextBtn.disabled = true;
+
+  fetch('/api/setup/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo: _setupWizardData.repo || '',
+      token: _setupWizardData.githubToken || '',
+      labels: labels,
+    }),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!Array.isArray(data.results)) {
+        safeLabels.innerHTML = '<div class="text-[#f85149] text-xs py-2">라벨 생성에 실패했습니다.</div>';
+        if (nextBtn) nextBtn.disabled = false;
+        return;
+      }
+      safeLabels.innerHTML = data.results.map(function (/** @type {{label:string,status:string}} */ item) {
+        var icon, iconClass, statusText;
+        if (item.status === 'created') {
+          icon = 'add_circle'; iconClass = 'text-[#3fb950]'; statusText = '생성됨';
+        } else if (item.status === 'skipped') {
+          icon = 'check_circle'; iconClass = 'text-outline'; statusText = '이미 존재';
+        } else {
+          icon = 'error'; iconClass = 'text-[#f85149]'; statusText = '실패';
+        }
+        return '<div class="flex items-center gap-3 py-2.5">' +
+          '<span class="material-symbols-outlined text-base ' + iconClass + '" style="font-variation-settings: \'FILL\' 1;">' + icon + '</span>' +
+          '<span class="font-mono text-xs text-on-surface">' + _setupEscapeHtml(item.label) + '</span>' +
+          '<span class="text-[10px] text-outline ml-auto">' + statusText + '</span>' +
+          '</div>';
+      }).join('');
+      if (nextBtn) nextBtn.disabled = false;
+    })
+    .catch(function () {
+      safeLabels.innerHTML = '<div class="text-[#f85149] text-xs py-2">서버 오류가 발생했습니다.</div>';
+      if (nextBtn) nextBtn.disabled = false;
+    });
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Step 4: Chip input (instanceOwners / allowedLabels)
+   ────────────────────────────────────────────────────────────── */
+
+/**
+ * @param {string} listId
+ * @param {string} value
+ * @returns {void}
+ */
+function _setupAddChip(listId, value) {
+  var trimmed = value.trim();
+  if (!trimmed) return;
+  var isOwners = listId === 'setup-chips-owners';
+  var arr = (isOwners ? _setupWizardData.instanceOwners : _setupWizardData.allowedLabels) || [];
+  if (arr.indexOf(trimmed) !== -1) return;
+  arr.push(trimmed);
+  if (isOwners) { _setupWizardData.instanceOwners = arr; } else { _setupWizardData.allowedLabels = arr; }
+  _setupRenderChips(listId);
+}
+
+/**
+ * @param {string} listId
+ * @param {string} value
+ * @returns {void}
+ */
+function _setupRemoveChip(listId, value) {
+  var isOwners = listId === 'setup-chips-owners';
+  var arr = (isOwners ? _setupWizardData.instanceOwners : _setupWizardData.allowedLabels) || [];
+  var filtered = arr.filter(function (v) { return v !== value; });
+  if (isOwners) { _setupWizardData.instanceOwners = filtered; } else { _setupWizardData.allowedLabels = filtered; }
+  _setupRenderChips(listId);
+}
+
+/**
+ * @param {string} listId
+ * @returns {void}
+ */
+function _setupRenderChips(listId) {
+  var container = document.getElementById(listId);
+  if (!container) return;
+  var isOwners = listId === 'setup-chips-owners';
+  var arr = (isOwners ? _setupWizardData.instanceOwners : _setupWizardData.allowedLabels) || [];
+  container.innerHTML = arr.map(function (v) {
+    var escaped = _setupEscapeHtml(v);
+    var escapedJs = v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    return '<span class="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary text-xs rounded-full border border-primary/20">' +
+      '<span>' + escaped + '</span>' +
+      '<button type="button" onclick="_setupRemoveChip(\'' + listId + '\',\'' + escapedJs + '\')" ' +
+      'class="ml-0.5 text-primary/60 hover:text-primary leading-none">' +
+      '<span class="material-symbols-outlined" style="font-size:12px;">close</span></button>' +
+      '</span>';
+  }).join('');
+}
+
+/**
+ * @param {string} inputId
+ * @param {string} listId
+ * @returns {void}
+ */
+function _setupChipInputKeydown(inputId, listId) {
+  var inputEl = document.getElementById(inputId);
+  if (!inputEl) return;
+  var input = /** @type {HTMLInputElement} */ (inputEl);
+  var val = input.value.trim();
+  if (val) {
+    _setupAddChip(listId, val);
+    input.value = '';
   }
 }
 

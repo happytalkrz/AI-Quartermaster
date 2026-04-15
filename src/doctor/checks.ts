@@ -1,9 +1,15 @@
 import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { access, constants } from 'fs/promises';
 import { homedir } from 'os';
 
-const execFileAsync = promisify(execFile);
+function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, (err, stdout, stderr) => {
+      if (err) reject(err);
+      else resolve({ stdout, stderr });
+    });
+  });
+}
 
 export type CheckStatus = 'pass' | 'fail' | 'warn';
 export type CheckSeverity = 'critical' | 'warning' | 'info';

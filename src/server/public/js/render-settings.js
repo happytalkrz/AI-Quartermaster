@@ -704,11 +704,12 @@ function loadPresetsDropdown() {
       while (select.options.length > 1) {
         select.remove(1);
       }
+      var selectEl = select;
       _loadedPresets.forEach(function(preset) {
         var opt = document.createElement('option');
         opt.value = preset.name;
         opt.textContent = preset.label + ' — ' + preset.description;
-        select.appendChild(opt);
+        selectEl.appendChild(opt);
       });
     })
     .catch(function() {
@@ -758,15 +759,17 @@ function previewPreset() {
   var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
   if (!select || !select.value) return;
 
-  var preset = _loadedPresets.find(function(p) { return p.name === select.value; });
+  var previewPresetName = select.value;
+  var preset = _loadedPresets.find(function(p) { return p.name === previewPresetName; });
   if (!preset) return;
 
   var current = collectBasicFieldValues();
   var diffRows = /** @type {Array<{key: string, before: string, after: string}>} */ ([]);
+  var previewFields = preset.fields;
 
-  Object.keys(preset.fields).forEach(function(key) {
+  Object.keys(previewFields).forEach(function(key) {
     var beforeRaw = current[key];
-    var afterRaw = preset.fields[key];
+    var afterRaw = previewFields[key];
     var before = beforeRaw !== undefined ? String(beforeRaw) : '(없음)';
     var after = afterRaw !== undefined ? String(afterRaw) : '(없음)';
     if (before !== after) {
@@ -862,7 +865,8 @@ function applyPreset() {
   var select = /** @type {HTMLSelectElement|null} */ (document.getElementById('preset-select'));
   if (!select || !select.value) return;
 
-  var preset = _loadedPresets.find(function(p) { return p.name === select.value; });
+  var applyPresetName = select.value;
+  var preset = _loadedPresets.find(function(p) { return p.name === applyPresetName; });
   if (!preset) return;
 
   var form = document.getElementById('basic-settings-form');
@@ -870,11 +874,14 @@ function applyPreset() {
 
   _clearAllFieldPresetChips();
   var currentValues = collectBasicFieldValues();
+  var applyFields = preset.fields;
+  var appliedName = preset.name;
+  var formEl = form;
 
-  Object.keys(preset.fields).forEach(function(key) {
-    var el = form.querySelector('[data-config-path="' + key + '"]');
+  Object.keys(applyFields).forEach(function(key) {
+    var el = formEl.querySelector('[data-config-path="' + key + '"]');
     if (!el) return;
-    var val = preset.fields[key];
+    var val = applyFields[key];
 
     if (el instanceof HTMLInputElement) {
       if (el.type === 'checkbox') {
@@ -893,8 +900,8 @@ function applyPreset() {
     var before = currentValues[key] !== undefined ? String(currentValues[key]) : '(없음)';
     var after = val !== undefined ? String(val) : '(없음)';
     if (before !== after) {
-      _presetFieldState[key] = preset.name;
-      _setFieldPresetChip(key, preset.name);
+      _presetFieldState[key] = appliedName;
+      _setFieldPresetChip(key, appliedName);
       el.addEventListener('change', function onPresetFieldChange() {
         _presetFieldState[key] = 'custom';
         _setFieldPresetChip(key, 'custom');

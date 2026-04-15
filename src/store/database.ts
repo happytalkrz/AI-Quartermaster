@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync } from "fs";
 import { getLogger } from "../utils/logger.js";
 import { AQM_HOME } from "../config/project-resolver.js";
-import type { JobPriority, CostBreakdown, SkipEvent, DiagnosisReport } from "../types/pipeline.js";
+import type { JobPriority, CostBreakdown, SkipEvent, DiagnosisReport, NotificationType } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -71,6 +71,18 @@ interface LogRow {
   timestamp: string;
 }
 
+interface NotificationRow {
+  id: number;
+  job_id: string;
+  type: string;
+  title: string;
+  message: string;
+  is_read: number;
+  created_at: string;
+  repo: string | null;
+  issue_number: number | null;
+}
+
 export interface DatabaseJob {
   id: string;
   issueNumber: number;
@@ -128,6 +140,18 @@ export interface DatabaseLog {
   jobId: string;
   message: string;
   timestamp: string;
+}
+
+export interface DatabaseNotification {
+  id?: number;
+  jobId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  repo?: string;
+  issueNumber?: number;
 }
 
 export interface ListJobsFilter {
@@ -234,6 +258,22 @@ export class AQDatabase {
       )
     `);
 
+    // notifications 테이블
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+        created_at TEXT NOT NULL,
+        repo TEXT,
+        issue_number INTEGER,
+        FOREIGN KEY (job_id) REFERENCES jobs (id) ON DELETE CASCADE
+      )
+    `);
+
     // 인덱스 생성
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_jobs_issue_repo ON jobs (issue_number, repo);
@@ -307,6 +347,33 @@ export class AQDatabase {
       this.db.exec(`ALTER TABLE jobs ADD COLUMN diagnosis TEXT`);
       logger.info("Migration: added diagnosis column to jobs table");
     }
+
+    // notifications 테이블 컬럼 마이그레이션 (기존 DB 호환성)
+    const notifColumns = this.db.pragma("table_info(notifications)") as Array<{ name: string }>;
+    if (notifColumns.length > 0) {
+      const notifHasIsRead = notifColumns.some(col => col.name === "is_read");
+      if (!notifHasIsRead) {
+        this.db.exec(`ALTER TABLE notifications ADD COLUMN is_read INTEGER NOT NULL DEFAULT 0`);
+        logger.info("Migration: added is_read column to notifications table");
+      }
+      const notifHasRepo = notifColumns.some(col => col.name === "repo");
+      if (!notifHasRepo) {
+        this.db.exec(`ALTER TABLE notifications ADD COLUMN repo TEXT`);
+        logger.info("Migration: added repo column to notifications table");
+      }
+      const notifHasIssueNumber = notifColumns.some(col => col.name === "issue_number");
+      if (!notifHasIssueNumber) {
+        this.db.exec(`ALTER TABLE notifications ADD COLUMN issue_number INTEGER`);
+        logger.info("Migration: added issue_number column to notifications table");
+      }
+    }
+
+    // notifications 인덱스 생성 (컬럼 마이그레이션 이후 안전하게 생성)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_notifications_job_id ON notifications (job_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at);
+      CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications (is_read);
+    `);
   }
 
   // === Job CRUD ===
@@ -739,6 +806,110 @@ export class AQDatabase {
       reasonMessage: row.reason_message,
       source: row.source as SkipEvent["source"],
       createdAt: row.created_at,
+    };
+  }
+
+  // === Notification CRUD ===
+
+  createNotification(notification: Omit<DatabaseNotification, "id">): number {
+    const stmt = this.db.prepare(`
+      INSERT INTO notifications (job_id, type, title, message, is_read, created_at, repo, issue_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      notification.jobId,
+      notification.type,
+      notification.title,
+      notification.message,
+      notification.isRead ? 1 : 0,
+      notification.createdAt,
+      notification.repo ?? null,
+      notification.issueNumber ?? null
+    );
+
+    logger.debug(`Notification created for job ${notification.jobId}: ${notification.type}`);
+    return result.lastInsertRowid as number;
+  }
+
+  listNotifications(filter?: { isRead?: boolean; type?: string; limit?: number; offset?: number }): DatabaseNotification[] {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (filter?.isRead !== undefined) {
+      conditions.push("is_read = ?");
+      params.push(filter.isRead ? 1 : 0);
+    }
+
+    if (filter?.type !== undefined) {
+      conditions.push("type = ?");
+      params.push(filter.type);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const limitPart = filter?.limit !== undefined ? "LIMIT ?" : "";
+    const offsetPart = filter?.offset !== undefined ? "OFFSET ?" : "";
+
+    if (filter?.limit !== undefined) params.push(filter.limit);
+    if (filter?.offset !== undefined) params.push(filter.offset);
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM notifications
+      ${whereClause}
+      ORDER BY created_at DESC
+      ${limitPart} ${offsetPart}
+    `);
+
+    const rows = stmt.all(...params) as NotificationRow[];
+    return rows.map(row => this.mapRowToNotification(row));
+  }
+
+  countUnreadNotifications(): number {
+    const row = this.db.prepare("SELECT COUNT(*) as count FROM notifications WHERE is_read = 0").get() as { count: number };
+    return row.count;
+  }
+
+  countNotifications(filter?: { isRead?: boolean; type?: string }): number {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (filter?.isRead !== undefined) {
+      conditions.push("is_read = ?");
+      params.push(filter.isRead ? 1 : 0);
+    }
+
+    if (filter?.type !== undefined) {
+      conditions.push("type = ?");
+      params.push(filter.type);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const row = this.db.prepare(`SELECT COUNT(*) as count FROM notifications ${whereClause}`).get(...params) as { count: number };
+    return row.count;
+  }
+
+  markNotificationRead(id: number): boolean {
+    const changes = this.db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ?").run(id).changes;
+    return changes > 0;
+  }
+
+  markAllNotificationsRead(): number {
+    const changes = this.db.prepare("UPDATE notifications SET is_read = 1 WHERE is_read = 0").run().changes;
+    logger.debug(`Marked ${changes} notifications as read`);
+    return changes;
+  }
+
+  private mapRowToNotification(row: NotificationRow): DatabaseNotification {
+    return {
+      id: row.id,
+      jobId: row.job_id,
+      type: row.type as NotificationType,
+      title: row.title,
+      message: row.message,
+      isRead: row.is_read === 1,
+      createdAt: row.created_at,
+      repo: row.repo ?? undefined,
+      issueNumber: row.issue_number ?? undefined,
     };
   }
 

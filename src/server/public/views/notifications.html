@@ -2,12 +2,42 @@
   <div id="view-notifications" class="view-panel">
 
     <!-- Header -->
-    <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2 mb-6">
-      <span class="w-1 h-4 bg-primary-container rounded-full"></span>
-      <span>알림</span>
-    </h2>
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
+        <span class="w-1 h-4 bg-primary-container rounded-full"></span>
+        <span>알림</span>
+      </h2>
+      <button id="notifications-read-all-btn" onclick="markAllNotificationsRead()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors border border-primary/20 disabled:opacity-40 disabled:cursor-not-allowed">
+        <span class="material-symbols-outlined text-[14px]">done_all</span>
+        전체 읽음
+      </button>
+    </div>
 
-    <!-- Empty State Container -->
-    <div id="notifications-empty"></div>
+    <!-- Filter Bar -->
+    <div id="notifications-filter-bar" class="flex bg-surface-container-low p-1 rounded-xl mb-6 w-fit gap-1">
+      <button data-notif-filter="all" class="notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium bg-primary text-on-primary">전체</button>
+      <button data-notif-filter="job_success" class="notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">성공</button>
+      <button data-notif-filter="job_failure" class="notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">실패</button>
+      <button data-notif-filter="job_started" class="notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">진행중</button>
+    </div>
+
+    <!-- Notifications Feed -->
+    <div id="notifications-content" class="space-y-3"></div>
+
+    <!-- Empty State -->
+    <div id="notifications-empty" class="hidden"></div>
+
+    <!-- Pagination -->
+    <div id="notifications-pagination" class="hidden flex items-center justify-between mt-6 pt-4 border-t border-outline-variant/20">
+      <button id="notifications-prev-btn" onclick="loadNotificationsPage(-1)" class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors">
+        <span class="material-symbols-outlined text-[16px]">chevron_left</span>
+        이전
+      </button>
+      <span id="notifications-page-info" class="text-xs text-on-surface-variant font-mono"></span>
+      <button id="notifications-next-btn" onclick="loadNotificationsPage(1)" class="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors">
+        다음
+        <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+      </button>
+    </div>
 
   </div>

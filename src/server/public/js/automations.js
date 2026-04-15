@@ -211,6 +211,7 @@ function openRuleModal(rule) {
   var enabledVal     = rule ? (rule.enabled !== false) : true;
 
   var fieldCls = 'w-full bg-surface-container-high border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none';
+  var selectCls = 'aqm-select w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3 py-2 text-sm text-on-surface focus:border-primary focus:outline-none';
   var labelCls = 'block text-xs font-bold text-outline mb-1';
 
   var html =
@@ -232,7 +233,7 @@ function openRuleModal(rule) {
       '</div>' +
       '<div>' +
         '<label class="' + labelCls + '">트리거 유형</label>' +
-        '<select id="rule-trigger-type" onchange="onTriggerTypeChange()" class="' + fieldCls + '">' +
+        '<select id="rule-trigger-type" onchange="onTriggerTypeChange()" class="' + selectCls + '">' +
           '<option value="event"' + (triggerType === 'event' ? ' selected' : '') + '>Event (이벤트)</option>' +
           '<option value="cron"' + (triggerType === 'cron' ? ' selected' : '') + '>Cron (스케줄)</option>' +
           '<option value="rate-limit"' + (triggerType === 'rate-limit' ? ' selected' : '') + '>Rate Limit (임계값)</option>' +
@@ -240,7 +241,7 @@ function openRuleModal(rule) {
       '</div>' +
       '<div id="trigger-event-field"' + (triggerType !== 'event' ? ' class="hidden"' : '') + '>' +
         '<label class="' + labelCls + '">이벤트</label>' +
-        '<select id="rule-trigger-event" class="' + fieldCls + '">' +
+        '<select id="rule-trigger-event" class="' + selectCls + '">' +
           '<option value="pr-merged"' + (triggerEvent === 'pr-merged' ? ' selected' : '') + '>PR Merged</option>' +
           '<option value="draft-pr-created"' + (triggerEvent === 'draft-pr-created' ? ' selected' : '') + '>Draft PR 생성</option>' +
           '<option value="phase-failed"' + (triggerEvent === 'phase-failed' ? ' selected' : '') + '>Phase Failed</option>' +
@@ -248,7 +249,7 @@ function openRuleModal(rule) {
       '</div>' +
       '<div id="trigger-cron-field"' + (triggerType !== 'cron' ? ' class="hidden"' : '') + '>' +
         '<label class="' + labelCls + '">스케줄</label>' +
-        '<select id="rule-trigger-schedule" class="' + fieldCls + '">' +
+        '<select id="rule-trigger-schedule" class="' + selectCls + '">' +
           '<option value="daily"' + (triggerSched === 'daily' ? ' selected' : '') + '>매일 (daily)</option>' +
           '<option value="weekly"' + (triggerSched === 'weekly' ? ' selected' : '') + '>매주 (weekly)</option>' +
         '</select>' +
@@ -259,7 +260,7 @@ function openRuleModal(rule) {
       '</div>' +
       '<div>' +
         '<label class="' + labelCls + '">액션</label>' +
-        '<select id="rule-action-type" onchange="onActionTypeChange()" class="' + fieldCls + '">' +
+        '<select id="rule-action-type" onchange="onActionTypeChange()" class="' + selectCls + '">' +
           '<option value="notify"' + (actionType === 'notify' ? ' selected' : '') + '>알림 (notify)</option>' +
           '<option value="pause"' + (actionType === 'pause' ? ' selected' : '') + '>일시정지 (pause)</option>' +
           '<option value="retry"' + (actionType === 'retry' ? ' selected' : '') + '>재시도 (retry)</option>' +

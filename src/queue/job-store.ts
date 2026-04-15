@@ -16,8 +16,10 @@ import type {
   ArchivedJob,
   PhaseResultInfo,
   UsageStats,
-  SkipEvent
+  SkipEvent,
+  NotificationType
 } from "../types/pipeline.js";
+import { statusToNotificationType } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -361,6 +363,7 @@ export class JobStore extends EventEmitter {
 
     logger.info(`Job created: ${id}`);
     this.emit('jobCreated', job);
+    this.createJobNotification(job, 'job_queued');
 
     // Auto-prune if needed
     if (this.db.countJobs() > this.maxJobs) {
@@ -597,6 +600,15 @@ export class JobStore extends EventEmitter {
     this.updateCache(updatedJob);
 
     this.emit('jobUpdated', updatedJob, previousJob);
+
+    // 상태 변화 감지 → 알림 생성
+    if (previousJob.status !== updatedJob.status) {
+      const notifType = statusToNotificationType(updatedJob.status);
+      if (notifType) {
+        this.createJobNotification(updatedJob, notifType);
+      }
+    }
+
     return updatedJob;
   }
 
@@ -787,6 +799,41 @@ export class JobStore extends EventEmitter {
       jobCount: jobsWithCost.length,
       topExpensiveJobs
     };
+  }
+
+  /**
+   * 잡 상태 변화 시 알림 레코드 자동 생성
+   */
+  private createJobNotification(job: Job, type: NotificationType): void {
+    const titleMap: Record<NotificationType, string> = {
+      job_queued: "잡 대기 중",
+      job_started: "잡 시작됨",
+      job_success: "잡 성공",
+      job_failure: "잡 실패",
+      job_cancelled: "잡 취소됨",
+    };
+    const messageMap: Record<NotificationType, string> = {
+      job_queued: `이슈 #${job.issueNumber} (${job.repo}) 처리 대기 중`,
+      job_started: `이슈 #${job.issueNumber} (${job.repo}) 처리를 시작했습니다`,
+      job_success: `이슈 #${job.issueNumber} (${job.repo}) 처리가 완료되었습니다`,
+      job_failure: `이슈 #${job.issueNumber} (${job.repo}) 처리가 실패했습니다`,
+      job_cancelled: `이슈 #${job.issueNumber} (${job.repo}) 처리가 취소되었습니다`,
+    };
+
+    try {
+      this.db.createNotification({
+        jobId: job.id,
+        type,
+        title: titleMap[type],
+        message: messageMap[type],
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        repo: job.repo,
+        issueNumber: job.issueNumber,
+      });
+    } catch (err: unknown) {
+      logger.error(`Failed to create notification for job ${job.id}: ${getErrorMessage(err)}`);
+    }
   }
 
   /**

@@ -464,6 +464,40 @@ export const RetryJobRequestSchema = z.object({}).strict();
 export const jobRetrySchema = RetryJobRequestSchema;
 export type RetryJobRequest = z.infer<typeof RetryJobRequestSchema>;
 
+// Notification 스키마 (GET /api/notifications)
+export const NotificationSchema = z.object({
+  id: z.number().int().positive(),
+  jobId: z.string(),
+  type: z.enum(["job_queued", "job_started", "job_success", "job_failure", "job_cancelled"]),
+  title: z.string(),
+  message: z.string(),
+  isRead: z.boolean(),
+  createdAt: z.string(),
+  repo: z.string().optional(),
+  issueNumber: z.number().int().positive().optional(),
+});
+
+export type Notification = z.infer<typeof NotificationSchema>;
+
+// GetNotifications 쿼리 스키마 (GET /api/notifications)
+export const GetNotificationsQuerySchema = z.object({
+  isRead: z.enum(["true", "false"]).optional(),
+  type: z.enum(["job_queued", "job_started", "job_success", "job_failure", "job_cancelled"]).optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
+}).strict();
+
+export type GetNotificationsQuery = z.infer<typeof GetNotificationsQuerySchema>;
+
+// NotificationsResponse 응답 타입 (GET /api/notifications)
+export const NotificationsResponseSchema = z.object({
+  notifications: z.array(NotificationSchema),
+  total: z.number().int().nonnegative(),
+  unreadCount: z.number().int().nonnegative(),
+});
+
+export type NotificationsResponse = z.infer<typeof NotificationsResponseSchema>;
+
 // Zod 에러를 클라이언트 친화적 형태로 변환
 export function formatZodError(error: z.ZodError): { field: string; message: string }[] {
   return error.issues.map((issue) => ({

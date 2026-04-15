@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync, copyFileSync } from "fs";
 import { resolve, normalize, basename } from "path";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
@@ -396,6 +396,41 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
 }
 
 const SSE_INITIAL_JOB_LIMIT = 20;
+
+const SetupPreviewBodySchema = z.object({
+  repo: z.string().min(1),
+  repoPath: z.string().min(1),
+  baseBranch: z.string().optional(),
+  mode: z.string().optional(),
+});
+
+function generateSetupYaml(repo: string, repoPath: string, baseBranch?: string, mode?: string): string {
+  const projectLines = [
+    `  - repo: "${repo}"`,
+    `    path: "${repoPath}"`,
+  ];
+  if (baseBranch) projectLines.push(`    baseBranch: "${baseBranch}"`);
+  if (mode) projectLines.push(`    mode: "${mode}"`);
+  return `# AI Quartermaster 설정 파일\n# 전체 옵션은 docs/config-schema.md 참조\n\nprojects:\n${projectLines.join('\n')}\n`;
+}
+
+function computeYamlDiff(
+  existingYaml: string | null,
+  newYaml: string
+): { added: string[]; removed: string[]; unchanged: string[] } {
+  const newLines = newYaml.split('\n').filter(l => l.trim());
+  if (!existingYaml) {
+    return { added: newLines, removed: [], unchanged: [] };
+  }
+  const existingLines = existingYaml.split('\n').filter(l => l.trim());
+  const existingSet = new Set(existingLines);
+  const newSet = new Set(newLines);
+  return {
+    added: newLines.filter(l => !existingSet.has(l)),
+    removed: existingLines.filter(l => !newSet.has(l)),
+    unchanged: newLines.filter(l => existingSet.has(l)),
+  };
+}
 
 const NewIssueRequestSchema = z.object({
   category: z.enum(["bug", "feature", "refactor", "docs"]),
@@ -1652,6 +1687,38 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json({ username, avatar_url: avatarUrl, public_repos: publicRepos });
     } catch (error: unknown) {
       return c.json({ error: `Token validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Setup wizard: preview YAML diff before applying
+  api.post("/api/setup/preview", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
+    try {
+      const { repo, repoPath, baseBranch, mode } = c.req.valid('json');
+      const configPath = resolve(process.cwd(), "config.yml");
+      const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
+      const existingYaml = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : null;
+      const diff = computeYamlDiff(existingYaml, newYaml);
+      return c.json({ yaml: newYaml, existingYaml, diff });
+    } catch (error: unknown) {
+      return c.json({ error: `Preview failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Setup wizard: apply config.yml with backup
+  api.post("/api/setup/apply", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
+    try {
+      const { repo, repoPath, baseBranch, mode } = c.req.valid('json');
+      const configPath = resolve(process.cwd(), "config.yml");
+      let backupPath: string | null = null;
+      if (existsSync(configPath)) {
+        backupPath = `${configPath}.bak`;
+        copyFileSync(configPath, backupPath);
+      }
+      const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
+      writeFileSync(configPath, newYaml, 'utf-8');
+      return c.json({ success: true, configPath, backupPath });
+    } catch (error: unknown) {
+      return c.json({ error: `Apply failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

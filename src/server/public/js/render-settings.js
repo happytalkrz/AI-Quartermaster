@@ -582,12 +582,14 @@ function saveAdvancedSection(sectionKey) {
     .then(function(result) {
       if (result.ok) {
         // 성공 피드백 — 테두리 색상 일시적으로 강조
-        textarea.style.outline = '1px solid #3fb950';
-        setTimeout(function() { textarea.style.outline = ''; }, 1500);
+        if (textarea) {
+          textarea.style.outline = '1px solid #3fb950';
+          setTimeout(function() { if (textarea) textarea.style.outline = ''; }, 1500);
+        }
       } else {
         var errLines = [];
         if (result.data.errors && Array.isArray(result.data.errors)) {
-          result.data.errors.forEach(function(e) {
+          result.data.errors.forEach(function(/** @type {{path?: string, message?: string}} */ e) {
             errLines.push((e.path || '') + ': ' + (e.message || ''));
           });
         } else if (result.data.error) {

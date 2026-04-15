@@ -64,6 +64,11 @@ function navigateTo(view) {
     loadSkipEvents();
   }
 
+  // If navigating to new-issue view, initialize form
+  if (view === 'new-issue') {
+    initNewIssue();
+  }
+
   // If navigating to doctor view, run checks
   if (view === 'doctor') {
     runDoctorCheck();

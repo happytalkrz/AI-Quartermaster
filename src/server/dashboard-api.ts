@@ -477,7 +477,8 @@ function getInitialJobs(store: JobStore): Job[] {
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean, patternStore?: PatternStore): Hono {
+export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean, patternStore?: PatternStore, aqRoot?: string): Hono {
+  const rootDir = aqRoot ?? process.cwd();
   const api = new Hono();
 
   // Initialize rate limiter from config (or defaults)
@@ -627,8 +628,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Get configuration (masked for security)
   api.get("/api/config", (c) => {
     try {
-      const projectRoot = process.cwd();
-      const config = configWatcher?.current() ?? loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
       const maskedConfig = maskSensitiveConfig(config);
       return c.json({ config: maskedConfig });
     } catch (error: unknown) {
@@ -646,8 +646,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     return c.json({ presets: getPresets() });
   });
 
-  const projectRoot = process.cwd();
-  const configPath = `${projectRoot}/config.yml`;
+  const configPath = `${rootDir}/config.yml`;
 
   // Update configuration
   api.put("/api/config", zValidator('json', UpdateConfigRequestSchema.passthrough(), zodValidationHook), async (c) => {
@@ -667,7 +666,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         ]).filter(([, v]) => v !== undefined)
       ) as Partial<AQConfig>;
 
-      updateConfigSection(process.cwd(), cleanedData);
+      updateConfigSection(rootDir, cleanedData);
       configWatcher?.refresh();
 
       // Apply runtime changes if configWatcher is available
@@ -709,8 +708,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Get projects list
   api.get("/api/projects", (c) => {
     try {
-      const projectRoot = process.cwd();
-      const config = configWatcher?.current() ?? loadConfig(projectRoot);
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
 
       if (!config.projects || config.projects.length === 0) {
         return c.json({ projects: [] });
@@ -755,7 +753,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       };
 
       try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
         if (currentConfig.projects?.find(p => p.repo === project.repo)) {
           return c.json({ error: `Project "${project.repo}" already exists` }, 409);
         }
@@ -767,7 +765,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       configWatcher?.refresh();
 
       try {
-        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -792,7 +790,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
 
       try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -804,7 +802,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       configWatcher?.refresh();
 
       try {
-        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -829,7 +827,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       // Validate that project exists
       try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(projectRoot);
+        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
         if (!currentConfig.projects?.find(p => p.repo === repo)) {
           return c.json({ error: `Project "${repo}" not found` }, 404);
         }
@@ -869,7 +867,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       configWatcher?.refresh();
 
       try {
-        validateConfig(configWatcher?.current() ?? loadConfig(projectRoot));
+        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
       } catch (error: unknown) {
         return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
       }
@@ -1403,8 +1401,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/version", async (c) => {
     try {
       const currentVersion = getCurrentVersion();
-      const config = configWatcher?.current() ?? loadConfig(process.cwd());
-      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
+      const selfUpdater = new SelfUpdater(config.git, { cwd: rootDir });
 
       try {
         const updateInfo = await selfUpdater.checkForUpdates();
@@ -1435,7 +1433,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.get("/api/claude-profile", async (c) => {
     const configDir = process.env.CLAUDE_CONFIG_DIR || "";
     const profile = configDir ? basename(configDir).replace(/^\.claude-?/, "") || "default" : "default";
-    const config = configWatcher?.current() ?? loadConfig(projectRoot);
+    const config = configWatcher?.current() ?? loadConfig(rootDir);
     const models = config.commands.claudeCli.models;
 
     let cliVersion = "unknown";
@@ -1464,7 +1462,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Refresh Claude quota status
   api.post("/api/claude-profile/refresh", async (c) => {
     try {
-      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
       const status = await checkClaudeQuota(config.commands.claudeCli);
       currentQuotaStatus = status;
       return c.json({ quotaStatus: status });
@@ -1485,8 +1483,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }
       }
 
-      const config = loadConfig(process.cwd());
-      const selfUpdater = new SelfUpdater(config.git, { cwd: process.cwd() });
+      const config = loadConfig(rootDir);
+      const selfUpdater = new SelfUpdater(config.git, { cwd: rootDir });
       getLogger().info("사용자 요청으로 업데이트 시작");
 
       const result = await selfUpdater.performSelfUpdate();
@@ -1518,7 +1516,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Repositories API - project-level aggregated information with health and stats
   api.get("/api/repositories", async (c) => {
     try {
-      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1533,7 +1531,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       // Get health checks for all projects in parallel
       const healthResults = await Promise.all(
         projects.map(async (projectConfig) => {
-          const projectPath = resolve(process.cwd(), projectConfig.path);
+          const projectPath = resolve(rootDir, projectConfig.path);
           const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck, worktreeCount] = await Promise.all([
             checkGitRemoteAccess(projectPath, gitPath),
             checkLocalPath(projectPath),
@@ -1620,7 +1618,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Projects health check endpoint — all configured projects
   api.get("/api/projects/health", async (c) => {
     try {
-      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
       const projects = config.projects ?? [];
 
       if (projects.length === 0) {
@@ -1634,7 +1632,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
       const healthResults = await Promise.all(
         projects.map(async (projectConfig) => {
-          const projectPath = resolve(process.cwd(), projectConfig.path);
+          const projectPath = resolve(rootDir, projectConfig.path);
           const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
             checkGitRemoteAccess(projectPath, gitPath),
             checkLocalPath(projectPath),
@@ -1823,7 +1821,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.post("/api/setup/preview", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
     try {
       const { repo, repoPath, baseBranch, mode } = c.req.valid('json');
-      const configPath = resolve(process.cwd(), "config.yml");
+      const configPath = resolve(rootDir, "config.yml");
       const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
       const existingYaml = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : null;
       const diff = computeYamlDiff(existingYaml, newYaml);
@@ -1837,7 +1835,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   api.post("/api/setup/apply", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
     try {
       const { repo, repoPath, baseBranch, mode, token } = c.req.valid('json');
-      const configPath = resolve(process.cwd(), "config.yml");
+      const configPath = resolve(rootDir, "config.yml");
       let backupPath: string | null = null;
       if (existsSync(configPath)) {
         // 타임스탬프 접미사로 이전 백업을 보존한다 (여러 번 apply 해도 직전 상태로 롤백 가능)
@@ -1869,14 +1867,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       const project = decodeURIComponent(projectParam);
 
       // Load configuration to get project path and git settings
-      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const config = configWatcher?.current() ?? loadConfig(rootDir);
       const projectConfig = config.projects?.find(p => p.repo === project);
 
       if (!projectConfig) {
         return c.json({ error: `Project "${project}" not found in configuration` }, 404);
       }
 
-      const projectPath = resolve(process.cwd(), projectConfig.path);
+      const projectPath = resolve(rootDir, projectConfig.path);
       const gitPath = config.git?.gitPath || "git";
 
       // Run health checks in parallel
@@ -1921,7 +1919,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     try {
       const { category, title, repo, what, where, how, files } = c.req.valid('json');
 
-      const templatesDir = resolve(process.cwd(), "prompts/issue-templates");
+      const templatesDir = resolve(rootDir, "prompts/issue-templates");
       const templatePath = resolve(templatesDir, `${category}.md`);
       const template = loadTemplate(templatePath, templatesDir);
       const body = renderTemplate(template, { what, where, how, files });

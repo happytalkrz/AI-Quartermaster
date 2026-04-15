@@ -74,6 +74,46 @@
 
       <!-- Basic Tab Panel -->
       <div id="settings-mode-tab-basic" class="settings-mode-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
+
+        <!-- Preset Dropdown Bar -->
+        <div class="flex flex-wrap items-center gap-3 pb-4 border-b border-outline-variant/20">
+          <span class="material-symbols-outlined text-primary text-sm">auto_fix_high</span>
+          <span class="text-[10px] font-black uppercase text-primary tracking-widest">Preset</span>
+          <select id="preset-select"
+                  class="flex-1 min-w-[160px] max-w-xs bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">
+            <option value="">— 프리셋 선택 —</option>
+          </select>
+          <button type="button" onclick="previewPreset()"
+                  class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded border border-outline-variant/40 text-on-surface hover:bg-surface-container-high transition-colors">
+            <span class="material-symbols-outlined text-sm">preview</span>
+            미리보기
+          </button>
+          <button type="button" onclick="applyPreset()"
+                  class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+            <span class="material-symbols-outlined text-sm">check_circle</span>
+            적용
+          </button>
+          <span id="preset-active-chip" class="hidden items-center gap-1 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-[10px] font-bold">
+            <span class="material-symbols-outlined text-[12px]">tune</span>
+            <span id="preset-active-chip-label">custom</span>
+          </span>
+        </div>
+
+        <!-- Diff Popover -->
+        <div id="preset-diff-popover" class="hidden bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">diff</span>
+              변경 미리보기
+            </span>
+            <button type="button" onclick="closeDiffPopover()"
+                    class="text-outline hover:text-on-surface transition-colors">
+              <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+          <div id="preset-diff-content"></div>
+        </div>
+
         <div id="basic-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
       </div>
 

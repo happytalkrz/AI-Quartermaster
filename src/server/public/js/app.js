@@ -59,6 +59,11 @@ function navigateTo(view) {
     renderAutomationsPanel();
   }
 
+  // If navigating to notifications view, load notifications
+  if (view === 'notifications') {
+    loadNotifications();
+  }
+
   // If navigating to skip-events view, load data
   if (view === 'skip-events') {
     loadSkipEvents();
@@ -1565,6 +1570,24 @@ function renderSkipEventRow(ev) {
     '<td class="px-4 py-3 text-[10px] text-outline whitespace-nowrap" title="' + esc(ev.createdAt) + '">' + time + '</td>' +
   '</tr>';
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Notifications
+   ══════════════════════════════════════════════════════════════ */
+
+/** @returns {void} */
+function loadNotifications() {
+  var emptyEl = document.getElementById('notifications-empty');
+  if (!emptyEl) return;
+  emptyEl.innerHTML = renderEmptyState({
+    icon: 'notifications_off',
+    title: '알림 없음',
+    description: '새 잡 상태 변화가 있으면 여기에 표시됩니다',
+    secondaryLink: { label: '알림 설정', href: '#settings' }
+  });
+}
+
+window.loadNotifications = loadNotifications;
 
 /** @returns {void} */
 function loadSkipEvents() {

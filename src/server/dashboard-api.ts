@@ -21,6 +21,8 @@ import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { buildDoctorChecks } from "../setup/doctor.js";
+import { executeAutoFix, spawnHealProcess, type DoctorCheck } from "../doctor/heal.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
@@ -1649,6 +1651,105 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(healthResponse);
     } catch (error: unknown) {
       return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Doctor checks — 전체 체크 목록 반환 (status는 pending)
+  api.get("/api/doctor/checks", (c) => {
+    try {
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const checks = buildDoctorChecks(config, process.cwd());
+      return c.json({ checks });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to build doctor checks: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Doctor heal — Level1: JSON 응답, Level2: SSE 스트림
+  api.post("/api/doctor/heal/:id", (c) => {
+    const id = c.req.param("id");
+    let config;
+    try {
+      config = configWatcher?.current() ?? loadConfig(process.cwd());
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to load config: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+
+    const checks = buildDoctorChecks(config, process.cwd());
+    const check = checks.find((ch: DoctorCheck) => ch.id === id);
+    if (!check) {
+      return c.json({ error: `Check '${id}' not found` }, 404);
+    }
+
+    if (check.healLevel === 3) {
+      return c.json({
+        error: "This check requires manual intervention",
+        guide: check.guide ?? null,
+        docsUrl: check.docsUrl ?? null,
+      }, 400);
+    }
+
+    if (check.healLevel === 1) {
+      // Level1: executeAutoFix — 비대화형, JSON 응답
+      return executeAutoFix(check).then((result) => {
+        return c.json({ success: result.success, output: result.output });
+      }).catch((err: unknown) => {
+        return c.json({ error: `Auto-fix failed: ${sanitizeErrorMessage(getErrorMessage(err))}` }, 500);
+      });
+    }
+
+    // Level2: spawnHealProcess — SSE 스트림
+    const sseEncoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const send = (event: string, data: unknown) => {
+          try {
+            controller.enqueue(sseEncoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+          } catch {
+            // stream closed
+          }
+        };
+
+        send("status", { status: "running" });
+
+        spawnHealProcess(
+          check,
+          (line: string) => send("data", { type: "stdout", line }),
+          (line: string) => send("data", { type: "stderr", line }),
+        ).then((result) => {
+          send("status", { status: result.success ? "success" : "error" });
+          send("done", { success: result.success, output: result.output });
+          try { controller.close(); } catch { /* already closed */ }
+        }).catch((err: unknown) => {
+          send("status", { status: "error" });
+          send("done", { success: false, output: getErrorMessage(err) });
+          try { controller.close(); } catch { /* already closed */ }
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  });
+
+  // Doctor recheck — 특정 체크 메타데이터 반환
+  api.post("/api/doctor/recheck/:id", (c) => {
+    try {
+      const id = c.req.param("id");
+      const config = configWatcher?.current() ?? loadConfig(process.cwd());
+      const checks = buildDoctorChecks(config, process.cwd());
+      const check = checks.find((ch: DoctorCheck) => ch.id === id);
+      if (!check) {
+        return c.json({ error: `Check '${id}' not found` }, 404);
+      }
+      return c.json({ check });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to recheck: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

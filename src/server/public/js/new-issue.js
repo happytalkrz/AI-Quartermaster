@@ -214,13 +214,14 @@ function loadNewIssueRepos() {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!Array.isArray(data.projects)) return;
+      if (!dropdown) return;
       dropdown.innerHTML = '';
       data.projects.forEach(function(/** @type {{repo: string}} */ p) {
         var item = document.createElement('div');
         item.className = 'px-4 py-3 hover:bg-surface-bright text-on-surface cursor-pointer transition-colors text-sm';
         item.textContent = p.repo;
         item.addEventListener('click', function() { selectRepo(p.repo); });
-        dropdown.appendChild(item);
+        if (dropdown) dropdown.appendChild(item);
       });
       if (data.projects.length === 1) {
         selectRepo(data.projects[0].repo);
@@ -238,6 +239,7 @@ function initCustomRepoSelect() {
   if (!trigger || !dropdown) return;
 
   trigger.addEventListener('click', function() {
+    if (!dropdown || !trigger) return;
     var isOpen = !dropdown.classList.contains('hidden');
     if (isOpen) {
       dropdown.classList.add('hidden');
@@ -251,6 +253,7 @@ function initCustomRepoSelect() {
   });
 
   document.addEventListener('click', function(e) {
+    if (!dropdown || !trigger) return;
     if (wrapper && !wrapper.contains(/** @type {Node} */ (e.target))) {
       dropdown.classList.add('hidden');
       if (chevron) chevron.textContent = 'expand_more';

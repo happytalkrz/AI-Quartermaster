@@ -531,10 +531,8 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           <!-- Jobs rendered here dynamically -->
         </div>
         <!-- Empty state -->
-        <div id="empty-state" class="hidden flex-col items-center justify-center py-16 text-center">
-          <span class="material-symbols-outlined text-5xl text-outline/30 mb-4">inbox</span>
-          <p class="text-sm font-bold text-on-surface mb-1">아직 작업이 없습니다</p>
-          <p class="text-xs text-outline">GitHub 이슈에 <code class="font-mono text-[10px] bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/20">/aq implement</code> 명령을 남기면 자동으로 파이프라인이 시작됩니다.</p>
+        <div id="empty-state" class="hidden flex-col items-center justify-center">
+          <!-- populated by renderEmptyState('JOBS_EMPTY') on init -->
         </div>
         <!-- Filter empty -->
         <div id="filter-empty" class="hidden flex-col items-center justify-center py-12 text-center">
@@ -686,10 +684,8 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           <div id="automations-job-list" class="space-y-3 overflow-y-auto max-h-[calc(100vh-300px)] pr-2 custom-scrollbar">
             <!-- Jobs rendered here dynamically -->
           </div>
-          <div id="automations-empty-state" class="hidden flex-col items-center justify-center py-16 text-center">
-            <span class="material-symbols-outlined text-5xl text-outline/30 mb-4">inbox</span>
-            <p class="text-sm font-bold text-on-surface mb-1">아직 작업이 없습니다</p>
-            <p class="text-xs text-outline">GitHub 이슈에 <code class="font-mono text-[10px] bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/20">/aq implement</code> 명령을 남기면 자동으로 파이프라인이 시작됩니다.</p>
+          <div id="automations-empty-state" class="hidden flex-col items-center justify-center">
+            <!-- populated by renderEmptyState('JOBS_EMPTY') on show -->
           </div>
         </div>
         <!-- Right: Job Detail Column -->
@@ -748,7 +744,6 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           </tr>
         </thead>
         <tbody id="skip-events-content">
-          <tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">데이터를 불러오려면 페이지를 열어주세요.</td></tr>
         </tbody>
       </table>
     </div>
@@ -861,6 +856,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 <script src="js/api.js"></script>
 <script src="js/state.js"></script>
 <script src="js/modal.js"></script>
+<script src="js/render-empty.js"></script>
 <script src="js/render-jobs.js"></script>
 <script src="js/render-settings.js"></script>
 <script src="js/render-repos.js"></script>

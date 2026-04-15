@@ -1399,7 +1399,7 @@ function renderAutomationsList() {
 
   if (filtered.length === 0) {
     listEl.innerHTML = '';
-    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    if (emptyEl) { emptyEl.innerHTML = renderEmptyState('JOBS_EMPTY'); emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
     if (detailEl) detailEl.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     return;
   }
@@ -1491,7 +1491,7 @@ function loadSkipEvents() {
       if (totalEl) totalEl.textContent = String(total);
 
       if (events.length === 0) {
-        el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">스킵된 이벤트가 없습니다.</td></tr>';
+        el.innerHTML = '<tr><td colspan="6" class="p-0">' + renderEmptyState('SKIP_EVENTS') + '</td></tr>';
         return;
       }
       el.innerHTML = events.map(renderSkipEventRow).join('');
@@ -1513,3 +1513,9 @@ window.toggleProjectDropdown = toggleProjectDropdown;
 window.toggleJobProjectDropdown = toggleJobProjectDropdown;
 window.setProject = setProject;
 window.setAutomationsView = setAutomationsView;
+
+// Pre-populate empty state containers on load so show/hide toggles have content ready
+(function() {
+  var jobEmptyEl = document.getElementById('empty-state');
+  if (jobEmptyEl) jobEmptyEl.innerHTML = renderEmptyState('JOBS_EMPTY');
+})();

@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-tertiary-fixed-variant": "#614000",
+                        "inverse-surface": "#dfe2eb",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "surface-variant": "#31353c",
+                        "surface-bright": "#353940",
+                        "on-tertiary-fixed": "#281800",
+                        "on-surface": "#dfe2eb",
+                        "on-background": "#dfe2eb",
+                        "primary": "#a2c9ff",
+                        "on-surface-variant": "#c0c7d4",
+                        "outline-variant": "#414752",
+                        "tertiary-container": "#da9600",
+                        "surface-tint": "#a2c9ff",
+                        "on-secondary": "#2b3138",
+                        "on-primary-container": "#003a6b",
+                        "secondary-container": "#41474f",
+                        "inverse-on-surface": "#2d3137",
+                        "error": "#ffb4ab",
+                        "error-container": "#93000a",
+                        "surface-dim": "#10141a",
+                        "primary-fixed-dim": "#a2c9ff",
+                        "surface-container": "#1c2026",
+                        "tertiary-fixed": "#ffddaf",
+                        "primary-fixed": "#d3e4ff",
+                        "inverse-primary": "#0060aa",
+                        "on-error-container": "#ffdad6",
+                        "on-error": "#690005",
+                        "primary-container": "#58a6ff",
+                        "tertiary": "#ffba42",
+                        "secondary-fixed": "#dde3ec",
+                        "on-primary": "#00315c",
+                        "surface-container-lowest": "#0a0e14",
+                        "on-tertiary-container": "#4f3400",
+                        "surface-container-highest": "#31353c",
+                        "surface": "#10141a",
+                        "on-tertiary": "#432c00",
+                        "outline": "#8b919d",
+                        "background": "#10141a",
+                        "on-secondary-container": "#b0b5be",
+                        "secondary": "#c1c7d0",
+                        "on-primary-fixed": "#001c38",
+                        "surface-container-high": "#262a31",
+                        "surface-container-low": "#181c22",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "on-secondary-fixed": "#161c23",
+                        "on-primary-fixed-variant": "#004882"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .status-pulse {
+            box-shadow: 0 0 0 0 rgba(162, 201, 255, 0.4);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(162, 201, 255, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(162, 201, 255, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(162, 201, 255, 0); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #414752; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full flex flex-col bg-slate-900 dark:bg-[#181c22] h-screen w-64 border-r-0 z-40">
+<div class="p-6">
+<div class="text-xl font-bold uppercase tracking-widest text-[#a2c9ff] font-['Space_Grotesk'] mb-1">Kinetic Command</div>
+<div class="text-[10px] uppercase tracking-widest text-slate-400 dark:text-[#dfe2eb]/60 font-medium">Quartermaster v2.4</div>
+</div>
+<nav class="flex-1 px-4 space-y-2 mt-4">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 dark:text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:bg-slate-800 dark:hover:bg-[#31353c] transition-colors scale-95 active:duration-100" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 dark:text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:bg-slate-800 dark:hover:bg-[#31353c] transition-colors scale-95 active:duration-100" href="#">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+<span>Operations</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 dark:text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:bg-slate-800 dark:hover:bg-[#31353c] transition-colors scale-95 active:duration-100" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+<span>Automation</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 dark:text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:bg-slate-800 dark:hover:bg-[#31353c] transition-colors scale-95 active:duration-100" href="#">
+<span class="material-symbols-outlined">query_stats</span>
+<span>Telemetry</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 dark:text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:bg-slate-800 dark:hover:bg-[#31353c] transition-colors scale-95 active:duration-100" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span>Settings</span>
+</a>
+</nav>
+<div class="p-4 mt-auto">
+<div class="flex items-center gap-3 p-3 rounded-xl bg-surface-container-low border border-outline-variant/10">
+<img alt="User profile" class="w-10 h-10 rounded-lg object-cover grayscale opacity-80" data-alt="professional male profile portrait in dark cinematic lighting with tactical aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcwkanCZIO7b45Vpc_UQZH8dYPezWBwYhDawccOzT9h8KEqKHCFCvq4VaUY6DG3opvtNzYhDJEXDd31CnQgmoTTJ7DmNiN8x-b94VaVJ6qNRdJPmMqWXkteih_D07a1xsAGjQxaH2DVZaVK3PjPwJkXGqWvlDCvFxOoFzGN7PEGblEnrqQKQTrL7cHgRuB41oCHjfeT1uxIE7ysyEVqgP8lMeLxrlHzgZ3KR08uF9JFlkjEzOggCfnopIfFkJVQVtZxI9H-2jM3Jw"/>
+<div class="overflow-hidden">
+<p class="text-sm font-bold text-on-surface truncate">Commander-01</p>
+<p class="text-[10px] text-on-surface-variant truncate">Security Clearance: L5</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 right-0 left-64 z-30 flex justify-between items-center px-8 h-16 bg-slate-950/80 dark:bg-[#10141a]/80 backdrop-blur-xl transition-all duration-300">
+<div class="flex items-center gap-4">
+<h1 class="font-['Space_Grotesk'] text-lg font-bold text-[#a2c9ff]">알림</h1>
+<div class="px-2 py-0.5 bg-primary/20 text-primary text-[11px] font-bold rounded-full">12 NEW</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative flex items-center bg-surface-container-high rounded-full px-4 py-1.5 border border-outline-variant/20">
+<span class="material-symbols-outlined text-on-surface-variant text-sm mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-sm text-on-surface placeholder:text-on-surface-variant/50 w-48" placeholder="검색어 입력..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-[#dfe2eb] hover:text-[#a2c9ff] transition-all">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="text-[#dfe2eb] hover:text-[#a2c9ff] transition-all">
+<span class="material-symbols-outlined">tune</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-64 pt-16 min-h-screen flex">
+<!-- Left: Notification List (65%) -->
+<div class="w-2/3 p-8">
+<!-- Filter Bar -->
+<div class="flex items-center justify-between mb-8">
+<div class="flex bg-surface-container-low p-1 rounded-xl">
+<button class="px-6 py-2 rounded-lg text-sm font-medium bg-primary text-on-primary">전체</button>
+<button class="px-6 py-2 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">성공</button>
+<button class="px-6 py-2 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">실패</button>
+<button class="px-6 py-2 rounded-lg text-sm font-medium text-on-surface-variant hover:text-on-surface transition-colors">진행중</button>
+</div>
+<div class="flex items-center gap-3 bg-surface-container-low px-4 py-2 rounded-xl text-sm border border-outline-variant/10">
+<span class="material-symbols-outlined text-primary text-sm">calendar_month</span>
+<span class="font-mono text-xs">2023.10.20 - 2023.10.27</span>
+</div>
+</div>
+<!-- Notifications Feed -->
+<div class="space-y-4">
+<!-- Card 1: Success -->
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-emerald-500/50 hover:bg-surface-container-high transition-all duration-300">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-emerald-400 uppercase tracking-wider">SUCCESS</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/web-app</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">#284 Cl auto-fix</h3>
+<p class="text-xs text-on-surface-variant">Deployment 성공: AWS-Production cluster as of revision 7a82b</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant font-mono">3분 전</p>
+<button class="mt-4 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-primary hover:underline transition-opacity">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+                            읽음 표시
+                        </button>
+</div>
+</div>
+<!-- Card 2: Failure -->
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-error/50 hover:bg-surface-container-high transition-all duration-300">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-error/10 text-error">
+<span class="material-symbols-outlined">cancel</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-error uppercase tracking-wider">FAILED</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/api-service</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Nightly Security Scan</h3>
+<p class="text-xs text-on-surface-variant">Vulnerability check 실패: Critical vulnerability detected in 'node_modules/express'</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant font-mono">15분 전</p>
+<button class="mt-4 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-primary hover:underline transition-opacity">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+                            읽음 표시
+                        </button>
+</div>
+</div>
+<!-- Card 3: Processing -->
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-primary/50 hover:bg-surface-container-high transition-all duration-300">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-primary/10 text-primary">
+<span class="material-symbols-outlined animate-spin">refresh</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-primary uppercase tracking-wider">RUNNING</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/infra-as-code</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Terraform Apply: Stage-Alpha</h3>
+<p class="text-xs text-on-surface-variant">Infrastructure provision 진행중: Resource mapping (82%) complete</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant font-mono">지금</p>
+<button class="mt-4 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-primary hover:underline transition-opacity">
+<span class="material-symbols-outlined text-[14px]">done_all</span>
+                            읽음 표시
+                        </button>
+</div>
+</div>
+<!-- Generic Cards for Density -->
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-outline-variant/30 hover:bg-surface-container-high transition-all duration-300">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-surface-container-highest text-on-surface-variant">
+<span class="material-symbols-outlined">info</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-on-surface-variant uppercase tracking-wider">INFO</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/shared-ui</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">PR #102 Created</h3>
+<p class="text-xs text-on-surface-variant">New pull request by @dev_alpha: "feat: redesign telemetry dashboard"</p>
+</div>
+<div class="text-right">
+<p class="text-[10px] text-on-surface-variant font-mono">1시간 전</p>
+</div>
+</div>
+<!-- Duplicate layout for 8 cards requirement -->
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-emerald-500/50 hover:bg-surface-container-high transition-all duration-300">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-emerald-400 uppercase tracking-wider">SUCCESS</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/worker-nodes</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Job #1,120 Cleanup</h3>
+<p class="text-xs text-on-surface-variant">Storage maintenance 성공: 12GB of temporary logs purged.</p>
+</div>
+<div class="text-right"><p class="text-[10px] text-on-surface-variant font-mono">2시간 전</p></div>
+</div>
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-emerald-500/50 hover:bg-surface-container-high transition-all duration-300 opacity-60">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-emerald-400 uppercase tracking-wider">SUCCESS</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/mobile-app</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Build #890 Distribution</h3>
+<p class="text-xs text-on-surface-variant">TestFlight 업로드 성공: Version 2.0.4(12) ready for review.</p>
+</div>
+<div class="text-right"><p class="text-[10px] text-on-surface-variant font-mono">어제</p></div>
+</div>
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-error/50 hover:bg-surface-container-high transition-all duration-300 opacity-60">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-error/10 text-error">
+<span class="material-symbols-outlined">cancel</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-error uppercase tracking-wider">FAILED</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/auth-module</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Secret Rotation Failure</h3>
+<p class="text-xs text-on-surface-variant">Access Denied: Quartermaster lacks permission to update vault secrets.</p>
+</div>
+<div class="text-right"><p class="text-[10px] text-on-surface-variant font-mono">어제</p></div>
+</div>
+<div class="group relative flex items-start gap-4 p-5 bg-surface-container rounded-xl border-l-4 border-outline-variant/30 hover:bg-surface-container-high transition-all duration-300 opacity-60">
+<div class="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-surface-container-highest text-on-surface-variant">
+<span class="material-symbols-outlined">reviews</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center gap-2 mb-1">
+<span class="font-mono text-xs font-bold text-on-surface-variant uppercase tracking-wider">REVIEW</span>
+<span class="text-xs text-on-surface-variant">•</span>
+<span class="text-xs font-mono text-on-surface-variant">org/data-viz</span>
+</div>
+<h3 class="text-sm font-bold text-on-surface mb-1">Code Review Requested</h3>
+<p class="text-xs text-on-surface-variant">Assignment: Review requested for "Optimization: GPU acceleration for charts"</p>
+</div>
+<div class="text-right"><p class="text-[10px] text-on-surface-variant font-mono">2일 전</p></div>
+</div>
+</div>
+</div>
+<!-- Right: Settings Panel (35%) -->
+<div class="w-1/3 bg-surface-container-low border-l border-outline-variant/10 p-8 sticky top-16 h-[calc(100vh-64px)] overflow-y-auto">
+<div class="flex items-center gap-2 mb-8">
+<span class="material-symbols-outlined text-primary">notifications_active</span>
+<h2 class="font-['Space_Grotesk'] text-xl font-bold">알림 설정</h2>
+</div>
+<!-- Master Toggle -->
+<div class="flex items-center justify-between p-4 bg-surface-container-high rounded-xl border border-primary/20 mb-8">
+<div>
+<p class="text-sm font-bold text-on-surface">알림 활성화</p>
+<p class="text-[11px] text-on-surface-variant">시스템 전역 알림을 제어합니다.</p>
+</div>
+<div class="w-12 h-6 bg-primary rounded-full relative cursor-pointer shadow-[0_0_8px_rgba(162,201,255,0.4)]">
+<div class="absolute right-1 top-1 w-4 h-4 bg-on-primary rounded-full"></div>
+</div>
+</div>
+<!-- Event Toggles Section -->
+<div class="mb-8">
+<h3 class="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-4">Event Types</h3>
+<div class="space-y-4">
+<div class="flex items-center justify-between group">
+<label class="text-sm text-on-surface group-hover:text-primary transition-colors cursor-pointer">잡 시작</label>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full relative cursor-pointer">
+<div class="absolute left-1 top-1 w-3 h-3 bg-on-surface-variant rounded-full"></div>
+</div>
+</div>
+<div class="flex items-center justify-between group">
+<label class="text-sm text-on-surface group-hover:text-primary transition-colors cursor-pointer">잡 성공</label>
+<div class="w-10 h-5 bg-primary/40 rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-3 h-3 bg-primary rounded-full shadow-[0_0_4px_rgba(162,201,255,0.6)]"></div>
+</div>
+</div>
+<div class="flex items-center justify-between group">
+<label class="text-sm text-on-surface group-hover:text-primary transition-colors cursor-pointer">잡 실패</label>
+<div class="w-10 h-5 bg-primary/40 rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-3 h-3 bg-primary rounded-full shadow-[0_0_4px_rgba(162,201,255,0.6)]"></div>
+</div>
+</div>
+<div class="flex items-center justify-between group">
+<label class="text-sm text-on-surface group-hover:text-primary transition-colors cursor-pointer">리뷰 완료</label>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full relative cursor-pointer">
+<div class="absolute left-1 top-1 w-3 h-3 bg-on-surface-variant rounded-full"></div>
+</div>
+</div>
+<div class="flex items-center justify-between group">
+<label class="text-sm text-on-surface group-hover:text-primary transition-colors cursor-pointer">PR 생성</label>
+<div class="w-10 h-5 bg-primary/40 rounded-full relative cursor-pointer">
+<div class="absolute right-1 top-1 w-3 h-3 bg-primary rounded-full shadow-[0_0_4px_rgba(162,201,255,0.6)]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Delivery Channels -->
+<div class="mb-8">
+<h3 class="text-[10px] uppercase tracking-widest text-on-surface-variant font-bold mb-4">Delivery Channels</h3>
+<div class="space-y-3">
+<div class="flex items-center gap-4 p-4 bg-surface-container rounded-xl border border-outline-variant/10">
+<span class="material-symbols-outlined text-primary">dashboard</span>
+<div class="flex-1">
+<p class="text-sm font-medium">대시보드</p>
+<p class="text-[10px] text-on-surface-variant">알림 센터 내부에 표시</p>
+</div>
+<span class="material-symbols-outlined text-emerald-400">check_circle</span>
+</div>
+<div class="flex items-center gap-4 p-4 bg-surface-container/50 rounded-xl border border-outline-variant/5 grayscale opacity-60">
+<span class="material-symbols-outlined text-on-surface-variant">mail</span>
+<div class="flex-1">
+<p class="text-sm font-medium">이메일</p>
+<p class="text-[10px] text-on-surface-variant">중요 요약본 이메일 발송</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant">do_not_disturb_on</span>
+</div>
+</div>
+</div>
+<!-- Telemetry Hint -->
+<div class="p-4 bg-primary/5 rounded-xl border border-primary/20">
+<div class="flex items-center gap-2 mb-2">
+<div class="w-2 h-2 rounded-full bg-primary status-pulse"></div>
+<span class="text-[10px] font-bold text-primary uppercase">AI Quartermaster Insight</span>
+</div>
+<p class="text-[11px] text-on-surface-variant leading-relaxed">
+                    실패 알림 빈도가 지난주 대비 12% 증가했습니다. <b>Deployment</b> 잡의 설정을 재점검하는 것을 권장합니다.
+                </p>
+</div>
+</div>
+</main>
+<!-- Contextual FAB - suppressed according to rules for Details/Settings screens, but adding for 'Explore' intent if navigation was home-like. Since this is focused "알림" page, we exclude it for focus. -->
+</body></html>

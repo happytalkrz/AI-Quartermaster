@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 import * as ts from "typescript";
-import { renderTemplate, loadTemplate, buildDynamicSection, TemplateVariables } from "../../prompt/template-renderer.js";
+import { renderTemplate, loadTemplate, buildDynamicSection, extractDesignReferences, TemplateVariables } from "../../prompt/template-renderer.js";
 import { detectCircularDependencies, validatePhaseDependencies } from "../execution/phase-scheduler.js";
 import { runClaude, extractJson } from "../../claude/claude-runner.js";
 import { configForTask, configForTaskWithMode } from "../../claude/model-router.js";
@@ -29,6 +29,7 @@ export interface PlanTemplateBaseData {
     maxPhases: number;
     sensitivePaths: string;
   };
+  designFilesSection: string;
 }
 
 export interface PlanTemplateRetryData extends PlanTemplateBaseData {
@@ -119,6 +120,12 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     retryContext.currentAttempt = attempt - 1;
     const startTime = Date.now();
 
+    // 디자인 파일 참조 추출
+    const { designFiles } = extractDesignReferences(ctx.issue.body, ctx.cwd);
+    const designFilesSection = designFiles.length > 0
+      ? `\n## 디자인 파일 참조\n\n이슈에 명시된 디자인 파일이 존재합니다. 반드시 아래 파일을 참조하여 구현하세요.\n\n${designFiles.map(f => `- ${f}`).join("\n")}\n\n⛔ 위 파일을 직접 수정하거나 새로운 디자인 파일을 생성하지 마세요.\n`
+      : "";
+
     // 기본 데이터 구조
     const baseData = {
       issue: {
@@ -134,6 +141,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       },
       branch: ctx.branch,
       config: { maxPhases, sensitivePaths },
+      designFilesSection,
     };
 
     // Plan은 항상 경량 템플릿만 사용 (cachedLayers는 Phase용)

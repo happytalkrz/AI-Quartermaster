@@ -385,14 +385,14 @@ function _setupInjectSteps() {
             '<span>저장소 불러오는 중...</span>' +
           '</div>' +
           '<select id="setup-repo" ' +
-          'class="hidden w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">' +
+          'class="aqm-select hidden w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">' +
             '<option value="">저장소 선택...</option>' +
           '</select>' +
         '</div>' +
         '<label class="block">' +
           '<span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">로컬 클론 경로</span>' +
           '<input type="text" id="setup-repo-path" ' +
-          'class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
+          'class="w-full bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono" ' +
           'placeholder="/path/to/local/clone" autocomplete="off" spellcheck="false" />' +
         '</label>' +
         '<div id="setup-step2-error" class="hidden text-xs text-[#f85149] mt-1"></div>' +
@@ -467,7 +467,7 @@ function _setupInjectSteps() {
           '<div id="setup-chips-owners" class="flex flex-wrap gap-2 mb-2 min-h-[28px]"></div>' +
           '<div class="flex gap-2">' +
             '<input type="text" id="setup-chip-owner-input" ' +
-            'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
+            'class="flex-1 bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono" ' +
             'placeholder="GitHub 사용자명 입력 후 Enter" autocomplete="off" spellcheck="false" ' +
             'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_setupChipInputKeydown(\'setup-chip-owner-input\',\'setup-chips-owners\');}" />' +
             '<button type="button" onclick="_setupChipInputKeydown(\'setup-chip-owner-input\',\'setup-chips-owners\')" ' +
@@ -481,7 +481,7 @@ function _setupInjectSteps() {
           '<div id="setup-chips-labels" class="flex flex-wrap gap-2 mb-2 min-h-[28px]"></div>' +
           '<div class="flex gap-2">' +
             '<input type="text" id="setup-chip-label-input" ' +
-            'class="flex-1 bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary transition-colors rounded-t outline-none font-mono" ' +
+            'class="flex-1 bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none font-mono" ' +
             'placeholder="라벨명 입력 후 Enter" autocomplete="off" spellcheck="false" ' +
             'onkeydown="if(event.key===\'Enter\'){event.preventDefault();_setupChipInputKeydown(\'setup-chip-label-input\',\'setup-chips-labels\');}" />' +
             '<button type="button" onclick="_setupChipInputKeydown(\'setup-chip-label-input\',\'setup-chips-labels\')" ' +

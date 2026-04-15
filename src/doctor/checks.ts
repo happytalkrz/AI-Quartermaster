@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { access, constants } from 'fs/promises';
 import { homedir } from 'os';
+import { join } from 'path';
 
 function execFileAsync(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -294,24 +295,26 @@ async function checkAqmDirWrite(): Promise<DoctorCheck> {
     await access(aqmDir, constants.W_OK);
     return {
       id: 'aqm-dir-write',
-      label: '~/.aqm 디렉토리 쓰기 권한',
-      severity: 'warning',
+      label: 'AQM 디렉토리 쓰기 권한',
+      severity: 'critical',
       status: 'pass',
-      detail: `~/.aqm 디렉토리에 쓰기 권한이 있습니다.`,
+      detail: `${aqmDir} 디렉토리에 쓰기 권한이 있습니다.`,
       fixSteps: [],
     };
-  } catch {
+  } catch (err) {
+    const isEnoent = err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT';
     return {
       id: 'aqm-dir-write',
-      label: '~/.aqm 디렉토리 쓰기 권한',
-      severity: 'warning',
+      label: 'AQM 디렉토리 쓰기 권한',
+      severity: 'critical',
       status: 'fail',
-      detail: '~/.aqm 디렉토리가 없거나 쓰기 권한이 없습니다.',
+      detail: isEnoent
+        ? `${aqmDir} 디렉토리가 존재하지 않습니다.`
+        : `${aqmDir} 디렉토리에 쓰기 권한이 없습니다.`,
       fixSteps: [
-        'mkdir -p ~/.aqm 명령어로 디렉토리를 생성하세요.',
-        'chmod 755 ~/.aqm 명령어로 권한을 설정하세요.',
+        `mkdir -p ${aqmDir} 명령어로 디렉토리를 생성하세요.`,
+        `chmod u+w ${aqmDir} 명령어로 쓰기 권한을 부여하세요.`,
       ],
-      autoFixCommand: 'mkdir -p ~/.aqm && chmod 755 ~/.aqm',
       healLevel: 1,
     };
   }

@@ -1,6 +1,6 @@
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { createHash } from "crypto";
-import { resolve } from "path";
+import { resolve, join } from "path";
 import type {
   BaseLayer,
   ProjectLayer,
@@ -100,6 +100,39 @@ export function sanitizeIssueBody(body: string): string {
     .replace(/\uFF1C/g, "<")
     .replace(/\uFF1E/g, ">")
     .replace(/<\/USER_INPUT>/gi, "&lt;/USER_INPUT&gt;");
+}
+
+/**
+ * 이슈 본문에서 docs/design/*.html 경로를 추출하고 실제 파일 존재 여부를 검증합니다.
+ * 백틱, 마크다운 링크, 일반 텍스트 내 경로를 모두 감지합니다.
+ *
+ * @param body - 이슈 본문
+ * @param cwd - 파일 존재 여부 확인 기준 디렉토리 (기본값: process.cwd())
+ * @returns 추출된 경로 목록 (존재 여부 포함), 존재하는 파일만 담은 designFiles 배열
+ */
+export function extractDesignReferences(
+  body: string,
+  cwd?: string
+): { references: Array<{ path: string; exists: boolean }>; designFiles: string[] } {
+  const baseDir = cwd ?? process.cwd();
+  // docs/design/ 로 시작하고 .html 로 끝나는 경로를 감지
+  // 백틱(`...`), 마크다운 링크(](...)), 일반 텍스트 모두 포함
+  const pattern = /docs\/design\/[^\s"'`<>[\]()\\]+\.html/g;
+  const seen = new Set<string>();
+  const matches = body.match(pattern) ?? [];
+
+  for (const m of matches) {
+    seen.add(m);
+  }
+
+  const references = Array.from(seen).map(p => ({
+    path: p,
+    exists: existsSync(join(baseDir, p)),
+  }));
+
+  const designFiles = references.filter(r => r.exists).map(r => r.path);
+
+  return { references, designFiles };
 }
 
 export function loadTemplate(templatePath: string, allowedDir?: string): string {

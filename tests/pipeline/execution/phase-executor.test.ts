@@ -14,6 +14,7 @@ vi.mock("../../../src/prompt/template-renderer.js", () => ({
   buildProjectLayer: vi.fn().mockReturnValue({ conventions: "", structure: "", testCommand: "", lintCommand: "", safetyRules: [] }),
   buildIssueLayer: vi.fn().mockImplementation((cfg: { number: number; title: string; body: string; labels: string[] }) => ({ ...cfg })),
   buildLearningLayer: vi.fn().mockReturnValue({ pastFailures: [], errorPatterns: [], learnedPatterns: [], updatedAt: "" }),
+  extractDesignReferences: vi.fn().mockReturnValue({ designFiles: [], references: [] }),
 }));
 vi.mock("../../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),

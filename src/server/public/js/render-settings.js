@@ -499,11 +499,14 @@ function computePresetDiffJs(config, presetName) {
   var preset = PRESET_DATA[presetName];
   if (!preset) return [];
   var current = extractPresetFieldsFromConfig(config);
+  /** @type {Array<{field:string, label:string, currentValue:unknown, presetValue:unknown}>} */
   var diff = [];
+  var currentRecord = /** @type {Record<string, unknown>} */ (current);
+  var presetRecord  = /** @type {Record<string, unknown>} */ (preset);
   var fields = Object.keys(PRESET_FIELD_LABELS);
   fields.forEach(function(field) {
-    var currentVal = current[field];
-    var presetVal  = preset[field];
+    var currentVal = currentRecord[field];
+    var presetVal  = presetRecord[field];
     if (currentVal !== undefined && currentVal !== presetVal) {
       diff.push({ field: field, label: PRESET_FIELD_LABELS[field], currentValue: currentVal, presetValue: presetVal });
     }
@@ -646,19 +649,20 @@ function bindPresetFieldChangeListeners() {
     var fieldId = 'field-' + configPath.replace(/\./g, '-');
     var el = document.getElementById(fieldId);
     if (!el) return;
+    var boundEl = /** @type {HTMLElement} */ (el);
 
     /** @type {EventListener} */
     var handler = function onFieldChange() {
-      var label = el.closest('label');
+      var label = boundEl.closest('label');
       if (!label) return;
       var chip = label.querySelector('.aqm-preset-chip');
       if (chip) {
         chip.className = 'aqm-preset-chip px-1.5 py-0.5 text-[9px] bg-tertiary/10 text-tertiary rounded-sm font-mono border border-tertiary/20 ml-1 align-middle';
         chip.textContent = 'CUSTOM';
       }
-      el.removeEventListener('change', handler);
+      boundEl.removeEventListener('change', handler);
     };
-    el.addEventListener('change', handler);
+    boundEl.addEventListener('change', handler);
   });
 }
 

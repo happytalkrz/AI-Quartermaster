@@ -20,6 +20,7 @@ import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRa
 import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
+import { runAllChecks } from "../doctor/checks.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
@@ -1695,6 +1696,15 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json(healthResponse);
     } catch (error: unknown) {
       return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  api.get("/api/doctor/run", async (c) => {
+    try {
+      const checks = await runAllChecks();
+      return c.json({ checks });
+    } catch (error: unknown) {
+      return c.json({ error: `Doctor run failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

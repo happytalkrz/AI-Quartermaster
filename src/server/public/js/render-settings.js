@@ -595,22 +595,24 @@ function renderBasicDropdownControl(fieldId, configPath, value, options) {
 function renderBasicChipInputControl(fieldId, configPath, values) {
   var chipsHtml = '';
   values.forEach(function(val, idx) {
-    chipsHtml += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+    chipsHtml += '<span class="inline-flex items-center gap-2 bg-primary-container/20 text-primary-fixed border border-primary/20 py-1 pl-3 pr-2 rounded-full text-xs font-bold uppercase tracking-wider">' +
                  esc(val) +
                  '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
-                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+                 'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>' +
                  '</span>';
   });
 
-  return '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-1.5 mb-2 min-h-[28px]">' + chipsHtml + '</div>' +
+  return '<div class="bg-surface-container-lowest recessed-well p-3 rounded-lg">' +
+         '<div id="' + fieldId + '-chips" class="flex flex-wrap gap-2 mb-3 min-h-[28px]">' + chipsHtml + '</div>' +
          '<input type="hidden" id="' + fieldId + '" data-config-path="' + esc(configPath) + '" data-input-type="chip-array" value="' + esc(JSON.stringify(values)) + '" />' +
          '<div class="flex gap-1">' +
          '<input type="text" id="' + fieldId + '-input" placeholder="값 입력 후 Enter" ' +
-         'class="flex-1 bg-surface-container-lowest border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/40 transition-colors rounded-t outline-none" ' +
+         'class="flex-1 bg-transparent border-0 border-b border-outline-variant/30 py-1.5 px-2 text-sm text-on-surface focus:border-primary outline-none transition-colors" ' +
          'onkeydown="addBasicChipOnEnter(event,\'' + fieldId + '\')" />' +
          '<button type="button" onclick="addBasicChip(\'' + fieldId + '\')" ' +
-         'class="px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors">' +
+         'class="px-2 py-1 text-primary border border-primary/30 hover:bg-primary/10 rounded transition-colors">' +
          '<span class="material-symbols-outlined text-sm">add</span></button>' +
+         '</div>' +
          '</div>';
 }
 
@@ -1097,10 +1099,10 @@ function _refreshChipsDisplay(fieldId, values) {
   if (!chipsContainer) return;
   var html = '';
   values.forEach(function(val, idx) {
-    html += '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full">' +
+    html += '<span class="inline-flex items-center gap-2 bg-primary-container/20 text-primary-fixed border border-primary/20 py-1 pl-3 pr-2 rounded-full text-xs font-bold uppercase tracking-wider">' +
             esc(val) +
             '<button type="button" onclick="removeBasicChip(\'' + fieldId + '\',' + idx + ')" ' +
-            'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[12px]">close</span></button>' +
+            'class="hover:text-error transition-colors"><span class="material-symbols-outlined text-[14px]">close</span></button>' +
             '</span>';
   });
   chipsContainer.innerHTML = html;

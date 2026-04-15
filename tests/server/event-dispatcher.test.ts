@@ -124,4 +124,63 @@ describe("dispatchEvent", () => {
       expect(result.shouldProcess).toBe(true);
     });
   });
+
+  describe("dependency PR merge gate", () => {
+    const makeDepsConfig = (): AQConfig => ({
+      general: { instanceOwners: ["user"] },
+      git: { allowedRepos: ["test/repo"] },
+      commands: { ghCli: { path: "gh" } },
+      projects: [],
+    } as unknown as AQConfig);
+
+    const makePayloadWithDeps = (depNumbers: number[]) => ({
+      action: "labeled",
+      issue: {
+        number: 42,
+        title: "Test",
+        body: `depends: ${depNumbers.map(n => `#${n}`).join(", ")}`,
+        labels: [{ name: "aqm" }],
+        user: { login: "user" },
+      },
+      repository: {
+        full_name: "test/repo",
+        default_branch: "main",
+      },
+    });
+
+    it("의존 PR 미머지 → shouldProcess: false, reasonCode: dependency_pr_not_merged", async () => {
+      vi.mocked(checkDependencyPRsMerged).mockResolvedValueOnce({
+        merged: false,
+        unmerged: [100],
+        notFound: [],
+      });
+
+      const result = await dispatchEvent(
+        "issues",
+        makePayloadWithDeps([100]),
+        ["aqm"],
+        makeDepsConfig()
+      );
+
+      expect(result.shouldProcess).toBe(false);
+      expect(result.reasonCode).toBe("dependency_pr_not_merged");
+    });
+
+    it("의존 PR 머지됨 → shouldProcess: true", async () => {
+      vi.mocked(checkDependencyPRsMerged).mockResolvedValueOnce({
+        merged: true,
+        unmerged: [],
+        notFound: [],
+      });
+
+      const result = await dispatchEvent(
+        "issues",
+        makePayloadWithDeps([100]),
+        ["aqm"],
+        makeDepsConfig()
+      );
+
+      expect(result.shouldProcess).toBe(true);
+    });
+  });
 });

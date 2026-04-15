@@ -23,6 +23,7 @@ var i18n = {
       cleanData: "오래된 데이터 정리"
     },
     automations: "자동화",
+    nav: { skipEvents: "거부된 이슈" },
     settings: { _: "설정", general: "일반", safety: "안전", review: "리뷰" },
     totalJobs: "전체 작업",
     successRate: "성공률",
@@ -94,6 +95,7 @@ var i18n = {
       cleanData: "Clean Old Data"
     },
     automations: "Automations",
+    nav: { skipEvents: "Rejected Issues" },
     settings: { _: "Settings", general: "General", safety: "Safety", review: "Review" },
     totalJobs: "Total Jobs",
     successRate: "Success Rate",

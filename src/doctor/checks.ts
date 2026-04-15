@@ -24,7 +24,6 @@ export interface DoctorCheck {
   autoFixCommand?: string;
   docsUrl?: string;
   healLevel?: 1 | 2 | 3;
-  autoFixCommand?: string;
 }
 
 export interface RunAllChecksOptions {
@@ -56,7 +55,6 @@ async function checkClaudeCli(): Promise<DoctorCheck> {
       autoFixCommand: 'npm install -g @anthropic-ai/claude-code',
       docsUrl: 'https://docs.anthropic.com/claude/docs/claude-code',
       healLevel: 2,
-      autoFixCommand: 'npm install -g @anthropic-ai/claude-code',
     };
   }
 }

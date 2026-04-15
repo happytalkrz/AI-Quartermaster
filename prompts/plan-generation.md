@@ -20,6 +20,7 @@ GitHub 이슈를 분석하여 구현 계획을 JSON으로 출력하세요.
 {{repo.structure}}
 ```
 
+{{designFilesSection}}
 ## 제약
 
 - Phase 최대 {{config.maxPhases}}개. content 모드(문서/설정)는 1개.

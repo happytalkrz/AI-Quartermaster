@@ -1497,9 +1497,13 @@ function loadSkipEvents() {
         if (emptyEl) {
           emptyEl.classList.remove('hidden');
           emptyEl.innerHTML = renderEmptyState({
-            icon: 'block',
-            title: '스킵된 이벤트가 없습니다',
-            description: '이벤트가 스킵 없이 정상적으로 처리되고 있습니다.'
+            icon: 'filter_alt_off',
+            title: '거부된 이슈 없음',
+            description: '라벨/권한/안전장치로 거부된 이슈가 여기에 표시됩니다.',
+            secondaryLink: {
+              label: 'allowedLabels / instanceOwners 편집',
+              href: '#settings'
+            }
           });
         }
         return;

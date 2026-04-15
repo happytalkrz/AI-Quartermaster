@@ -2,8 +2,9 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
-import { readFileSync, writeFileSync, copyFileSync } from "fs";
-import { resolve, normalize, basename } from "path";
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "fs";
+import { resolve, normalize, basename, join } from "path";
+import { homedir } from "os";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
@@ -402,6 +403,7 @@ const SetupPreviewBodySchema = z.object({
   repoPath: z.string().min(1),
   baseBranch: z.string().optional(),
   mode: z.string().optional(),
+  token: z.string().optional(),
 });
 
 function generateSetupYaml(repo: string, repoPath: string, baseBranch?: string, mode?: string): string {
@@ -1707,7 +1709,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Setup wizard: apply config.yml with backup
   api.post("/api/setup/apply", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
     try {
-      const { repo, repoPath, baseBranch, mode } = c.req.valid('json');
+      const { repo, repoPath, baseBranch, mode, token } = c.req.valid('json');
       const configPath = resolve(process.cwd(), "config.yml");
       let backupPath: string | null = null;
       if (existsSync(configPath)) {
@@ -1716,6 +1718,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       }
       const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
       writeFileSync(configPath, newYaml, 'utf-8');
+      if (token) {
+        const credentialsDir = join(homedir(), '.aqm');
+        mkdirSync(credentialsDir, { recursive: true });
+        writeFileSync(join(credentialsDir, 'credentials'), `GITHUB_TOKEN=${token}\n`, { mode: 0o600 });
+      }
       return c.json({ success: true, configPath, backupPath });
     } catch (error: unknown) {
       return c.json({ error: `Apply failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);

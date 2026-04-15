@@ -290,6 +290,7 @@ function setupApplyConfig() {
       repoPath: _setupWizardData.repoPath || '',
       baseBranch: _setupWizardData.baseBranch,
       mode: _setupWizardData.mode,
+      token: _setupWizardData.githubToken,
     }),
   })
     .then(function (r) { return r.json(); })

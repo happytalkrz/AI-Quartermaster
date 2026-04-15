@@ -3,6 +3,7 @@ import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "fs";
+import { fileURLToPath } from "url";
 import { resolve, normalize, basename, join } from "path";
 import { homedir } from "os";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
@@ -1387,8 +1388,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   startPeriodicCleanup();
 
   // Helper to read current version from package.json
+  // import.meta.url 기준으로 설치 루트를 도출한다.
+  // process.cwd()는 서버 실행 디렉토리일 뿐 AQM 설치 루트와 다를 수 있어
+  // "ENOENT: package.json" 에러 → 대시보드 버전 표시 unknown 원인이 된다.
   const getCurrentVersion = (): string => {
-    const packageJsonPath = resolve(process.cwd(), "package.json");
+    // src/server/dashboard-api.ts (dev) 또는 dist/server/dashboard-api.js (build)
+    // 둘 다 루트에서 2단계 위 → ../../package.json로 동일하게 접근 가능
+    const packageJsonPath = fileURLToPath(new URL("../../package.json", import.meta.url));
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
     return packageJson.version;
   };

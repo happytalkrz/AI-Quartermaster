@@ -1726,15 +1726,16 @@ function loadNotifications() {
   // Bind filter buttons
   var filterBar = document.getElementById('notifications-filter-bar');
   if (filterBar && !filterBar.dataset.bound) {
-    filterBar.dataset.bound = '1';
-    filterBar.addEventListener('click', function(e) {
+    var _fb = filterBar;
+    _fb.dataset.bound = '1';
+    _fb.addEventListener('click', function(e) {
       var btn = e.target instanceof Element ? /** @type {HTMLElement|null} */ (e.target.closest('[data-notif-filter]')) : null;
       if (!btn) return;
       var filter = btn.dataset.notifFilter;
       if (!filter || filter === notifCurrentFilter) return;
       notifCurrentFilter = filter;
       notifCurrentOffset = 0;
-      filterBar.querySelectorAll('.notif-filter-btn').forEach(function(b) {
+      _fb.querySelectorAll('.notif-filter-btn').forEach(function(b) {
         var el = /** @type {HTMLElement} */ (b);
         if (el.dataset.notifFilter === filter) {
           el.className = 'notif-filter-btn px-4 py-1.5 rounded-lg text-sm font-medium bg-primary text-on-primary';
@@ -1762,6 +1763,7 @@ function fetchAndRenderNotifications() {
   apiFetch('/api/notifications?limit=' + NOTIF_PAGE_SIZE + '&offset=' + notifCurrentOffset)
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (!contentEl) return;
       /** @type {NotificationItem[]} */
       var all = data.notifications || [];
       var unread = typeof data.unreadCount === 'number' ? data.unreadCount : 0;
@@ -1807,6 +1809,7 @@ function fetchAndRenderNotifications() {
       }
     })
     .catch(function() {
+      if (!contentEl) return;
       contentEl.innerHTML = '<div class="flex items-center justify-center py-12 text-error text-sm">' +
         '<span class="material-symbols-outlined text-lg mr-2 align-middle">error</span>알림을 불러오지 못했습니다.</div>';
     });

@@ -494,7 +494,7 @@ function renderBasicField(meta, value) {
   var html = '<div class="space-y-1">';
 
   // Label + 배지 행
-  html += '<div class="flex items-center gap-2 flex-wrap">';
+  html += '<div id="' + fieldId + '-badges" class="flex items-center gap-2 flex-wrap">';
   html += '<span class="text-[10px] font-black uppercase text-primary tracking-widest">' + esc(meta.label) + '</span>';
   if (meta.default !== undefined && meta.default !== null) {
     html += '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-secondary/10 text-secondary font-mono">기본: ' + esc(String(meta.default)) + '</span>';
@@ -683,6 +683,12 @@ function removeBasicChip(fieldId, idx) {
 var _loadedPresets = [];
 
 /**
+ * 필드별 칩 상태: configPath → 'custom' | preset 이름
+ * @type {Record<string, string>}
+ */
+var _presetFieldState = {};
+
+/**
  * /api/config/presets를 fetch하여 드롭다운 옵션을 채운다.
  * renderBasicTab 완료 후 호출한다.
  * @returns {void}
@@ -809,6 +815,45 @@ function closeDiffPopover() {
 }
 
 /**
+ * 특정 필드 옆에 preset/custom 칩 배지를 표시하거나 갱신한다.
+ * @param {string} configPath
+ * @param {string} chipLabel  'custom' 또는 preset 이름
+ * @returns {void}
+ */
+function _setFieldPresetChip(configPath, chipLabel) {
+  var fieldId = 'basic-field-' + configPath.replace(/\./g, '-');
+  var badgesEl = document.getElementById(fieldId + '-badges');
+  if (!badgesEl) return;
+
+  var existingChip = document.getElementById(fieldId + '-preset-chip');
+  if (existingChip) existingChip.remove();
+
+  var chip = document.createElement('span');
+  chip.id = fieldId + '-preset-chip';
+  if (chipLabel === 'custom') {
+    chip.className = 'text-[9px] px-1.5 py-0.5 rounded-full bg-outline/10 text-outline font-mono';
+    chip.textContent = 'custom';
+  } else {
+    chip.className = 'text-[9px] px-1.5 py-0.5 rounded-full bg-tertiary/10 text-tertiary font-mono';
+    chip.textContent = 'preset: ' + chipLabel;
+  }
+  badgesEl.appendChild(chip);
+}
+
+/**
+ * 모든 필드의 preset 칩을 제거하고 상태를 초기화한다.
+ * @returns {void}
+ */
+function _clearAllFieldPresetChips() {
+  Object.keys(_presetFieldState).forEach(function(configPath) {
+    var fieldId = 'basic-field-' + configPath.replace(/\./g, '-');
+    var chip = document.getElementById(fieldId + '-preset-chip');
+    if (chip) chip.remove();
+  });
+  _presetFieldState = {};
+}
+
+/**
  * 선택된 프리셋의 fields를 Basic 탭 폼 필드에 적용한다.
  * 적용 후 active chip을 표시하고, 이후 필드 변경 시 custom 칩으로 전환한다.
  * @returns {void}
@@ -822,6 +867,9 @@ function applyPreset() {
 
   var form = document.getElementById('basic-settings-form');
   if (!form) return;
+
+  _clearAllFieldPresetChips();
+  var currentValues = collectBasicFieldValues();
 
   Object.keys(preset.fields).forEach(function(key) {
     var el = form.querySelector('[data-config-path="' + key + '"]');
@@ -840,6 +888,17 @@ function applyPreset() {
       el.value = String(val !== null && val !== undefined ? val : '');
     } else if (el instanceof HTMLTextAreaElement) {
       el.value = String(val !== null && val !== undefined ? val : '');
+    }
+
+    var before = currentValues[key] !== undefined ? String(currentValues[key]) : '(없음)';
+    var after = val !== undefined ? String(val) : '(없음)';
+    if (before !== after) {
+      _presetFieldState[key] = preset.name;
+      _setFieldPresetChip(key, preset.name);
+      el.addEventListener('change', function onPresetFieldChange() {
+        _presetFieldState[key] = 'custom';
+        _setFieldPresetChip(key, 'custom');
+      }, { once: true });
     }
   });
 

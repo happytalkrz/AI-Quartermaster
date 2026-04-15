@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>EmptyState — 빈 상태 컴포넌트 | AI Quartermaster</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#a2c9ff",
+                        "tertiary-container": "#da9600",
+                        "primary-fixed": "#d3e4ff",
+                        "on-secondary-container": "#b0b5be",
+                        "on-primary": "#00315c",
+                        "surface-container-lowest": "#0a0e14",
+                        "secondary-fixed-dim": "#c1c7d0",
+                        "secondary-fixed": "#dde3ec",
+                        "surface-container-low": "#181c22",
+                        "surface-container-high": "#262a31",
+                        "error": "#ffb4ab",
+                        "on-tertiary": "#432c00",
+                        "on-primary-fixed-variant": "#004882",
+                        "on-tertiary-container": "#4f3400",
+                        "on-error": "#690005",
+                        "on-secondary": "#2b3138",
+                        "error-container": "#93000a",
+                        "background": "#10141a",
+                        "surface-tint": "#a2c9ff",
+                        "outline": "#8b919d",
+                        "surface-dim": "#10141a",
+                        "secondary": "#c1c7d0",
+                        "primary-container": "#58a6ff",
+                        "surface-container-highest": "#31353c",
+                        "surface-container": "#1c2026",
+                        "on-surface": "#dfe2eb",
+                        "on-surface-variant": "#c0c7d4",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#41474f",
+                        "on-tertiary-fixed-variant": "#614000",
+                        "on-primary-container": "#003a6b",
+                        "surface-variant": "#31353c",
+                        "inverse-surface": "#dfe2eb",
+                        "on-tertiary-fixed": "#281800",
+                        "on-secondary-fixed": "#161c23",
+                        "on-background": "#dfe2eb",
+                        "on-primary-fixed": "#001c38",
+                        "surface": "#10141a",
+                        "tertiary-fixed": "#ffddaf",
+                        "tertiary": "#ffba42",
+                        "surface-bright": "#353940",
+                        "inverse-primary": "#0060aa",
+                        "outline-variant": "#414752",
+                        "tertiary-fixed-dim": "#ffba42",
+                        "inverse-on-surface": "#2d3137",
+                        "primary-fixed-dim": "#a2c9ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Inter"],
+                        "label": ["Inter"],
+                        "mono": ["JetBrains Mono"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .kinetic-gradient {
+            background: linear-gradient(135deg, #a2c9ff 0%, #58a6ff 100%);
+        }
+        .glass-panel {
+            background: rgba(49, 53, 60, 0.4);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary/30 selection:text-primary min-h-screen">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 bg-[#10141a] dark:bg-[#10141a] flex justify-between items-center px-6 h-16 w-full">
+<div class="flex items-center gap-8">
+<h1 class="text-2xl font-bold tracking-tighter text-[#dfe2eb] font-['Space_Grotesk']">AI Quartermaster</h1>
+<nav class="hidden md:flex gap-6">
+<a class="text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:text-[#a2c9ff] transition-colors duration-200" href="#">Systems</a>
+<a class="text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:text-[#a2c9ff] transition-colors duration-200" href="#">Assets</a>
+<a class="text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:text-[#a2c9ff] transition-colors duration-200" href="#">Logs</a>
+<a class="text-[#dfe2eb]/60 font-['Space_Grotesk'] tracking-tight hover:text-[#a2c9ff] transition-colors duration-200" href="#">Deployment</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-[#dfe2eb]/60 hover:text-[#a2c9ff] transition-colors duration-200">notifications_active</button>
+<button class="material-symbols-outlined text-[#dfe2eb]/60 hover:text-[#a2c9ff] transition-colors duration-200">settings</button>
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-container-highest">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="close-up portrait of a digital avatar with blue neon accents and tactical tech aesthetics in soft focus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJgWWVictIxnnA8DCovCQ8DNdJi0-hmGcww40OSVH73Kg2KSrY3jfFtpyaHiGvbpSDjiK82W_iaJo6C-EQRBqGPgpsj1AZUuGUuNZC43X70F22-AM0VZKqwAdNfT_p_BZikbQ9xHAPlfHmAHrzIyj43DUlqY2bpO_WOZEWIHt7JhQ-_UE_fexBRzZx0VYFhmsal8AbQztJEo4E61E1vqRs35SNCt6-gVb4gIb1TsoPMPmIEzjQW1x-zlLXvQrXIx9suiZYeGROiXY"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-16 h-[calc(100vh-64px)] w-64 bg-[#181c22] dark:bg-[#181c22] flex flex-col py-4 gap-2">
+<div class="px-6 mb-6">
+<h2 class="text-lg font-bold text-[#dfe2eb] font-['Inter']">Command Shell</h2>
+<p class="text-xs text-[#dfe2eb]/40 font-mono">v1.0.4-beta</p>
+</div>
+<div class="flex flex-col gap-1 pr-4">
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">dashboard</span> Dashboard
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 bg-[#31353c] text-[#a2c9ff] rounded-r-lg border-l-4 border-[#a2c9ff] font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">layers</span> Empty States
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">input</span> Input Fields
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">smart_button</span> Buttons
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">format_size</span> Typography
+            </a>
+</div>
+<div class="mt-auto flex flex-col gap-1 pr-4">
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">contact_support</span> Support
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-[#dfe2eb]/50 hover:text-[#dfe2eb] hover:bg-[#1c2026] transition-all font-['Inter'] text-sm font-medium" href="#">
+<span class="material-symbols-outlined">menu_book</span> Documentation
+            </a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 pt-24 px-10 pb-20">
+<header class="mb-12">
+<div class="flex items-center gap-2 mb-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-xs font-mono text-primary uppercase tracking-widest">Library / Components</span>
+</div>
+<h1 class="text-4xl font-headline font-bold text-on-surface tracking-tight">EmptyState — 빈 상태 컴포넌트</h1>
+<p class="mt-4 text-on-surface-variant max-w-2xl leading-relaxed">
+                컨텐츠가 없거나 시스템이 유휴 상태일 때 사용자에게 다음 작업을 명확히 안내하는 고정밀 공백 컴포넌트 라이브러리입니다.
+            </p>
+</header>
+<!-- Bento-style Grid for Components -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- Variant 1: Skip Events -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">SKIP_EVENTS</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="filter_alt_off">filter_alt_off</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">거부된 이슈 없음</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4">
+                        라벨/권한/안전장치로 거부된 이슈가 여기에 표시됩니다
+                    </p>
+<button class="w-full kinetic-gradient text-on-primary font-bold py-3 px-6 rounded-lg text-sm mb-4 active:scale-95 transition-all">
+                        허용 라벨 편집
+                    </button>
+<a class="text-primary/70 hover:text-primary text-xs font-medium transition-colors" href="#">instanceOwners 설정</a>
+</div>
+</div>
+<!-- Variant 2: Jobs Empty -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">JOBS_EMPTY</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="inbox">inbox</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">아직 처리한 이슈가 없어요</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4">
+                        첫 이슈를 만들면 여기에 진행 상황이 실시간 표시됩니다
+                    </p>
+<button class="w-full kinetic-gradient text-on-primary font-bold py-3 px-6 rounded-lg text-sm mb-4 active:scale-95 transition-all">
+                        첫 이슈 만들기
+                    </button>
+<a class="text-primary/70 hover:text-primary text-xs font-medium transition-colors" href="#">샘플 저장소 열기</a>
+</div>
+</div>
+<!-- Variant 3: Kanban Empty Column -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">KANBAN_EMPTY_COLUMN</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="view_column">view_column</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">이 단계에 잡 없음</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4">
+                        잡이 이 상태로 이동하면 여기에 쌓입니다
+                    </p>
+<div class="h-11"></div> <!-- Spacer to maintain grid alignment when CTA is missing -->
+<a class="text-primary/70 hover:text-primary text-xs font-medium transition-colors mt-auto" href="#">자동화 규칙 보기</a>
+</div>
+</div>
+<!-- Variant 4: Logs -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">LOGS_EMPTY</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="article">article</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">로그 없음</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4 font-mono">
+                        파이프라인이 돌기 시작하면 로그가 여기에 스트리밍됩니다
+                    </p>
+<button class="w-full kinetic-gradient text-on-primary font-bold py-3 px-6 rounded-lg text-sm mb-4 active:scale-95 transition-all">
+                        첫 이슈 실행
+                    </button>
+<div class="h-4"></div>
+</div>
+</div>
+<!-- Variant 5: Projects Unregistered -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">PROJECTS_UNREGISTERED</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="rocket_launch">rocket_launch</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">프로젝트가 아직 없어요</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4">
+                        Setup Wizard로 30초 안에 첫 프로젝트를 만드세요
+                    </p>
+<button class="w-full kinetic-gradient text-on-primary font-bold py-3 px-6 rounded-lg text-sm mb-4 active:scale-95 transition-all">
+                        Setup Wizard 열기
+                    </button>
+<div class="h-4"></div>
+</div>
+</div>
+<!-- Variant 6: Notifications -->
+<div class="flex flex-col">
+<span class="font-headline font-medium text-[10px] tracking-[0.2em] text-primary mb-3 pl-1 uppercase">NOTIFICATIONS_EMPTY</span>
+<div class="bg-surface-container-high rounded-xl p-10 flex flex-col items-center text-center group transition-all duration-300 hover:bg-surface-container-highest">
+<span class="material-symbols-outlined text-[72px] text-primary/60 mb-8 transition-transform group-hover:scale-110 duration-500" data-icon="notifications_off">notifications_off</span>
+<h3 class="text-xl font-headline font-semibold text-on-surface mb-3">알림 없음</h3>
+<p class="text-secondary-fixed-dim font-headline text-sm mb-10 leading-relaxed px-4">
+                        새 잡 상태 변화가 있으면 여기에 표시됩니다
+                    </p>
+<div class="h-11"></div> <!-- Spacer -->
+<a class="text-primary/70 hover:text-primary text-xs font-medium transition-colors mt-auto" href="#">알림 설정</a>
+</div>
+</div>
+</div>
+<!-- Automation Telemetry Feed at bottom -->
+<section class="mt-20 p-6 bg-surface-container-low rounded-xl border-l-4 border-primary/40">
+<div class="flex justify-between items-center mb-4">
+<h4 class="font-headline text-sm font-bold tracking-tight text-on-surface uppercase">Library Telemetry Logs</h4>
+<span class="text-[10px] font-mono text-primary/60">NODE_ID: QM-882-EMPTY</span>
+</div>
+<div class="font-mono text-[11px] space-y-1 text-on-secondary-container/60">
+<p><span class="text-primary">[14:22:01]</span> INITIALIZING COMPONENT_LIBRARY::EMPTY_STATE</p>
+<p><span class="text-primary">[14:22:02]</span> APPLYING THEME_TOKENS: KINETIC_COMMAND_DARK</p>
+<p><span class="text-primary">[14:22:03]</span> RENDERING 6 VARIANTS (GRID_LAYOUT: 3X2)</p>
+<p><span class="text-primary">[14:22:05]</span> STATUS: ASSETS_READY_FOR_DEPLOYMENT</p>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile Only Fallback) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-[#181c22] h-16 flex justify-around items-center px-4 z-50">
+<button class="flex flex-col items-center text-[#a2c9ff]">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="text-[10px] mt-1">Dashboard</span>
+</button>
+<button class="flex flex-col items-center text-[#dfe2eb]/60">
+<span class="material-symbols-outlined">layers</span>
+<span class="text-[10px] mt-1">Empty</span>
+</button>
+<button class="flex flex-col items-center text-[#dfe2eb]/60">
+<span class="material-symbols-outlined">input</span>
+<span class="text-[10px] mt-1">Inputs</span>
+</button>
+<button class="flex flex-col items-center text-[#dfe2eb]/60">
+<span class="material-symbols-outlined">settings</span>
+<span class="text-[10px] mt-1">Config</span>
+</button>
+</nav>
+</body></html>

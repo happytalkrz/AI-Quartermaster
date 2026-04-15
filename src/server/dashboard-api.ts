@@ -2,13 +2,17 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
-import { readFileSync } from "fs";
-import { resolve, normalize, basename } from "path";
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "fs";
+import { fileURLToPath } from "url";
+import { resolve, normalize, basename, join } from "path";
+import { homedir } from "os";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
 import { validateConfig } from "../config/validator.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
+import { getBasicFieldMetas } from "../config/schema-meta.js";
+import { getPresets } from "../config/presets.js";
 import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import { checkClaudeQuota } from "../claude/quota-checker.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
@@ -19,13 +23,17 @@ import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRa
 import type { PatternStore } from "../learning/pattern-store.js";
 import { SelfUpdater } from "../update/self-updater.js";
 import { isPathSafe } from "../utils/slug.js";
+import { runAllChecks } from "../doctor/checks.js";
+import { healLevel1, healLevel2, writeToActiveHealProcess } from "../doctor/heal.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { existsSync, statSync } from "fs";
 import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import type { ZodError } from "zod";
+import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -393,6 +401,58 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
 
 const SSE_INITIAL_JOB_LIMIT = 20;
 
+const SetupPreviewBodySchema = z.object({
+  repo: z.string().min(1),
+  repoPath: z.string().min(1),
+  baseBranch: z.string().optional(),
+  mode: z.string().optional(),
+  token: z.string().optional(),
+});
+
+const SetupLabelsBodySchema = z.object({
+  repo: z.string().min(1),
+  token: z.string().min(1),
+  labels: z.array(z.string().min(1)).default(["aqm-by"]),
+});
+
+function generateSetupYaml(repo: string, repoPath: string, baseBranch?: string, mode?: string): string {
+  const projectLines = [
+    `  - repo: "${repo}"`,
+    `    path: "${repoPath}"`,
+  ];
+  if (baseBranch) projectLines.push(`    baseBranch: "${baseBranch}"`);
+  if (mode) projectLines.push(`    mode: "${mode}"`);
+  return `# AI Quartermaster 설정 파일\n# 전체 옵션은 docs/config-schema.md 참조\n\nprojects:\n${projectLines.join('\n')}\n`;
+}
+
+function computeYamlDiff(
+  existingYaml: string | null,
+  newYaml: string
+): { added: string[]; removed: string[]; unchanged: string[] } {
+  const newLines = newYaml.split('\n').filter(l => l.trim());
+  if (!existingYaml) {
+    return { added: newLines, removed: [], unchanged: [] };
+  }
+  const existingLines = existingYaml.split('\n').filter(l => l.trim());
+  const existingSet = new Set(existingLines);
+  const newSet = new Set(newLines);
+  return {
+    added: newLines.filter(l => !existingSet.has(l)),
+    removed: existingLines.filter(l => !newSet.has(l)),
+    unchanged: newLines.filter(l => existingSet.has(l)),
+  };
+}
+
+const NewIssueRequestSchema = z.object({
+  category: z.enum(["bug", "feature", "refactor", "docs"]),
+  title: z.string().min(1),
+  repo: z.string().min(1),
+  what: z.string().min(1),
+  where: z.string().default(""),
+  how: z.string().default(""),
+  files: z.string().default(""),
+});
+
 /**
  * Returns jobs for SSE initial state:
  * - Excludes archived jobs
@@ -487,8 +547,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         await next();
         return;
       }
-      // SSE routes — handled by sseTokenAuth below
-      if (path === "/api/events" || /^\/api\/jobs\/[^/]+\/logs\/stream$/.test(path)) {
+      // SSE routes — handled by sseTokenAuth or healSseKeyAuth below
+      if (
+        path === "/api/events" ||
+        /^\/api\/jobs\/[^/]+\/logs\/stream$/.test(path) ||
+        /^\/api\/doctor\/heal\/[^/]+\/stream$/.test(path)
+      ) {
         await next();
         return;
       }
@@ -514,6 +578,19 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
 
     api.use("/api/events", sseTokenAuth);
     api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
+
+    // Doctor heal SSE uses raw API key via ?key= query param (EventSource cannot set headers)
+    const healSseKeyAuth = async (c: Context, next: Next) => {
+      const key = c.req.query("key");
+      if (!key) return c.json({ error: "Unauthorized" }, 401);
+      const expected = Buffer.from(apiKey);
+      const actual = Buffer.from(key);
+      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+      await next();
+    };
+    api.use("/api/doctor/heal/:id/stream", healSseKeyAuth);
   } else {
     // apiKey 미설정: 바인드 호스트에 따라 로그 레벨 분기
     const isLocalBind = !hostname || hostname === "127.0.0.1" || hostname === "localhost";
@@ -530,6 +607,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       api.use("/api/projects/*", readOnlyGuard);
       api.use("/api/jobs/*", readOnlyGuard);
       api.use("/api/update", readOnlyGuard);
+      api.use("/api/new-issue", readOnlyGuard);
       getLogger().info(
         "Dashboard is running in read-only mode. Write endpoints are disabled." +
         (!isLocalBind ? " Non-local bind is permitted in read-only mode." : "")
@@ -558,18 +636,28 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
+  // Get Basic tab field metadata (type, default, min/max, options)
+  api.get("/api/config/schema-meta", (c) => {
+    return c.json({ fields: getBasicFieldMetas() });
+  });
+
+  // Get config presets list
+  api.get("/api/config/presets", (c) => {
+    return c.json({ presets: getPresets() });
+  });
+
   const projectRoot = process.cwd();
   const configPath = `${projectRoot}/config.yml`;
 
   // Update configuration
-  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema, zodValidationHook), async (c) => {
+  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema.passthrough(), zodValidationHook), async (c) => {
     try {
       const body = c.req.valid('json');
 
       // Update configuration file
-      // Filter out undefined values and complex sections (projects, hooks)
-      // that should not be updated via this endpoint
-      const { projects, hooks, ...safeData } = body as Record<string, unknown>;
+      // Filter out undefined values and complex sections (projects)
+      // hooks is passed through via the passthrough schema and saved to config
+      const { projects, ...safeData } = body as Record<string, unknown>;
       const cleanedData = Object.fromEntries(
         Object.entries(safeData).map(([key, value]) => [
           key,
@@ -1300,8 +1388,13 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   startPeriodicCleanup();
 
   // Helper to read current version from package.json
+  // import.meta.url 기준으로 설치 루트를 도출한다.
+  // process.cwd()는 서버 실행 디렉토리일 뿐 AQM 설치 루트와 다를 수 있어
+  // "ENOENT: package.json" 에러 → 대시보드 버전 표시 unknown 원인이 된다.
   const getCurrentVersion = (): string => {
-    const packageJsonPath = resolve(process.cwd(), "package.json");
+    // src/server/dashboard-api.ts (dev) 또는 dist/server/dashboard-api.js (build)
+    // 둘 다 루트에서 2단계 위 → ../../package.json로 동일하게 접근 가능
+    const packageJsonPath = fileURLToPath(new URL("../../package.json", import.meta.url));
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
     return packageJson.version;
   };
@@ -1595,6 +1688,176 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
+  // Setup wizard: validate GitHub personal access token
+  api.get("/api/setup/validate-token", async (c) => {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return c.json({ error: "Authorization header with Bearer token is required" }, 400);
+    }
+
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      return c.json({ error: "Token must not be empty" }, 400);
+    }
+
+    try {
+      const response = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "User-Agent": "AI-Quartermaster",
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          return c.json({ error: "Invalid GitHub token" }, 401);
+        }
+        return c.json({ error: `GitHub API error: ${response.status}` }, 502);
+      }
+
+      const data = (await response.json()) as Record<string, unknown>;
+      const username = typeof data.login === "string" ? data.login : null;
+      const avatarUrl = typeof data.avatar_url === "string" ? data.avatar_url : null;
+      const publicRepos = typeof data.public_repos === "number" ? data.public_repos : null;
+
+      return c.json({ username, avatar_url: avatarUrl, public_repos: publicRepos });
+    } catch (error: unknown) {
+      return c.json({ error: `Token validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Setup wizard: fetch authenticated user's GitHub repos
+  api.get("/api/setup/repos", async (c) => {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return c.json({ error: "Authorization header with Bearer token is required" }, 400);
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      return c.json({ error: "Token must not be empty" }, 400);
+    }
+
+    try {
+      const response = await fetch(
+        "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "AI-Quartermaster",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          return c.json({ error: "Invalid GitHub token" }, 401);
+        }
+        return c.json({ error: `GitHub API error: ${response.status}` }, 502);
+      }
+
+      const data = (await response.json()) as Array<Record<string, unknown>>;
+      const repos = data
+        .filter((r) => typeof r.full_name === "string")
+        .map((r) => ({
+          full_name: r.full_name as string,
+          private: Boolean(r.private),
+          description: typeof r.description === "string" ? r.description : null,
+        }));
+      return c.json({ repos });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to fetch repos: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Setup wizard: auto-create AQM labels in the target repository
+  api.post("/api/setup/labels", zValidator('json', SetupLabelsBodySchema, zodValidationHook), async (c) => {
+    const { repo, token, labels } = c.req.valid('json');
+
+    const ghHeaders: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "AI-Quartermaster",
+      "Content-Type": "application/json",
+    };
+
+    const results: Array<{ label: string; status: "created" | "skipped" | "failed" }> = [];
+
+    for (const label of labels) {
+      try {
+        const checkResp = await fetch(
+          `https://api.github.com/repos/${repo}/labels/${encodeURIComponent(label)}`,
+          { headers: ghHeaders }
+        );
+
+        if (checkResp.status === 200) {
+          results.push({ label, status: "skipped" });
+          continue;
+        }
+
+        if (checkResp.status !== 404) {
+          results.push({ label, status: "failed" });
+          continue;
+        }
+
+        // Label doesn't exist — create it
+        const createResp = await fetch(`https://api.github.com/repos/${repo}/labels`, {
+          method: "POST",
+          headers: ghHeaders,
+          body: JSON.stringify({ name: label, color: "0075ca", description: "AI Quartermaster task" }),
+        });
+        results.push({ label, status: createResp.ok ? "created" : "failed" });
+      } catch {
+        results.push({ label, status: "failed" });
+      }
+    }
+
+    return c.json({ results });
+  });
+
+  // Setup wizard: preview YAML diff before applying
+  api.post("/api/setup/preview", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
+    try {
+      const { repo, repoPath, baseBranch, mode } = c.req.valid('json');
+      const configPath = resolve(process.cwd(), "config.yml");
+      const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
+      const existingYaml = existsSync(configPath) ? readFileSync(configPath, 'utf-8') : null;
+      const diff = computeYamlDiff(existingYaml, newYaml);
+      return c.json({ yaml: newYaml, existingYaml, diff });
+    } catch (error: unknown) {
+      return c.json({ error: `Preview failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Setup wizard: apply config.yml with backup
+  api.post("/api/setup/apply", zValidator('json', SetupPreviewBodySchema, zodValidationHook), async (c) => {
+    try {
+      const { repo, repoPath, baseBranch, mode, token } = c.req.valid('json');
+      const configPath = resolve(process.cwd(), "config.yml");
+      let backupPath: string | null = null;
+      if (existsSync(configPath)) {
+        // 타임스탬프 접미사로 이전 백업을 보존한다 (여러 번 apply 해도 직전 상태로 롤백 가능)
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        backupPath = `${configPath}.bak.${timestamp}`;
+        copyFileSync(configPath, backupPath);
+      }
+      const newYaml = generateSetupYaml(repo, repoPath, baseBranch, mode);
+      writeFileSync(configPath, newYaml, 'utf-8');
+      if (token) {
+        const credentialsDir = join(homedir(), '.aqm');
+        mkdirSync(credentialsDir, { recursive: true });
+        writeFileSync(join(credentialsDir, 'credentials'), `GITHUB_TOKEN=${token}\n`, { mode: 0o600 });
+      }
+      return c.json({ success: true, configPath, backupPath });
+    } catch (error: unknown) {
+      return c.json({ error: `Apply failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
   // Health check endpoint
   api.get("/api/health", async (c) => {
     try {
@@ -1650,6 +1913,116 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     } catch (error: unknown) {
       return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
+  });
+
+  // Create a new GitHub issue from dashboard
+  api.post("/api/new-issue", zValidator('json', NewIssueRequestSchema, zodValidationHook), async (c) => {
+    const logger = getLogger();
+    try {
+      const { category, title, repo, what, where, how, files } = c.req.valid('json');
+
+      const templatesDir = resolve(process.cwd(), "prompts/issue-templates");
+      const templatePath = resolve(templatesDir, `${category}.md`);
+      const template = loadTemplate(templatePath, templatesDir);
+      const body = renderTemplate(template, { what, where, how, files });
+
+      const result = await runCli("gh", [
+        "issue", "create",
+        "--repo", repo,
+        "--title", title,
+        "--body", body,
+        "--label", "aqm-by",
+      ]);
+
+      if (result.exitCode !== 0) {
+        return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(result.stderr)}` }, 500);
+      }
+
+      const url = result.stdout.trim();
+      const numberMatch = url.match(/\/issues\/(\d+)$/);
+      const number = numberMatch ? parseInt(numberMatch[1], 10) : undefined;
+
+      logger.info(`New issue created: ${url}`);
+      return c.json({ url, number });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  api.get("/api/doctor/run", async (c) => {
+    try {
+      const checks = await runAllChecks();
+      return c.json({ checks });
+    } catch (error: unknown) {
+      return c.json({ error: `Doctor run failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // POST /api/doctor/heal/stdin — stdin bridge for active Level2 process
+  // Declared before :id route so 'stdin' is not captured as checkId
+  api.post("/api/doctor/heal/stdin", async (c) => {
+    const body = await c.req.json().catch(() => null) as Record<string, unknown> | null;
+    const input = typeof body?.input === 'string' ? body.input : null;
+    if (input === null) {
+      return c.json({ error: "Missing 'input' field" }, 400);
+    }
+    const ok = writeToActiveHealProcess(input);
+    if (!ok) {
+      return c.json({ error: "No active heal process" }, 404);
+    }
+    return c.json({ ok: true });
+  });
+
+  // POST /api/doctor/heal/:id — Level1 auto-fix (runs autoFixCommand, waits for completion)
+  api.post("/api/doctor/heal/:id", async (c) => {
+    const checkId = c.req.param("id");
+    try {
+      const result = await healLevel1(checkId);
+      return c.json({ ok: true, stdout: result.stdout, stderr: result.stderr });
+    } catch (error: unknown) {
+      return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
+    }
+  });
+
+  // GET /api/doctor/heal/:id/stream — Level2 SSE streaming (spawn + stdout/stderr bridge)
+  api.get("/api/doctor/heal/:id/stream", (c) => {
+    const checkId = c.req.param("id");
+
+    const stream = new ReadableStream({
+      start(controller) {
+        healLevel2(checkId, {
+          onData(chunk) {
+            try {
+              for (const line of chunk.split('\n')) {
+                if (line.length > 0) {
+                  controller.enqueue(encoder.encode(`data: ${line}\n\n`));
+                }
+              }
+            } catch { /* stream closed */ }
+          },
+          onDone() {
+            try {
+              controller.enqueue(encoder.encode(`event: done\ndata: \n\n`));
+              controller.close();
+            } catch { /* already closed */ }
+          },
+          onFail(msg) {
+            try {
+              controller.enqueue(encoder.encode(`event: fail\ndata: ${msg}\n\n`));
+              controller.close();
+            } catch { /* already closed */ }
+          },
+        });
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
   });
 
   return api;

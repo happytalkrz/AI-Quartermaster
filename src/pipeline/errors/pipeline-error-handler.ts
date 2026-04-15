@@ -8,7 +8,9 @@ import { getErrorMessage, isAQMError } from "../../utils/error-utils.js";
 import { PipelineError, SafetyViolationError, TimeoutError } from "../../types/errors.js";
 import { handlePipelineFailure } from "../phases/pipeline-publish.js";
 import { runDiagnosis } from "./diagnosis-runner.js";
-import type { PipelineState, ErrorHistoryEntry } from "../../types/pipeline.js";
+import { classifyError } from "./error-classifier.js";
+import { getUserSummary } from "./user-message-table.js";
+import type { PipelineState, ErrorHistoryEntry, UserSummary } from "../../types/pipeline.js";
 import type { PipelineCheckpoint } from "./checkpoint.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import type { PipelineReport } from "../reporting/result-reporter.js";
@@ -47,6 +49,7 @@ export interface CoreLoopFailureResult {
   state: PipelineState;
   error: string;
   report: PipelineReport;
+  userSummary?: UserSummary;
 }
 
 /**
@@ -156,11 +159,15 @@ export async function handleCoreLoopFailure(context: CoreLoopFailureContext): Pr
     ? `Phase execution failed. ${rollbackInfo}`
     : "Phase execution failed";
 
+  const errorCategory = failedPhase?.errorCategory ?? classifyError(failedPhase?.error ?? "");
+  const userSummary = getUserSummary(errorCategory);
+
   return {
     success: false,
     state,
     error: errorMessage,
-    report
+    report,
+    userSummary
   };
 }
 
@@ -253,11 +260,15 @@ export async function handleGeneralPipelineError(context: GeneralPipelineFailure
     }
   }
 
+  const errorCategory = classifyError(getErrorMessage(error));
+  const userSummary = getUserSummary(errorCategory);
+
   return {
     success: false,
     state: "FAILED",
     error: finalErrorMessage,
-    report
+    report,
+    userSummary
   };
 }
 

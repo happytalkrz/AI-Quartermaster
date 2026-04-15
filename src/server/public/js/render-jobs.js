@@ -179,6 +179,21 @@ function renderJobDetail(job) {
     html += '<span class="material-symbols-outlined text-sm">open_in_new</span> ' + t('prLink') + '</a></div>';
   }
 
+  // User summary box (비개발자용 3줄 요약 — 에러 박스 위에 표시)
+  if (job.userSummary) {
+    html += '<div class="mt-4 p-4 bg-surface-container border border-outline-variant/30 rounded-xl">';
+    html += '<div class="flex items-center gap-2 mb-3">';
+    html += '<span class="material-symbols-outlined text-sm text-primary">info</span>';
+    html += '<span class="text-xs font-headline font-bold text-outline uppercase tracking-widest">무슨 일이 있었나요?</span>';
+    html += '</div>';
+    html += '<div class="space-y-2 text-sm">';
+    html += '<div class="flex gap-3"><span class="font-bold text-outline shrink-0 w-10">What</span><span class="text-on-surface/80">' + esc(job.userSummary.what) + '</span></div>';
+    html += '<div class="flex gap-3"><span class="font-bold text-outline shrink-0 w-10">Why</span><span class="text-on-surface/80">' + esc(job.userSummary.why) + '</span></div>';
+    html += '<div class="flex gap-3"><span class="font-bold text-[#3fb950] shrink-0 w-10">Next</span><span class="text-on-surface/80">' + esc(job.userSummary.next) + '</span></div>';
+    html += '</div>';
+    html += '</div>';
+  }
+
   // Error box
   if (job.error) {
     html += '<div class="mt-4 p-4 bg-[#f85149]/5 border border-[#f85149]/20 rounded-xl font-mono text-xs text-[#ffa198] leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-y-auto custom-scrollbar">' + esc(job.error) + '</div>';
@@ -616,7 +631,11 @@ function renderLogsView(job) {
   }
 
   if (!job || !job.logs || job.logs.length === 0) {
-    container.innerHTML = '<div class="text-outline text-center py-12">' + (job ? '이 작업에 대한 로그가 없습니다.' : '작업을 선택하세요.') + '</div>';
+    container.innerHTML = renderEmptyState({
+      icon: job ? 'article' : 'touch_app',
+      title: job ? '로그가 없습니다' : '작업을 선택하세요',
+      description: job ? '이 작업에 대한 로그가 없습니다.' : '좌측 목록에서 작업을 선택하면 로그를 확인할 수 있습니다.'
+    });
     return;
   }
 
@@ -706,7 +725,14 @@ function renderFromState() {
 
   if (allJobs.length === 0) {
     if (listEl) listEl.classList.add('hidden');
-    if (emptyEl) { emptyEl.classList.remove('hidden'); emptyEl.classList.add('flex'); }
+    if (emptyEl) {
+      emptyEl.innerHTML = renderEmptyState({
+        icon: 'inbox',
+        title: '아직 작업이 없습니다',
+        description: 'GitHub 이슈에 /aq implement 명령을 남기면 자동으로 파이프라인이 시작됩니다.'
+      });
+      emptyEl.classList.remove('hidden');
+    }
     var detailEl0 = $id('job-detail');
     if (detailEl0) detailEl0.innerHTML = '<div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">' + t('noJobSelected') + '</div>';
     renderMobileActivityLog(null);

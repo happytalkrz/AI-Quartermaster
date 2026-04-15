@@ -72,6 +72,14 @@
  */
 
 /**
+ * 비개발자용 실패 3줄 요약
+ * @typedef {Object} UserSummary
+ * @property {string} what
+ * @property {string} why
+ * @property {string} next
+ */
+
+/**
  * 파이프라인 Job (API 응답 형태)
  * @typedef {Object} Job
  * @property {string} id
@@ -99,6 +107,7 @@
  * @property {string} [branchName]
  * @property {CostBreakdown} [costBreakdown]
  * @property {string} [triggerReason]
+ * @property {UserSummary} [userSummary]
  */
 
 /**

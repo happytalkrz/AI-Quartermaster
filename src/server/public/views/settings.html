@@ -57,83 +57,163 @@
         <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface" data-i18n="globalConfig">Global Configuration</h2>
       </div>
 
-    <!-- Settings Tab Navigation -->
+    <!-- Basic / Advanced Pill Tab Navigation -->
     <nav class="flex gap-2 bg-surface-container-low p-1 rounded-lg mb-8 w-fit">
-      <button class="settings-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"
-              data-tab="general" onclick="setSettingsTab('general')">
-        <span data-i18n="settings.general">General</span>
+      <button class="settings-mode-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"
+              data-mode-tab="basic" onclick="setSettingsModeTab('basic')">
+        <span data-i18n="settings.basic">Basic</span>
       </button>
-      <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
-              data-tab="safety" onclick="setSettingsTab('safety')">
-        <span data-i18n="settings.safety">Safety</span>
-      </button>
-      <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
-              data-tab="review" onclick="setSettingsTab('review')">
-        <span data-i18n="settings.review">Review</span>
+      <button class="settings-mode-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+              data-mode-tab="advanced" onclick="setSettingsModeTab('advanced')">
+        <span data-i18n="settings.advanced">Advanced</span>
       </button>
     </nav>
 
-    <!-- Settings Tab Panels -->
-    <div class="settings-tab-content">
-      <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
-        <div id="general-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+    <!-- Basic / Advanced Tab Panels -->
+    <div class="settings-mode-tab-content">
 
-        <!-- Claude CLI Turn Limits Section -->
-        <div class="mt-6 pt-6 border-t border-outline-variant/30">
-          <div class="flex items-center gap-2 mb-4">
-            <span class="material-symbols-outlined text-primary text-sm">tune</span>
-            <span class="text-[10px] font-black uppercase text-primary tracking-widest">Claude CLI — Turn Limits</span>
-            <span class="ml-auto text-[10px] text-outline/60 flex items-center gap-1" title="설정 저장 시 즉시 반영됩니다 (hot reload)">
-              <span class="material-symbols-outlined text-[12px]">bolt</span>
-              hot reload
+      <!-- Basic Tab Panel -->
+      <div id="settings-mode-tab-basic" class="settings-mode-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
+
+        <!-- Preset Dropdown Bar -->
+        <div class="flex flex-wrap items-center gap-3 pb-4 border-b border-outline-variant/20">
+          <span class="material-symbols-outlined text-primary text-sm">auto_fix_high</span>
+          <span class="text-[10px] font-black uppercase text-primary tracking-widest">Preset</span>
+          <select id="preset-select"
+                  class="flex-1 min-w-[160px] max-w-xs bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-2 px-3 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none">
+            <option value="">— 프리셋 선택 —</option>
+          </select>
+          <button type="button" onclick="previewPreset()"
+                  class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded border border-outline-variant/40 text-on-surface hover:bg-surface-container-high transition-colors">
+            <span class="material-symbols-outlined text-sm">preview</span>
+            미리보기
+          </button>
+          <button type="button" onclick="applyPreset()"
+                  class="flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+            <span class="material-symbols-outlined text-sm">check_circle</span>
+            적용
+          </button>
+          <span id="preset-active-chip" class="hidden items-center gap-1 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-[10px] font-bold">
+            <span class="material-symbols-outlined text-[12px]">tune</span>
+            <span id="preset-active-chip-label">custom</span>
+          </span>
+        </div>
+
+        <!-- Diff Popover -->
+        <div id="preset-diff-popover" class="hidden bg-surface-container-low border border-outline-variant/30 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-sm">diff</span>
+              변경 미리보기
             </span>
+            <button type="button" onclick="closeDiffPopover()"
+                    class="text-outline hover:text-on-surface transition-colors">
+              <span class="material-symbols-outlined text-sm">close</span>
+            </button>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <label class="block">
-              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns</span>
-              <span class="text-[10px] text-outline block mb-2">Claude CLI 호출 1회당 기본 최대 턴 수</span>
-              <input type="number"
-                     id="field-commands-claudeCli-maxTurns"
-                     data-config-path="commands.claudeCli.maxTurns"
-                     min="1" max="500" step="1"
-                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Economy</span>
-              <span class="text-[10px] text-outline block mb-2">economy 모드 최대 턴 수 (미설정 시 Max Turns 적용)</span>
-              <input type="number"
-                     id="field-commands-claudeCli-maxTurnsPerMode-economy"
-                     data-config-path="commands.claudeCli.maxTurnsPerMode.economy"
-                     min="1" max="500" step="1"
-                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Standard</span>
-              <span class="text-[10px] text-outline block mb-2">standard 모드 최대 턴 수</span>
-              <input type="number"
-                     id="field-commands-claudeCli-maxTurnsPerMode-standard"
-                     data-config-path="commands.claudeCli.maxTurnsPerMode.standard"
-                     min="1" max="500" step="1"
-                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
-            </label>
-            <label class="block">
-              <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Thorough</span>
-              <span class="text-[10px] text-outline block mb-2">thorough 모드 최대 턴 수</span>
-              <input type="number"
-                     id="field-commands-claudeCli-maxTurnsPerMode-thorough"
-                     data-config-path="commands.claudeCli.maxTurnsPerMode.thorough"
-                     min="1" max="500" step="1"
-                     class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
-            </label>
+          <div id="preset-diff-content"></div>
+        </div>
+
+        <div id="basic-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+      </div>
+
+      <!-- Advanced Tab Panel -->
+      <div id="settings-mode-tab-advanced" class="settings-mode-tab-panel hidden">
+
+        <!-- Settings Sub-Tab Navigation -->
+        <nav class="flex gap-2 bg-surface-container-low p-1 rounded-lg mb-8 w-fit">
+          <button class="settings-tab-btn px-4 py-1.5 text-xs font-bold rounded shadow-sm transition-colors bg-primary/10 text-primary"
+                  data-tab="general" onclick="setSettingsTab('general')">
+            <span data-i18n="settings.general">General</span>
+          </button>
+          <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+                  data-tab="safety" onclick="setSettingsTab('safety')">
+            <span data-i18n="settings.safety">Safety</span>
+          </button>
+          <button class="settings-tab-btn px-4 py-1.5 text-xs font-medium transition-colors text-outline hover:text-on-surface hover:bg-surface-container-high"
+                  data-tab="review" onclick="setSettingsTab('review')">
+            <span data-i18n="settings.review">Review</span>
+          </button>
+        </nav>
+
+        <!-- Settings Sub-Tab Panels -->
+        <div class="settings-tab-content">
+          <div id="settings-tab-general" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4">
+            <div id="general-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+
+            <!-- Claude CLI Turn Limits Section -->
+            <div class="mt-6 pt-6 border-t border-outline-variant/30">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-primary text-sm">tune</span>
+                <span class="text-[10px] font-black uppercase text-primary tracking-widest">Claude CLI — Turn Limits</span>
+                <span class="ml-auto text-[10px] text-outline/60 flex items-center gap-1" title="설정 저장 시 즉시 반영됩니다 (hot reload)">
+                  <span class="material-symbols-outlined text-[12px]">bolt</span>
+                  hot reload
+                </span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <label class="block">
+                  <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns</span>
+                  <span class="text-[10px] text-outline block mb-2">Claude CLI 호출 1회당 기본 최대 턴 수</span>
+                  <input type="number"
+                         id="field-commands-claudeCli-maxTurns"
+                         data-config-path="commands.claudeCli.maxTurns"
+                         min="1" max="500" step="1"
+                         class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+                </label>
+                <label class="block">
+                  <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Economy</span>
+                  <span class="text-[10px] text-outline block mb-2">economy 모드 최대 턴 수 (미설정 시 Max Turns 적용)</span>
+                  <input type="number"
+                         id="field-commands-claudeCli-maxTurnsPerMode-economy"
+                         data-config-path="commands.claudeCli.maxTurnsPerMode.economy"
+                         min="1" max="500" step="1"
+                         class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+                </label>
+                <label class="block">
+                  <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Standard</span>
+                  <span class="text-[10px] text-outline block mb-2">standard 모드 최대 턴 수</span>
+                  <input type="number"
+                         id="field-commands-claudeCli-maxTurnsPerMode-standard"
+                         data-config-path="commands.claudeCli.maxTurnsPerMode.standard"
+                         min="1" max="500" step="1"
+                         class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+                </label>
+                <label class="block">
+                  <span class="text-[10px] font-black uppercase text-primary tracking-widest block mb-1">Max Turns — Thorough</span>
+                  <span class="text-[10px] text-outline block mb-2">thorough 모드 최대 턴 수</span>
+                  <input type="number"
+                         id="field-commands-claudeCli-maxTurnsPerMode-thorough"
+                         data-config-path="commands.claudeCli.maxTurnsPerMode.thorough"
+                         min="1" max="500" step="1"
+                         class="w-full bg-surface-container-highest/40 border-0 border-b-2 border-outline-variant/30 py-3 px-4 text-sm text-on-surface focus:border-primary transition-colors rounded-t outline-none" />
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
+            <div id="safety-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
+          </div>
+          <div id="settings-tab-review" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
+            <div id="review-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
           </div>
         </div>
-      </div>
-      <div id="settings-tab-safety" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
-        <div id="safety-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
-      </div>
-      <div id="settings-tab-review" class="settings-tab-panel bg-surface-container p-6 rounded-xl space-y-4 hidden">
-        <div id="review-settings-form" class="grid grid-cols-1 sm:grid-cols-2 gap-6"></div>
-      </div>
+
+        <!-- Advanced JSON Cards Section -->
+        <div id="advanced-json-cards" class="mt-6">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-outline">settings_input_component</span>
+              <h3 class="text-sm font-headline font-semibold tracking-tight text-on-surface">Advanced Configurations</h3>
+            </div>
+            <span class="bg-error/10 text-error text-[10px] px-2 py-1 font-bold uppercase tracking-widest border border-error/20">직접 수정 시 주의</span>
+          </div>
+          <div id="advanced-json-cards-list" class="space-y-2">
+            <!-- Rendered by renderAdvancedTab() -->
+          </div>
+        </div>
+
+      </div><!-- /Advanced Tab Panel -->
     </div>
 
     <!-- Save Button -->

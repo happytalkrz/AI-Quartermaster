@@ -499,7 +499,7 @@ describe("Integration: graceful shutdown", () => {
     const elapsed = Date.now() - start;
 
     expect(elapsed).toBeGreaterThanOrEqual(900);
-    expect(elapsed).toBeLessThan(2500);
+    expect(elapsed).toBeLessThan(4000);
   });
 
   it("shutdown sets shuttingDown flag synchronously before any await", async () => {

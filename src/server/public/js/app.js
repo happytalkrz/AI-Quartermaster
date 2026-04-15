@@ -59,9 +59,29 @@ function navigateTo(view) {
     renderAutomationsPanel();
   }
 
+  // If navigating to notifications view, load notifications
+  if (view === 'notifications') {
+    loadNotifications();
+  }
+
   // If navigating to skip-events view, load data
   if (view === 'skip-events') {
     loadSkipEvents();
+  }
+
+  // If navigating to new-issue view, initialize form
+  if (view === 'new-issue') {
+    initNewIssue();
+  }
+
+  // If navigating to doctor view, run checks
+  if (view === 'doctor') {
+    runDoctorCheck();
+  }
+
+  // If navigating to setup view, init wizard
+  if (view === 'setup') {
+    initSetupView();
   }
 }
 
@@ -335,6 +355,28 @@ function setSettingsTab(tabName) {
   localStorage.setItem('aqm-selected-tab', tabName);
 }
 
+/**
+ * Basic/Advanced 모드 탭 전환
+ * @param {string} modeTabName
+ * @returns {void}
+ */
+function setSettingsModeTab(modeTabName) {
+  var activeClasses = ['bg-primary/10', 'text-primary', 'shadow-sm'];
+  var inactiveClasses = ['text-outline', 'hover:text-on-surface', 'hover:bg-surface-container-high'];
+  document.querySelectorAll('.settings-mode-tab-btn').forEach(function(btn) {
+    var isActive = /** @type {HTMLElement} */ (btn).dataset.modeTab === modeTabName;
+    activeClasses.forEach(function(c) { btn.classList.toggle(c, isActive); });
+    inactiveClasses.forEach(function(c) { btn.classList.toggle(c, !isActive); });
+  });
+
+  document.querySelectorAll('.settings-mode-tab-panel').forEach(function(panel) {
+    var isActive = panel.id === 'settings-mode-tab-' + modeTabName;
+    panel.classList.toggle('hidden', !isActive);
+  });
+
+  localStorage.setItem('aqm-selected-mode-tab', modeTabName);
+}
+
 /** @type {string|null} */
 var _btnOriginal = null;
 /** @type {ReturnType<typeof setTimeout>|null} */
@@ -444,6 +486,56 @@ function collectFormData() {
     result.commands = { claudeCli: commandsCliData };
   }
 
+  // Advanced 탭 JSON textarea 수집 (Basic 탭 값이 최종적으로 우선함)
+  /** @type {Array<{id: string, configPath: string}>} */
+  var advancedCardSections = [
+    { id: 'hooks', configPath: 'hooks' },
+    { id: 'retryPolicy', configPath: 'commands.claudeCli.retry' },
+    { id: 'models', configPath: 'commands.claudeCli.models' },
+    { id: 'allowedTools', configPath: 'allowedTools' },
+    { id: 'sensitivePaths', configPath: 'safety.sensitivePaths' },
+  ];
+  advancedCardSections.forEach(function(section) {
+    var textarea = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('advanced-json-' + section.id));
+    if (!textarea) return;
+    var errorEl = document.getElementById('advanced-json-' + section.id + '-error');
+    if (errorEl) {
+      errorEl.textContent = '';
+      errorEl.classList.add('hidden');
+    }
+    var trimmed = textarea.value.trim();
+    if (!trimmed || trimmed === 'null') return;
+    try {
+      var parsed = JSON.parse(trimmed);
+      setNestedValue(result, section.configPath, parsed);
+    } catch (e) {
+      if (errorEl) {
+        errorEl.textContent = 'JSON 파싱 오류: ' + (e instanceof Error ? e.message : String(e));
+        errorEl.classList.remove('hidden');
+      }
+    }
+  });
+
+  // Basic 탭 필드 수집 및 해당 섹션에 병합 (Basic 탭 값이 Advanced 탭 값보다 우선)
+  var basicForm = document.getElementById('basic-settings-form');
+  if (basicForm) {
+    var basicInputs = basicForm.querySelectorAll('[data-config-path]');
+    basicInputs.forEach(function(inputEl) {
+      var input = /** @type {HTMLInputElement|HTMLSelectElement} */ (inputEl);
+      var path = input.dataset.configPath;
+      if (!path) return;
+      var dotIdx = path.indexOf('.');
+      if (dotIdx === -1) return;
+      var section = path.slice(0, dotIdx);
+      var subKey = path.slice(dotIdx + 1);
+      var value = getInputValue(input);
+      if (!result[section]) {
+        result[section] = cfg[section] ? JSON.parse(JSON.stringify(cfg[section])) : {};
+      }
+      setNestedValue(/** @type {Record<string, *>} */ (result[section]), subKey, value);
+    });
+  }
+
   return result;
 }
 
@@ -458,6 +550,10 @@ function getInputValue(input) {
     case 'number':
       return parseInt(input.value, 10) || 0;
     default:
+      // chip-array 타입 처리 (Basic 탭 chip-input 필드)
+      if (input.dataset.inputType === 'chip-array') {
+        try { return JSON.parse(input.value); } catch (e) { return []; }
+      }
       // comma-array 타입 처리 (예: instanceOwners)
       if (input.dataset.inputType === 'comma-array') {
         return input.value.split(',').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
@@ -1475,6 +1571,24 @@ function renderSkipEventRow(ev) {
   '</tr>';
 }
 
+/* ══════════════════════════════════════════════════════════════
+   Notifications
+   ══════════════════════════════════════════════════════════════ */
+
+/** @returns {void} */
+function loadNotifications() {
+  var emptyEl = document.getElementById('notifications-empty');
+  if (!emptyEl) return;
+  emptyEl.innerHTML = renderEmptyState({
+    icon: 'notifications_off',
+    title: '알림 없음',
+    description: '새 잡 상태 변화가 있으면 여기에 표시됩니다',
+    secondaryLink: { label: '알림 설정', href: '#settings' }
+  });
+}
+
+window.loadNotifications = loadNotifications;
+
 /** @returns {void} */
 function loadSkipEvents() {
   var container = document.getElementById('skip-events-content');
@@ -1490,10 +1604,26 @@ function loadSkipEvents() {
       var totalEl = document.getElementById('skip-events-total');
       if (totalEl) totalEl.textContent = String(total);
 
+      var tableEl = document.getElementById('skip-events-table');
+      var emptyEl = document.getElementById('skip-events-empty');
       if (events.length === 0) {
-        el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm">스킵된 이벤트가 없습니다.</td></tr>';
+        if (tableEl) tableEl.classList.add('hidden');
+        if (emptyEl) {
+          emptyEl.classList.remove('hidden');
+          emptyEl.innerHTML = renderEmptyState({
+            icon: 'filter_alt_off',
+            title: '거부된 이슈 없음',
+            description: '라벨/권한/안전장치로 거부된 이슈가 여기에 표시됩니다.',
+            secondaryLink: {
+              label: 'allowedLabels / instanceOwners 편집',
+              href: '#settings'
+            }
+          });
+        }
         return;
       }
+      if (tableEl) tableEl.classList.remove('hidden');
+      if (emptyEl) emptyEl.classList.add('hidden');
       el.innerHTML = events.map(renderSkipEventRow).join('');
     })
     .catch(function() {
@@ -1504,6 +1634,7 @@ function loadSkipEvents() {
 window.loadSkipEvents = loadSkipEvents;
 
 window.setSettingsTab = setSettingsTab;
+window.setSettingsModeTab = setSettingsModeTab;
 window.saveSettings = saveSettings;
 window.editProject = editProject;
 window.closeEditProjectModal = closeEditProjectModal;

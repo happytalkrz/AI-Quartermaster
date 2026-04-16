@@ -11,17 +11,17 @@
         <p class="text-outline font-body text-sm" data-i18n="repositories.subtitle">등록된 레포지토리와 스토리지 사용량을 관리합니다.</p>
       </div>
       <!-- Storage Stats -->
-      <div class="flex gap-3">
+      <div class="flex gap-3 shrink-0">
         <div class="bg-surface-container p-4 rounded-xl flex items-center gap-3 ring-1 ring-outline-variant/10">
           <span class="material-symbols-outlined text-primary-container">database</span>
-          <div>
+          <div class="whitespace-nowrap">
             <p class="text-[10px] font-headline uppercase tracking-widest text-outline" data-i18n="repositories.totalDbSize">Total DB Size</p>
             <p id="repo-stat-db-size" class="text-base font-mono font-medium text-on-surface">—</p>
           </div>
         </div>
         <div class="bg-surface-container p-4 rounded-xl flex items-center gap-3 ring-1 ring-outline-variant/10">
           <span class="material-symbols-outlined text-tertiary">description</span>
-          <div>
+          <div class="whitespace-nowrap">
             <p class="text-[10px] font-headline uppercase tracking-widest text-outline" data-i18n="repositories.logVolume">Log Volume</p>
             <p id="repo-stat-log-size" class="text-base font-mono font-medium text-on-surface">—</p>
           </div>
@@ -51,7 +51,7 @@
     </div>
 
     <!-- Storage Management Section -->
-    <div class="relative overflow-hidden rounded-xl bg-surface-container ring-1 ring-outline-variant/10 p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+    <div class="relative overflow-hidden rounded-xl bg-surface-container ring-1 ring-outline-variant/10 p-6 flex flex-col lg:flex-row items-center justify-between gap-6">
       <!-- Left: description -->
       <div class="flex-1 space-y-3">
         <div class="flex items-center gap-3">
@@ -65,8 +65,8 @@
         </p>
       </div>
       <!-- Right: retention bar + action -->
-      <div class="flex items-center gap-8">
-        <div>
+      <div class="flex items-center gap-8 shrink-0">
+        <div class="whitespace-nowrap">
           <p class="text-[10px] font-headline uppercase tracking-widest text-outline mb-2" data-i18n="repositories.retention">데이터 보관율</p>
           <div class="h-2 w-48 bg-surface-container-highest rounded-full overflow-hidden">
             <div id="repo-retention-bar" class="h-full bg-gradient-to-r from-primary to-primary-container rounded-full transition-all duration-500" style="width: 0%;"></div>

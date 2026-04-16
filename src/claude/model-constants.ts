@@ -4,7 +4,7 @@
  */
 
 export const CLAUDE_MODELS = {
-  OPUS: "claude-opus-4-6",
+  OPUS: "claude-opus-4-7",
   SONNET: "claude-sonnet-4-6",
   HAIKU: "claude-haiku-4-5-20251001",
 } as const;

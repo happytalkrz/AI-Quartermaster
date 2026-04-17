@@ -12,11 +12,11 @@ interface ModelPricing {
  * Claude 모델별 토큰 단가 테이블 (USD per 1M tokens)
  *
  * 공식 가격 출처: https://docs.anthropic.com/en/docs/about-claude/pricing
- * 최종 업데이트: 2026-04-12
+ * 최종 업데이트: 2026-04-17
  *
  * | 모델            | Input    | Output   | Cache Write (5m) | Cache Read |
  * |-----------------|----------|----------|------------------|------------|
- * | Opus 4.6        | $5/MTok  | $25/MTok | $6.25/MTok       | $0.50/MTok |
+ * | Opus 4.7        | $5/MTok  | $25/MTok | $6.25/MTok       | $0.50/MTok |
  * | Sonnet 4.6      | $3/MTok  | $15/MTok | $3.75/MTok       | $0.30/MTok |
  * | Haiku 4.5       | $1/MTok  | $5/MTok  | $1.25/MTok       | $0.10/MTok |
  *

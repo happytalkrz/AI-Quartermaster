@@ -23,6 +23,7 @@ Resolves #{{issue.number}} — {{issue.title}}
 - **Phases**: {{stats.successCount}}/{{stats.phaseCount}} completed
 - **Branch**: `{{branch.work}}` → `{{branch.base}}`
 - **Tokens**: {{stats.inputTokens}} input, {{stats.outputTokens}} output
+- **Cache Hit**: {{stats.cacheHitRatio}} (절감 토큰: {{stats.cacheSavedTokens}})
 
 {{stats.phaseCostTable}}
 {{stats.modelSummary}}

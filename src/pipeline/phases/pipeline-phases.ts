@@ -495,7 +495,7 @@ export async function executePostProcessingPhases(
   }
 
   if (!reviewResult.success) {
-    const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+    const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
     saveResult(config, aqRoot ?? runtime.projectRoot, issueNumber, report);
     throw new Error(reviewResult.error || "Review phase failed");
   }
@@ -551,7 +551,7 @@ export async function executePostProcessingPhases(
     }
 
     if (!simplifyResult.success) {
-      const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime);
+      const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
       saveResult(config, aqRoot ?? runtime.projectRoot, issueNumber, report);
       throw new Error(simplifyResult.error || "Simplify phase failed");
     }
@@ -745,7 +745,7 @@ export async function executePostProcessingPhases(
 
     return {
       prUrl,
-      report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl),
+      report: formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, prUrl, coreResult.totalUsage),
       totalCostUsd: updatedTotalCostUsd,
     };
   }

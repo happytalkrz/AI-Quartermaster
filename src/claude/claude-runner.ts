@@ -381,6 +381,8 @@ export function extractJson<T = unknown>(text: string): T {
     let depth = 0;
     let inString = false;
     let escape = false;
+    // Top-level(깊이 1) 경계 위치 — truncation 복구 시 잘라낼 안전 지점
+    let lastTopLevelComma = -1;
 
     for (let i = firstBrace; i < text.length; i++) {
       const ch = text[i];
@@ -409,6 +411,31 @@ export function extractJson<T = unknown>(text: string): T {
           } catch {
             // continue searching
           }
+        }
+      }
+      else if (ch === "," && depth === 1) {
+        lastTopLevelComma = i;
+      }
+    }
+
+    // 4. Recovery: Claude 응답이 token 한계로 중간 절단된 경우 자동 복구
+    //    - 마지막이 문자열 내부면 `"`로 닫고, 남은 open brace 깊이만큼 `}` 추가
+    //    - 1차 복구 실패 시 마지막 top-level 쉼표 직전까지만 유지 후 `}` 추가
+    if (depth > 0) {
+      const base = text.slice(firstBrace);
+      const closers = "}".repeat(depth);
+      const firstAttempt = (inString ? base + '"' : base) + closers;
+      try {
+        return JSON.parse(firstAttempt) as T;
+      } catch {
+        // fallback
+      }
+      if (lastTopLevelComma !== -1) {
+        const truncated = text.slice(firstBrace, lastTopLevelComma) + "}";
+        try {
+          return JSON.parse(truncated) as T;
+        } catch {
+          // fallback
         }
       }
     }

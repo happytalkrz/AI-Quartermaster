@@ -399,7 +399,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 
 <div class="flex min-h-[calc(100vh-64px)]">
 <!-- SideNavBar -->
-<aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d]">
+<aside class="w-[280px] h-screen fixed left-0 top-16 bottom-0 flex flex-col p-4 z-40 bg-[#161b22] dark:bg-[#161b22] border-r border-[#30363d] overflow-y-auto">
   <div class="mb-4 px-2">
     <div id="claude-profile-label" class="text-sm font-headline font-bold text-primary tracking-wide uppercase"></div>
   </div>
@@ -524,9 +524,9 @@ if (localStorage.getItem('aqm-theme') === 'light') {
     </div>
 
     <!-- Dashboard Layout Grid -->
-    <div class="grid grid-cols-12 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
       <!-- Left: Job List Column -->
-      <div class="col-span-4 space-y-4">
+      <div class="col-span-1 lg:col-span-4 min-w-0 space-y-4">
         <div id="job-list" class="space-y-3 overflow-y-auto max-h-[calc(100vh-350px)] pr-2 custom-scrollbar">
           <!-- Jobs rendered here dynamically -->
         </div>
@@ -544,7 +544,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
       </div>
 
       <!-- Right: Job Details Column -->
-      <div class="col-span-8">
+      <div class="col-span-1 lg:col-span-8 min-w-0">
         <div id="job-detail" class="bg-surface-container p-8 rounded-2xl ring-1 ring-outline-variant/20 flex flex-col gap-8 min-h-[400px]">
           <div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>
         </div>
@@ -680,9 +680,9 @@ if (localStorage.getItem('aqm-theme') === 'light') {
 
     <!-- List View -->
     <div id="automations-list-view">
-      <div class="grid grid-cols-12 gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <!-- Left: Job List Column -->
-        <div class="col-span-4 space-y-4">
+        <div class="col-span-1 lg:col-span-4 min-w-0 space-y-4">
           <div id="automations-job-list" class="space-y-3 overflow-y-auto max-h-[calc(100vh-300px)] pr-2 custom-scrollbar">
             <!-- Jobs rendered here dynamically -->
           </div>
@@ -693,7 +693,7 @@ if (localStorage.getItem('aqm-theme') === 'light') {
           </div>
         </div>
         <!-- Right: Job Detail Column -->
-        <div class="col-span-8">
+        <div class="col-span-1 lg:col-span-8 min-w-0">
           <div id="automations-job-detail" class="bg-surface-container p-8 rounded-2xl ring-1 ring-outline-variant/20 flex flex-col gap-8 min-h-[400px]">
             <div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>
           </div>

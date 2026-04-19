@@ -128,13 +128,13 @@ function renderJobDetail(job) {
   }
 
   // Header
-  var html = '<div class="flex justify-between items-start">';
-  html += '<div>';
-  html += '<div class="flex items-center gap-3 mb-2">';
-  html += '<h1 class="text-2xl font-headline font-bold">#' + job.issueNumber + ' ' + esc(job.repo) + '</h1>';
+  var html = '<div class="flex flex-wrap justify-between items-start gap-4">';
+  html += '<div class="min-w-0">';
+  html += '<div class="flex flex-wrap items-center gap-3 mb-2">';
+  html += '<h1 class="text-2xl font-headline font-bold break-words">#' + job.issueNumber + ' ' + esc(job.repo) + '</h1>';
   html += statusBadge;
   html += '</div>';
-  html += '<div class="flex items-center gap-6 text-sm text-outline font-medium">';
+  html += '<div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-outline font-medium">';
   if (dur) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span> <span data-dur="' + esc(job.id) + '">' + dur + '</span></span>';
   var costHtml = fmtCost(job.totalCostUsd);
   if (costHtml) html += '<span class="flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">payments</span> ' + costHtml + '</span>';
@@ -144,7 +144,7 @@ function renderJobDetail(job) {
   html += '</div></div>';
 
   // Action buttons
-  html += '<div class="flex gap-3">';
+  html += '<div class="flex flex-wrap gap-3 shrink-0">';
   if (job.phaseResults && job.phaseResults.length > 0) {
     html += '<button onclick="openTimelineModal(currentJobs.find(function(j){return j.id===\'' + esc(job.id) + '\'})||{})" class="px-4 py-2 bg-surface-container-high text-primary text-sm font-bold rounded-lg border border-primary/30 hover:bg-primary/10 transition-colors flex items-center gap-1.5 whitespace-nowrap"><span class="material-symbols-outlined text-sm">timeline</span> 타임라인</button>';
   }

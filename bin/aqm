@@ -172,9 +172,47 @@ case "${1:-}" in
     echo "AI Quartermaster 업데이트 중... (브랜치: $BRANCH)"
     cd "$AQM_ROOT"
     BEFORE=$(git rev-parse HEAD)
-    git fetch --quiet origin
-    git checkout --quiet "$BRANCH"
-    git pull --quiet origin "$BRANCH"
+
+    GIT_ERR=$(git fetch --quiet origin 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "git fetch 실패!"
+      echo "$GIT_ERR"
+      exit 1
+    fi
+
+    GIT_ERR=$(git checkout --quiet "$BRANCH" 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "브랜치 전환 실패: $BRANCH"
+      echo "$GIT_ERR"
+      exit 1
+    fi
+
+    GIT_ERR=$(git pull --quiet origin "$BRANCH" 2>&1)
+    PULL_EXIT=$?
+    if [ $PULL_EXIT -ne 0 ]; then
+      if echo "$GIT_ERR" | grep -qE "CONFLICT|Pull is not possible|Cannot pull"; then
+        echo "머지 충돌로 업데이트 중단!"
+        echo "$GIT_ERR"
+        echo ""
+        echo "수동 해결 방법:"
+        echo "  cd $AQM_ROOT"
+        echo "  git merge --abort  # 또는 충돌 파일 직접 수정 후 git add / git commit"
+        exit 1
+      fi
+      echo "git pull 실패!"
+      echo "$GIT_ERR"
+      exit 1
+    fi
+    if echo "$GIT_ERR" | grep -qE "CONFLICT|Pull is not possible"; then
+      echo "머지 충돌로 업데이트 중단!"
+      echo "$GIT_ERR"
+      echo ""
+      echo "수동 해결 방법:"
+      echo "  cd $AQM_ROOT"
+      echo "  git merge --abort  # 또는 충돌 파일 직접 수정 후 git add / git commit"
+      exit 1
+    fi
+
     AFTER=$(git rev-parse HEAD)
 
     # Handle --clean option

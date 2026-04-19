@@ -34,6 +34,28 @@ describe("extractJson", () => {
     const result = extractJson(json);
     expect(result).toEqual({ outer: { inner: { deep: true } } });
   });
+
+  describe("truncation recovery (#800)", () => {
+    it("should recover JSON truncated inside a string value", () => {
+      // 실제 실패 패턴: problemDefinition 중간에서 잘림
+      const truncated = '{"mode":"code","issueNumber":791,"problemDefinition":"aqm update 실행 시 git';
+      const result = extractJson<{ mode: string; problemDefinition: string }>(truncated);
+      expect(result.mode).toBe("code");
+      expect(result.problemDefinition.startsWith("aqm update")).toBe(true);
+    });
+
+    it("should recover JSON truncated with nested object unclosed", () => {
+      const truncated = '{"mode":"code","title":"t","nested":{"a":1,"b":';
+      // nested가 incomplete면 top-level comma 앞까지 잘라내서 복구
+      const result = extractJson<{ mode: string; title: string }>(truncated);
+      expect(result.mode).toBe("code");
+      expect(result.title).toBe("t");
+    });
+
+    it("should still throw when no recoverable JSON exists", () => {
+      expect(() => extractJson("not even a brace")).toThrow();
+    });
+  });
 });
 
 describe("ClaudeRunOptions", () => {

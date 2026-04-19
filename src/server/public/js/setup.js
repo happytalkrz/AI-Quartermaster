@@ -317,6 +317,7 @@ function setupApplyConfig() {
           statusEl.className = 'mt-4 text-xs text-[#3fb950] text-center';
           statusEl.textContent = '저장 완료! 대시보드로 이동합니다...';
         }
+        localStorage.setItem('aqm-tutorial-pending', 'true');
         setTimeout(function () { window.location.href = '/'; }, 1500);
       } else {
         var msg = data.error || '저장에 실패했습니다.';

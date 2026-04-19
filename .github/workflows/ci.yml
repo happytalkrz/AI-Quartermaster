@@ -70,6 +70,50 @@ jobs:
           name: visual-baseline-snapshots
           path: tests/visual/__snapshots__/
 
+  version-bump-check:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' && github.base_ref == 'main' &&
+      (startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'hotfix/'))
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract target version
+        id: extract
+        run: |
+          TARGET=$(echo "${{ github.event.pull_request.title }}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/^v//')
+          if [ -z "$TARGET" ]; then
+            TARGET=$(echo "${{ github.head_ref }}" | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | sed 's/^v//')
+          fi
+          if [ -z "$TARGET" ]; then
+            echo "::warning::버전을 PR 제목 또는 브랜치명에서 감지하지 못했습니다. version-bump-check를 건너뜁니다."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Check package.json and package-lock.json version
+        if: steps.extract.outputs.skip == 'false'
+        run: |
+          TARGET="${{ steps.extract.outputs.target }}"
+          PKG=$(node -p "require('./package.json').version")
+          LOCK=$(node -p "require('./package-lock.json').version")
+          echo "목표 버전  : $TARGET"
+          echo "package.json     : $PKG"
+          echo "package-lock.json: $LOCK"
+          FAIL=0
+          if [ "$PKG" != "$TARGET" ]; then
+            echo "::error::package.json version($PKG)이 목표 버전($TARGET)과 다릅니다."
+            FAIL=1
+          fi
+          if [ "$LOCK" != "$TARGET" ]; then
+            echo "::error::package-lock.json version($LOCK)이 목표 버전($TARGET)과 다릅니다."
+            FAIL=1
+          fi
+          if [ "$FAIL" -eq 1 ]; then
+            exit 1
+          fi
+          echo "✓ 버전 일치 확인 완료 ($TARGET)"
+
   visual-regression:
     name: visual-regression (advisory)
     runs-on: ubuntu-latest

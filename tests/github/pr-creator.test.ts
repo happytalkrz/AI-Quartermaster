@@ -488,6 +488,39 @@ describe("enableAutoMerge", () => {
   });
 });
 
+describe("createDraftPR cache stats template variables", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("should pass cacheHitRatio and cacheSavedTokens to pr-body template stats (Cache Hit line)", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/20", stderr: "", exitCode: 0 });
+    const ctxWithUsage = {
+      ...ctx,
+      totalUsage: {
+        input_tokens: 0,
+        output_tokens: 500,
+        cache_read_input_tokens: 1000,
+      },
+    };
+    await createDraftPR(prConfig, ghConfig, ctxWithUsage, { cwd: "/tmp", promptsDir: "/prompts" });
+    // calls[0] = title renderTemplate, calls[1] = body renderTemplate
+    const templateVars = mockRenderTemplate.mock.calls[1][1] as Record<string, unknown>;
+    const stats = templateVars.stats as Record<string, unknown>;
+    // cache_read / (input + cache_read) = 1000/1000 = 1.0 → "1.0%"
+    expect(stats.cacheHitRatio).toBe("1.0%");
+    expect(stats.cacheSavedTokens).toBe(1000);
+  });
+
+  it("should default cacheHitRatio to '0.0%' and cacheSavedTokens to 0 when totalUsage is absent", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/21", stderr: "", exitCode: 0 });
+    const ctxWithoutUsage = { ...ctx, totalUsage: undefined };
+    await createDraftPR(prConfig, ghConfig, ctxWithoutUsage, { cwd: "/tmp", promptsDir: "/prompts" });
+    const templateVars = mockRenderTemplate.mock.calls[1][1] as Record<string, unknown>;
+    const stats = templateVars.stats as Record<string, unknown>;
+    expect(stats.cacheHitRatio).toBe("0.0%");
+    expect(stats.cacheSavedTokens).toBe(0);
+  });
+});
+
 describe("addIssueComment", () => {
   beforeEach(() => vi.clearAllMocks());
 

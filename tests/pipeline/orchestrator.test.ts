@@ -253,23 +253,8 @@ describe("runPipeline", () => {
     expect(pushOrder).toBeLessThan(prOrder);
   });
 
-  it("should close issue after PR creation", async () => {
+  it("should NOT close issue after draft PR creation (#801)", async () => {
     setupSuccessMocks();
-    await runPipeline({
-      issueNumber: 42,
-      repo: "test/repo",
-      config: makeConfig(),
-      projectRoot: "/tmp/project",
-    });
-    expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", expect.objectContaining({
-      ghPath: expect.any(String),
-      dryRun: false,
-    }));
-  });
-
-  it("should continue pipeline even if issue close fails", async () => {
-    setupSuccessMocks();
-    mockCloseIssue.mockResolvedValue(false);
     const result = await runPipeline({
       issueNumber: 42,
       repo: "test/repo",
@@ -277,14 +262,9 @@ describe("runPipeline", () => {
       projectRoot: "/tmp/project",
     });
     expect(result.success).toBe(true);
-    expect(result.state).toBe("DONE");
-    // Verify closeIssue was called with correct parameters even though it returned false
-    expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", expect.objectContaining({
-      ghPath: expect.any(String),
-      dryRun: false,
-    }));
-    // Pipeline should still produce a PR URL despite issue close failure
     expect(result.prUrl).toBe("https://github.com/test/repo/pull/1");
+    // Draft PR 생성 시점에는 이슈를 닫지 않는다. PR 머지 시점에만 닫혀야 한다.
+    expect(mockCloseIssue).not.toHaveBeenCalled();
   });
 
   describe("review fix loop", () => {

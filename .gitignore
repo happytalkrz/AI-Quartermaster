@@ -10,6 +10,8 @@ coverage/
 # Playwright artifacts
 test-results/
 playwright-report/
+.playwright-mcp/
+qa-*.png
 
 # Logs
 logs/
@@ -48,6 +50,7 @@ stitch-proxy.sh
 .claude/worktrees/
 .claude/settings*.json
 .claude/skill-usage.jsonl
+.claude/scheduled_tasks.lock
 .claude/doc/
 AGENTS.md
 .cursorrules

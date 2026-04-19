@@ -327,6 +327,25 @@ export class AQDatabase {
       logger.info("Migration: added cache_hit_ratio column to jobs table");
     }
 
+    // cache_hit_ratio 백필: jobToDbJob 누락 버그로 null로 남은 기존 잡 재계산
+    const refreshedCols = this.db.pragma("table_info(jobs)") as Array<{ name: string }>;
+    const hasReadTokens = refreshedCols.some(col => col.name === "total_cache_read_input_tokens");
+    const hasInputTokens = refreshedCols.some(col => col.name === "total_input_tokens");
+    if (hasReadTokens && hasInputTokens) {
+      const backfill = this.db.prepare(`
+        UPDATE jobs
+        SET cache_hit_ratio = CAST(total_cache_read_input_tokens AS REAL)
+          / (total_input_tokens + total_cache_read_input_tokens)
+        WHERE cache_hit_ratio IS NULL
+          AND total_cache_read_input_tokens IS NOT NULL
+          AND total_input_tokens IS NOT NULL
+          AND (total_input_tokens + total_cache_read_input_tokens) > 0
+      `).run();
+      if (backfill.changes > 0) {
+        logger.info(`Migration: backfilled cache_hit_ratio for ${backfill.changes} jobs`);
+      }
+    }
+
     // jobs 테이블에 cost_breakdown 컬럼 추가 (기존 DB 마이그레이션)
     const hasCostBreakdown = jobColumns.some(col => col.name === "cost_breakdown");
     if (!hasCostBreakdown) {

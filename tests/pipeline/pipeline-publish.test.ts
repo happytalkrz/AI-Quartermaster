@@ -241,7 +241,8 @@ describe("pushAndCreatePR", () => {
       "squash",
       { ghPath: "gh", dryRun: false, isDraft: true, deleteBranch: false }
     );
-    expect(mockCloseIssue).toHaveBeenCalledWith(42, "test/repo", { ghPath: "gh", dryRun: false });
+    // #801: draft PR 생성 시점에 closeIssue를 호출하면 이슈가 위양성 close됨
+    expect(mockCloseIssue).not.toHaveBeenCalled();
   });
 
   it("should handle safety validation failure", async () => {
@@ -352,16 +353,6 @@ describe("pushAndCreatePR", () => {
 
     expect(result.success).toBe(true);
     expect(context.jl?.log).toHaveBeenCalledWith("Auto-merge 활성화 실패 (경고만, 계속 진행)");
-  });
-
-  it("should continue when issue close fails", async () => {
-    const context = makePublishContext();
-    mockCloseIssue.mockRejectedValue(new Error("Issue close failed"));
-
-    const result = await pushAndCreatePR(context);
-
-    expect(result.success).toBe(true);
-    expect(context.jl?.log).toHaveBeenCalledWith("이슈 닫기 실패 (경고만, 계속 진행)");
   });
 
   it("should skip push in dry run mode", async () => {
@@ -487,6 +478,15 @@ describe("pushAndCreatePR", () => {
 
     expect(result.success).toBe(true);
     expect(context.jl?.log).toHaveBeenCalledWith("의존성 코멘트 추가 실패 (경고만, 계속 진행)");
+  });
+
+  it("should NOT call closeIssue after draft PR creation (#801 regression guard)", async () => {
+    const context = makePublishContext();
+
+    const result = await pushAndCreatePR(context);
+
+    expect(result.success).toBe(true);
+    expect(mockCloseIssue).not.toHaveBeenCalled();
   });
 });
 

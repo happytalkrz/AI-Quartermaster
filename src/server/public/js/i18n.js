@@ -81,6 +81,21 @@ var i18n = {
       tabs: { general: "일반", safety: "안전", review: "리뷰" },
       saveState: { saving: "저장 중...", saved: "저장됨", saveFailed: "저장 실패" },
       form: { edit: "편집", reset: "초기화", resetConfirm: "설정을 초기화하시겠습니까?", saveChanges: "변경사항 저장", discardChanges: "변경사항 취소" }
+    },
+    tutorial: {
+      step1Title: "이슈 만들기",
+      step1Desc: "사이드바의 '새 이슈' 메뉴에서 카테고리를 선택하고 이슈를 작성해 보세요. AQM이 자동으로 처리를 시작합니다.",
+      step2Title: "파이프라인 관찰",
+      step2Desc: "대시보드에서 이슈가 처리되는 과정을 실시간으로 확인할 수 있습니다. 각 단계의 진행률이 표시됩니다.",
+      step3Title: "PR 확인",
+      step3Desc: "처리가 완료되면 자동으로 Pull Request가 생성됩니다. 작업 상세에서 PR 링크를 확인하세요.",
+      step4Title: "준비 완료!",
+      step4Desc: "이제 AQM 사용 준비가 끝났습니다. 직접 이슈를 만들어 보세요!",
+      next: "다음",
+      done: "시작하기",
+      skip: "건너뛰기",
+      createIssue: "이슈 만들기",
+      stepOf: "/ "
     }
   },
   en: {
@@ -158,6 +173,21 @@ var i18n = {
       tabs: { general: "General", safety: "Safety", review: "Review" },
       saveState: { saving: "Saving...", saved: "Saved", saveFailed: "Save Failed" },
       form: { edit: "Edit", reset: "Reset", resetConfirm: "Reset all settings to default?", saveChanges: "Save Changes", discardChanges: "Discard Changes" }
+    },
+    tutorial: {
+      step1Title: "Create an Issue",
+      step1Desc: "Go to 'New Issue' in the sidebar, pick a category, and describe what you need. AQM will start processing automatically.",
+      step2Title: "Watch the Pipeline",
+      step2Desc: "The dashboard shows real-time progress as your issue is processed. You can see each phase's status.",
+      step3Title: "Check the PR",
+      step3Desc: "Once complete, a Pull Request is created automatically. Find the PR link in the job details.",
+      step4Title: "You're All Set!",
+      step4Desc: "AQM is ready to use. Try creating your first issue!",
+      next: "Next",
+      done: "Get Started",
+      skip: "Skip",
+      createIssue: "Create Issue",
+      stepOf: "of "
     }
   }
 };

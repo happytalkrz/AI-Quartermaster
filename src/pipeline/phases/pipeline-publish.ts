@@ -1,4 +1,4 @@
-import { createDraftPR, enableAutoMerge, closeIssue, addIssueComment } from "../../github/pr-creator.js";
+import { createDraftPR, enableAutoMerge, addIssueComment } from "../../github/pr-creator.js";
 import { parseDependencies, checkDependencyPRsMerged } from "../../queue/dependency-resolver.js";
 import { pushBranch, checkConflicts, attemptRebase } from "../../git/branch-manager.js";
 import { removeWorktree } from "../../git/worktree-manager.js";
@@ -229,23 +229,9 @@ gh pr merge ${prResult.number} --${projectConfig.pr.mergeMethod}
       }
     }
 
-    // === Close the issue since PR is created ===
-    try {
-      jl?.setStep("이슈 닫는 중...");
-      const closed = await closeIssue(
-        issueNumber,
-        repo,
-        { ghPath: projectConfig.commands.ghCli.path, dryRun }
-      );
-      if (closed) {
-        jl?.log(`이슈 #${issueNumber} 닫음`);
-      } else {
-        jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
-      }
-    } catch (err: unknown) {
-      logger.warn(`Failed to close issue #${issueNumber}: ${getErrorMessage(err)}`);
-      jl?.log(`이슈 닫기 실패 (경고만, 계속 진행)`);
-    }
+    // NOTE: 이슈 close는 draft PR 생성 시점이 아니라 PR이 실제 머지될 때에만
+    // 수행되어야 한다 (GitHub "Closes #N" auto-close 또는 별도 merge 이벤트 핸들러).
+    // draft PR 생성 직후 closeIssue()를 호출하면 위양성으로 이슈가 닫힌다 (#801).
 
     jl?.setStep("완료");
 

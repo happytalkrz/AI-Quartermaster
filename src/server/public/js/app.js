@@ -1919,3 +1919,9 @@ window.toggleProjectDropdown = toggleProjectDropdown;
 window.toggleJobProjectDropdown = toggleJobProjectDropdown;
 window.setProject = setProject;
 window.setAutomationsView = setAutomationsView;
+
+// Tutorial: launch after setup wizard redirect
+if (localStorage.getItem('aqm-tutorial-pending') === 'true') {
+  localStorage.removeItem('aqm-tutorial-pending');
+  if (typeof initTutorial === 'function') initTutorial();
+}

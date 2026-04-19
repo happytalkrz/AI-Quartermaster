@@ -1575,4 +1575,21 @@ describe("JobStore", () => {
       expect(result).toBeUndefined();
     });
   });
+
+  describe("cacheHitRatio persistence", () => {
+    it("should persist cacheHitRatio when setCosts is applied", () => {
+      const job = store.create(100, "test/repo");
+      const usage = {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 900
+      };
+
+      store.update(job.id, { totalCostUsd: 0.1, totalUsage: usage, cacheHitRatio: 0.9 });
+
+      const reloaded = store.get(job.id);
+      expect(reloaded?.cacheHitRatio).toBeCloseTo(0.9, 2);
+    });
+  });
 });

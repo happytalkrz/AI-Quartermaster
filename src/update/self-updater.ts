@@ -96,9 +96,10 @@ export class SelfUpdater {
   }
 
   /**
-   * Performs git pull to update to latest commits
+   * Performs git pull to update to latest commits.
+   * @param remoteHash - When provided, verifies HEAD matches this hash after pull.
    */
-  async pullUpdates(): Promise<void> {
+  async pullUpdates(remoteHash?: string): Promise<void> {
     logger.info("업데이트 적용 중 — git pull 실행...");
 
     const pullResult = await runCli(
@@ -107,7 +108,33 @@ export class SelfUpdater {
       { cwd: this.options.cwd }
     );
     if (pullResult.exitCode !== 0) {
-      throw new Error(`git pull 실패: ${pullResult.stderr}`);
+      const stderr = pullResult.stderr;
+      let detail = stderr;
+      if (stderr.includes("CONFLICT")) {
+        detail = `머지 충돌 발생\n${stderr}`;
+      } else if (stderr.includes("Could not resolve host")) {
+        detail = `네트워크 오류 (호스트 연결 실패)\n${stderr}`;
+      } else if (stderr.includes("Authentication failed")) {
+        detail = `인증 실패\n${stderr}`;
+      }
+      throw new Error(`git pull 실패: ${detail}`);
+    }
+
+    if (remoteHash !== undefined) {
+      const headResult = await runCli(
+        this.gitConfig.gitPath,
+        ["rev-parse", "HEAD"],
+        { cwd: this.options.cwd }
+      );
+      if (headResult.exitCode !== 0) {
+        throw new Error(`pull 후 HEAD 확인 실패: ${headResult.stderr}`);
+      }
+      const actualHead = headResult.stdout.trim();
+      if (actualHead !== remoteHash) {
+        throw new Error(
+          `git pull 성공했으나 HEAD가 원격과 동기화되지 않음 (HEAD: ${actualHead.substring(0, 8)}, 원격: ${remoteHash.substring(0, 8)})`
+        );
+      }
     }
 
     logger.info("git pull 완료");
@@ -175,7 +202,7 @@ export class SelfUpdater {
 
     logger.info(`새 업데이트 발견 — ${updateInfo.currentHash.substring(0, 8)} -> ${updateInfo.remoteHash.substring(0, 8)}`);
 
-    await this.pullUpdates();
+    await this.pullUpdates(updateInfo.remoteHash);
 
     if (this.shouldRunNpmCi(updateInfo)) {
       await this.runNpmCi();

@@ -152,10 +152,43 @@ describe("SelfUpdater", () => {
       expect(mockRunCli).toHaveBeenCalledWith("git", ["pull", "origin", "main"], { cwd: "/test/project" });
     });
 
-    it("should throw error when git pull fails", async () => {
-      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "merge conflict", exitCode: 1 });
+    it("should throw error when git pull fails with generic error", async () => {
+      mockRunCli.mockResolvedValueOnce({ stdout: "", stderr: "some generic error", exitCode: 1 });
 
-      await expect(selfUpdater.pullUpdates()).rejects.toThrow("git pull 실패: merge conflict");
+      await expect(selfUpdater.pullUpdates()).rejects.toThrow("git pull 실패: some generic error");
+    });
+
+    it("should throw merge conflict error when CONFLICT keyword in stderr", async () => {
+      mockRunCli.mockResolvedValueOnce({
+        stdout: "",
+        stderr: "CONFLICT (content): Merge conflict in src/foo.ts",
+        exitCode: 1,
+      });
+
+      await expect(selfUpdater.pullUpdates()).rejects.toThrow("머지 충돌 발생");
+    });
+
+    it("should throw network error when host resolution fails", async () => {
+      mockRunCli.mockResolvedValueOnce({
+        stdout: "",
+        stderr: "fatal: Could not resolve host: github.com",
+        exitCode: 128,
+      });
+
+      await expect(selfUpdater.pullUpdates()).rejects.toThrow("네트워크 오류 (호스트 연결 실패)");
+    });
+
+    it("should throw when HEAD does not match remoteHash after pull", async () => {
+      const remoteHash = "def456ghi789";
+      const unexpectedHead = "zzz999yyy888";
+
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: `${unexpectedHead}\n`, stderr: "", exitCode: 0 }); // git rev-parse HEAD
+
+      await expect(selfUpdater.pullUpdates(remoteHash)).rejects.toThrow(
+        "git pull 성공했으나 HEAD가 원격과 동기화되지 않음"
+      );
     });
   });
 
@@ -236,6 +269,7 @@ describe("SelfUpdater", () => {
         .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
         .mockResolvedValueOnce({ stdout: "package-lock.json\n", stderr: "", exitCode: 0 }) // diff package-lock
         .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // git rev-parse HEAD (post-pull)
         .mockResolvedValueOnce({ stdout: "added 150 packages\n", stderr: "", exitCode: 0 }) // npm ci
         .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // npm run build
 
@@ -257,6 +291,7 @@ describe("SelfUpdater", () => {
         .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
         .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock (no changes)
         .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // git rev-parse HEAD (post-pull)
         .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }); // npm run build
 
       const result = await selfUpdater.performSelfUpdate();
@@ -280,6 +315,66 @@ describe("SelfUpdater", () => {
       await expect(selfUpdater.performSelfUpdate()).rejects.toThrow("git pull 실패: merge conflict");
     });
 
+    it("should throw conflict error with context when CONFLICT keyword in stderr", async () => {
+      const currentHash = "abc123def456";
+      const remoteHash = "def456ghi789";
+
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git fetch
+        .mockResolvedValueOnce({ stdout: `${currentHash}\n`, stderr: "", exitCode: 0 }) // current HEAD
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock
+        .mockResolvedValueOnce({ stdout: "", stderr: "CONFLICT (content): Merge conflict in src/foo.ts", exitCode: 1 }); // git pull
+
+      await expect(selfUpdater.performSelfUpdate()).rejects.toThrow("머지 충돌 발생");
+    });
+
+    it("should throw network error with context when host resolution fails", async () => {
+      const currentHash = "abc123def456";
+      const remoteHash = "def456ghi789";
+
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git fetch
+        .mockResolvedValueOnce({ stdout: `${currentHash}\n`, stderr: "", exitCode: 0 }) // current HEAD
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock
+        .mockResolvedValueOnce({ stdout: "", stderr: "fatal: Could not resolve host: github.com", exitCode: 1 }); // git pull
+
+      await expect(selfUpdater.performSelfUpdate()).rejects.toThrow("네트워크 오류 (호스트 연결 실패)");
+    });
+
+    it("should throw auth error with context when authentication fails", async () => {
+      const currentHash = "abc123def456";
+      const remoteHash = "def456ghi789";
+
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git fetch
+        .mockResolvedValueOnce({ stdout: `${currentHash}\n`, stderr: "", exitCode: 0 }) // current HEAD
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock
+        .mockResolvedValueOnce({ stdout: "", stderr: "fatal: Authentication failed for 'https://github.com/repo'", exitCode: 1 }); // git pull
+
+      await expect(selfUpdater.performSelfUpdate()).rejects.toThrow("인증 실패");
+    });
+
+    it("should throw when HEAD does not match remoteHash after pull", async () => {
+      const currentHash = "abc123def456";
+      const remoteHash = "def456ghi789";
+      const unexpectedHead = "zzz999yyy888";
+
+      mockRunCli
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // git fetch
+        .mockResolvedValueOnce({ stdout: `${currentHash}\n`, stderr: "", exitCode: 0 }) // current HEAD
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
+        .mockResolvedValueOnce({ stdout: "", stderr: "", exitCode: 0 }) // diff package-lock
+        .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: `${unexpectedHead}\n`, stderr: "", exitCode: 0 }); // git rev-parse HEAD (post-pull)
+
+      await expect(selfUpdater.performSelfUpdate()).rejects.toThrow(
+        "git pull 성공했으나 HEAD가 원격과 동기화되지 않음"
+      );
+    });
+
     it("should propagate error when npm ci fails", async () => {
       const currentHash = "abc123def456";
       const remoteHash = "def456ghi789";
@@ -290,6 +385,7 @@ describe("SelfUpdater", () => {
         .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // remote HEAD
         .mockResolvedValueOnce({ stdout: "package-lock.json\n", stderr: "", exitCode: 0 }) // diff package-lock
         .mockResolvedValueOnce({ stdout: "Updated\n", stderr: "", exitCode: 0 }) // git pull
+        .mockResolvedValueOnce({ stdout: `${remoteHash}\n`, stderr: "", exitCode: 0 }) // git rev-parse HEAD (post-pull)
         .mockResolvedValueOnce({ stdout: "", stderr: "install failed", exitCode: 1 }); // npm ci
 
       await expect(selfUpdater.performSelfUpdate()).rejects.toThrow("npm ci 실패: install failed");

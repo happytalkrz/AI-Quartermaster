@@ -310,6 +310,7 @@ export class JobStore extends EventEmitter {
       costUsd: job.costUsd,
       totalCostUsd: job.totalCostUsd,
       totalUsage: job.totalUsage,
+      cacheHitRatio: job.cacheHitRatio,
       triggerReason: job.triggerReason,
       diagnosis: job.diagnosis
     };
@@ -422,6 +423,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           priority: baseFields.priority
         } as QueuedJob;
         break;
@@ -444,6 +446,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           error: baseFields.error,
           priority: baseFields.priority
         } as RunningJob;
@@ -469,6 +472,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           priority: baseFields.priority
         } as SuccessJob;
         break;
@@ -494,6 +498,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           priority: baseFields.priority,
           diagnosis: baseFields.diagnosis
         } as FailureJob;
@@ -519,6 +524,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           priority: baseFields.priority
         } as CancelledJob;
         break;
@@ -544,6 +550,7 @@ export class JobStore extends EventEmitter {
           costUsd: baseFields.costUsd,
           totalCostUsd: baseFields.totalCostUsd,
           totalUsage: baseFields.totalUsage,
+          cacheHitRatio: baseFields.cacheHitRatio,
           priority: baseFields.priority
         } as ArchivedJob;
         break;

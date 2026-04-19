@@ -1,5 +1,5 @@
-import { resolve } from "path";
-import { readFileSync, existsSync } from "fs";
+import { resolve, join } from "path";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import * as ts from "typescript";
 import { renderTemplate, loadTemplate, buildDynamicSection, extractDesignReferences, TemplateVariables } from "../../prompt/template-renderer.js";
 import { detectCircularDependencies, validatePhaseDependencies } from "../execution/phase-scheduler.js";
@@ -51,6 +51,7 @@ export type PlanTemplateData = PlanTemplateBaseData | PlanTemplateRetryData;
 import { notifyPlanRetryContext } from "../../notification/notifier.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { AQM_HOME } from "../../config/project-resolver.js";
 import { DEFAULT_PLAN_MAX_RETRIES } from "../execution/retry-config.js";
 import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../../review/token-estimator.js";
 
@@ -314,6 +315,17 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       errorCategory = "UNKNOWN";
       errorMessage = getErrorMessage(parseError);
       logger.error(`Plan JSON parsing failed (attempt ${attempt}): ${errorMessage}. Claude output: ${result.output.slice(0, 500)}`);
+
+      try {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const logsDir = join(AQM_HOME, 'logs');
+        mkdirSync(logsDir, { recursive: true });
+        const dumpPath = join(logsDir, `plan-fail-${ctx.issue.number}-${timestamp}.txt`);
+        writeFileSync(dumpPath, result.output, 'utf-8');
+        logger.warn(`Plan 원본 응답 저장됨: ${dumpPath}`);
+      } catch (dumpError: unknown) {
+        logger.warn(`Failed to dump plan response: ${getErrorMessage(dumpError)}`);
+      }
 
       // 히스토리 기록
       retryContext.generationHistory.push({

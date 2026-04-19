@@ -25,9 +25,9 @@
 
     <!-- List View -->
     <div id="automations-list-view">
-      <div class="grid grid-cols-12 gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <!-- Left: Job List Column -->
-        <div class="col-span-4 space-y-4">
+        <div class="col-span-1 lg:col-span-4 min-w-0 space-y-4">
           <div id="automations-job-list" class="space-y-3 overflow-y-auto max-h-[calc(100vh-300px)] pr-2 custom-scrollbar">
             <!-- Jobs rendered here dynamically -->
           </div>
@@ -38,7 +38,7 @@
           </div>
         </div>
         <!-- Right: Job Detail Column -->
-        <div class="col-span-8">
+        <div class="col-span-1 lg:col-span-8 min-w-0">
           <div id="automations-job-detail" class="bg-surface-container p-8 rounded-2xl ring-1 ring-outline-variant/20 flex flex-col gap-8 min-h-[400px]">
             <div class="flex items-center justify-center h-full min-h-[300px] text-outline text-sm">작업을 선택하세요</div>
           </div>

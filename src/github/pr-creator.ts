@@ -117,7 +117,7 @@ export async function createDraftPR(
         outputTokens: ctx.totalUsage?.output_tokens || 0,
         cacheCreationTokens: ctx.totalUsage?.cache_creation_input_tokens || 0,
         cacheReadTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
-        cacheHitRatio: ctx.totalUsage ? `${calculateCacheHitRatio(ctx.totalUsage).toFixed(1)}%` : '0.0%',
+        cacheHitRatio: ctx.totalUsage ? `${(calculateCacheHitRatio(ctx.totalUsage) * 100).toFixed(1)}%` : '0.0%',
         cacheSavedTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
         phaseCostTable: buildPhaseCostTable(ctx.costBreakdown, ctx.phaseResults),
         modelSummary: buildModelSummary(ctx.costBreakdown),

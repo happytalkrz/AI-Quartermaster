@@ -491,7 +491,7 @@ describe("enableAutoMerge", () => {
 describe("createDraftPR cache stats template variables", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("should pass cacheHitRatio and cacheSavedTokens to pr-body template stats (Cache Hit line)", async () => {
+  it("should pass cacheHitRatio as percent (100% case) to pr-body template stats", async () => {
     mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/20", stderr: "", exitCode: 0 });
     const ctxWithUsage = {
       ...ctx,
@@ -502,12 +502,29 @@ describe("createDraftPR cache stats template variables", () => {
       },
     };
     await createDraftPR(prConfig, ghConfig, ctxWithUsage, { cwd: "/tmp", promptsDir: "/prompts" });
-    // calls[0] = title renderTemplate, calls[1] = body renderTemplate
     const templateVars = mockRenderTemplate.mock.calls[1][1] as Record<string, unknown>;
     const stats = templateVars.stats as Record<string, unknown>;
-    // cache_read / (input + cache_read) = 1000/1000 = 1.0 → "1.0%"
-    expect(stats.cacheHitRatio).toBe("1.0%");
+    // cache_read / (input + cache_read) = 1000/1000 = 1.0 → "100.0%"
+    expect(stats.cacheHitRatio).toBe("100.0%");
     expect(stats.cacheSavedTokens).toBe(1000);
+  });
+
+  it("should pass cacheHitRatio as percent (75% mid-value case) to pr-body template stats", async () => {
+    mockRunCli.mockResolvedValue({ stdout: "https://github.com/test/repo/pull/22", stderr: "", exitCode: 0 });
+    const ctxWithUsage = {
+      ...ctx,
+      totalUsage: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_read_input_tokens: 3000,
+      },
+    };
+    await createDraftPR(prConfig, ghConfig, ctxWithUsage, { cwd: "/tmp", promptsDir: "/prompts" });
+    const templateVars = mockRenderTemplate.mock.calls[1][1] as Record<string, unknown>;
+    const stats = templateVars.stats as Record<string, unknown>;
+    // 3000 / (1000 + 3000) = 0.75 → "75.0%"
+    expect(stats.cacheHitRatio).toBe("75.0%");
+    expect(stats.cacheSavedTokens).toBe(3000);
   });
 
   it("should default cacheHitRatio to '0.0%' and cacheSavedTokens to 0 when totalUsage is absent", async () => {

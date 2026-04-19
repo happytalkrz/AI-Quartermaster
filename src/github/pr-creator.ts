@@ -3,6 +3,7 @@ import { runCli } from "../utils/cli-runner.js";
 import { renderTemplate, loadTemplate } from "../prompt/template-renderer.js";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
+import { calculateCacheHitRatio } from "../claude/token-pricing.js";
 import type { PrConfig, GhCliConfig, MergeMethod } from "../types/config.js";
 import type { Plan, PhaseResult, PrConflictInfo, MergeStateStatus, UsageInfo, CostBreakdown } from "../types/pipeline.js";
 
@@ -116,6 +117,8 @@ export async function createDraftPR(
         outputTokens: ctx.totalUsage?.output_tokens || 0,
         cacheCreationTokens: ctx.totalUsage?.cache_creation_input_tokens || 0,
         cacheReadTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
+        cacheHitRatio: ctx.totalUsage ? `${(calculateCacheHitRatio(ctx.totalUsage) * 100).toFixed(1)}%` : '0.0%',
+        cacheSavedTokens: ctx.totalUsage?.cache_read_input_tokens || 0,
         phaseCostTable: buildPhaseCostTable(ctx.costBreakdown, ctx.phaseResults),
         modelSummary: buildModelSummary(ctx.costBreakdown),
         reviewCostUsd: ctx.costBreakdown?.reviewCostUsd?.toFixed(4) || '0.0000',

@@ -1,5 +1,6 @@
-import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport, CostBreakdown } from "../../types/pipeline.js";
+import type { Plan, PhaseResult, ErrorCategory, DiagnosisReport, CostBreakdown, UsageInfo } from "../../types/pipeline.js";
 import { getLogger } from "../../utils/logger.js";
+import { calculateCacheHitRatio } from "../../claude/token-pricing.js";
 
 export type { DiagnosisReport };
 
@@ -34,6 +35,10 @@ export interface PipelineReport {
   verificationIncomplete?: string[];
   /** phase/model별 비용 세분화 (Total 분해 출력용) */
   costBreakdown?: CostBreakdown;
+  /** 전체 토큰 사용량 (캐시 히트율 계산용) */
+  totalUsage?: UsageInfo;
+  /** 캐시 히트율 (0~1, cache_read / (input + cache_read)) */
+  cacheHitRatio?: number;
 }
 
 /**
@@ -55,9 +60,11 @@ export function formatResult(
   plan: Plan,
   phaseResults: PhaseResult[],
   startTime: number,
-  prUrl?: string
+  prUrl?: string,
+  totalUsage?: UsageInfo
 ): PipelineReport {
   const failedPhase = phaseResults.find(r => !r.success);
+  const cacheHitRatio = totalUsage ? calculateCacheHitRatio(totalUsage) : undefined;
   return {
     issueNumber,
     repo,
@@ -81,6 +88,8 @@ export function formatResult(
     prUrl,
     errorCategory: failedPhase?.errorCategory,
     errorSummary: failedPhase?.error?.slice(0, 500),
+    totalUsage,
+    cacheHitRatio,
   };
 }
 
@@ -122,6 +131,12 @@ export function printResult(report: PipelineReport): void {
     if (bd.setupCostUsd && bd.setupCostUsd > 0) console.log(`  setup    $${bd.setupCostUsd.toFixed(4)}`);
     if (bd.publishCostUsd && bd.publishCostUsd > 0) console.log(`  publish  $${bd.publishCostUsd.toFixed(4)}`);
     if (bd.overheadCostUsd && bd.overheadCostUsd > 0) console.log(`  overhead $${bd.overheadCostUsd.toFixed(4)}`);
+  }
+
+  if (report.totalUsage && (report.totalUsage.input_tokens + (report.totalUsage.cache_read_input_tokens ?? 0)) > 0) {
+    const hitPct = ((report.cacheHitRatio ?? 0) * 100).toFixed(1);
+    const savedTokens = report.totalUsage.cache_read_input_tokens ?? 0;
+    console.log(`캐시 히트율: ${hitPct}%, 절감 토큰: ${savedTokens}`);
   }
 
   if (report.verificationIncomplete && report.verificationIncomplete.length > 0) {

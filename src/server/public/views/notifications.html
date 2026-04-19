@@ -2,15 +2,25 @@
   <div id="view-notifications" class="view-panel">
 
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-6 gap-2 flex-wrap">
       <h2 class="text-sm font-headline font-bold text-on-surface uppercase tracking-widest flex items-center gap-2">
         <span class="w-1 h-4 bg-primary-container rounded-full"></span>
         <span>알림</span>
       </h2>
-      <button id="notifications-read-all-btn" onclick="markAllNotificationsRead()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors border border-primary/20 disabled:opacity-40 disabled:cursor-not-allowed">
-        <span class="material-symbols-outlined text-[14px]">done_all</span>
-        전체 읽음
-      </button>
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="notifications-read-all-btn" onclick="markAllNotificationsRead()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors border border-primary/20 disabled:opacity-40 disabled:cursor-not-allowed">
+          <span class="material-symbols-outlined text-[14px]">done_all</span>
+          전체 읽음
+        </button>
+        <button id="notifications-prune-btn" onclick="pruneReadNotifications()" title="읽은 알림 중 14일 이상 지난 것 삭제" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-outline hover:text-on-surface hover:bg-surface-container transition-colors border border-outline-variant/20">
+          <span class="material-symbols-outlined text-[14px]">auto_delete</span>
+          오래된 읽음 정리
+        </button>
+        <button id="notifications-delete-read-btn" onclick="deleteAllReadNotifications()" title="읽은 알림 전체 삭제" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-outline hover:text-error hover:bg-error/10 transition-colors border border-outline-variant/20">
+          <span class="material-symbols-outlined text-[14px]">delete_sweep</span>
+          읽은 것 모두 삭제
+        </button>
+      </div>
     </div>
 
     <!-- Filter Bar -->

@@ -363,6 +363,26 @@ export async function startCommand(args: CliArgs): Promise<void> {
   configWatcher.startWatching();
   logger.info('ConfigWatcher 시작됨 - config.yml 변경을 감지합니다');
 
+  // === Skip events / 읽은 알림 자동 정리 ===
+  // 시작 시 1회, 이후 24h마다 오래된 데이터 삭제.
+  // 기본 보존 기간: skip_events 30일, 읽은 알림 14일
+  const SKIP_EVENTS_RETAIN_DAYS = 30;
+  const READ_NOTIF_RETAIN_DAYS = 14;
+  const runRetentionPrune = (): void => {
+    try {
+      const prunedSkip = store.pruneSkipEvents(SKIP_EVENTS_RETAIN_DAYS);
+      const prunedNotif = store.pruneReadNotifications(READ_NOTIF_RETAIN_DAYS);
+      if (prunedSkip > 0 || prunedNotif > 0) {
+        logger.info(`정기 정리: skip_events ${prunedSkip}건, 읽은 알림 ${prunedNotif}건 삭제 (skip>${SKIP_EVENTS_RETAIN_DAYS}d, notif>${READ_NOTIF_RETAIN_DAYS}d)`);
+      }
+    } catch (err: unknown) {
+      logger.warn(`정기 정리 실패: ${getErrorMessage(err)}`);
+    }
+  };
+  runRetentionPrune();
+  const retentionTimer = setInterval(runRetentionPrune, 24 * 60 * 60 * 1000);
+  retentionTimer.unref?.();
+
   // === Graceful restart callback ===
   const performGracefulRestart = async (): Promise<void> => {
     logger.info("업데이트 감지됨 — graceful restart 시작...");

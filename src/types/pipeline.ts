@@ -566,6 +566,20 @@ export interface SkipEvent {
 }
 
 /**
+ * 동일 이슈+repo+reasonCode로 묶인 스킵 이벤트 집계
+ */
+export interface SkipEventGroup {
+  issueNumber: number;
+  repo: string;
+  reasonCode: string;
+  count: number;
+  latestMessage: string;
+  latestSource: "webhook" | "polling";
+  latestCreatedAt: string;
+  firstCreatedAt: string;
+}
+
+/**
  * 큐에 대기 중인 Job - 아직 시작되지 않음
  */
 export interface QueuedJob extends JobBase {

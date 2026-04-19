@@ -202,6 +202,7 @@ export const GetSkipEventsQuerySchema = z.object({
   repo: z.string().optional(),
   limit: z.number().int().positive().optional(),
   offset: z.number().int().nonnegative().optional(),
+  group: z.boolean().optional(),
 }).strict();
 
 export type GetSkipEventsQuery = z.infer<typeof GetSkipEventsQuerySchema>;

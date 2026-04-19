@@ -3,7 +3,7 @@ import { resolve } from "path";
 import { mkdirSync } from "fs";
 import { getLogger } from "../utils/logger.js";
 import { AQM_HOME } from "../config/project-resolver.js";
-import type { JobPriority, CostBreakdown, SkipEvent, DiagnosisReport, NotificationType } from "../types/pipeline.js";
+import type { JobPriority, CostBreakdown, SkipEvent, SkipEventGroup, DiagnosisReport, NotificationType } from "../types/pipeline.js";
 
 const logger = getLogger();
 
@@ -816,6 +816,98 @@ export class AQDatabase {
     return changes;
   }
 
+  /**
+   * issueNumber+repo+reasonCode 기준 GROUP BY 집계.
+   * 같은 이슈의 반복 스킵(예: webhook "closed" 이벤트 수백건)을 한 행으로 묶는다.
+   */
+  listSkipEventsGrouped(options?: { repo?: string; limit?: number; offset?: number }): { groups: SkipEventGroup[]; totalGroups: number } {
+    const whereParts: string[] = [];
+    const whereParams: (string | number)[] = [];
+    if (options?.repo !== undefined) {
+      whereParts.push("repo = ?");
+      whereParams.push(options.repo);
+    }
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    // 총 그룹 개수
+    const totalRow = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM (
+        SELECT 1 FROM skip_events ${whereClause}
+        GROUP BY issue_number, repo, reason_code
+      )
+    `).get(...whereParams) as { count: number };
+
+    const limitClause = options?.limit !== undefined ? `LIMIT ${options.limit}` : "";
+    const offsetClause = options?.offset !== undefined ? `OFFSET ${options.offset}` : "";
+
+    const stmt = this.db.prepare(`
+      SELECT
+        g.issue_number       AS issueNumber,
+        g.repo               AS repo,
+        g.reason_code        AS reasonCode,
+        g.cnt                AS count,
+        g.latest_created_at  AS latestCreatedAt,
+        g.first_created_at   AS firstCreatedAt,
+        e.reason_message     AS latestMessage,
+        e.source             AS latestSource
+      FROM (
+        SELECT
+          issue_number,
+          repo,
+          reason_code,
+          COUNT(*)         AS cnt,
+          MAX(created_at)  AS latest_created_at,
+          MIN(created_at)  AS first_created_at,
+          MAX(id)          AS latest_id
+        FROM skip_events
+        ${whereClause}
+        GROUP BY issue_number, repo, reason_code
+      ) g
+      JOIN skip_events e ON e.id = g.latest_id
+      ORDER BY g.latest_created_at DESC
+      ${limitClause} ${offsetClause}
+    `);
+
+    const rows = stmt.all(...whereParams) as Array<{
+      issueNumber: number;
+      repo: string;
+      reasonCode: string;
+      count: number;
+      latestCreatedAt: string;
+      firstCreatedAt: string;
+      latestMessage: string;
+      latestSource: string;
+    }>;
+
+    const groups: SkipEventGroup[] = rows.map(row => ({
+      issueNumber: row.issueNumber,
+      repo: row.repo,
+      reasonCode: row.reasonCode,
+      count: row.count,
+      latestMessage: row.latestMessage,
+      latestSource: row.latestSource as SkipEvent["source"],
+      latestCreatedAt: row.latestCreatedAt,
+      firstCreatedAt: row.firstCreatedAt,
+    }));
+
+    return { groups, totalGroups: totalRow.count };
+  }
+
+  /**
+   * 특정 이슈+repo+reasonCode 조합의 모든 스킵 이벤트 일괄 삭제.
+   * 거부된 이슈 목록에서 "이 그룹 삭제" 버튼용.
+   */
+  deleteSkipEventsByGroup(issueNumber: number, repo: string, reasonCode: string): number {
+    const stmt = this.db.prepare(
+      "DELETE FROM skip_events WHERE issue_number = ? AND repo = ? AND reason_code = ?"
+    );
+    const changes = stmt.run(issueNumber, repo, reasonCode).changes;
+    if (changes > 0) {
+      logger.info(`Deleted ${changes} skip events for issue #${issueNumber} (${repo}, ${reasonCode})`);
+    }
+    return changes;
+  }
+
   private mapRowToSkipEvent(row: SkipEventRow): SkipEvent {
     return {
       id: row.id,
@@ -915,6 +1007,44 @@ export class AQDatabase {
   markAllNotificationsRead(): number {
     const changes = this.db.prepare("UPDATE notifications SET is_read = 1 WHERE is_read = 0").run().changes;
     logger.debug(`Marked ${changes} notifications as read`);
+    return changes;
+  }
+
+  deleteNotification(id: number): boolean {
+    const changes = this.db.prepare("DELETE FROM notifications WHERE id = ?").run(id).changes;
+    return changes > 0;
+  }
+
+  /**
+   * 읽은 알림 중 주어진 시점 이전 생성분을 정리.
+   * 읽지 않은 알림은 보존한다.
+   */
+  pruneReadNotifications(beforeIso: string): number {
+    const changes = this.db.prepare(
+      "DELETE FROM notifications WHERE is_read = 1 AND created_at < ?"
+    ).run(beforeIso).changes;
+    if (changes > 0) {
+      logger.info(`Pruned ${changes} read notifications before ${beforeIso}`);
+    }
+    return changes;
+  }
+
+  /**
+   * 알림 전체 삭제 (대시보드에서 "모두 지우기" 용도).
+   * 필터 미지정 시 모든 알림, 지정 시 조건 일치분만.
+   */
+  deleteAllNotifications(filter?: { isRead?: boolean }): number {
+    const conditions: string[] = [];
+    const params: number[] = [];
+    if (filter?.isRead !== undefined) {
+      conditions.push("is_read = ?");
+      params.push(filter.isRead ? 1 : 0);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const changes = this.db.prepare(`DELETE FROM notifications ${whereClause}`).run(...params).changes;
+    if (changes > 0) {
+      logger.info(`Deleted ${changes} notifications`);
+    }
     return changes;
   }
 

@@ -133,7 +133,6 @@ describe("validateConfig", () => {
     },
     features: {
       parallelPhases: false,
-      multiAI: false,
     },
     executionMode: "standard",
   };
@@ -621,7 +620,7 @@ describe("validateConfig - command safety", () => {
       strict: false,
       rules: { allow: [], deny: [] },
     },
-    features: { parallelPhases: false, multiAI: false },
+    features: { parallelPhases: false },
     executionMode: "standard",
   };
 

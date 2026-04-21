@@ -1576,19 +1576,29 @@ function renderAutomationsPanel() {
    ══════════════════════════════════════════════════════════════ */
 
 /**
- * @param {SkipEvent} ev
+ * @param {SkipEventGroup} g
  * @returns {string}
  */
-function renderSkipEventRow(ev) {
-  var sourceIcon = ev.source === 'webhook' ? 'webhook' : 'refresh';
-  var time = typeof relativeTime === 'function' ? relativeTime(ev.createdAt) : ev.createdAt;
+function renderSkipEventGroupRow(g) {
+  var sourceIcon = g.latestSource === 'webhook' ? 'webhook' : 'refresh';
+  var time = typeof relativeTime === 'function' ? relativeTime(g.latestCreatedAt) : g.latestCreatedAt;
+  var countBadge = g.count > 1
+    ? '<span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary ring-1 ring-primary/20">' + g.count + '회</span>'
+    : '';
+  var deleteBtn =
+    '<button onclick="deleteSkipEventGroup(' + g.issueNumber + ', \'' + esc(g.repo).replace(/'/g, '&#39;') + '\', \'' + esc(g.reasonCode).replace(/'/g, '&#39;') + '\')" ' +
+      'title="이 그룹 전체 삭제" ' +
+      'class="text-[10px] text-outline hover:text-error transition-colors">' +
+      '<span class="material-symbols-outlined text-[14px] align-middle">delete</span>' +
+    '</button>';
   return '<tr class="border-b border-outline-variant/10 hover:bg-surface-container transition-colors">' +
-    '<td class="px-4 py-3 text-sm font-bold text-on-surface/80 whitespace-nowrap">#' + ev.issueNumber + '</td>' +
-    '<td class="px-4 py-3 text-xs font-mono text-outline truncate max-w-[140px]" title="' + esc(ev.repo) + '">' + esc(ev.repo) + '</td>' +
-    '<td class="px-4 py-3"><span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#f85149]/10 text-[#f85149] ring-1 ring-[#f85149]/20">' + esc(ev.reasonCode) + '</span></td>' +
-    '<td class="px-4 py-3 text-xs text-outline/80 max-w-[200px] truncate" title="' + esc(ev.reasonMessage) + '">' + esc(ev.reasonMessage) + '</td>' +
-    '<td class="px-4 py-3"><span class="flex items-center gap-1 text-[10px] text-outline"><span class="material-symbols-outlined text-[12px]">' + sourceIcon + '</span>' + esc(ev.source) + '</span></td>' +
-    '<td class="px-4 py-3 text-[10px] text-outline whitespace-nowrap" title="' + esc(ev.createdAt) + '">' + time + '</td>' +
+    '<td class="px-4 py-3 text-sm font-bold text-on-surface/80 whitespace-nowrap">#' + g.issueNumber + countBadge + '</td>' +
+    '<td class="px-4 py-3 text-xs font-mono text-outline truncate max-w-[140px]" title="' + esc(g.repo) + '">' + esc(g.repo) + '</td>' +
+    '<td class="px-4 py-3"><span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#f85149]/10 text-[#f85149] ring-1 ring-[#f85149]/20">' + esc(g.reasonCode) + '</span></td>' +
+    '<td class="px-4 py-3 text-xs text-outline/80 max-w-[240px] truncate" title="' + esc(g.latestMessage) + '">' + esc(g.latestMessage) + '</td>' +
+    '<td class="px-4 py-3"><span class="flex items-center gap-1 text-[10px] text-outline"><span class="material-symbols-outlined text-[12px]">' + sourceIcon + '</span>' + esc(g.latestSource) + '</span></td>' +
+    '<td class="px-4 py-3 text-[10px] text-outline whitespace-nowrap" title="' + esc(g.latestCreatedAt) + '">' + time + '</td>' +
+    '<td class="px-4 py-3 text-right">' + deleteBtn + '</td>' +
   '</tr>';
 }
 
@@ -1640,7 +1650,7 @@ function renderNotificationCard(n) {
     iconName = 'cancel'; labelColor = 'text-error'; labelText = 'FAILED';
   } else if (n.type === 'job_started') {
     borderColor = 'border-primary/50'; bgIcon = 'bg-primary/10'; iconColor = 'text-primary';
-    iconName = 'refresh'; labelColor = 'text-primary'; labelText = 'RUNNING'; iconSpin = ' animate-spin';
+    iconName = 'play_arrow'; labelColor = 'text-primary'; labelText = 'STARTED';
   } else if (n.type === 'job_cancelled') {
     borderColor = 'border-outline-variant/30'; bgIcon = 'bg-surface-container-highest'; iconColor = 'text-on-surface-variant';
     iconName = 'do_not_disturb_on'; labelColor = 'text-on-surface-variant'; labelText = 'CANCELLED';
@@ -1655,6 +1665,13 @@ function renderNotificationCard(n) {
       'class="mt-4 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-primary hover:underline transition-opacity">' +
       '<span class="material-symbols-outlined text-[14px]">done_all</span>' +
       '읽음 표시' +
+    '</button>';
+  var deleteBtn =
+    '<button onclick="deleteNotification(' + n.id + ')" ' +
+      'title="삭제" ' +
+      'class="mt-1 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] text-outline hover:text-error hover:underline transition-opacity">' +
+      '<span class="material-symbols-outlined text-[14px]">delete</span>' +
+      '삭제' +
     '</button>';
   var repoSpan = n.repo
     ? '<span class="text-xs text-on-surface-variant">•</span>' +
@@ -1676,9 +1693,10 @@ function renderNotificationCard(n) {
         '<h3 class="text-sm font-bold text-on-surface mb-1">' + esc(n.title) + '</h3>' +
         '<p class="text-xs text-on-surface-variant">' + esc(n.message) + '</p>' +
       '</div>' +
-      '<div class="text-right">' +
+      '<div class="text-right flex flex-col items-end">' +
         '<p class="text-[10px] text-on-surface-variant font-mono">' + formatNotifTime(n.createdAt) + '</p>' +
         readBtn +
+        deleteBtn +
       '</div>' +
     '</div>'
   );
@@ -1832,7 +1850,7 @@ function markNotificationRead(id) {
       var card = document.querySelector('[data-notif-id="' + id + '"]');
       if (card) {
         card.classList.add('opacity-60');
-        var btn = card.querySelector('button[onclick]');
+        var btn = card.querySelector('button[onclick^="markNotificationRead"]');
         if (btn) btn.remove();
       }
       apiFetch('/api/notifications/unread-count')
@@ -1859,29 +1877,92 @@ function markAllNotificationsRead() {
     });
 }
 
+/**
+ * @param {number} id
+ * @returns {void}
+ */
+function deleteNotification(id) {
+  apiFetch('/api/notifications/' + id, { method: 'DELETE' })
+    .then(function(r) {
+      if (!r.ok) return;
+      var raw = document.querySelector('[data-notif-id="' + id + '"]');
+      if (raw instanceof HTMLElement) {
+        var card = /** @type {HTMLElement} */ (raw);
+        card.style.transition = 'opacity 200ms, transform 200ms';
+        card.style.opacity = '0';
+        card.style.transform = 'translateX(20px)';
+        setTimeout(function() { card.remove(); fetchAndRenderNotifications(); }, 200);
+      }
+      apiFetch('/api/notifications/unread-count')
+        .then(function(r2) { return r2.json(); })
+        .then(function(d) { updateNotificationBadge(d.unreadCount || 0); })
+        .catch(function() {});
+    })
+    .catch(function() {});
+}
+
+/**
+ * 읽은 알림을 기간 기준으로 정리
+ * @returns {void}
+ */
+function pruneReadNotifications() {
+  if (!confirm('읽은 알림 중 14일 이상 지난 것을 삭제합니다. 계속할까요?')) return;
+  apiFetch('/api/notifications/prune', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ maxAgeDays: 14 })
+  })
+    .then(function(r) { return r.json().catch(function() { return {}; }); })
+    .then(function(data) {
+      var n = data && typeof data.deleted === 'number' ? data.deleted : 0;
+      alert(n > 0 ? (n + '건 삭제됨') : '삭제할 오래된 알림이 없습니다');
+      fetchAndRenderNotifications();
+    })
+    .catch(function() {});
+}
+
+/**
+ * 알림 전체 삭제 (읽음 여부 무관, 신중히)
+ * @returns {void}
+ */
+function deleteAllReadNotifications() {
+  if (!confirm('읽은 알림을 모두 삭제합니다. 계속할까요?')) return;
+  apiFetch('/api/notifications?isRead=true', { method: 'DELETE' })
+    .then(function(r) { return r.json().catch(function() { return {}; }); })
+    .then(function() { fetchAndRenderNotifications(); })
+    .catch(function() {});
+}
+
 window.loadNotifications = loadNotifications;
 window.markNotificationRead = markNotificationRead;
 window.markAllNotificationsRead = markAllNotificationsRead;
 window.loadNotificationsPage = loadNotificationsPage;
+window.deleteNotification = deleteNotification;
+window.pruneReadNotifications = pruneReadNotifications;
+window.deleteAllReadNotifications = deleteAllReadNotifications;
 
 /** @returns {void} */
 function loadSkipEvents() {
   var container = document.getElementById('skip-events-content');
   if (!container) return;
-  container.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin align-middle">sync</span>로딩 중...</td></tr>';
+  container.innerHTML = '<tr><td colspan="7" class="px-4 py-12 text-center text-outline text-sm"><span class="material-symbols-outlined text-lg mr-2 animate-spin align-middle">sync</span>로딩 중...</td></tr>';
 
   var el = /** @type {HTMLElement} */ (container);
-  apiFetch('/api/skip-events?limit=100')
+  // 기본은 그룹 뷰 — issue+reasonCode 중복을 한 행으로 축약 + count 표시
+  apiFetch('/api/skip-events?group=true&limit=200')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var events = /** @type {SkipEvent[]} */ (data.events || []);
-      var total = data.pagination ? data.pagination.total : events.length;
+      var groups = /** @type {SkipEventGroup[]} */ (data.groups || []);
+      var totalGroups = data.pagination ? data.pagination.total : groups.length;
+      var totalEvents = groups.reduce(function(acc, g) { return acc + (g.count || 0); }, 0);
       var totalEl = document.getElementById('skip-events-total');
-      if (totalEl) totalEl.textContent = String(total);
+      if (totalEl) {
+        totalEl.textContent = totalGroups + '건 (총 ' + totalEvents + '회)';
+      }
 
       var tableEl = document.getElementById('skip-events-table');
       var emptyEl = document.getElementById('skip-events-empty');
-      if (events.length === 0) {
+      if (groups.length === 0) {
         if (tableEl) tableEl.classList.add('hidden');
         if (emptyEl) {
           emptyEl.classList.remove('hidden');
@@ -1899,14 +1980,34 @@ function loadSkipEvents() {
       }
       if (tableEl) tableEl.classList.remove('hidden');
       if (emptyEl) emptyEl.classList.add('hidden');
-      el.innerHTML = events.map(renderSkipEventRow).join('');
+      el.innerHTML = groups.map(renderSkipEventGroupRow).join('');
     })
     .catch(function() {
-      el.innerHTML = '<tr><td colspan="6" class="px-4 py-12 text-center text-[#f85149] text-sm">스킵 이벤트를 불러오는데 실패했습니다.</td></tr>';
+      el.innerHTML = '<tr><td colspan="7" class="px-4 py-12 text-center text-[#f85149] text-sm">스킵 이벤트를 불러오는데 실패했습니다.</td></tr>';
     });
 }
 
+/**
+ * 특정 그룹(issueNumber+repo+reasonCode) 전체 삭제
+ * @param {number} issueNumber
+ * @param {string} repo
+ * @param {string} reasonCode
+ * @returns {void}
+ */
+function deleteSkipEventGroup(issueNumber, repo, reasonCode) {
+  if (!confirm('#' + issueNumber + ' (' + reasonCode + ') 그룹의 모든 이벤트를 삭제합니다. 계속할까요?')) return;
+  apiFetch('/api/skip-events/group', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issueNumber: issueNumber, repo: repo, reasonCode: reasonCode })
+  })
+    .then(function(r) { return r.json().catch(function() { return {}; }); })
+    .then(function() { loadSkipEvents(); })
+    .catch(function() {});
+}
+
 window.loadSkipEvents = loadSkipEvents;
+window.deleteSkipEventGroup = deleteSkipEventGroup;
 
 window.setSettingsTab = setSettingsTab;
 window.setSettingsModeTab = setSettingsModeTab;

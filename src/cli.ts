@@ -23,7 +23,7 @@ import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
 import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
-import { PatternStore } from "./learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 import { AutomationScheduler } from "./automation/scheduler.js";
@@ -363,6 +363,30 @@ export async function startCommand(args: CliArgs): Promise<void> {
   configWatcher.startWatching();
   logger.info('ConfigWatcher 시작됨 - config.yml 변경을 감지합니다');
 
+  // queue에 projectRoot/ConfigProvider 주입 — 내부 cleanup·tracking 경로에서
+  // process.cwd() 직접 참조를 제거해 서버 기동 cwd가 AQM root와 다른 경우의 경로 오탐을 차단.
+  queue.setDependencies({ projectRoot: aqRoot, configProvider: configWatcher });
+
+  // === Skip events / 읽은 알림 자동 정리 ===
+  // 시작 시 1회, 이후 24h마다 오래된 데이터 삭제.
+  // 기본 보존 기간: skip_events 30일, 읽은 알림 14일
+  const SKIP_EVENTS_RETAIN_DAYS = 30;
+  const READ_NOTIF_RETAIN_DAYS = 14;
+  const runRetentionPrune = (): void => {
+    try {
+      const prunedSkip = store.pruneSkipEvents(SKIP_EVENTS_RETAIN_DAYS);
+      const prunedNotif = store.pruneReadNotifications(READ_NOTIF_RETAIN_DAYS);
+      if (prunedSkip > 0 || prunedNotif > 0) {
+        logger.info(`정기 정리: skip_events ${prunedSkip}건, 읽은 알림 ${prunedNotif}건 삭제 (skip>${SKIP_EVENTS_RETAIN_DAYS}d, notif>${READ_NOTIF_RETAIN_DAYS}d)`);
+      }
+    } catch (err: unknown) {
+      logger.warn(`정기 정리 실패: ${getErrorMessage(err)}`);
+    }
+  };
+  runRetentionPrune();
+  const retentionTimer = setInterval(runRetentionPrune, 24 * 60 * 60 * 1000);
+  retentionTimer.unref?.();
+
   // === Graceful restart callback ===
   const performGracefulRestart = async (): Promise<void> => {
     logger.info("업데이트 감지됨 — graceful restart 시작...");
@@ -462,7 +486,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     );
   }
 
-  const patternStore = new PatternStore(dataDir);
+  const patternStore = getPatternStore(dataDir);
   const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, effectiveConfig.general.dashboardAuth, wslReadOnly, patternStore, aqRoot);
   const healthRoutes = createHealthRoutes(queue, poller);
 
@@ -655,6 +679,7 @@ export async function planCommand(args: CliArgs): Promise<void> {
     const store = new JobStore(dataDir);
     const planProjectConcurrency = buildProjectConcurrency(config.projects ?? []);
     const queue = new JobQueue(store, config.general.concurrency, async () => ({ error: "직접 실행 모드에서는 큐만 등록됩니다" }), config.general.stuckTimeoutMs, Object.keys(planProjectConcurrency).length > 0 ? planProjectConcurrency : undefined);
+    queue.setDependencies({ projectRoot: aqRoot });
 
     let enqueued = 0;
     for (const batch of plan.executionOrder) {
@@ -670,7 +695,7 @@ export async function planCommand(args: CliArgs): Promise<void> {
 export async function statsCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
-  const patternStore = new PatternStore(dataDir);
+  const patternStore = getPatternStore(dataDir);
   const jobStore = new JobStore(dataDir);
 
   const stats = patternStore.getStats(args.repo);

@@ -16,7 +16,7 @@ import { createHealthRoutes } from "../src/server/health.js";
 import { cleanupStalePid, writePidFile, readPidFile, removePidFile } from "../src/server/pid-manager.js";
 import { ConfigWatcher } from "../src/config/config-watcher.js";
 import { loadCheckpoint } from "../src/pipeline/errors/checkpoint.js";
-import { PatternStore } from "../src/learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "../src/learning/pattern-store.js";
 import { cleanOldWorktrees } from "../src/git/worktree-cleaner.js";
 import { listTriggerIssues, generateExecutionPlan, printExecutionPlan } from "../src/pipeline/automation/issue-orchestrator.js";
 import { killAllActiveProcesses } from "../src/claude/claude-runner.js";
@@ -81,6 +81,13 @@ vi.mock("../src/config/config-watcher.js", () => ({
 }));
 vi.mock("../src/learning/pattern-store.js", () => ({
   PatternStore: vi.fn(),
+  getPatternStore: vi.fn(() => ({
+    add: vi.fn(),
+    list: vi.fn(() => []),
+    getRecentFailures: vi.fn(() => []),
+    getStats: vi.fn(() => ({ total: 0, successes: 0, failures: 0, byCategory: {} })),
+    formatForPrompt: vi.fn(() => ""),
+  })),
 }));
 vi.mock("../src/git/worktree-cleaner.js", () => ({
   cleanOldWorktrees: vi.fn(),
@@ -496,6 +503,7 @@ describe("startCommand — IssuePoller 항상 시작", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
@@ -581,6 +589,7 @@ describe("startCommand — pre-flight 검증", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     vi.mocked(createWebhookApp).mockReturnValue({
@@ -677,7 +686,7 @@ describe("startCommand — pre-flight 검증", () => {
     let capturedDryRun: boolean | undefined;
     vi.mocked(JobQueue).mockImplementation((_store, _conc, handler) => {
       // capture what config is used via closure — check via IssuePoller constructor arg
-      return { recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() } as unknown as JobQueue;
+      return { recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn(), setDependencies: vi.fn() } as unknown as JobQueue;
     });
     vi.mocked(IssuePoller).mockImplementation((cfg) => {
       capturedDryRun = (cfg as { general?: { dryRun?: boolean } }).general?.dryRun;
@@ -714,7 +723,7 @@ describe("startCommand — 모드 분기 로직", () => {
       () => ({ prune: vi.fn(), list: vi.fn().mockReturnValue([]) }) as unknown as JobStore
     );
     vi.mocked(JobQueue).mockImplementation(
-      () => ({ recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() }) as unknown as JobQueue
+      () => ({ recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn(), setDependencies: vi.fn() }) as unknown as JobQueue
     );
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),
@@ -833,6 +842,7 @@ describe("startCommand — 추가 분기 테스트", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),
@@ -1103,10 +1113,10 @@ describe("statsCommand", () => {
   });
 
   it("빈 데이터 시 success rate N/A 출력", async () => {
-    vi.mocked(PatternStore).mockImplementation(() => ({
+    vi.mocked(getPatternStore).mockReturnValue({
       getStats: vi.fn().mockReturnValue({ total: 0, successes: 0, failures: 0, byCategory: {} }),
       list: vi.fn().mockReturnValue([]),
-    } as unknown as PatternStore));
+    } as unknown as PatternStore);
     vi.mocked(JobStore).mockImplementation(() => ({
       getCostStats: vi.fn().mockReturnValue({ totalCostUsd: 0, avgCostUsd: 0, jobCount: 0, topExpensiveJobs: [] }),
     } as unknown as JobStore));
@@ -1119,7 +1129,7 @@ describe("statsCommand", () => {
   });
 
   it("실패 패턴·비용 통계 출력", async () => {
-    vi.mocked(PatternStore).mockImplementation(() => ({
+    vi.mocked(getPatternStore).mockReturnValue({
       getStats: vi.fn().mockReturnValue({
         total: 10,
         successes: 7,
@@ -1129,7 +1139,7 @@ describe("statsCommand", () => {
       list: vi.fn().mockReturnValue([
         { timestamp: Date.now(), issueNumber: 5, repo: "owner/repo", errorCategory: "TYPE_ERROR", errorMessage: "타입 오류", phaseName: "implement" },
       ]),
-    } as unknown as PatternStore));
+    } as unknown as PatternStore);
     vi.mocked(JobStore).mockImplementation(() => ({
       getCostStats: vi.fn().mockReturnValue({
         totalCostUsd: 1.5,
@@ -1154,10 +1164,10 @@ describe("statsCommand", () => {
     const mockList = vi.fn().mockReturnValue([]);
     const mockGetCostStats = vi.fn().mockReturnValue({ totalCostUsd: 0, avgCostUsd: 0, jobCount: 0, topExpensiveJobs: [] });
 
-    vi.mocked(PatternStore).mockImplementation(() => ({
+    vi.mocked(getPatternStore).mockReturnValue({
       getStats: mockGetStats,
       list: mockList,
-    } as unknown as PatternStore));
+    } as unknown as PatternStore);
     vi.mocked(JobStore).mockImplementation(() => ({
       getCostStats: mockGetCostStats,
     } as unknown as JobStore));
@@ -1272,6 +1282,7 @@ describe("planCommand", () => {
     vi.mocked(JobStore).mockImplementation(() => ({} as unknown as JobStore));
     vi.mocked(JobQueue).mockImplementation(() => ({
       enqueue: enqueueMock,
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     await planCommand({ repo: "owner/repo", execute: true });
@@ -1309,6 +1320,7 @@ describe("startCommand — gracefulShutdown", () => {
       recover: vi.fn(),
       shutdown: mockQueueShutdown,
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     mockStoreClose = vi.fn();
@@ -1501,6 +1513,7 @@ describe("startCommand — .env 로딩", () => {
       recover: vi.fn(),
       shutdown: vi.fn().mockResolvedValue(undefined),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),

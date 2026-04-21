@@ -17,6 +17,7 @@ import type {
   PhaseResultInfo,
   UsageStats,
   SkipEvent,
+  SkipEventGroup,
   NotificationType
 } from "../types/pipeline.js";
 import { statusToNotificationType } from "../types/pipeline.js";
@@ -871,6 +872,42 @@ export class JobStore extends EventEmitter {
   pruneSkipEvents(maxAgeDays: number): number {
     const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
     return this.db.pruneOldSkipEvents(cutoff);
+  }
+
+  /**
+   * issueNumber+repo+reasonCode 기준 집계된 스킵 이벤트 목록
+   */
+  listSkipEventsGrouped(options?: { repo?: string; limit?: number; offset?: number }): { groups: SkipEventGroup[]; totalGroups: number } {
+    return this.db.listSkipEventsGrouped(options);
+  }
+
+  /**
+   * 지정 그룹(issueNumber+repo+reasonCode)의 모든 스킵 이벤트 삭제
+   */
+  deleteSkipEventsByGroup(issueNumber: number, repo: string, reasonCode: string): number {
+    return this.db.deleteSkipEventsByGroup(issueNumber, repo, reasonCode);
+  }
+
+  /**
+   * 단일 알림 삭제
+   */
+  deleteNotification(id: number): boolean {
+    return this.db.deleteNotification(id);
+  }
+
+  /**
+   * 알림 정리 (읽은 것만, 기간 기준)
+   */
+  pruneReadNotifications(maxAgeDays: number): number {
+    const cutoff = new Date(Date.now() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString();
+    return this.db.pruneReadNotifications(cutoff);
+  }
+
+  /**
+   * 알림 일괄 삭제 (옵션으로 필터)
+   */
+  deleteAllNotifications(filter?: { isRead?: boolean }): number {
+    return this.db.deleteAllNotifications(filter);
   }
 
   /**

@@ -1090,13 +1090,15 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
-  // List skip events
+  // List skip events (flat 또는 issueNumber+repo+reasonCode 그룹)
   api.get("/api/skip-events", (c) => {
     try {
+      const groupParam = c.req.query("group");
       const queryParams = {
         repo: c.req.query("repo"),
         limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
         offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
+        group: groupParam === "true" ? true : groupParam === "false" ? false : undefined,
       };
 
       const parseResult = GetSkipEventsQuerySchema.safeParse(queryParams);
@@ -1107,7 +1109,25 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         }, 400);
       }
 
-      const { repo, limit, offset } = parseResult.data;
+      const { repo, limit, offset, group } = parseResult.data;
+
+      // 그룹 뷰: 동일 이슈+reasonCode 중복 축약 (기본 대시보드 뷰)
+      if (group) {
+        const { groups, totalGroups } = store.listSkipEventsGrouped({ repo, limit, offset });
+        const start = offset ?? 0;
+        const end = limit !== undefined ? start + groups.length : totalGroups;
+        return c.json({
+          groups,
+          pagination: {
+            total: totalGroups,
+            offset: start,
+            limit: limit ?? totalGroups,
+            hasMore: end < totalGroups,
+          }
+        });
+      }
+
+      // Flat 뷰 (기존 API 호환)
       const allEvents = store.listSkipEvents(repo ? { repo } : undefined);
       const total = allEvents.length;
       const start = offset ?? 0;
@@ -1125,6 +1145,26 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       });
     } catch (error: unknown) {
       return c.json({ error: `Failed to fetch skip events: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // 특정 그룹(issueNumber+repo+reasonCode) 전체 삭제
+  api.delete("/api/skip-events/group", async (c) => {
+    if (readOnly) {
+      return c.json({ error: "Read-only mode" }, 403);
+    }
+    try {
+      const body = await c.req.json<{ issueNumber?: unknown; repo?: unknown; reasonCode?: unknown }>();
+      const issueNumber = typeof body.issueNumber === "number" ? body.issueNumber : Number(body.issueNumber);
+      const repoVal = typeof body.repo === "string" ? body.repo : "";
+      const reasonCode = typeof body.reasonCode === "string" ? body.reasonCode : "";
+      if (!Number.isInteger(issueNumber) || issueNumber <= 0 || !repoVal || !reasonCode) {
+        return c.json({ error: "issueNumber, repo, reasonCode 필수" }, 400);
+      }
+      const deleted = store.deleteSkipEventsByGroup(issueNumber, repoVal, reasonCode);
+      return c.json({ deleted });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to delete skip event group: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 
@@ -2120,6 +2160,68 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
       return c.json({ status: "ok", id });
     } catch (error: unknown) {
       return c.json({ error: `Failed to mark notification as read: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: prune read notifications older than maxAgeDays (default 14)
+  api.post("/api/notifications/prune", async (c) => {
+    if (readOnly) {
+      return c.json({ error: "Read-only mode" }, 403);
+    }
+    try {
+      let maxAgeDays = 14;
+      try {
+        const body = await c.req.json<{ maxAgeDays?: unknown }>();
+        if (typeof body?.maxAgeDays === "number" && body.maxAgeDays > 0) {
+          maxAgeDays = Math.floor(body.maxAgeDays);
+        }
+      } catch {
+        // body 없음 → 기본값 14일
+      }
+      const deleted = store.pruneReadNotifications(maxAgeDays);
+      broadcastToAllClients("notificationsPruned", { deleted, maxAgeDays, timestamp: Date.now() });
+      return c.json({ deleted, maxAgeDays });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to prune notifications: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: delete all (옵션으로 isRead 필터)
+  api.delete("/api/notifications", (c) => {
+    if (readOnly) {
+      return c.json({ error: "Read-only mode" }, 403);
+    }
+    try {
+      const isReadParam = c.req.query("isRead");
+      const filter: { isRead?: boolean } = {};
+      if (isReadParam === "true") filter.isRead = true;
+      else if (isReadParam === "false") filter.isRead = false;
+      const deleted = store.deleteAllNotifications(filter);
+      broadcastToAllClients("notificationsDeleted", { deleted, timestamp: Date.now() });
+      return c.json({ deleted });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to delete notifications: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
+    }
+  });
+
+  // Notifications: delete single
+  api.delete("/api/notifications/:id", (c) => {
+    if (readOnly) {
+      return c.json({ error: "Read-only mode" }, 403);
+    }
+    try {
+      const idParam = c.req.param("id");
+      const id = parseInt(idParam, 10);
+      if (isNaN(id) || id <= 0) {
+        return c.json({ error: "Invalid notification id" }, 400);
+      }
+      const deleted = store.deleteNotification(id);
+      if (!deleted) {
+        return c.json({ error: "Notification not found" }, 404);
+      }
+      return c.json({ status: "ok", id });
+    } catch (error: unknown) {
+      return c.json({ error: `Failed to delete notification: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
     }
   });
 

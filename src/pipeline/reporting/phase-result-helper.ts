@@ -1,4 +1,5 @@
 import type { PhaseResult, ErrorCategory } from "../../types/pipeline.js";
+import { systemClock } from "../../utils/clock.js";
 
 /**
  * Pseudo-phase 이름 컨벤션.
@@ -87,7 +88,10 @@ export function isPseudoPhase(result: PhaseResult): boolean {
 
 /**
  * ISO 8601 타임스탬프를 반환하는 유틸리티.
+ *
+ * 테스트에서 시간을 고정하려면 `src/utils/clock.ts`의 `createFixedClock`을 사용한
+ * Clock을 호출부에 주입하는 것이 권장 경로. 이 함수는 기존 호출부 호환을 위해 유지.
  */
 export function nowIso(): string {
-  return new Date().toISOString();
+  return systemClock.nowIso();
 }

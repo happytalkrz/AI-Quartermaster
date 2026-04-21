@@ -11,7 +11,7 @@ import { getLogger } from "../../utils/logger.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../../types/pipeline.js";
 import type { SenderPermission } from "../../github/issue-fetcher.js";
 import { removeCheckpoint } from "../errors/checkpoint.js";
-import { PatternStore } from "../../learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PR_CREATED } from "../reporting/progress-tracker.js";
 import { saveResult } from "../setup/pipeline-validation.js";
 
@@ -275,7 +275,7 @@ export async function cleanupOnSuccess(context: CleanupContext): Promise<void> {
 
   // Record success pattern
   try {
-    const patternStore = new PatternStore(dataDir);
+    const patternStore = getPatternStore(dataDir);
     patternStore.add({
       issueNumber,
       repo,

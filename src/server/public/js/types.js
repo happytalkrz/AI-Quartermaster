@@ -123,6 +123,19 @@
  */
 
 /**
+ * issueNumber+repo+reasonCode 기준으로 집계된 스킵 이벤트
+ * @typedef {Object} SkipEventGroup
+ * @property {number} issueNumber
+ * @property {string} repo
+ * @property {string} reasonCode
+ * @property {number} count
+ * @property {string} latestMessage
+ * @property {'webhook'|'polling'} latestSource
+ * @property {string} latestCreatedAt
+ * @property {string} firstCreatedAt
+ */
+
+/**
  * 잡 큐 상태
  * @typedef {Object} QueueStatus
  * @property {number} running

@@ -9,6 +9,7 @@ import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner
 import { removeWorktree } from "../git/worktree-manager.js";
 import { deleteRemoteBranch } from "../git/branch-manager.js";
 import { loadConfig } from "../config/loader.js";
+import type { ConfigProvider } from "../config/config-provider.js";
 import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
 import { checkJobStuck } from "./stuck-detector.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
@@ -113,6 +114,27 @@ export class JobQueue {
   private lastServedRepo: string | null = null; // round-robin: last repo that was served
   private taskFactory?: TaskFactory;
   private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
+  private projectRoot?: string;
+  private configProvider?: ConfigProvider;
+
+  /**
+   * 런타임 의존성(projectRoot, ConfigProvider)을 주입한다.
+   *
+   * 구성자 서명을 바꾸지 않기 위한 post-construction 주입. cli.ts 등 애플리케이션 코드에서만 호출하면
+   * 되며, 테스트는 호출하지 않아도 `process.cwd()` fallback으로 기존 동작이 유지된다.
+   *
+   * 이렇게 주입된 projectRoot는 `cleanupFailedJobArtifacts`의 data 경로와 `trackProjectFailure`의
+   * config 로드 기준점으로 사용된다. 서버가 다른 cwd에서 기동되는 환경에서 발생하던 경로 오탐
+   * (process.cwd() ≠ AQM root)을 제거한다.
+   */
+  setDependencies(deps: { projectRoot?: string; configProvider?: ConfigProvider }): void {
+    if (deps.projectRoot) this.projectRoot = deps.projectRoot;
+    if (deps.configProvider) this.configProvider = deps.configProvider;
+  }
+
+  private resolveProjectRoot(): string {
+    return this.projectRoot ?? process.cwd();
+  }
 
   constructor(
     store: JobStore,
@@ -276,8 +298,8 @@ export class JobQueue {
    * Each step is attempted independently and failures are logged but don't stop the process.
    */
   private cleanupFailedJobArtifacts(issueNumber: number): void {
-    const dataDir = resolve(process.cwd(), "data");
-    const projectRoot = process.cwd();
+    const projectRoot = this.resolveProjectRoot();
+    const dataDir = resolve(projectRoot, "data");
 
     let checkpoint = null;
     try {
@@ -287,7 +309,7 @@ export class JobQueue {
     }
 
     if (checkpoint) {
-      const config = loadConfig(projectRoot);
+      const config = this.configProvider?.current() ?? loadConfig(projectRoot);
 
       // Step 1: Remove worktree if exists
       if (checkpoint.worktreePath) {
@@ -576,7 +598,7 @@ export class JobQueue {
   private trackProjectFailure(repo: string): void {
     let project = undefined;
     try {
-      const config = loadConfig(process.cwd());
+      const config = this.configProvider?.current() ?? loadConfig(this.resolveProjectRoot());
       project = config?.projects?.find(p => p.repo === repo);
     } catch (error: unknown) {
       // If config loading fails (e.g. in test environment), use defaults

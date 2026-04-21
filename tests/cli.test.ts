@@ -496,6 +496,7 @@ describe("startCommand — IssuePoller 항상 시작", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     vi.mocked(loadConfig).mockReturnValue(mockConfigWithProject);
@@ -581,6 +582,7 @@ describe("startCommand — pre-flight 검증", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     vi.mocked(createWebhookApp).mockReturnValue({
@@ -677,7 +679,7 @@ describe("startCommand — pre-flight 검증", () => {
     let capturedDryRun: boolean | undefined;
     vi.mocked(JobQueue).mockImplementation((_store, _conc, handler) => {
       // capture what config is used via closure — check via IssuePoller constructor arg
-      return { recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() } as unknown as JobQueue;
+      return { recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn(), setDependencies: vi.fn() } as unknown as JobQueue;
     });
     vi.mocked(IssuePoller).mockImplementation((cfg) => {
       capturedDryRun = (cfg as { general?: { dryRun?: boolean } }).general?.dryRun;
@@ -714,7 +716,7 @@ describe("startCommand — 모드 분기 로직", () => {
       () => ({ prune: vi.fn(), list: vi.fn().mockReturnValue([]) }) as unknown as JobStore
     );
     vi.mocked(JobQueue).mockImplementation(
-      () => ({ recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn() }) as unknown as JobQueue
+      () => ({ recover: vi.fn(), shutdown: vi.fn(), enqueue: vi.fn(), setDependencies: vi.fn() }) as unknown as JobQueue
     );
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),
@@ -833,6 +835,7 @@ describe("startCommand — 추가 분기 테스트", () => {
       recover: vi.fn(),
       shutdown: vi.fn(),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),
@@ -1272,6 +1275,7 @@ describe("planCommand", () => {
     vi.mocked(JobStore).mockImplementation(() => ({} as unknown as JobStore));
     vi.mocked(JobQueue).mockImplementation(() => ({
       enqueue: enqueueMock,
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     await planCommand({ repo: "owner/repo", execute: true });
@@ -1309,6 +1313,7 @@ describe("startCommand — gracefulShutdown", () => {
       recover: vi.fn(),
       shutdown: mockQueueShutdown,
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
 
     mockStoreClose = vi.fn();
@@ -1501,6 +1506,7 @@ describe("startCommand — .env 로딩", () => {
       recover: vi.fn(),
       shutdown: vi.fn().mockResolvedValue(undefined),
       enqueue: vi.fn(),
+      setDependencies: vi.fn(),
     } as unknown as JobQueue));
     vi.mocked(createWebhookApp).mockReturnValue({
       route: vi.fn(),

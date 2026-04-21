@@ -23,6 +23,9 @@ vi.mock("../../../src/learning/pattern-store.js", () => ({
   PatternStore: vi.fn().mockImplementation(() => ({
     add: vi.fn(),
   })),
+  getPatternStore: vi.fn().mockImplementation(() => ({
+    add: vi.fn(),
+  })),
 }));
 
 vi.mock("../../../src/utils/logger.js", () => ({

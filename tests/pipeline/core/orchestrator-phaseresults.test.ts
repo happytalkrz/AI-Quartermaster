@@ -65,6 +65,10 @@ vi.mock("../../../src/learning/pattern-store.js", () => ({
     getRecentFailures: vi.fn().mockReturnValue([]),
     formatForPrompt: vi.fn().mockReturnValue(""),
   })),
+  getPatternStore: vi.fn().mockImplementation(() => ({
+    getRecentFailures: vi.fn().mockReturnValue([]),
+    formatForPrompt: vi.fn().mockReturnValue(""),
+  })),
 }));
 vi.mock("../../../src/pipeline/errors/pipeline-error-handler.js", () => ({
   handleCoreLoopFailure: vi.fn(),

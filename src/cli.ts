@@ -23,7 +23,7 @@ import { cleanOldWorktrees } from "./git/worktree-cleaner.js";
 import { runDoctor } from "./setup/doctor.js";
 import { JobLogger } from "./queue/job-logger.js";
 import { IssuePoller } from "./polling/issue-poller.js";
-import { PatternStore } from "./learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "./learning/pattern-store.js";
 import { SelfUpdater } from "./update/self-updater.js";
 import { ConfigWatcher } from "./config/config-watcher.js";
 import { AutomationScheduler } from "./automation/scheduler.js";
@@ -486,7 +486,7 @@ export async function startCommand(args: CliArgs): Promise<void> {
     );
   }
 
-  const patternStore = new PatternStore(dataDir);
+  const patternStore = getPatternStore(dataDir);
   const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, effectiveConfig.general.dashboardAuth, wslReadOnly, patternStore, aqRoot);
   const healthRoutes = createHealthRoutes(queue, poller);
 
@@ -695,7 +695,7 @@ export async function planCommand(args: CliArgs): Promise<void> {
 export async function statsCommand(args: CliArgs): Promise<void> {
   const aqRoot = args.config ? resolve(args.config, "..") : process.cwd();
   const dataDir = resolve(aqRoot, "data");
-  const patternStore = new PatternStore(dataDir);
+  const patternStore = getPatternStore(dataDir);
   const jobStore = new JobStore(dataDir);
 
   const stats = patternStore.getStats(args.repo);

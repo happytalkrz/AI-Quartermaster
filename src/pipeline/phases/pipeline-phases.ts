@@ -2,7 +2,7 @@ import { resolve } from "path";
 import { runCoreLoop } from "../core/core-loop.js";
 import { getModePreset, getExecutionModePreset, detectExecutionModeFromLabels } from "../../config/mode-presets.js";
 import { resolveProject } from "../../config/project-resolver.js";
-import { PatternStore } from "../../learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "../../learning/pattern-store.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { handleCoreLoopFailure } from "../errors/pipeline-error-handler.js";
@@ -310,7 +310,7 @@ export async function executeCoreLoopPhase(
 
   const [owner, name] = repo.split("/");
   const projectConfig = { ...config, commands: project.commands, safety: project.safety };
-  const patternStore = new PatternStore(dataDir);
+  const patternStore = getPatternStore(dataDir);
   const preset = getModePreset(mode);
   const executionMode = detectExecutionModeFromLabels(issue.labels, "standard");
   const executionModePreset = getExecutionModePreset(executionMode);

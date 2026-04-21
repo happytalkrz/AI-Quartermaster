@@ -103,6 +103,7 @@ vi.mock("../../src/prompt/template-renderer.js", () => ({
 
 vi.mock("../../src/learning/pattern-store.js", () => ({
   PatternStore: vi.fn(),
+  getPatternStore: vi.fn(),
 }));
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { resolveRetryBudget } from "../execution/retry-config.js";
 import type { JobLogger } from "../../queue/job-logger.js";
-import { PatternStore } from "../../learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
 import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
@@ -304,7 +304,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   let pastFailures = "";
   if (ctx.dataDir) {
     try {
-      const patternStore = new PatternStore(ctx.dataDir);
+      const patternStore = getPatternStore(ctx.dataDir);
       const recentFailures = patternStore.getRecentFailures(repoFull, 5);
       pastFailures = patternStore.formatForPrompt(recentFailures);
     } catch (patternError: unknown) {

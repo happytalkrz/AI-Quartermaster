@@ -25,6 +25,10 @@ vi.mock("../../src/learning/pattern-store.js", () => ({
     getRecentFailures: vi.fn().mockReturnValue([]),
     formatForPrompt: vi.fn().mockReturnValue(""),
   })),
+  getPatternStore: vi.fn().mockImplementation(() => ({
+    getRecentFailures: vi.fn().mockReturnValue([]),
+    formatForPrompt: vi.fn().mockReturnValue(""),
+  })),
 }));
 vi.mock("../../src/utils/logger.js", () => ({
   getLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),

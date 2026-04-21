@@ -46,6 +46,9 @@ vi.mock("../../src/learning/pattern-store.js", () => ({
   PatternStore: vi.fn().mockImplementation(() => ({
     add: vi.fn(),
   })),
+  getPatternStore: vi.fn().mockImplementation(() => ({
+    add: vi.fn(),
+  })),
 }));
 vi.mock("../../src/pipeline/reporting/progress-tracker.js", () => ({
   PROGRESS_PR_CREATED: 90,
@@ -69,7 +72,7 @@ import { rollbackToCheckpoint } from "../../src/safety/rollback-manager.js";
 import { runCli } from "../../src/utils/cli-runner.js";
 import { formatResult, printResult } from "../../src/pipeline/reporting/result-reporter.js";
 import { removeCheckpoint } from "../../src/pipeline/errors/checkpoint.js";
-import { PatternStore } from "../../src/learning/pattern-store.js";
+import { PatternStore, getPatternStore } from "../../src/learning/pattern-store.js";
 import type { PublishPhaseContext, CleanupContext, FailureHandlerContext } from "../../src/types/pipeline.js";
 import { DEFAULT_CONFIG } from "../../src/config/defaults.js";
 
@@ -90,6 +93,7 @@ const mockFormatResult = vi.mocked(formatResult);
 const mockPrintResult = vi.mocked(printResult);
 const mockRemoveCheckpoint = vi.mocked(removeCheckpoint);
 const mockPatternStore = vi.mocked(PatternStore);
+const mockGetPatternStore = vi.mocked(getPatternStore);
 
 function makePublishContext(): PublishPhaseContext {
   return {
@@ -543,11 +547,11 @@ describe("cleanupOnSuccess", () => {
   it("should record success pattern", async () => {
     const context = makeCleanupContext();
     const mockAddFn = vi.fn();
-    mockPatternStore.mockImplementation(() => ({ add: mockAddFn }) as any);
+    mockGetPatternStore.mockReturnValue({ add: mockAddFn } as unknown as PatternStore);
 
     await cleanupOnSuccess(context);
 
-    expect(mockPatternStore).toHaveBeenCalledWith("/tmp/data");
+    expect(mockGetPatternStore).toHaveBeenCalledWith("/tmp/data");
     expect(mockAddFn).toHaveBeenCalledWith({
       issueNumber: 42,
       repo: "test/repo",

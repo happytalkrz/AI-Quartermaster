@@ -107,6 +107,31 @@ export class PatternStore {
   }
 }
 
+const patternStoreCache = new Map<string, PatternStore>();
+
+/**
+ * 같은 dataDir에 대해 프로세스 수명 동안 단일 PatternStore 인스턴스를 반환한다.
+ *
+ * pipeline-phases / pipeline-publish / core-loop 등에서 각자 `new PatternStore()`를 생성하던
+ * 5곳을 이 팩토리로 일원화해, 같은 파일을 가리키는 중복 인스턴스와 불필요한 `mkdirSync` 재호출을
+ * 제거한다. 현재 모든 메서드가 동기 + write 경로가 단순한 read-modify-write라 단일 프로세스 내
+ * race는 발생하지 않지만, 향후 async/캐싱 도입 시 단일 인스턴스 전제를 깔아두기 위함.
+ */
+export function getPatternStore(dataDir: string): PatternStore {
+  const key = resolve(dataDir);
+  let instance = patternStoreCache.get(key);
+  if (!instance) {
+    instance = new PatternStore(dataDir);
+    patternStoreCache.set(key, instance);
+  }
+  return instance;
+}
+
+/** 테스트용 캐시 초기화. 프로덕션 코드에서는 사용하지 않음. */
+export function __resetPatternStoreCacheForTests(): void {
+  patternStoreCache.clear();
+}
+
 function resolutionHint(category: string): string {
   switch (category) {
     case "TS_ERROR":

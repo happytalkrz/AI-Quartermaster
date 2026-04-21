@@ -37,6 +37,10 @@ vi.mock("../../../src/learning/pattern-store.js", () => ({
     getRecentFailures: vi.fn().mockReturnValue([]),
     formatForPrompt: vi.fn().mockReturnValue(""),
   })),
+  getPatternStore: vi.fn().mockImplementation(() => ({
+    getRecentFailures: vi.fn().mockReturnValue([]),
+    formatForPrompt: vi.fn().mockReturnValue(""),
+  })),
 }));
 vi.mock("../../../src/prompt/template-renderer.js", () => ({
   buildBaseLayer: vi.fn().mockReturnValue({

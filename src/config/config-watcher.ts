@@ -5,6 +5,7 @@ import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { loadConfig } from "./loader.js";
 import { AQConfig } from "../types/config.js";
+import type { ConfigProvider } from "./config-provider.js";
 
 const logger = getLogger();
 
@@ -13,7 +14,7 @@ export interface ConfigChangeEvent {
   paths: string[];
 }
 
-export class ConfigWatcher extends EventEmitter {
+export class ConfigWatcher extends EventEmitter implements ConfigProvider {
   private projectRoot: string;
   private baseConfigPath: string;
   private localConfigPath: string;

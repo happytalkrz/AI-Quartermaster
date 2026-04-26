@@ -3,12 +3,11 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
 import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport, UserSummary } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
-import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
 import type { ConfigProvider } from "../config/config-provider.js";
 import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
-import { checkJobStuck } from "./stuck-detector.js";
 import { JobCleanupService } from "./job-cleanup.js";
 import { ProjectErrorTracker } from "./project-error-tracker.js";
+import { StuckJobMonitor } from "./stuck-monitor.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
 import type { AQMTask } from "../tasks/aqm-task.js";
 
@@ -97,7 +96,7 @@ export class JobQueue {
   private concurrency: number;
   private handler: JobHandler;
   private cancelled: Set<string> = new Set();
-  private stuckChecker: ReturnType<typeof setInterval> | undefined;
+  private readonly stuckMonitor: StuckJobMonitor;
   private stuckTimeoutMs: number;
   private stuckThresholds?: StuckThresholdConfig;
   private shuttingDown: boolean = false;
@@ -163,63 +162,26 @@ export class JobQueue {
     // setDependencies가 호출되면 정확한 projectRoot/configProvider를 가진 새 인스턴스로 교체된다.
     this.cleanupService = new JobCleanupService(process.cwd());
 
-    // Periodically check for stuck jobs
-    this.stuckChecker = setInterval(() => this.checkStuckJobs(), STUCK_CHECK_INTERVAL_MS);
-  }
-
-  private checkStuckJobs(): void {
-    const thresholds: StuckThresholdConfig = this.stuckThresholds ?? {
-      defaultMs: this.stuckTimeoutMs,
-      planGenerationMs: this.stuckTimeoutMs,
-      implementationMs: this.stuckTimeoutMs,
-      reviewMs: this.stuckTimeoutMs,
-      verificationMs: this.stuckTimeoutMs,
-      publishMs: this.stuckTimeoutMs,
-      activityThresholdMs: 5 * 60 * 1000,
-    };
-
-    const processAlive = isClaudeProcessAlive();
-    const lastActivityMs = getLastActivityMs();
-
-    for (const jobId of this.running) {
-      const storeJob = this.store.get(jobId);
-      if (!storeJob) continue;
-
-      const job = convertStoreJobToJob(storeJob);
-      const result = checkJobStuck(job, thresholds, { processAlive, lastActivityMs });
-
-      logger.debug(
-        `StuckCheck job=${jobId} step=${job.currentStep ?? "-"} category=${result.category} ` +
-        `elapsed=${result.elapsedMs}ms threshold=${result.thresholdMs}ms isStuck=${result.isStuck} reason=${result.reason}`
-      );
-
-      if (!result.isStuck && result.reason !== "임계값 이내") {
-        // Threshold exceeded but still working — extend lastUpdatedAt
-        if (result.reason.startsWith("Claude 활동 중")) {
-          logger.info(
-            `Job ${jobId} (${result.category}): ${Math.round(result.elapsedMs / 60000)}분 경과, ${result.reason} — 대기 연장`
-          );
-        } else {
-          logger.debug(
-            `Job ${jobId} (${result.category}): ${result.reason} — 대기 연장`
-          );
-        }
-        this.store.update(jobId, { lastUpdatedAt: new Date().toISOString() });
-      } else if (result.isStuck) {
-        logger.error(
-          `Job ${jobId} (${result.category}): ${Math.round(result.elapsedMs / 60000)}분 경과 — ${result.reason}`
-        );
+    // Stuck 잡 탐지는 StuckJobMonitor에 위임 (Plan C #C10)
+    this.stuckMonitor = new StuckJobMonitor({
+      store: this.store,
+      stuckTimeoutMs: this.stuckTimeoutMs,
+      stuckThresholds: this.stuckThresholds,
+      checkIntervalMs: STUCK_CHECK_INTERVAL_MS,
+      getRunningJobIds: () => this.running,
+      toJob: convertStoreJobToJob,
+      onStuckDetected: (jobId, reason) => {
         this.store.update(jobId, {
           status: "failure",
           completedAt: new Date().toISOString(),
-          error: result.reason,
+          error: reason,
         });
         this.stuckAborted.add(jobId);
         this.running.delete(jobId);
         setTimeout(() => this.processNext(), 0);
-      }
-      // result.reason === "임계값 이내": threshold not yet exceeded, no action needed
-    }
+      },
+    });
+    this.stuckMonitor.start();
   }
 
   /**
@@ -239,10 +201,7 @@ export class JobQueue {
    */
   shutdown(timeoutMs: number = 30000): Promise<void> {
     this.shuttingDown = true;
-    if (this.stuckChecker !== undefined) {
-      clearInterval(this.stuckChecker);
-      this.stuckChecker = undefined;
-    }
+    this.stuckMonitor.stop();
     if (this.running.size === 0) {
       return Promise.resolve();
     }

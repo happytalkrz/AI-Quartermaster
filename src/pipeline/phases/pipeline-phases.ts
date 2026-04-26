@@ -24,6 +24,7 @@ import {
   PROGRESS_DONE
 } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
+import { runPhaseWithTracking } from "./phase-tracker.js";
 import type { CoreLoopPhaseContext } from "./phase-tracker.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
 import type { SenderPermission } from "../../github/issue-fetcher.js";
@@ -461,31 +462,12 @@ export async function executePostProcessingPhases(
     checkpoint
   };
 
-  const reviewStartedAt = nowIso();
-  const reviewStartMs = Date.now();
-  const reviewResult = await runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState);
-  const reviewDurationMs = Date.now() - reviewStartMs;
-  const reviewCompletedAt = nowIso();
-
-  if (context.accumulatedPhaseResults) {
-    if (reviewResult.success) {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseSuccess("review:code", reviewDurationMs, {
-          startedAt: reviewStartedAt,
-          completedAt: reviewCompletedAt,
-          costUsd: reviewResult.costUsd,
-        })
-      );
-    } else {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseFailure("review:code", reviewDurationMs, reviewResult.error ?? "Review phase failed", {
-          startedAt: reviewStartedAt,
-          completedAt: reviewCompletedAt,
-          costUsd: reviewResult.costUsd,
-        })
-      );
-    }
-  }
+  const reviewTracking = await runPhaseWithTracking(
+    "review:code",
+    () => runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState),
+    context.accumulatedPhaseResults
+  );
+  const reviewResult = reviewTracking.result;
 
   if (!reviewResult.success) {
     const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
@@ -517,31 +499,12 @@ export async function executePostProcessingPhases(
       checkpoint
     };
 
-    const simplifyStartedAt = nowIso();
-    const simplifyStartMs = Date.now();
-    const simplifyResult = await runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState);
-    const simplifyDurationMs = Date.now() - simplifyStartMs;
-    const simplifyCompletedAt = nowIso();
-
-    if (context.accumulatedPhaseResults) {
-      if (simplifyResult.success) {
-        context.accumulatedPhaseResults.push(
-          makePseudoPhaseSuccess("review:simplify", simplifyDurationMs, {
-            startedAt: simplifyStartedAt,
-            completedAt: simplifyCompletedAt,
-            costUsd: simplifyResult.costUsd,
-          })
-        );
-      } else {
-        context.accumulatedPhaseResults.push(
-          makePseudoPhaseFailure("review:simplify", simplifyDurationMs, simplifyResult.error ?? "Simplify phase failed", {
-            startedAt: simplifyStartedAt,
-            completedAt: simplifyCompletedAt,
-            costUsd: simplifyResult.costUsd,
-          })
-        );
-      }
-    }
+    const simplifyTracking = await runPhaseWithTracking(
+      "review:simplify",
+      () => runSimplifyPhase(simplifyContext, executionModePreset, runtime.state, isPastState),
+      context.accumulatedPhaseResults
+    );
+    const simplifyResult = simplifyTracking.result;
 
     if (!simplifyResult.success) {
       const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
@@ -567,43 +530,26 @@ export async function executePostProcessingPhases(
     baseline: coreResult.baseline,
   };
 
-  const validationStartedAt = nowIso();
-  const validationStartMs = Date.now();
-  const validationResult = await runValidationPhase(
-    validationContext,
-    timer,
-    (checkState: string) => isPastState(runtime.state, checkState as PipelineState),
-    preset.skipFinalValidation,
-    detectExecutionModeFromLabels(issue.labels, "standard"),
-    (overrides?: Partial<PipelineCheckpoint>) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
-    issueNumber,
-    repo,
-    startTime,
-    config,
-    project.commands,
-    aqRoot,
-    runtime.projectRoot
+  const validationTracking = await runPhaseWithTracking(
+    "validation:check",
+    () => runValidationPhase(
+      validationContext,
+      timer,
+      (checkState: string) => isPastState(runtime.state, checkState as PipelineState),
+      preset.skipFinalValidation,
+      detectExecutionModeFromLabels(issue.labels, "standard"),
+      (overrides?: Partial<PipelineCheckpoint>) => checkpoint(overrides || { plan: coreResult.plan, phaseResults: coreResult.phaseResults }),
+      issueNumber,
+      repo,
+      startTime,
+      config,
+      project.commands,
+      aqRoot,
+      runtime.projectRoot
+    ),
+    context.accumulatedPhaseResults
   );
-  const validationDurationMs = Date.now() - validationStartMs;
-  const validationCompletedAt = nowIso();
-
-  if (context.accumulatedPhaseResults) {
-    if (validationResult.success) {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseSuccess("validation:check", validationDurationMs, {
-          startedAt: validationStartedAt,
-          completedAt: validationCompletedAt,
-        })
-      );
-    } else {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseFailure("validation:check", validationDurationMs, validationResult.error ?? "Validation phase failed", {
-          startedAt: validationStartedAt,
-          completedAt: validationCompletedAt,
-        })
-      );
-    }
-  }
+  const validationResult = validationTracking.result;
 
   if (!validationResult.success) {
     throw new Error(validationResult.error || "Validation phase failed");
@@ -655,29 +601,12 @@ export async function executePostProcessingPhases(
     senderPermission: context.senderPermission,
   };
 
-  const publishStartedAt = nowIso();
-  const publishStartMs = Date.now();
-  const publishResult = await pushAndCreatePR(publishContext);
-  const publishDurationMs = Date.now() - publishStartMs;
-  const publishCompletedAt = nowIso();
-
-  if (context.accumulatedPhaseResults) {
-    if (publishResult.success) {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseSuccess("publish:pr", publishDurationMs, {
-          startedAt: publishStartedAt,
-          completedAt: publishCompletedAt,
-        })
-      );
-    } else {
-      context.accumulatedPhaseResults.push(
-        makePseudoPhaseFailure("publish:pr", publishDurationMs, publishResult.error ?? "Publish phase failed", {
-          startedAt: publishStartedAt,
-          completedAt: publishCompletedAt,
-        })
-      );
-    }
-  }
+  const publishTracking = await runPhaseWithTracking(
+    "publish:pr",
+    () => pushAndCreatePR(publishContext),
+    context.accumulatedPhaseResults
+  );
+  const publishResult = publishTracking.result;
 
   if (!publishResult.success) {
     throw new Error(publishResult.error || "Publish phase failed");

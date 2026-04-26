@@ -1372,7 +1372,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     if (job.status !== "failure" && job.status !== "cancelled") {
       return c.json({ error: "Only failed or cancelled jobs can be retried" }, 400);
     }
-    const newJob = queue.retryJob(id);
+    const newJob = await queue.retryJob(id);
     if (!newJob) {
       return c.json({ error: "Failed to retry job" }, 500);
     }

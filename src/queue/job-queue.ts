@@ -1,17 +1,14 @@
-import { resolve } from "path";
 import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
 import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport, UserSummary } from "../types/pipeline.js";
 import { areDependenciesMet } from "./dependency-resolver.js";
-import { removeCheckpoint, loadCheckpoint } from "../pipeline/errors/checkpoint.js";
 import { isClaudeProcessAlive, getLastActivityMs } from "../claude/claude-runner.js";
-import { removeWorktree } from "../git/worktree-manager.js";
-import { deleteRemoteBranch } from "../git/branch-manager.js";
-import { loadConfig } from "../config/loader.js";
 import type { ConfigProvider } from "../config/config-provider.js";
 import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
 import { checkJobStuck } from "./stuck-detector.js";
+import { JobCleanupService } from "./job-cleanup.js";
+import { ProjectErrorTracker } from "./project-error-tracker.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
 import type { AQMTask } from "../tasks/aqm-task.js";
 
@@ -110,7 +107,8 @@ export class JobQueue {
   private processingJobs: Set<string> = new Set(); // jobs temporarily removed during processNext
   private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
-  private projectErrorState: Map<string, ProjectErrorState> = new Map(); // repo -> error state
+  private readonly errorTracker = new ProjectErrorTracker();
+  private cleanupService: JobCleanupService;
   private lastServedRepo: string | null = null; // round-robin: last repo that was served
   private taskFactory?: TaskFactory;
   private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
@@ -118,22 +116,25 @@ export class JobQueue {
   private configProvider?: ConfigProvider;
 
   /**
-   * 런타임 의존성(projectRoot, ConfigProvider)을 주입한다.
+   * 런타임 의존성(projectRoot, ConfigProvider)을 주입한다 (Plan C #C2/#C6).
    *
-   * 구성자 서명을 바꾸지 않기 위한 post-construction 주입. cli.ts 등 애플리케이션 코드에서만 호출하면
-   * 되며, 테스트는 호출하지 않아도 `process.cwd()` fallback으로 기존 동작이 유지된다.
+   * 구성자 서명을 바꾸지 않기 위한 post-construction 주입. cli.ts 등 애플리케이션 코드에서 호출하면
+   * `JobCleanupService`/`ProjectErrorTracker`가 활성화된다. 테스트는 호출하지 않으면
+   * cleanupService 미설정 → cleanup no-op, errorTracker는 configProvider 없이 기본 임계값으로 동작.
    *
-   * 이렇게 주입된 projectRoot는 `cleanupFailedJobArtifacts`의 data 경로와 `trackProjectFailure`의
-   * config 로드 기준점으로 사용된다. 서버가 다른 cwd에서 기동되는 환경에서 발생하던 경로 오탐
-   * (process.cwd() ≠ AQM root)을 제거한다.
+   * Plan C #C6에서 `process.cwd()` fallback과 `loadConfig` 직접 호출이 모두 제거됐다.
    */
   setDependencies(deps: { projectRoot?: string; configProvider?: ConfigProvider }): void {
     if (deps.projectRoot) this.projectRoot = deps.projectRoot;
-    if (deps.configProvider) this.configProvider = deps.configProvider;
-  }
-
-  private resolveProjectRoot(): string {
-    return this.projectRoot ?? process.cwd();
+    if (deps.configProvider) {
+      this.configProvider = deps.configProvider;
+      this.errorTracker.setConfigProvider(deps.configProvider);
+    }
+    // cleanupService는 항상 갱신해 최신 의존성을 사용한다.
+    this.cleanupService = new JobCleanupService(
+      this.projectRoot ?? process.cwd(),
+      this.configProvider
+    );
   }
 
   constructor(
@@ -157,6 +158,10 @@ export class JobQueue {
         this.projectConcurrency.set(repo, limit);
       });
     }
+
+    // cleanupService는 process.cwd 기준으로 즉시 활성화된다 (테스트 환경 호환).
+    // setDependencies가 호출되면 정확한 projectRoot/configProvider를 가진 새 인스턴스로 교체된다.
+    this.cleanupService = new JobCleanupService(process.cwd());
 
     // Periodically check for stuck jobs
     this.stuckChecker = setInterval(() => this.checkStuckJobs(), STUCK_CHECK_INTERVAL_MS);
@@ -264,8 +269,8 @@ export class JobQueue {
    */
   recover(): number {
     // 재시작 시 메모리 상태 초기화 — pause 상태 자동 해제
-    this.projectErrorState.clear();
-    logger.info("재시작: projectErrorState 초기화 완료 (project pause 해제)");
+    this.errorTracker.clear();
+    logger.info("재시작: project error tracker 초기화 완료 (project pause 해제)");
 
     const jobs = this.store.list();
     let recovered = 0;
@@ -294,49 +299,12 @@ export class JobQueue {
 
 
   /**
-   * Cleanup failed job artifacts including worktree, remote branch, and checkpoint.
-   * Each step is attempted independently and failures are logged but don't stop the process.
+   * 실패 잡 정리 — JobCleanupService에 위임 (Plan C #C6).
+   * 호출부는 fire-and-forget(`void this.cleanupFailedJobArtifacts(...)`) 또는
+   * await(retryJob의 race 차단) 형태로 사용한다.
    */
-  private cleanupFailedJobArtifacts(issueNumber: number): void {
-    const projectRoot = this.resolveProjectRoot();
-    const dataDir = resolve(projectRoot, "data");
-
-    let checkpoint = null;
-    try {
-      checkpoint = loadCheckpoint(dataDir, issueNumber);
-    } catch (checkpointErr: unknown) {
-      logger.warn(`Failed to load checkpoint for cleanup of issue #${issueNumber}: ${getErrorMessage(checkpointErr)}`);
-    }
-
-    if (checkpoint) {
-      const config = this.configProvider?.current() ?? loadConfig(projectRoot);
-
-      // Step 1: Remove worktree if exists
-      if (checkpoint.worktreePath) {
-        logger.info(`Cleaning up worktree: ${checkpoint.worktreePath}`);
-        Promise.resolve(removeWorktree(config.git, checkpoint.worktreePath, { cwd: projectRoot, force: true }))
-          .catch((worktreeErr: unknown) => {
-            logger.warn(`Failed to remove worktree ${checkpoint.worktreePath}: ${getErrorMessage(worktreeErr)}`);
-          });
-      }
-
-      // Step 2: Delete remote branch if exists
-      if (checkpoint.branchName) {
-        logger.info(`Deleting remote branch: ${checkpoint.branchName}`);
-        Promise.resolve(deleteRemoteBranch(config.git, checkpoint.branchName, { cwd: projectRoot }))
-          .catch((branchErr: unknown) => {
-            logger.warn(`Failed to delete remote branch ${checkpoint.branchName}: ${getErrorMessage(branchErr)}`);
-          });
-      }
-    }
-
-    // Step 3: Always attempt to remove checkpoint regardless of whether we could load it
-    try {
-      logger.info(`Removing checkpoint for issue #${issueNumber}`);
-      removeCheckpoint(dataDir, issueNumber);
-    } catch (err: unknown) {
-      logger.warn(`Failed to remove checkpoint for issue #${issueNumber}: ${getErrorMessage(err)}`);
-    }
+  private async cleanupFailedJobArtifacts(issueNumber: number): Promise<void> {
+    await this.cleanupService.cleanupFailedJobArtifacts(issueNumber);
   }
 
   /**
@@ -356,7 +324,10 @@ export class JobQueue {
         this.store.archive(existing.id);
       } else if (isFailureJob(existing) || isCancelledJob(existing)) {
         logger.info(`Auto-archiving existing ${existing.status} job ${existing.id} for issue #${issueNumber} (${repo})`);
-        this.cleanupFailedJobArtifacts(issueNumber);
+        // Fire-and-forget: enqueue 응답을 차단하지 않는다. retryJob에서는 race 차단을 위해 await로 호출.
+        void this.cleanupFailedJobArtifacts(issueNumber).catch((err: unknown) => {
+          logger.warn(`Cleanup failed during enqueue for issue #${issueNumber}: ${getErrorMessage(err)}`);
+        });
         this.store.archive(existing.id);
       } else if (isActiveJob(existing)) {
         // queued/running statuses should still block
@@ -383,8 +354,11 @@ export class JobQueue {
 
   /**
    * Retries a failed or cancelled job by removing the old one and creating a new one.
+   *
+   * Plan C #C6: cleanup이 완료된 후에야 새 잡을 enqueue하도록 await로 동기화.
+   * 이전 fire-and-forget으로 인해 발생할 수 있던 worktree race를 차단한다.
    */
-  retryJob(jobId: string): Job | undefined {
+  async retryJob(jobId: string): Promise<Job | undefined> {
     const oldJob = this.store.get(jobId);
     if (!oldJob) return undefined;
     if (!isFailureJob(oldJob) && !isCancelledJob(oldJob)) return undefined;
@@ -412,7 +386,7 @@ export class JobQueue {
     }
 
     const { issueNumber, repo, phaseResults } = oldJob;
-    this.cleanupFailedJobArtifacts(issueNumber);
+    await this.cleanupFailedJobArtifacts(issueNumber);
     this.store.archive(jobId);
     return this.enqueue(issueNumber, repo, undefined, true, undefined, phaseResults);
   }
@@ -538,111 +512,49 @@ export class JobQueue {
     }
   }
 
+  // Plan C #C6: 프로젝트 실패 추적/일시 정지 로직은 ProjectErrorTracker로 응집됨.
+  // 외부 public API 시그니처를 보존하기 위해 위임 wrapper만 유지한다.
+
   /**
    * Checks if a project is currently paused due to consecutive failures.
    */
   isProjectPaused(repo: string): boolean {
-    const errorState = this.projectErrorState.get(repo);
-    if (!errorState || !errorState.pausedUntil) {
-      return false;
-    }
-
-    // Check if pause has expired
-    if (Date.now() >= errorState.pausedUntil) {
-      // Auto-resume expired pause
-      this.resumeProject(repo);
-      return false;
-    }
-
-    return true;
+    return this.errorTracker.isProjectPaused(repo);
   }
 
   /**
    * Manually pauses a project for the specified duration.
    */
   pauseProject(repo: string, durationMs: number): void {
-    const errorState = this.projectErrorState.get(repo) || {
-      consecutiveFailures: 0,
-      pausedUntil: null,
-      lastFailureAt: null,
-    };
-
-    errorState.pausedUntil = Date.now() + durationMs;
-    this.projectErrorState.set(repo, errorState);
-
-    logger.warn(`Project ${repo} manually paused for ${Math.round(durationMs / 1000)}s`);
+    this.errorTracker.pauseProject(repo, durationMs);
   }
 
   /**
    * Resumes a paused project.
    */
   resumeProject(repo: string): void {
-    const errorState = this.projectErrorState.get(repo);
-    if (errorState) {
-      errorState.pausedUntil = null;
-      this.projectErrorState.set(repo, errorState);
-      logger.info(`Project ${repo} resumed`);
-    }
+    this.errorTracker.resumeProject(repo);
   }
 
   /**
    * Gets the error status of a project.
    */
   getProjectStatus(repo: string): ProjectErrorState | null {
-    return this.projectErrorState.get(repo) || null;
+    return this.errorTracker.getProjectStatus(repo);
   }
 
   /**
    * Tracks a project failure and potentially pauses the project.
    */
   private trackProjectFailure(repo: string): void {
-    let project = undefined;
-    try {
-      const config = this.configProvider?.current() ?? loadConfig(this.resolveProjectRoot());
-      project = config?.projects?.find(p => p.repo === repo);
-    } catch (error: unknown) {
-      // If config loading fails (e.g. in test environment), use defaults
-      logger.debug(`Failed to load config for project failure tracking: ${getErrorMessage(error)}`);
-    }
-
-    const pauseThreshold = project?.pauseThreshold || 3;
-    const pauseDurationMs = project?.pauseDurationMs || 30 * 60 * 1000; // 30분 기본값
-
-    const errorState = this.projectErrorState.get(repo) || {
-      consecutiveFailures: 0,
-      pausedUntil: null,
-      lastFailureAt: null,
-    };
-
-    errorState.consecutiveFailures++;
-    errorState.lastFailureAt = Date.now();
-
-    if (errorState.consecutiveFailures >= pauseThreshold) {
-      errorState.pausedUntil = Date.now() + pauseDurationMs;
-      logger.error(
-        `Project ${repo} paused for ${Math.round(pauseDurationMs / 60000)}min after ${errorState.consecutiveFailures} consecutive failures`
-      );
-    } else {
-      logger.warn(
-        `Project ${repo} failure count: ${errorState.consecutiveFailures}/${pauseThreshold}`
-      );
-    }
-
-    this.projectErrorState.set(repo, errorState);
+    this.errorTracker.trackFailure(repo);
   }
 
   /**
    * Tracks a project success and resets failure count.
    */
   private trackProjectSuccess(repo: string): void {
-    const errorState = this.projectErrorState.get(repo);
-    if (errorState && errorState.consecutiveFailures > 0) {
-      logger.info(`Project ${repo} success - resetting failure count (was ${errorState.consecutiveFailures})`);
-      errorState.consecutiveFailures = 0;
-      errorState.lastFailureAt = null;
-      // Keep pausedUntil if manually set
-      this.projectErrorState.set(repo, errorState);
-    }
+    this.errorTracker.trackSuccess(repo);
   }
 
   /**
@@ -834,7 +746,7 @@ export class JobQueue {
 
         // Check if project is paused due to consecutive failures
         if (this.isProjectPaused(job.repo)) {
-          const errorState = this.projectErrorState.get(job.repo);
+          const errorState = this.errorTracker.getProjectStatus(job.repo);
           const remainingMs = errorState!.pausedUntil! - Date.now();
           logger.info(`Job ${jobId} deferred due to project pause (${job.repo}). Resume in ${Math.round(remainingMs / 1000)}s`);
           this.processingJobs.delete(jobId);

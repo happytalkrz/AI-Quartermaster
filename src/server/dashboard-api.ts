@@ -35,6 +35,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { ZodError } from "zod";
 import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
+import { SSEManager } from "./sse-manager.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -53,126 +54,36 @@ export function getQuotaStatus(): QuotaStatus | null {
   return currentQuotaStatus;
 }
 
-// SSE client management
-interface SSEClient {
-  id: string;
-  controller: ReadableStreamDefaultController<Uint8Array>;
-  connectedAt: number;
-  lastHeartbeat: number;
-}
+// SSE 클라이언트 풀과 heartbeat 루프는 SSEManager로 캡슐화 (Plan C #C5).
+// dashboard-api는 단일 인스턴스를 보유하고, 외부 export는 위임 함수로 유지한다.
+const sseManager = new SSEManager({
+  maxClients: 50,
+  heartbeatMs: 30_000,
+  clientTimeoutMs: 120_000,
+});
 
-
-const sseClients = new Map<string, SSEClient>();
-const encoder = new TextEncoder();
-
-// Periodic cleanup intervals
+// Token cleanup interval (sessionManager TTL 가지치기). SSE heartbeat과는 독립.
 let tokenCleanupInterval: ReturnType<typeof setInterval> | undefined;
-let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
-
-// Cleanup constants
 const TOKEN_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
-const CLIENT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
-const MAX_SSE_CLIENTS = 50; // Maximum concurrent SSE connections
-
-function removeStaleClients(): void {
-  const now = Date.now();
-  const clientsToRemove: string[] = [];
-
-  for (const [clientId, client] of sseClients) {
-    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
-      clientsToRemove.push(clientId);
-    }
-  }
-
-  for (const clientId of clientsToRemove) {
-    try {
-      const client = sseClients.get(clientId);
-      client?.controller.close();
-    } catch {
-      // Ignore errors when closing already closed streams
-    }
-    sseClients.delete(clientId);
-  }
-}
 
 export function getSSEClientCount(): number {
-  return sseClients.size;
-}
-
-function evictOldestClients(targetCount: number): void {
-  if (sseClients.size <= targetCount) return;
-
-  // Sort by connectedAt ascending (oldest first)
-  const sorted = [...sseClients.entries()].sort(([, a], [, b]) => a.connectedAt - b.connectedAt);
-  const toEvict = sorted.slice(0, sseClients.size - targetCount);
-
-  for (const [clientId, client] of toEvict) {
-    try {
-      client.controller.close();
-    } catch {
-      // Ignore errors when closing already closed streams
-    }
-    sseClients.delete(clientId);
-  }
+  return sseManager.clientCount;
 }
 
 function broadcastToAllClients(event: string, data: unknown): void {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  const now = Date.now();
-  const clientsToRemove: string[] = [];
-
-  for (const [clientId, client] of sseClients) {
-    if (now - client.lastHeartbeat > CLIENT_TIMEOUT_MS) {
-      clientsToRemove.push(clientId);
-      continue;
-    }
-
-    try {
-      client.controller.enqueue(encoder.encode(message));
-      client.lastHeartbeat = now;
-    } catch {
-      clientsToRemove.push(clientId);
-    }
-  }
-
-  for (const clientId of clientsToRemove) {
-    sseClients.delete(clientId);
-  }
-}
-
-
-function sendHeartbeat(): void {
-  const heartbeatMessage = `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`;
-  const clientsToRemove: string[] = [];
-
-  for (const [clientId, client] of sseClients) {
-    try {
-      client.controller.enqueue(encoder.encode(heartbeatMessage));
-    } catch {
-      clientsToRemove.push(clientId);
-    }
-  }
-
-  for (const clientId of clientsToRemove) {
-    sseClients.delete(clientId);
-  }
+  sseManager.broadcast(event, data);
 }
 
 function startPeriodicCleanup(): void {
   // Stop existing intervals if any
   stopPeriodicCleanup();
 
-  // Start token cleanup interval
+  // Token cleanup은 SSE와 독립적으로 운영.
   tokenCleanupInterval = setInterval(() => {
     sessionManager.pruneExpired();
   }, TOKEN_CLEANUP_INTERVAL_MS);
 
-  // Start heartbeat interval
-  heartbeatInterval = setInterval(() => {
-    sendHeartbeat();
-    removeStaleClients();
-  }, HEARTBEAT_INTERVAL_MS);
+  sseManager.startHeartbeat();
 }
 
 export function stopPeriodicCleanup(): void {
@@ -180,24 +91,14 @@ export function stopPeriodicCleanup(): void {
     clearInterval(tokenCleanupInterval);
     tokenCleanupInterval = undefined;
   }
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = undefined;
-  }
+  sseManager.stopHeartbeat();
 }
 
 /**
  * Clean up all active SSE clients by closing their connections.
  */
 export function cleanupAllSSEClients(): void {
-  for (const [, client] of sseClients) {
-    try {
-      client.controller.close();
-    } catch {
-      // Ignore errors when closing already closed streams
-    }
-  }
-  sseClients.clear();
+  sseManager.cleanupAll();
 }
 
 /**
@@ -1382,23 +1283,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // SSE endpoint for real-time updates
   api.get("/api/events", (_c) => {
     const clientId = randomUUID();
+    const encoder = new TextEncoder();
     let intervalId: ReturnType<typeof setInterval> | undefined;
 
     const stream = new ReadableStream({
       start(controller) {
-        // Enforce connection limit — evict oldest clients before registering new one
-        if (sseClients.size >= MAX_SSE_CLIENTS) {
-          evictOldestClients(MAX_SSE_CLIENTS - 1);
-        }
-
-        // Register client with timestamps
-        const now = Date.now();
-        sseClients.set(clientId, {
-          id: clientId,
-          controller,
-          connectedAt: now,
-          lastHeartbeat: now
-        });
+        sseManager.addClient(controller, clientId);
 
         // Send initial state
         const sendInitialState = () => {
@@ -1419,13 +1309,12 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         // Auto-cleanup after 5 minutes
         setTimeout(() => {
           clearInterval(intervalId);
-          sseClients.delete(clientId);
-          try { controller.close(); } catch { /* already closed */ }
+          sseManager.removeClient(clientId);
         }, 300000);
       },
       cancel() {
         clearInterval(intervalId);
-        sseClients.delete(clientId);
+        sseManager.removeClient(clientId);
       },
     });
 
@@ -2041,6 +1930,7 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // GET /api/doctor/heal/:id/stream — Level2 SSE streaming (spawn + stdout/stderr bridge)
   api.get("/api/doctor/heal/:id/stream", (c) => {
     const checkId = c.req.param("id");
+    const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       start(controller) {

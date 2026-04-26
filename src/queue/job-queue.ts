@@ -8,6 +8,7 @@ import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
 import { JobCleanupService } from "./job-cleanup.js";
 import { ProjectErrorTracker } from "./project-error-tracker.js";
 import { StuckJobMonitor } from "./stuck-monitor.js";
+import { JobLifecycle } from "./job-lifecycle.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
 import type { AQMTask } from "../tasks/aqm-task.js";
 
@@ -108,6 +109,7 @@ export class JobQueue {
   private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
   private readonly errorTracker = new ProjectErrorTracker();
   private cleanupService: JobCleanupService;
+  private readonly lifecycle: JobLifecycle;
   private lastServedRepo: string | null = null; // round-robin: last repo that was served
   private taskFactory?: TaskFactory;
   private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
@@ -161,6 +163,23 @@ export class JobQueue {
     // cleanupService는 process.cwd 기준으로 즉시 활성화된다 (테스트 환경 호환).
     // setDependencies가 호출되면 정확한 projectRoot/configProvider를 가진 새 인스턴스로 교체된다.
     this.cleanupService = new JobCleanupService(process.cwd());
+
+    // 잡 실행/결과 처리는 JobLifecycle에 위임 (Plan C #C10 Phase 2)
+    this.lifecycle = new JobLifecycle({
+      store: this.store,
+      handler: this.handler,
+      taskFactory: this.taskFactory,
+      errorTracker: this.errorTracker,
+      activeTasks: this.activeTasks,
+      stuckAborted: this.stuckAborted,
+      cancelled: this.cancelled,
+      onJobFinished: (jobId, repo) => {
+        this.running.delete(jobId);
+        this.removeJobFromRepo(jobId, repo);
+        // Process next in queue (defer via setImmediate to avoid deep call stacks)
+        setImmediate(() => this.processNext());
+      },
+    });
 
     // Stuck 잡 탐지는 StuckJobMonitor에 위임 (Plan C #C10)
     this.stuckMonitor = new StuckJobMonitor({
@@ -503,20 +522,6 @@ export class JobQueue {
   }
 
   /**
-   * Tracks a project failure and potentially pauses the project.
-   */
-  private trackProjectFailure(repo: string): void {
-    this.errorTracker.trackFailure(repo);
-  }
-
-  /**
-   * Tracks a project success and resets failure count.
-   */
-  private trackProjectSuccess(repo: string): void {
-    this.errorTracker.trackSuccess(repo);
-  }
-
-  /**
    * Gets the highest priority job from the pending queue and removes it.
    * Priority order: high (0) > normal (1) > low (2)
    * Within same priority: FIFO (earliest createdAt first)
@@ -721,7 +726,7 @@ export class JobQueue {
         logger.info(`Job started: ${jobId}`);
 
         // Run async - don't await, let it run in background
-        this.executeJob(convertStoreJobToJob(job)).catch((err: unknown) => {
+        this.lifecycle.execute(convertStoreJobToJob(job)).catch((err: unknown) => {
           logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
         });
       }
@@ -740,84 +745,4 @@ export class JobQueue {
     }
   }
 
-  private async executeJob(job: Job): Promise<void> {
-    try {
-      // Check if already aborted before running handler
-      if (this.stuckAborted.has(job.id)) {
-        this.stuckAborted.delete(job.id);
-        return;
-      }
-
-      let result: { prUrl?: string; error?: string; diagnosis?: DiagnosisReport; userSummary?: UserSummary };
-
-      if (this.taskFactory) {
-        // TaskFactory 경로: AQMTask 생성 후 run() 호출
-        const task = this.taskFactory.createTask(job);
-        this.activeTasks.set(job.id, task);
-        try {
-          result = await (task as unknown as { run(): Promise<{ prUrl?: string; error?: string }> }).run();
-        } finally {
-          this.activeTasks.delete(job.id);
-        }
-      } else {
-        result = await this.handler(job);
-      }
-
-      // Re-check after handler completes — stuck checker may have fired during execution
-      const wasStuckAborted = this.stuckAborted.has(job.id);
-      if (wasStuckAborted) {
-        this.stuckAborted.delete(job.id);
-        logger.warn(`Job ${job.id} handler completed after stuck-abort — updating status but not tracking project metrics`);
-      }
-
-      if (this.cancelled.has(job.id)) {
-        this.cancelled.delete(job.id);
-        // Already marked cancelled
-      } else if (result.error) {
-        this.store.update(job.id, {
-          status: "failure",
-          completedAt: new Date().toISOString(),
-          error: result.error,
-          ...(result.diagnosis ? { diagnosis: result.diagnosis } : {}),
-          ...(result.userSummary ? { userSummary: result.userSummary } : {}),
-        });
-        // Don't track project failure if it was stuck aborted
-        if (!wasStuckAborted) {
-          this.trackProjectFailure(job.repo);
-        }
-      } else if (result.prUrl) {
-        this.store.update(job.id, {
-          status: "success",
-          completedAt: new Date().toISOString(),
-          prUrl: result.prUrl,
-        });
-        // Don't track project success if it was stuck aborted
-        if (!wasStuckAborted) {
-          this.trackProjectSuccess(job.repo);
-        }
-      } else {
-        this.store.update(job.id, {
-          status: "failure",
-          completedAt: new Date().toISOString(),
-          error: "Pipeline completed but no PR was created",
-        });
-        // Don't track project failure if it was stuck aborted
-        if (!wasStuckAborted) {
-          this.trackProjectFailure(job.repo);
-        }
-      }
-    } catch (error: unknown) {
-      this.store.update(job.id, {
-        status: "failure",
-        completedAt: new Date().toISOString(),
-        error: getErrorMessage(error),
-      });
-      this.trackProjectFailure(job.repo);
-    } finally {
-      this.running.delete(job.id);
-      this.removeJobFromRepo(job.id, job.repo);
-      // Process next in queue (defer via setImmediate to avoid deep call stacks)
-      setImmediate(() => this.processNext());
-    }
-  }
 }

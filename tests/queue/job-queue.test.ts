@@ -298,7 +298,7 @@ describe("JobQueue", () => {
       expect(failedJob?.error).toContain("initial failure");
 
       // Retry the failed job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
       expect(retryJob?.issueNumber).toBe(123);
@@ -352,7 +352,7 @@ describe("JobQueue", () => {
       store.update(job!.id, { logs: ["[2026. 4. 4. 21시 56분 30초] PR: https://pr/existing"] });
 
       // Try to retry - should fix status instead of retrying
-      const retryResult = queue.retryJob(job!.id);
+      const retryResult = await queue.retryJob(job!.id);
       expect(retryResult).toBeUndefined();
 
       // Verify job status was fixed to success
@@ -381,7 +381,7 @@ describe("JobQueue", () => {
       expect(failedJob?.status).toBe("failure");
 
       // Retry the job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
 
@@ -419,7 +419,7 @@ describe("JobQueue", () => {
       });
 
       // Try to retry - should fix status instead of retrying
-      const retryResult = queue.retryJob(job!.id);
+      const retryResult = await queue.retryJob(job!.id);
       expect(retryResult).toBeUndefined();
 
       // Verify job status was fixed to success
@@ -453,7 +453,7 @@ describe("JobQueue", () => {
       store.update(initialJob!.id, { phaseResults: mockPhaseResults });
 
       // Retry - new job should inherit phaseResults from failed job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
 

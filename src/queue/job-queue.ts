@@ -2,13 +2,13 @@ import { getLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { JobStore, Job as StoreJob } from "./job-store.js";
 import { Job, isQueuedJob, isRunningJob, isSuccessJob, isFailureJob, isCancelledJob, isActiveJob, PhaseResultInfo, DiagnosisReport, UserSummary } from "../types/pipeline.js";
-import { areDependenciesMet } from "./dependency-resolver.js";
 import type { ConfigProvider } from "../config/config-provider.js";
 import { ProjectErrorState, StuckThresholdConfig } from "../types/config.js";
 import { JobCleanupService } from "./job-cleanup.js";
 import { ProjectErrorTracker } from "./project-error-tracker.js";
 import { StuckJobMonitor } from "./stuck-monitor.js";
 import { JobLifecycle } from "./job-lifecycle.js";
+import { JobScheduler } from "./job-scheduler.js";
 import type { TaskFactory } from "../tasks/task-factory.js";
 import type { AQMTask } from "../tasks/aqm-task.js";
 
@@ -91,39 +91,30 @@ function convertStoreJobToJob(storeJob: StoreJob): Job {
 const STUCK_CHECK_INTERVAL_MS = 60 * 1000; // check every minute
 
 export class JobQueue {
-  private pending: string[] = [];  // job IDs
-  private running: Set<string> = new Set();
   private store: JobStore;
-  private concurrency: number;
   private handler: JobHandler;
   private cancelled: Set<string> = new Set();
-  private readonly stuckMonitor: StuckJobMonitor;
-  private stuckTimeoutMs: number;
-  private stuckThresholds?: StuckThresholdConfig;
-  private shuttingDown: boolean = false;
   private stuckAborted: Set<string> = new Set();
-  private isProcessing: boolean = false;
-  private needsReprocess: boolean = false;
-  private processingJobs: Set<string> = new Set(); // jobs temporarily removed during processNext
-  private projectConcurrency: Map<string, number> = new Map(); // repo -> concurrency limit
-  private runningByRepo: Map<string, number> = new Map(); // repo -> count of running jobs
-  private readonly errorTracker = new ProjectErrorTracker();
-  private cleanupService: JobCleanupService;
-  private readonly lifecycle: JobLifecycle;
-  private lastServedRepo: string | null = null; // round-robin: last repo that was served
-  private taskFactory?: TaskFactory;
   private activeTasks: Map<string, AQMTask> = new Map(); // jobId -> AQMTask
+  private taskFactory?: TaskFactory;
+  private shuttingDown: boolean = false;
+  private readonly errorTracker = new ProjectErrorTracker();
+  private cleanupService?: JobCleanupService; // setDependencies 호출 후 활성화
+  private readonly scheduler: JobScheduler;
+  private readonly lifecycle: JobLifecycle;
+  private readonly stuckMonitor: StuckJobMonitor;
   private projectRoot?: string;
   private configProvider?: ConfigProvider;
 
   /**
-   * 런타임 의존성(projectRoot, ConfigProvider)을 주입한다 (Plan C #C2/#C6).
+   * 런타임 의존성(projectRoot, ConfigProvider)을 주입한다 (Plan C #C2/#C6/#C10).
    *
    * 구성자 서명을 바꾸지 않기 위한 post-construction 주입. cli.ts 등 애플리케이션 코드에서 호출하면
    * `JobCleanupService`/`ProjectErrorTracker`가 활성화된다. 테스트는 호출하지 않으면
    * cleanupService 미설정 → cleanup no-op, errorTracker는 configProvider 없이 기본 임계값으로 동작.
    *
-   * Plan C #C6에서 `process.cwd()` fallback과 `loadConfig` 직접 호출이 모두 제거됐다.
+   * Plan C #C10 Phase 3에서 `process.cwd()` fallback이 완전히 제거됐다. 호출하지 않으면
+   * cleanup이 그냥 동작하지 않으며, 어떤 디렉터리도 가정하지 않는다.
    */
   setDependencies(deps: { projectRoot?: string; configProvider?: ConfigProvider }): void {
     if (deps.projectRoot) this.projectRoot = deps.projectRoot;
@@ -131,11 +122,9 @@ export class JobQueue {
       this.configProvider = deps.configProvider;
       this.errorTracker.setConfigProvider(deps.configProvider);
     }
-    // cleanupService는 항상 갱신해 최신 의존성을 사용한다.
-    this.cleanupService = new JobCleanupService(
-      this.projectRoot ?? process.cwd(),
-      this.configProvider
-    );
+    if (this.projectRoot) {
+      this.cleanupService = new JobCleanupService(this.projectRoot, this.configProvider);
+    }
   }
 
   constructor(
@@ -148,21 +137,22 @@ export class JobQueue {
     stuckThresholds?: StuckThresholdConfig
   ) {
     this.store = store;
-    this.concurrency = concurrency;
     this.handler = handler;
-    this.stuckTimeoutMs = stuckTimeoutMs;
-    this.stuckThresholds = stuckThresholds;
     this.taskFactory = taskFactory;
 
-    if (projectConcurrency) {
-      Object.entries(projectConcurrency).forEach(([repo, limit]) => {
-        this.projectConcurrency.set(repo, limit);
-      });
-    }
-
-    // cleanupService는 process.cwd 기준으로 즉시 활성화된다 (테스트 환경 호환).
-    // setDependencies가 호출되면 정확한 projectRoot/configProvider를 가진 새 인스턴스로 교체된다.
-    this.cleanupService = new JobCleanupService(process.cwd());
+    // 스케줄링 책임은 JobScheduler에 위임 (Plan C #C10 Phase 3)
+    this.scheduler = new JobScheduler({
+      store: this.store,
+      errorTracker: this.errorTracker,
+      concurrency,
+      projectConcurrency,
+      cancelledRef: this.cancelled,
+      onStartJob: (job) => {
+        this.lifecycle.execute(convertStoreJobToJob(job)).catch((err: unknown) => {
+          logger.error(`Job ${job.id} unexpected error: ${getErrorMessage(err)}`);
+        });
+      },
+    });
 
     // 잡 실행/결과 처리는 JobLifecycle에 위임 (Plan C #C10 Phase 2)
     this.lifecycle = new JobLifecycle({
@@ -174,20 +164,17 @@ export class JobQueue {
       stuckAborted: this.stuckAborted,
       cancelled: this.cancelled,
       onJobFinished: (jobId, repo) => {
-        this.running.delete(jobId);
-        this.removeJobFromRepo(jobId, repo);
-        // Process next in queue (defer via setImmediate to avoid deep call stacks)
-        setImmediate(() => this.processNext());
+        this.scheduler.markJobFinished(jobId, repo);
       },
     });
 
-    // Stuck 잡 탐지는 StuckJobMonitor에 위임 (Plan C #C10)
+    // Stuck 잡 탐지는 StuckJobMonitor에 위임 (Plan C #C10 Phase 1)
     this.stuckMonitor = new StuckJobMonitor({
       store: this.store,
-      stuckTimeoutMs: this.stuckTimeoutMs,
-      stuckThresholds: this.stuckThresholds,
+      stuckTimeoutMs,
+      stuckThresholds,
       checkIntervalMs: STUCK_CHECK_INTERVAL_MS,
-      getRunningJobIds: () => this.running,
+      getRunningJobIds: () => this.scheduler.getRunningIds(),
       toJob: convertStoreJobToJob,
       onStuckDetected: (jobId, reason) => {
         this.store.update(jobId, {
@@ -196,8 +183,7 @@ export class JobQueue {
           error: reason,
         });
         this.stuckAborted.add(jobId);
-        this.running.delete(jobId);
-        setTimeout(() => this.processNext(), 0);
+        this.scheduler.markStuckAborted(jobId);
       },
     });
     this.stuckMonitor.start();
@@ -207,7 +193,7 @@ export class JobQueue {
    * Marks a job as stuck-aborted so executeJob can detect it after the handler returns.
    */
   abortJob(jobId: string): boolean {
-    if (this.running.has(jobId)) {
+    if (this.scheduler.isRunning(jobId)) {
       this.stuckAborted.add(jobId);
       return true;
     }
@@ -221,20 +207,20 @@ export class JobQueue {
   shutdown(timeoutMs: number = 30000): Promise<void> {
     this.shuttingDown = true;
     this.stuckMonitor.stop();
-    if (this.running.size === 0) {
+    if (this.scheduler.runningCount === 0) {
       return Promise.resolve();
     }
     return new Promise((resolve) => {
       const start = Date.now();
       const check = setInterval(() => {
-        if (this.running.size === 0) {
+        if (this.scheduler.runningCount === 0) {
           clearInterval(check);
           resolve();
           return;
         }
         if (Date.now() - start >= timeoutMs) {
           clearInterval(check);
-          logger.warn(`Shutdown timeout: ${this.running.size} job(s) still running after ${timeoutMs / 1000}s`);
+          logger.warn(`Shutdown timeout: ${this.scheduler.runningCount} job(s) still running after ${timeoutMs / 1000}s`);
           resolve();
         }
       }, 1000);
@@ -257,11 +243,11 @@ export class JobQueue {
       if (isRunningJob(job)) {
         // Was running when server died — reset to queued
         this.store.update(job.id, { status: "queued", startedAt: undefined });
-        this.pending.push(job.id);
+        this.scheduler.pushPending(job.id);
         recovered++;
         logger.info(`Job recovered (was running): ${job.id}`);
       } else if (isQueuedJob(job)) {
-        this.pending.push(job.id);
+        this.scheduler.pushPending(job.id);
         recovered++;
         logger.info(`Job recovered (was queued): ${job.id}`);
       }
@@ -269,7 +255,7 @@ export class JobQueue {
 
     if (recovered > 0) {
       logger.info(`Recovered ${recovered} job(s) from previous session`);
-      this.processNext();
+      void this.scheduler.processNext();
     }
 
     return recovered;
@@ -278,10 +264,10 @@ export class JobQueue {
 
   /**
    * 실패 잡 정리 — JobCleanupService에 위임 (Plan C #C6).
-   * 호출부는 fire-and-forget(`void this.cleanupFailedJobArtifacts(...)`) 또는
-   * await(retryJob의 race 차단) 형태로 사용한다.
+   * setDependencies 전에는 no-op (테스트 환경 호환).
    */
   private async cleanupFailedJobArtifacts(issueNumber: number): Promise<void> {
+    if (!this.cleanupService) return;
     await this.cleanupService.cleanupFailedJobArtifacts(issueNumber);
   }
 
@@ -319,13 +305,11 @@ export class JobQueue {
     }
 
     const job = this.store.create(issueNumber, repo, dependencies, isRetry, initialPhaseResults, priority, triggerReason);
-    // Convert StoreJob to discriminated union Job type
     const snapshot = convertStoreJobToJob(job);
-    this.pending.push(job.id);
-    logger.info(`Job enqueued: ${job.id} (pending: ${this.pending.length}, running: ${this.running.size})`);
+    const status = this.scheduler.getStatus();
+    logger.info(`Job enqueued: ${job.id} (pending: ${status.pending + 1}, running: ${status.running})`);
 
-    // Try to process next
-    this.processNext();
+    this.scheduler.enqueue(job.id);
 
     return snapshot;
   }
@@ -374,16 +358,14 @@ export class JobQueue {
    */
   cancel(jobId: string): boolean {
     // Remove from pending
-    const pendingIdx = this.pending.indexOf(jobId);
-    if (pendingIdx >= 0) {
-      this.pending.splice(pendingIdx, 1);
+    if (this.scheduler.removePending(jobId)) {
       this.store.update(jobId, { status: "cancelled", completedAt: new Date().toISOString() });
       logger.info(`Job cancelled (was pending): ${jobId}`);
       return true;
     }
 
     // Mark running job for cancellation
-    if (this.running.has(jobId)) {
+    if (this.scheduler.isRunning(jobId)) {
       this.cancelled.add(jobId);
       this.store.update(jobId, { status: "cancelled", completedAt: new Date().toISOString() });
       // Kill active task if tracked
@@ -411,20 +393,7 @@ export class JobQueue {
    * Sets the concurrency limit and immediately processes pending jobs if capacity allows.
    */
   setConcurrency(n: number): void {
-    if (n <= 0 || !Number.isInteger(n)) {
-      throw new Error("Concurrency must be a positive integer");
-    }
-
-    this.concurrency = n;
-    logger.info(`Concurrency updated to ${n}`);
-
-    // Trigger immediate processing if we now have more capacity
-    this.processNext();
-
-    // If processNext is already running (re-entrancy), ensure it gets called again
-    if (this.isProcessing && !this.needsReprocess) {
-      this.needsReprocess = true;
-    }
+    this.scheduler.setConcurrency(n);
   }
 
   /**
@@ -432,62 +401,14 @@ export class JobQueue {
    * Pass null to remove the project-specific limit.
    */
   setProjectConcurrency(repo: string, limit: number | null): void {
-    if (limit !== null && (limit <= 0 || !Number.isInteger(limit))) {
-      throw new Error("Project concurrency limit must be a positive integer");
-    }
-
-    if (limit === null) {
-      this.projectConcurrency.delete(repo);
-      logger.info(`Project concurrency limit removed for ${repo}`);
-    } else {
-      this.projectConcurrency.set(repo, limit);
-      logger.info(`Project concurrency limit for ${repo} set to ${limit}`);
-    }
-
-    // Trigger immediate processing in case capacity increased
-    this.processNext();
+    this.scheduler.setProjectConcurrency(repo, limit);
   }
 
   /**
    * Returns queue status.
    */
   getStatus(): { pending: number; running: number; concurrency: number } {
-    return {
-      pending: this.pending.length + this.processingJobs.size,
-      running: this.running.size,
-      concurrency: this.concurrency,
-    };
-  }
-
-  /**
-   * Checks if a new job can be started for the given repo based on project-specific concurrency limits.
-   */
-  private canStartJobForRepo(repo: string): boolean {
-    const projectLimit = this.projectConcurrency.get(repo);
-    if (!projectLimit) {
-      return true;
-    }
-    const currentRunning = this.runningByRepo.get(repo) ?? 0;
-    return currentRunning < projectLimit;
-  }
-
-  /**
-   * Increments the running count for a repo.
-   */
-  private addJobToRepo(jobId: string, repo: string): void {
-    this.runningByRepo.set(repo, (this.runningByRepo.get(repo) ?? 0) + 1);
-  }
-
-  /**
-   * Decrements the running count for a repo.
-   */
-  private removeJobFromRepo(jobId: string, repo: string): void {
-    const current = this.runningByRepo.get(repo) ?? 0;
-    if (current > 1) {
-      this.runningByRepo.set(repo, current - 1);
-    } else {
-      this.runningByRepo.delete(repo);
-    }
+    return this.scheduler.getStatus();
   }
 
   // Plan C #C6: 프로젝트 실패 추적/일시 정지 로직은 ProjectErrorTracker로 응집됨.
@@ -520,229 +441,4 @@ export class JobQueue {
   getProjectStatus(repo: string): ProjectErrorState | null {
     return this.errorTracker.getProjectStatus(repo);
   }
-
-  /**
-   * Gets the highest priority job from the pending queue and removes it.
-   * Priority order: high (0) > normal (1) > low (2)
-   * Within same priority: FIFO (earliest createdAt first)
-   * Missing priority defaults to 'normal'
-   */
-  private getNextPriorityJob(): string | null {
-    if (this.pending.length === 0) return null;
-
-    let bestIndex = -1;
-    let bestPriorityValue = 3; // Lower than 'low' (2)
-    let bestCreatedAt = '';
-
-    // Find the job with highest priority (lowest numeric value)
-    for (let i = 0; i < this.pending.length; i++) {
-      const jobId = this.pending[i];
-      const job = this.store.get(jobId);
-      if (!job) continue;
-
-      // Map priority to numeric value for comparison: high=0, normal=1, low=2
-      const priority = job.priority ?? 'normal';
-      const priorityValue = priority === 'high' ? 0 : priority === 'normal' ? 1 : 2;
-
-      // Select if higher priority, or same priority but earlier created, or first job
-      if (bestIndex === -1 ||
-          priorityValue < bestPriorityValue ||
-          (priorityValue === bestPriorityValue && job.createdAt < bestCreatedAt)) {
-        bestIndex = i;
-        bestPriorityValue = priorityValue;
-        bestCreatedAt = job.createdAt;
-      }
-    }
-
-    if (bestIndex >= 0) {
-      return this.pending.splice(bestIndex, 1)[0];
-    }
-    return null;
-  }
-
-  /**
-   * Gets the next job using round-robin scheduling across projects.
-   * Cycles through repos starting after lastServedRepo, and within each repo
-   * selects the highest-priority job (FIFO within same priority).
-   */
-  private getNextRoundRobinJob(): string | null {
-    if (this.pending.length === 0) return null;
-
-    // Build ordered repo list and group jobs by repo (preserving insertion order)
-    const repoOrder: string[] = [];
-    const jobsByRepo = new Map<string, string[]>();
-    for (const jobId of this.pending) {
-      const job = this.store.get(jobId);
-      if (!job) continue;
-      if (!jobsByRepo.has(job.repo)) {
-        repoOrder.push(job.repo);
-        jobsByRepo.set(job.repo, []);
-      }
-      jobsByRepo.get(job.repo)!.push(jobId);
-    }
-
-    if (repoOrder.length === 0) return null;
-
-    // Determine starting index: one after lastServedRepo
-    let startIndex = 0;
-    if (this.lastServedRepo !== null) {
-      const lastIdx = repoOrder.indexOf(this.lastServedRepo);
-      if (lastIdx >= 0) {
-        startIndex = (lastIdx + 1) % repoOrder.length;
-      }
-    }
-
-    // Cycle through repos to find the next one with eligible jobs
-    for (let i = 0; i < repoOrder.length; i++) {
-      const repo = repoOrder[(startIndex + i) % repoOrder.length];
-      const repoJobs = jobsByRepo.get(repo);
-      if (!repoJobs || repoJobs.length === 0) continue;
-
-      // Select highest-priority job within this repo (FIFO within same priority)
-      let bestIndex = -1;
-      let bestPriorityValue = 3;
-      let bestCreatedAt = '';
-
-      for (let j = 0; j < repoJobs.length; j++) {
-        const jobId = repoJobs[j];
-        const job = this.store.get(jobId);
-        if (!job) continue;
-
-        const priority = job.priority ?? 'normal';
-        const priorityValue = priority === 'high' ? 0 : priority === 'normal' ? 1 : 2;
-
-        if (bestIndex === -1 ||
-            priorityValue < bestPriorityValue ||
-            (priorityValue === bestPriorityValue && job.createdAt < bestCreatedAt)) {
-          bestIndex = j;
-          bestPriorityValue = priorityValue;
-          bestCreatedAt = job.createdAt;
-        }
-      }
-
-      if (bestIndex >= 0) {
-        const selectedJobId = repoJobs[bestIndex];
-        const pendingIdx = this.pending.indexOf(selectedJobId);
-        if (pendingIdx >= 0) {
-          this.pending.splice(pendingIdx, 1);
-        }
-        this.lastServedRepo = repo;
-        return selectedJobId;
-      }
-    }
-
-    return null;
-  }
-
-  private async processNext(): Promise<void> {
-    // Bail out if the store has been closed (e.g., during test teardown)
-    if (this.store.isClosed) return;
-
-    // Prevent re-entrancy
-    if (this.isProcessing) {
-      this.needsReprocess = true;
-      return;
-    }
-
-    this.isProcessing = true;
-    this.needsReprocess = false;
-
-    try {
-      // Collect job IDs that are skipped due to unmet dependencies (put back at end)
-      const deferred: string[] = [];
-
-      while (this.running.size < this.concurrency && this.pending.length > 0) {
-        const jobId = this.getNextRoundRobinJob();
-        if (!jobId) break; // No valid jobs available
-
-        // Track job as being processed
-        this.processingJobs.add(jobId);
-
-        if (this.cancelled.has(jobId)) {
-          this.cancelled.delete(jobId);
-          this.processingJobs.delete(jobId);
-          continue;
-        }
-
-        const job = this.store.get(jobId);
-        if (!job) {
-          this.processingJobs.delete(jobId);
-          continue;
-        }
-
-        // Check dependency readiness
-        if (job.dependencies && job.dependencies.length > 0) {
-          const { met, pending } = areDependenciesMet(job.dependencies, job.repo, this.store);
-          if (!met) {
-            // Check if any dependency has permanently failed — fail the dependent job immediately
-            let depFailed = false;
-            for (const depNum of job.dependencies) {
-              const depJob = this.store.findAnyByIssue(depNum, job.repo);
-              if (depJob && (isFailureJob(depJob) || isCancelledJob(depJob))) {
-                logger.error(`Job ${jobId} dependency #${depNum} failed — failing dependent job`);
-                this.store.update(jobId, {
-                  status: "failure",
-                  completedAt: new Date().toISOString(),
-                  error: `의존 이슈 #${depNum}이(가) 실패하여 실행 불가`,
-                });
-                depFailed = true;
-                break;
-              }
-            }
-            if (!depFailed) {
-              logger.info(`Job ${jobId} waiting for dependencies: #${pending.join(", #")}`);
-              this.processingJobs.delete(jobId);
-              deferred.push(jobId);
-            } else {
-              this.processingJobs.delete(jobId);
-            }
-            continue;
-          }
-        }
-
-        // Check project-specific concurrency limits
-        if (!this.canStartJobForRepo(job.repo)) {
-          logger.info(`Job ${jobId} deferred due to project concurrency limit for repo ${job.repo}`);
-          this.processingJobs.delete(jobId);
-          deferred.push(jobId);
-          continue;
-        }
-
-        // Check if project is paused due to consecutive failures
-        if (this.isProjectPaused(job.repo)) {
-          const errorState = this.errorTracker.getProjectStatus(job.repo);
-          const remainingMs = errorState!.pausedUntil! - Date.now();
-          logger.info(`Job ${jobId} deferred due to project pause (${job.repo}). Resume in ${Math.round(remainingMs / 1000)}s`);
-          this.processingJobs.delete(jobId);
-          deferred.push(jobId);
-          continue;
-        }
-
-        this.running.add(jobId);
-        this.addJobToRepo(jobId, job.repo);
-        this.processingJobs.delete(jobId);
-        this.store.update(jobId, { status: "running", startedAt: new Date().toISOString() });
-
-        logger.info(`Job started: ${jobId}`);
-
-        // Run async - don't await, let it run in background
-        this.lifecycle.execute(convertStoreJobToJob(job)).catch((err: unknown) => {
-          logger.error(`Job ${jobId} unexpected error: ${getErrorMessage(err)}`);
-        });
-      }
-
-      // Re-append deferred jobs so they are retried on the next processNext() call
-      for (const jobId of deferred) {
-        this.pending.push(jobId);
-      }
-    } finally {
-      this.isProcessing = false;
-
-      // If another call was made while processing, handle it now
-      if (this.needsReprocess) {
-        setImmediate(() => this.processNext());
-      }
-    }
-  }
-
 }

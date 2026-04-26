@@ -69,20 +69,19 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     checkpointFn({ plan: undefined, phaseResults: [...accumulatedPhaseResults] });
 
     // Phase 3: Core Loop Execution (Plan generation + Phase execution)
-    const coreResult = await executeCoreLoopPhase(
+    const coreResult = await executeCoreLoopPhase({
       input,
       runtime,
       issue,
-      setupResult.project,
+      project: setupResult.project,
       config,
-      setupResult.promptsDir,
-      setupResult.dataDir,
+      promptsDir: setupResult.promptsDir,
+      dataDir: setupResult.dataDir,
       envResult,
-      setupResult.timer,
+      timer: setupResult.timer,
       mode,
-      hookRegistry,
-      hookExecutor
-    );
+      hooks: { registry: hookRegistry, executor: hookExecutor },
+    });
 
     checkpointFn({ plan: coreResult.coreResult.plan, phaseResults: [...accumulatedPhaseResults, ...coreResult.coreResult.phaseResults] });
 

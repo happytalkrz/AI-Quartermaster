@@ -24,6 +24,7 @@ import {
   PROGRESS_DONE
 } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
+import type { CoreLoopPhaseContext } from "./phase-tracker.js";
 import type { AQConfig, PipelineMode, ExecutionMode, GitConfig } from "../../types/config.js";
 import type { SenderPermission } from "../../github/issue-fetcher.js";
 import type { PipelineState, PhaseResult } from "../../types/pipeline.js";
@@ -289,19 +290,11 @@ export async function executeEnvironmentSetup(
  * Execute core loop phase: Plan generation and phase execution
  */
 export async function executeCoreLoopPhase(
-  input: OrchestratorInput,
-  runtime: PipelineRuntime,
-  issue: GitHubIssue,
-  project: ResolvedProject,
-  config: AQConfig,
-  promptsDir: string,
-  dataDir: string,
-  envResult: EnvironmentSetupResult,
-  timer: PipelineTimer,
-  mode: PipelineMode,
-  hookRegistry?: HookRegistry,
-  hookExecutor?: HookExecutor
+  ctx: CoreLoopPhaseContext
 ): Promise<CoreLoopExecutionResult> {
+  const { input, runtime, issue, project, config, promptsDir, dataDir, envResult, timer, mode, hooks } = ctx;
+  const hookRegistry = hooks?.registry;
+  const hookExecutor = hooks?.executor;
   const { repo } = input;
   const jl = input.jobLogger;
 

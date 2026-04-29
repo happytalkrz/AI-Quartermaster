@@ -52,7 +52,7 @@ export interface CostBreakdown {
 }
 
 export interface Plan {
-  mode?: "code" | "content";
+  mode?: "code" | "content" | "qa";
   issueNumber: number;
   title: string;
   problemDefinition: string;

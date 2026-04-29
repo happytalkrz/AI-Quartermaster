@@ -354,7 +354,7 @@ export async function executeCoreLoopPhase(
 
   if (coreResult.plan.mode && !issue.labels.some((l: string) => l.startsWith("aq-mode:"))) {
     const planMode = coreResult.plan.mode;
-    if (planMode !== mode) {
+    if (planMode !== "qa" && planMode !== mode) {
       finalMode = planMode;
       finalPreset = getModePreset(finalMode);
       logger.info(`Pipeline mode updated by Plan: ${finalMode}`);

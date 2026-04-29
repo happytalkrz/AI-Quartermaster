@@ -1,5 +1,4 @@
-import { Hono, type Context, type Next } from "hono";
-import { timingSafeEqual } from "crypto";
+import { Hono, type Context } from "hono";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import type { JobStore, Job } from "../queue/job-store.js";
@@ -28,6 +27,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerSkipEventsRoutes } from "./routes/skip-events.js";
 import { registerNewIssueRoute } from "./routes/new-issue.js";
 import { registerSSERoutes } from "./routes/sse.js";
+import { setupAuth } from "./routes/auth.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -102,10 +102,6 @@ export function cleanupDashboardResources(): void {
   cleanupAllSSEClients();
   sessionManager.revokeAll();
   loginRateLimiter?.destroy();
-}
-
-function isValidSessionToken(token: string): boolean {
-  return sessionManager.validate(token);
 }
 
 /**
@@ -231,122 +227,14 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
-  if (apiKey) {
-    // POST /api/auth — exchange Bearer key for a short-lived session token
-    api.post("/api/auth", (c) => {
-      const ip =
-        c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-        (c.env as Record<string, unknown> | undefined)?.["remoteAddress"] as string | undefined ??
-        "unknown";
-
-      const rateLimitCheck = loginRateLimiter?.checkAndRecord(ip);
-      if (rateLimitCheck && !rateLimitCheck.allowed) {
-        const retryAfterSec = Math.ceil((rateLimitCheck.retryAfterMs ?? 900_000) / 1000);
-        getLogger().warn(`[Auth] Rate limit exceeded for IP ${ip}`);
-        return c.json(
-          { error: "Too Many Requests" },
-          429,
-          { "Retry-After": String(retryAfterSec) }
-        );
-      }
-
-      const auth = c.req.header("Authorization");
-      const expected = Buffer.from(`Bearer ${apiKey}`);
-      const actual = Buffer.from(auth ?? "");
-      if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-
-      loginRateLimiter?.reset(ip);
-      const { token, expiresIn } = sessionManager.createToken();
-      return c.json({ token, expiresIn });
-    });
-
-    // Auth middleware for regular (non-SSE) API endpoints — Bearer header only
-    // Deny-by-default: all /api/* routes require auth except public and SSE paths
-    const bearerAuth = async (c: Context, next: Next) => {
-      const path = c.req.path;
-      // Public routes — no auth required
-      if (path === "/api/auth") {
-        await next();
-        return;
-      }
-      // SSE routes — handled by sseTokenAuth or healSseKeyAuth below
-      if (
-        path === "/api/events" ||
-        /^\/api\/jobs\/[^/]+\/logs\/stream$/.test(path) ||
-        /^\/api\/doctor\/heal\/[^/]+\/stream$/.test(path)
-      ) {
-        await next();
-        return;
-      }
-      const auth = c.req.header("Authorization");
-      const expected = Buffer.from(`Bearer ${apiKey}`);
-      const actual = Buffer.from(auth ?? "");
-      if (!auth || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    };
-
-    api.use("/api/*", bearerAuth);
-
-    // SSE endpoints use short-lived session token from ?token= query param
-    const sseTokenAuth = async (c: Context, next: Next) => {
-      const token = c.req.query("token");
-      if (!token || !isValidSessionToken(token)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    };
-
-    api.use("/api/events", sseTokenAuth);
-    api.use("/api/jobs/:id/logs/stream", sseTokenAuth);
-
-    // Doctor heal SSE uses raw API key via ?key= query param (EventSource cannot set headers)
-    const healSseKeyAuth = async (c: Context, next: Next) => {
-      const key = c.req.query("key");
-      if (!key) return c.json({ error: "Unauthorized" }, 401);
-      const expected = Buffer.from(apiKey);
-      const actual = Buffer.from(key);
-      if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-        return c.json({ error: "Unauthorized" }, 401);
-      }
-      await next();
-    };
-    api.use("/api/doctor/heal/:id/stream", healSseKeyAuth);
-  } else {
-    // apiKey 미설정: 바인드 호스트에 따라 로그 레벨 분기
-    const isLocalBind = !hostname || hostname === "127.0.0.1" || hostname === "localhost";
-    if (readOnly) {
-      // readOnly 모드: write 엔드포인트에 403 반환
-      const readOnlyGuard = async (c: Context, next: Next) => {
-        if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-          return c.json({ error: "Forbidden: dashboard is in read-only mode" }, 403);
-        }
-        await next();
-      };
-      api.use("/api/config", readOnlyGuard);
-      api.use("/api/projects", readOnlyGuard);
-      api.use("/api/projects/*", readOnlyGuard);
-      api.use("/api/jobs/*", readOnlyGuard);
-      api.use("/api/update", readOnlyGuard);
-      api.use("/api/new-issue", readOnlyGuard);
-      getLogger().info(
-        "Dashboard is running in read-only mode. Write endpoints are disabled." +
-        (!isLocalBind ? " Non-local bind is permitted in read-only mode." : "")
-      );
-    } else if (isLocalBind) {
-      getLogger().info(
-        "Dashboard API key is not configured. All endpoints are accessible without authentication."
-      );
-    } else {
-      getLogger().warn(
-        "Dashboard API key is not configured. All endpoints are accessible without authentication. " +
-        "Non-local bind without API key is a security risk."
-      );
-    }
-  }
+  // Auth + readOnly guard: 도메인 라우트 분할 (Plan C #C9 12단계)
+  setupAuth(api, {
+    apiKey,
+    hostname,
+    readOnly: !!readOnly,
+    sessionManager,
+    loginRateLimiter,
+  });
 
   const configPath = `${rootDir}/config.yml`;
 

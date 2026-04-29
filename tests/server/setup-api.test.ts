@@ -127,7 +127,7 @@ const mockJobQueue = {
 } as unknown as JobQueue;
 
 function makeApp() {
-  return createDashboardRoutes(mockJobStore, mockJobQueue);
+  return createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 }
 
 async function postJson(app: ReturnType<typeof makeApp>, path: string, body: unknown) {

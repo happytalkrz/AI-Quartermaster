@@ -113,33 +113,33 @@ describe("Dashboard Auth — apiKey 미설정 시 쓰기 API 차단", () => {
   });
 
   it("apiKey 미설정 시 job cancel(POST)은 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "POST", "/api/jobs/job-123/cancel");
     // readOnlyGuard 제거 — apiKey 없이도 모든 API 허용
     expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 job retry(POST)은 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "POST", "/api/jobs/job-123/retry");
     expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 job delete(DELETE)은 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "DELETE", "/api/jobs/job-123");
     expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 project 관리(DELETE)는 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "DELETE", "/api/projects/owner-repo");
     // projects 관리는 apiKey 없이도 허용 (403이 아님)
     expect(res.status).not.toBe(403);
   });
 
   it("apiKey 미설정 시 GET 읽기 요청은 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "GET", "/api/jobs");
     // 403이 아님 (읽기는 허용)
     expect(res.status).not.toBe(403);
@@ -162,7 +162,7 @@ describe("Dashboard Auth — readOnly 모드", () => {
 
   // (1) readOnly=true 시 write 엔드포인트 403 확인
   it("readOnly=true 시 POST /api/jobs/:id/cancel은 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "POST", "/api/jobs/job-123/cancel");
     expect(res.status).toBe(403);
     const body = await res.json() as { error: string };
@@ -170,75 +170,75 @@ describe("Dashboard Auth — readOnly 모드", () => {
   });
 
   it("readOnly=true 시 POST /api/jobs/:id/retry는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "POST", "/api/jobs/job-123/retry");
     expect(res.status).toBe(403);
   });
 
   it("readOnly=true 시 DELETE /api/jobs/:id는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "DELETE", "/api/jobs/job-123");
     expect(res.status).toBe(403);
   });
 
   it("readOnly=true 시 DELETE /api/projects/:id는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "DELETE", "/api/projects/owner-repo");
     expect(res.status).toBe(403);
   });
 
   it("readOnly=true 시 POST /api/projects는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "POST", "/api/projects");
     expect(res.status).toBe(403);
   });
 
   it("readOnly=true 시 PUT /api/config는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "PUT", "/api/config");
     expect(res.status).toBe(403);
   });
 
   it("readOnly=true 시 POST /api/update는 403을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "POST", "/api/update");
     expect(res.status).toBe(403);
   });
 
   // (2) readOnly=true 시 GET 엔드포인트는 허용 (200 확인)
   it("readOnly=true 시 GET /api/jobs는 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "GET", "/api/jobs");
     expect(res.status).not.toBe(403);
   });
 
   it("readOnly=true 시 GET /api/stats는 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "GET", "/api/stats");
     expect(res.status).not.toBe(403);
   });
 
   it("readOnly=true 시 GET /api/config는 허용된다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, undefined, undefined, undefined, true);
+    const app = createDashboardRoutes({ store, queue, readOnly: true });
     const res = await request(app, "GET", "/api/config");
     expect(res.status).not.toBe(403);
   });
 
   // (3) readOnly=false(기본) 시 기존 동작 유지 — write 엔드포인트가 403이 아님
   it("readOnly=false(기본) 시 POST /api/jobs/:id/cancel은 차단되지 않는다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "POST", "/api/jobs/job-123/cancel");
     expect(res.status).not.toBe(403);
   });
 
   it("readOnly=false(기본) 시 DELETE /api/jobs/:id는 차단되지 않는다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "DELETE", "/api/jobs/job-123");
     expect(res.status).not.toBe(403);
   });
 
   it("readOnly=false(기본) 시 DELETE /api/projects/:id는 차단되지 않는다", async () => {
-    const app = createDashboardRoutes(store, queue);
+    const app = createDashboardRoutes({ store, queue });
     const res = await request(app, "DELETE", "/api/projects/owner-repo");
     expect(res.status).not.toBe(403);
   });
@@ -260,7 +260,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("apiKey 설정 시 Authorization 헤더 없으면 /api/jobs는 401을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/jobs");
     expect(res.status).toBe(401);
     const body = await res.json() as { error: string };
@@ -268,7 +268,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("잘못된 API 키로 요청 시 401을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/jobs", {
       Authorization: "Bearer wrong-key",
     });
@@ -276,7 +276,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("올바른 Bearer 토큰으로 요청 시 통과한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/jobs", {
       Authorization: `Bearer ${API_KEY}`,
     });
@@ -285,7 +285,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("Bearer 접두어 없이 키만 보내면 401을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/jobs", {
       Authorization: API_KEY,
     });
@@ -293,7 +293,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("POST /api/auth에서 올바른 키로 세션 토큰을 발급받는다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "POST", "/api/auth", {
       Authorization: `Bearer ${API_KEY}`,
     });
@@ -305,7 +305,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("POST /api/auth에서 잘못된 키는 401을 반환한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "POST", "/api/auth", {
       Authorization: "Bearer bad-key",
     });
@@ -313,19 +313,19 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("apiKey 설정 시 /api/stats도 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/stats");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/config도 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/config");
     expect(res.status).toBe(401);
   });
 
   it("타이밍 어택 방어: 잘못된 키도 일정 시간 내 응답한다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const start = Date.now();
     await request(app, "GET", "/api/jobs", {
       Authorization: "Bearer x",
@@ -337,43 +337,43 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("apiKey 설정 시 /api/metrics/throughput은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/metrics/throughput");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/metrics/success-rate은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/metrics/success-rate");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/skip-events/stats은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/skip-events/stats");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/claude-profile은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/claude-profile");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/repositories은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/repositories");
     expect(res.status).toBe(401);
   });
 
   it("apiKey 설정 시 /api/projects/health은 인증 필요하다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/projects/health");
     expect(res.status).toBe(401);
   });
 
   it("올바른 Bearer 토큰으로 /api/metrics/throughput 요청 시 401이 아니다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/metrics/throughput", {
       Authorization: `Bearer ${API_KEY}`,
     });
@@ -381,7 +381,7 @@ describe("Dashboard Auth — apiKey 설정 시 인증 강제", () => {
   });
 
   it("올바른 Bearer 토큰으로 /api/claude-profile 요청 시 401이 아니다", async () => {
-    const app = createDashboardRoutes(store, queue, undefined, API_KEY);
+    const app = createDashboardRoutes({ store, queue, apiKey: API_KEY });
     const res = await request(app, "GET", "/api/claude-profile", {
       Authorization: `Bearer ${API_KEY}`,
     });

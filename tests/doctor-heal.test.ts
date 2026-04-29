@@ -136,7 +136,7 @@ describe('GET /api/doctor/run', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
   });
 
   it('runAllChecks 성공 시 200과 checks 배열을 반환한다', async () => {
@@ -256,7 +256,7 @@ describe('DoctorCheck 확장 필드 (healLevel / autoFixCommand)', () => {
     const checks: DoctorCheck[] = [makeCheck({ status: 'fail', fixSteps: ['수동으로 설치'] })];
     mockRunAllChecks.mockResolvedValue(checks);
 
-    const app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    const app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     const res = await app.request('/api/doctor/run');
 
     expect(res.status).toBe(200);
@@ -272,7 +272,7 @@ describe('DoctorCheck 확장 필드 (healLevel / autoFixCommand)', () => {
     };
     mockRunAllChecks.mockResolvedValue([extendedCheck as unknown as DoctorCheck]);
 
-    const app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    const app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     const res = await app.request('/api/doctor/run');
 
     expect(res.status).toBe(200);

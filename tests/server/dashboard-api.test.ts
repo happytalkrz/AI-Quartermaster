@@ -122,7 +122,7 @@ describe("Dashboard API - /api/config", () => {
 
   describe("without API key", () => {
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     });
 
     it("should return config without authentication", async () => {
@@ -164,7 +164,7 @@ describe("Dashboard API - /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
     });
 
     it("should require Bearer token authentication", async () => {
@@ -264,7 +264,7 @@ describe("Dashboard API - PUT /api/config", () => {
 
   describe("without API key", () => {
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     });
 
     it("should update config section successfully", async () => {
@@ -489,7 +489,7 @@ describe("Dashboard API - PUT /api/config", () => {
     const apiKey = "test-api-key-123";
 
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
     });
 
     it("should require Bearer token authentication", async () => {
@@ -605,7 +605,7 @@ describe("Dashboard API - SSE broadcast", () => {
       retryJob: vi.fn(),
     } as any;
 
-    app = createDashboardRoutes(mockStore, mockQueue);
+    app = createDashboardRoutes({ store: mockStore, queue: mockQueue });
   });
 
   it("should register SSE client and handle job deletion event", async () => {
@@ -690,7 +690,7 @@ describe("Dashboard API - Resource Management", () => {
       retryJob: vi.fn(),
     } as any;
 
-    app = createDashboardRoutes(mockStore, mockQueue, undefined, apiKey);
+    app = createDashboardRoutes({ store: mockStore, queue: mockQueue, apiKey });
   });
 
   it("should create SSE client with proper timestamps", async () => {
@@ -736,7 +736,7 @@ describe("Dashboard API - Projects Management", () => {
     vi.clearAllMocks();
     mockDetectProjectCommands.mockReturnValue({ language: "unknown", commands: {} });
     mockDetectBaseBranch.mockResolvedValue("main");
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
   });
 
   describe("POST /api/projects", () => {
@@ -1287,7 +1287,7 @@ describe("Dashboard API - Version Management", () => {
   describe("GET /api/version", () => {
     describe("without API key", () => {
       beforeEach(() => {
-        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
       });
 
       it("should return version info with update check", async () => {
@@ -1406,7 +1406,7 @@ describe("Dashboard API - Version Management", () => {
       const apiKey = "test-api-key-123";
 
       beforeEach(() => {
-        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
       });
 
       it("should require Bearer token authentication", async () => {
@@ -1450,7 +1450,7 @@ describe("Dashboard API - Version Management", () => {
   describe("POST /api/update", () => {
     describe("without API key", () => {
       beforeEach(() => {
-        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
       });
 
       it("should perform update successfully when no jobs running", async () => {
@@ -1562,7 +1562,7 @@ describe("Dashboard API - Version Management", () => {
       const apiKey = "test-api-key-123";
 
       beforeEach(() => {
-        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
       });
 
       it("should require Bearer token authentication", async () => {
@@ -1614,7 +1614,7 @@ describe("Dashboard API - Version Management", () => {
 
       beforeEach(() => {
         vi.clearAllMocks();
-        app = createDashboardRoutes(mockJobStore, mockJobQueue);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
       });
 
       describe("GET /api/jobs with project filter", () => {
@@ -1777,7 +1777,7 @@ describe("Dashboard API - Version Management", () => {
 
       beforeEach(() => {
         vi.clearAllMocks();
-        app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey);
+        app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, apiKey });
       });
 
       describe("GET /api/jobs with project filter", () => {
@@ -1858,7 +1858,7 @@ describe("Dashboard API - GET /api/health (detailed)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 
     mockLoadConfig.mockReturnValue(mockConfig as any);
 
@@ -2012,7 +2012,7 @@ describe("Dashboard API - GET /api/projects/health", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 
     mockExistsSync.mockReturnValue(true);
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
@@ -2172,7 +2172,7 @@ describe("Dashboard API - SSE Connection Management", () => {
       cancel: vi.fn(),
       retryJob: vi.fn(),
     } as any;
-    return createDashboardRoutes(store, queue);
+    return createDashboardRoutes({ store, queue });
   }
 
   beforeEach(() => {
@@ -2343,7 +2343,7 @@ describe("Dashboard API - SSE Connection Management", () => {
         cancel: vi.fn(),
         retryJob: vi.fn(),
       } as any;
-      const appWithError = createDashboardRoutes(throwingStore, throwingQueue);
+      const appWithError = createDashboardRoutes({ store: throwingStore, queue: throwingQueue });
 
       // Should not throw even when store.list() throws inside the stream
       const response = await appWithError.request("/api/events");
@@ -2402,7 +2402,7 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
       retryJob: vi.fn(),
     } as any;
 
-    app = createDashboardRoutes(localStore, localQueue);
+    app = createDashboardRoutes({ store: localStore, queue: localQueue });
   });
 
   it("should update job priority to high", async () => {
@@ -2560,7 +2560,7 @@ describe("Dashboard API - PUT /api/jobs/:id/priority", () => {
         retryJob: vi.fn(),
       } as any;
 
-      app = createDashboardRoutes(localStore, localQueue, undefined, apiKey);
+      app = createDashboardRoutes({ store: localStore, queue: localQueue, apiKey });
     });
 
     it("should return 401 without authentication", async () => {
@@ -2601,7 +2601,7 @@ describe("Dashboard API - GET /api/repositories", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 
     mockExistsSync.mockReturnValue(true);
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
@@ -2794,7 +2794,7 @@ describe("Dashboard API - GET /api/claude-profile", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     mockLoadConfig.mockReturnValue(mockClaudeConfig as any);
   });
 
@@ -2883,7 +2883,7 @@ describe("Dashboard API - GET /api/jobs/:id/logs/stream", () => {
       retryJob: vi.fn(),
     } as any;
 
-    app = createDashboardRoutes(localStore, localQueue);
+    app = createDashboardRoutes({ store: localStore, queue: localQueue });
   });
 
   it("should return SSE stream with correct headers", async () => {
@@ -2943,7 +2943,7 @@ describe("Dashboard API - GET /api/projects/health warning branch", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 
     mockExistsSync.mockReturnValue(true);
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
@@ -3014,7 +3014,7 @@ describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(null),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/error-state");
     expect(response.status).toBe(200);
@@ -3037,7 +3037,7 @@ describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(errorState),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/error-state");
     expect(response.status).toBe(200);
@@ -3061,7 +3061,7 @@ describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(errorState),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/error-state");
     expect(response.status).toBe(200);
@@ -3078,7 +3078,7 @@ describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(null),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     await app.request("/api/projects/my-org%2Fmy-repo/error-state");
     expect(localQueue.getProjectStatus).toHaveBeenCalledWith("my-org/my-repo");
@@ -3093,7 +3093,7 @@ describe("Dashboard API - GET /api/projects/:repo/error-state", () => {
         throw new Error("Internal queue error");
       }),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/error-state");
     expect(response.status).toBe(500);
@@ -3116,7 +3116,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const before = Date.now();
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
@@ -3141,7 +3141,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3162,7 +3162,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3183,7 +3183,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3204,7 +3204,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3225,7 +3225,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
       retryJob: vi.fn(),
       pauseProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3244,7 +3244,7 @@ describe("Dashboard API - POST /api/projects/:repo/pause", () => {
         throw new Error("Queue internal error");
       }),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/pause", {
       method: "POST",
@@ -3270,7 +3270,7 @@ describe("Dashboard API - POST /api/projects/:repo/resume", () => {
       retryJob: vi.fn(),
       resumeProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/resume", {
       method: "POST",
@@ -3290,7 +3290,7 @@ describe("Dashboard API - POST /api/projects/:repo/resume", () => {
       retryJob: vi.fn(),
       resumeProject: vi.fn(),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     await app.request("/api/projects/my-org%2Fmy-repo/resume", { method: "POST" });
     expect(localQueue.resumeProject).toHaveBeenCalledWith("my-org/my-repo");
@@ -3305,7 +3305,7 @@ describe("Dashboard API - POST /api/projects/:repo/resume", () => {
         throw new Error("Queue internal error");
       }),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     const response = await app.request("/api/projects/owner%2Frepo/resume", {
       method: "POST",
@@ -3336,7 +3336,7 @@ describe("Dashboard API - GET /api/projects includes errorState", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(errorState),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     mockLoadConfig.mockReturnValue({
       projects: [
@@ -3362,7 +3362,7 @@ describe("Dashboard API - GET /api/projects includes errorState", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(null),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     mockLoadConfig.mockReturnValue({
       projects: [{ repo: "org/repo1", path: "./repo1" }],
@@ -3382,7 +3382,7 @@ describe("Dashboard API - GET /api/projects includes errorState", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(null),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     mockLoadConfig.mockReturnValue({ projects: [] } as any);
 
@@ -3405,7 +3405,7 @@ describe("Dashboard API - GET /api/projects includes errorState", () => {
       retryJob: vi.fn(),
       getProjectStatus: vi.fn().mockReturnValue(pausedErrorState),
     } as any;
-    app = createDashboardRoutes(mockJobStore, localQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: localQueue });
 
     mockLoadConfig.mockReturnValue({
       projects: [{ repo: "org/paused-repo", path: "./paused-repo" }],
@@ -3438,7 +3438,7 @@ describe("Dashboard API - stale config 회귀 테스트 (configWatcher.current()
     const mockConfigWatcher = { current: mockCurrent } as any;
     mockMaskSensitiveConfig.mockReturnValue(mockConfig as any);
 
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, mockConfigWatcher);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, configWatcher: mockConfigWatcher });
 
     await app.request("/api/config");
     await app.request("/api/config");
@@ -3462,7 +3462,7 @@ describe("Dashboard API - stale config 회귀 테스트 (configWatcher.current()
     const mockConfigWatcher = { current: mockCurrent } as any;
     mockMaskSensitiveConfig.mockImplementation((c) => c as any);
 
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, mockConfigWatcher);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, configWatcher: mockConfigWatcher });
 
     const res1 = await app.request("/api/config");
     const result1 = await res1.json() as { config: { general: { projectName: string } } };
@@ -3482,7 +3482,7 @@ describe("Dashboard API - stale config 회귀 테스트 (configWatcher.current()
     mockLoadConfig.mockReturnValue(mockConfig as any);
     mockMaskSensitiveConfig.mockReturnValue(mockConfig as any);
 
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 
     const response = await app.request("/api/config");
 
@@ -3516,7 +3516,7 @@ describe("Dashboard API - POST /api/jobs/:id/cancel", () => {
       retryJob: vi.fn(),
     };
 
-    app = createDashboardRoutes(localStore, localQueue as any);
+    app = createDashboardRoutes({ store: localStore, queue: localQueue as any });
   });
 
   it("should return 400 for invalid JSON body", async () => {
@@ -3606,7 +3606,7 @@ describe("Dashboard API - POST /api/jobs/:id/retry", () => {
       retryJob: vi.fn(),
     };
 
-    app = createDashboardRoutes(localStore, localQueue as any);
+    app = createDashboardRoutes({ store: localStore, queue: localQueue as any });
   });
 
   it("should return 400 for invalid JSON body", async () => {

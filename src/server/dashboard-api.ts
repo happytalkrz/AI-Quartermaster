@@ -181,7 +181,33 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
  * browser EventSource API, so they accept a short-lived session token via ?token=<token>.
  * Obtain a session token from POST /api/auth with the Bearer key.
  */
-export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWatcher?: ConfigWatcher, apiKey?: string, hostname?: string, dashboardAuth?: DashboardAuthConfig, readOnly?: boolean, patternStore?: PatternStore, aqRoot?: string): Hono {
+/**
+ * createDashboardRoutes 옵션 (Plan C #C12).
+ *
+ * 이전: 9개 positional 파라미터 (#808 사고처럼 위치 충돌 위험). cli.ts 1곳에서만 호출.
+ * 이후: 단일 객체 — 누락 시 컴파일 에러로 잡히고, 새 필드 추가 시 기존 호출 깨지지 않는다.
+ */
+export interface DashboardRoutesOptions {
+  store: JobStore;
+  queue: JobQueue;
+  /**
+   * AQM 설치 루트(=AQM_HOME 또는 ~/.ai-quartermaster) — 라우트 핸들러가 데이터/로그 경로 조립에 사용.
+   * 미지정 시 process.cwd() (테스트 호환). 프로덕션 진입(cli.ts)에서는 항상 명시 전달.
+   */
+  aqRoot?: string;
+  configWatcher?: ConfigWatcher;
+  patternStore?: PatternStore;
+  /** 설정 시 Bearer 인증 활성화. 미설정 시 hostname + readOnly에 따라 무인증 모드. */
+  apiKey?: string;
+  /** 서버 바인드 호스트 — 무인증+비-로컬 바인드 시 보안 경고 출력에 사용. */
+  hostname?: string;
+  dashboardAuth?: DashboardAuthConfig;
+  /** insecure 환경에서 mutation 차단용 플래그. */
+  readOnly?: boolean;
+}
+
+export function createDashboardRoutes(opts: DashboardRoutesOptions): Hono {
+  const { store, queue, configWatcher, apiKey, hostname, dashboardAuth, readOnly, patternStore, aqRoot } = opts;
   const rootDir = aqRoot ?? process.cwd();
   const api = new Hono();
 

@@ -153,7 +153,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     const template = loadTemplate(templatePath);
     finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
-    // retry 시에는 retry 섹션을 append
+    // attempt >= 2: retry 전용 템플릿 단독 로드 후 baseData + retryData 병합 렌더 append
     if (attempt > 1) {
       const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
       if (existsSync(retryTemplatePath)) {
@@ -171,12 +171,11 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
           context: retryContext.contextualization || {},
         };
 
-        // retry 템플릿에서 retry 특화 섹션만 추출
         const retryTemplate = loadTemplate(retryTemplatePath);
-        const retrySection = extractRetrySection(retryTemplate);
-        const renderedRetrySection = renderTemplate(retrySection, retryData);
+        const mergedData = { ...baseData, ...retryData };
+        const renderedRetryFull = renderTemplate(retryTemplate, mergedData as unknown as TemplateVariables);
 
-        finalPrompt += "\n\n" + renderedRetrySection;
+        finalPrompt += "\n\n" + renderedRetryFull;
       }
     }
 
@@ -450,19 +449,3 @@ function validatePlan(plan: Plan): void {
 }
 
 export { collectContextualizationInfo };
-
-/**
- * retry 템플릿에서 retry 특화 섹션만 추출합니다.
- * "## 이전 실패 정보"부터 끝까지를 반환합니다.
- */
-function extractRetrySection(retryTemplate: string): string {
-  const lines = retryTemplate.split('\n');
-  const retryStartIndex = lines.findIndex(line => line.trim().startsWith('## 이전 실패 정보'));
-
-  if (retryStartIndex === -1) {
-    // retry 섹션을 찾을 수 없으면 전체 템플릿 반환
-    return retryTemplate;
-  }
-
-  return lines.slice(retryStartIndex).join('\n');
-}

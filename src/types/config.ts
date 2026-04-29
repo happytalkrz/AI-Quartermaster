@@ -206,7 +206,7 @@ export interface ExecutionModePreset {
   description: string;
 }
 
-export type PipelineMode = "code" | "content";
+export type PipelineMode = "code" | "content" | "qa";
 export type ExecutionMode = "economy" | "standard" | "thorough";
 export type ServerMode = "polling" | "webhook" | "hybrid";
 

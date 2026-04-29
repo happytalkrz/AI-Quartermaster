@@ -1,5 +1,5 @@
 import { generatePlan } from "../phases/plan-generator.js";
-import { executePhase } from "../execution/phase-executor.js";
+import { selectExecutor } from "../execution/executor-factory.js";
 import { retryPhase } from "../execution/phase-retry.js";
 import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
 import { schedulePhases } from "../execution/phase-scheduler.js";
@@ -369,7 +369,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
       jl?.setProgress(phaseStart(phase.index, plan.phases.length));
 
-      let result = await executePhase({
+      let result = await selectExecutor(plan.mode ?? "code").execute({
         issue: ctx.issue,
         plan,
         phase,

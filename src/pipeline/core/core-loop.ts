@@ -369,7 +369,7 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       jl?.setStep(`Phase ${phase.index + 1}/${plan.phases.length}: ${phase.name}`);
       jl?.setProgress(phaseStart(phase.index, plan.phases.length));
 
-      let result = await executePhase({
+      let result = await selectExecutor(plan.mode ?? "code").execute({
         issue: ctx.issue,
         plan,
         phase,

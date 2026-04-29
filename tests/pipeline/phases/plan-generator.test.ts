@@ -23,7 +23,7 @@ vi.mock("../../../src/claude/model-router.js", () => ({
   configForTaskWithMode: vi.fn(),
 }));
 
-import { generatePlan } from "../../../src/pipeline/phases/plan-generator.js";
+import { generatePlan, normalizePhaseIndices } from "../../../src/pipeline/phases/plan-generator.js";
 import { loadTemplate } from "../../../src/prompt/template-renderer.js";
 import { runClaude, extractJson } from "../../../src/claude/claude-runner.js";
 import { configForTaskWithMode } from "../../../src/claude/model-router.js";
@@ -137,5 +137,55 @@ describe("plan-generator 템플릿 분기 로직", () => {
     expect(calledPaths.some((p) => p.endsWith("plan-generation.md"))).toBe(true);
     expect(calledPaths.some((p) => p.endsWith("plan-generation-retry.md"))).toBe(true);
     expect(mockRunClaude).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("normalizePhaseIndices — Claude 1-based 응답 호환", () => {
+  const baseMeta = {
+    mode: "code" as const,
+    issueNumber: 1,
+    title: "T",
+    problemDefinition: "P",
+    requirements: ["R"],
+    affectedFiles: [] as string[],
+    risks: [] as string[],
+  };
+
+  it("1-based phase index + 1-based dependsOn을 0-based 위치로 remap", () => {
+    const plan = {
+      ...baseMeta,
+      phases: [
+        { index: 1, name: "P1", description: "", targetFiles: [], dependsOn: [], verificationCriteria: [], commitStrategy: "" },
+        { index: 2, name: "P2", description: "", targetFiles: [], dependsOn: [1], verificationCriteria: [], commitStrategy: "" },
+      ],
+    };
+    normalizePhaseIndices(plan as any);
+    expect(plan.phases[0].index).toBe(0);
+    expect(plan.phases[0].dependsOn).toEqual([]);
+    expect(plan.phases[1].index).toBe(1);
+    expect(plan.phases[1].dependsOn).toEqual([0]);
+  });
+
+  it("0-based phase index + 0-based dependsOn은 그대로 유지", () => {
+    const plan = {
+      ...baseMeta,
+      phases: [
+        { index: 0, name: "P1", description: "", targetFiles: [], dependsOn: [], verificationCriteria: [], commitStrategy: "" },
+        { index: 1, name: "P2", description: "", targetFiles: [], dependsOn: [0], verificationCriteria: [], commitStrategy: "" },
+      ],
+    };
+    normalizePhaseIndices(plan as any);
+    expect(plan.phases[1].dependsOn).toEqual([0]);
+  });
+
+  it("dependsOn 미지정 시 빈 배열로 채움", () => {
+    const plan = {
+      ...baseMeta,
+      phases: [
+        { index: 1, name: "P1", description: "", targetFiles: [], verificationCriteria: [], commitStrategy: "" } as any,
+      ],
+    };
+    normalizePhaseIndices(plan as any);
+    expect(plan.phases[0].dependsOn).toEqual([]);
   });
 });

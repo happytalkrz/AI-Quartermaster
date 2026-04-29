@@ -417,6 +417,29 @@ async function handleRetryContext(ctx: PlanGeneratorContext, retryContext: PlanR
   }
 }
 
+export function normalizePhaseIndices(plan: Plan): void {
+  // Build remap from Claude's original index space (may be 0-based or 1-based) to array positions.
+  // Without this, overwriting phase.index = i leaves dependsOn pointing at wrong/self phases
+  // when Claude emits 1-based indices (e.g., Phase 2 dependsOn=[1] → after overwrite becomes self-reference).
+  const originalIndexToPosition = new Map<number, number>();
+  plan.phases.forEach((phase, i) => {
+    if (typeof phase.index === "number") {
+      originalIndexToPosition.set(phase.index, i);
+    }
+  });
+
+  plan.phases.forEach((phase, i) => {
+    phase.targetFiles = phase.targetFiles ?? [];
+    phase.verificationCriteria = phase.verificationCriteria ?? [];
+    const rawDeps = phase.dependsOn ?? [];
+    phase.dependsOn = rawDeps.map(d => {
+      const remapped = originalIndexToPosition.get(d);
+      return remapped !== undefined ? remapped : d;
+    });
+    phase.index = i;
+  });
+}
+
 function validatePlan(plan: Plan): void {
   if (!plan.phases || plan.phases.length === 0) {
     throw new Error("Plan must have at least one phase");
@@ -427,13 +450,7 @@ function validatePlan(plan: Plan): void {
   if (!plan.requirements || plan.requirements.length === 0) {
     throw new Error("Plan must have requirements");
   }
-  // Ensure phases have indices and required array fields
-  plan.phases.forEach((phase, i) => {
-    phase.index = i;
-    phase.targetFiles = phase.targetFiles ?? [];
-    phase.verificationCriteria = phase.verificationCriteria ?? [];
-    phase.dependsOn = phase.dependsOn ?? [];
-  });
+  normalizePhaseIndices(plan);
 
   // Validate phase dependencies (self-dependency, non-existent refs)
   const depValidation = validatePhaseDependencies(plan.phases);

@@ -2,7 +2,6 @@ import { Hono, type Context, type Next } from "hono";
 import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
-import { resolve, join } from "path";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig } from "../config/loader.js";
@@ -10,16 +9,12 @@ import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { GetSkipEventsQuerySchema, formatZodError } from "../types/api.js";
+import { formatZodError } from "../types/api.js";
 import type { PatternStore } from "../learning/pattern-store.js";
-import { runCli } from "../utils/cli-runner.js";
-import { getErrorMessage } from "../utils/error-utils.js";
-import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { statusToNotificationType } from "../types/pipeline.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { ZodError } from "zod";
-import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
 import { SSEManager } from "./sse-manager.js";
 import { registerNotificationsRoutes } from "./routes/notifications.js";
 import { registerVersionRoutes } from "./routes/version.js";
@@ -30,6 +25,8 @@ import { registerConfigRoutes } from "./routes/config.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerDoctorRoutes } from "./routes/doctor.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerSkipEventsRoutes } from "./routes/skip-events.js";
+import { registerNewIssueRoute } from "./routes/new-issue.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -181,16 +178,6 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
 }
 
 const SSE_INITIAL_JOB_LIMIT = 20;
-
-const NewIssueRequestSchema = z.object({
-  category: z.enum(["bug", "feature", "refactor", "docs"]),
-  title: z.string().min(1),
-  repo: z.string().min(1),
-  what: z.string().min(1),
-  where: z.string().default(""),
-  how: z.string().default(""),
-  files: z.string().default(""),
-});
 
 /**
  * Returns jobs for SSE initial state:
@@ -391,104 +378,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // (logs/stream은 SSE이므로 별도 처리)
   registerJobsRoutes(api, { store, queue, sseManager });
 
-  // Skip events stats (reasonCode별 집계)
-  api.get("/api/skip-events/stats", (c) => {
-    try {
-      const repo = c.req.query("repo");
-      const allEvents = store.listSkipEvents(repo ? { repo } : undefined);
-
-      const reasonCodeCounts: Record<string, number> = {};
-      for (const event of allEvents) {
-        reasonCodeCounts[event.reasonCode] = (reasonCodeCounts[event.reasonCode] ?? 0) + 1;
-      }
-
-      const stats = Object.entries(reasonCodeCounts)
-        .map(([reasonCode, count]) => ({ reasonCode, count }))
-        .sort((a, b) => b.count - a.count);
-
-      return c.json({ total: allEvents.length, stats });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch skip event stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // List skip events (flat 또는 issueNumber+repo+reasonCode 그룹)
-  api.get("/api/skip-events", (c) => {
-    try {
-      const groupParam = c.req.query("group");
-      const queryParams = {
-        repo: c.req.query("repo"),
-        limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
-        offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
-        group: groupParam === "true" ? true : groupParam === "false" ? false : undefined,
-      };
-
-      const parseResult = GetSkipEventsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const { repo, limit, offset, group } = parseResult.data;
-
-      // 그룹 뷰: 동일 이슈+reasonCode 중복 축약 (기본 대시보드 뷰)
-      if (group) {
-        const { groups, totalGroups } = store.listSkipEventsGrouped({ repo, limit, offset });
-        const start = offset ?? 0;
-        const end = limit !== undefined ? start + groups.length : totalGroups;
-        return c.json({
-          groups,
-          pagination: {
-            total: totalGroups,
-            offset: start,
-            limit: limit ?? totalGroups,
-            hasMore: end < totalGroups,
-          }
-        });
-      }
-
-      // Flat 뷰 (기존 API 호환)
-      const allEvents = store.listSkipEvents(repo ? { repo } : undefined);
-      const total = allEvents.length;
-      const start = offset ?? 0;
-      const end = limit !== undefined ? start + limit : total;
-      const events = allEvents.slice(start, end);
-
-      return c.json({
-        events,
-        pagination: {
-          total,
-          offset: start,
-          limit: limit ?? total,
-          hasMore: end < total,
-        }
-      });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch skip events: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // 특정 그룹(issueNumber+repo+reasonCode) 전체 삭제
-  api.delete("/api/skip-events/group", async (c) => {
-    if (readOnly) {
-      return c.json({ error: "Read-only mode" }, 403);
-    }
-    try {
-      const body = await c.req.json<{ issueNumber?: unknown; repo?: unknown; reasonCode?: unknown }>();
-      const issueNumber = typeof body.issueNumber === "number" ? body.issueNumber : Number(body.issueNumber);
-      const repoVal = typeof body.repo === "string" ? body.repo : "";
-      const reasonCode = typeof body.reasonCode === "string" ? body.reasonCode : "";
-      if (!Number.isInteger(issueNumber) || issueNumber <= 0 || !repoVal || !reasonCode) {
-        return c.json({ error: "issueNumber, repo, reasonCode 필수" }, 400);
-      }
-      const deleted = store.deleteSkipEventsByGroup(issueNumber, repoVal, reasonCode);
-      return c.json({ deleted });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to delete skip event group: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
+  // Skip events: 도메인 라우트 분할 (Plan C #C9)
+  registerSkipEventsRoutes(api, { store, readOnly: !!readOnly });
 
   // Stats + metrics: 도메인 라우트 분할 (Plan C #C9)
   registerStatsRoutes(api, { store, patternStore });
@@ -617,39 +508,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Setup wizard: 도메인 라우트 분할 (Plan C #C9)
   registerSetupRoutes(api, { rootDir });
 
-  // Create a new GitHub issue from dashboard
-  api.post("/api/new-issue", zValidator('json', NewIssueRequestSchema, zodValidationHook), async (c) => {
-    const logger = getLogger();
-    try {
-      const { category, title, repo, what, where, how, files } = c.req.valid('json');
-
-      const templatesDir = resolve(rootDir, "prompts/issue-templates");
-      const templatePath = resolve(templatesDir, `${category}.md`);
-      const template = loadTemplate(templatePath, templatesDir);
-      const body = renderTemplate(template, { what, where, how, files });
-
-      const result = await runCli("gh", [
-        "issue", "create",
-        "--repo", repo,
-        "--title", title,
-        "--body", body,
-        "--label", "aqm-by",
-      ]);
-
-      if (result.exitCode !== 0) {
-        return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(result.stderr)}` }, 500);
-      }
-
-      const url = result.stdout.trim();
-      const numberMatch = url.match(/\/issues\/(\d+)$/);
-      const number = numberMatch ? parseInt(numberMatch[1], 10) : undefined;
-
-      logger.info(`New issue created: ${url}`);
-      return c.json({ url, number });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to create issue: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
+  // New issue: 도메인 라우트 분할 (Plan C #C9)
+  registerNewIssueRoute(api, { rootDir });
 
   // Doctor: 도메인 라우트 분할 (Plan C #C9)
   registerDoctorRoutes(api);

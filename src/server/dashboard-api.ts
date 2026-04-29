@@ -1,5 +1,5 @@
 import { Hono, type Context, type Next } from "hono";
-import { randomUUID, timingSafeEqual } from "crypto";
+import { timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import type { JobStore, Job } from "../queue/job-store.js";
@@ -27,6 +27,7 @@ import { registerDoctorRoutes } from "./routes/doctor.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerSkipEventsRoutes } from "./routes/skip-events.js";
 import { registerNewIssueRoute } from "./routes/new-issue.js";
+import { registerSSERoutes } from "./routes/sse.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -175,25 +176,6 @@ export function applyConfigChanges(oldConfig: AQConfig, newConfig: AQConfig, que
       logger.info(`Automation rules updated: ${oldAutomations.length} → ${newAutomations.length} rules`);
     }
   }
-}
-
-const SSE_INITIAL_JOB_LIMIT = 20;
-
-/**
- * Returns jobs for SSE initial state:
- * - Excludes archived jobs
- * - Always includes running/queued jobs (regardless of position)
- * - Fills remaining slots with recent non-active jobs (up to SSE_INITIAL_JOB_LIMIT total)
- */
-function getInitialJobs(store: JobStore): Job[] {
-  // DB 레벨에서 active job 조회
-  const active = store.list({ statuses: ["running", "queued"] });
-  const remaining = Math.max(0, SSE_INITIAL_JOB_LIMIT - active.length);
-  // 나머지 슬롯은 최근 non-active, non-archived job으로 채움
-  const rest = remaining > 0
-    ? store.list({ statuses: ["success", "failure", "cancelled"], limit: remaining })
-    : [];
-  return [...active, ...rest];
 }
 
 /**
@@ -384,109 +366,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Stats + metrics: 도메인 라우트 분할 (Plan C #C9)
   registerStatsRoutes(api, { store, patternStore });
 
-  // SSE stream for job logs
-  api.get("/api/jobs/:id/logs/stream", (c) => {
-    const id = c.req.param("id");
-    let lastLogCount = 0;
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
-    const stream = new ReadableStream({
-      start(controller) {
-        const encoder = new TextEncoder();
-        const send = () => {
-          try {
-            const job = store.get(id);
-            if (!job) {
-              controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Job not found" })}\n\n`));
-              clearInterval(intervalId);
-              try { controller.close(); } catch { /* already closed */ }
-              return;
-            }
-            const logs = job.logs || [];
-            if (logs.length > lastLogCount) {
-              const newLines = logs.slice(lastLogCount);
-              lastLogCount = logs.length;
-              for (const line of newLines) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ line, status: job.status })}\n\n`));
-              }
-            }
-            // Send status update so client knows when job finishes
-            if (job.status !== "running" && job.status !== "queued") {
-              controller.enqueue(encoder.encode(`event: done\ndata: ${JSON.stringify({ status: job.status })}\n\n`));
-              clearInterval(intervalId);
-              try { controller.close(); } catch { /* already closed */ }
-            }
-          } catch {
-            // stream closed
-          }
-        };
-        send();
-        intervalId = setInterval(send, 1000);
-        setTimeout(() => {
-          clearInterval(intervalId);
-          try { controller.close(); } catch { /* already closed */ }
-        }, 300000); // 5 min max
-      },
-      cancel() {
-        clearInterval(intervalId);
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
-  });
-
-  // SSE endpoint for real-time updates
-  api.get("/api/events", (_c) => {
-    const clientId = randomUUID();
-    const encoder = new TextEncoder();
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
-    const stream = new ReadableStream({
-      start(controller) {
-        sseManager.addClient(controller, clientId);
-
-        // Send initial state
-        const sendInitialState = () => {
-          try {
-            const status = queue.getStatus();
-            const data = JSON.stringify({ jobs: getInitialJobs(store), queue: status });
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
-          } catch {
-            // stream closed
-          }
-        };
-
-        sendInitialState();
-
-        // Send periodic updates for fallback (reduced frequency since real-time events handle most updates)
-        intervalId = setInterval(sendInitialState, 10000); // 10 seconds instead of 2
-
-        // Auto-cleanup after 5 minutes
-        setTimeout(() => {
-          clearInterval(intervalId);
-          sseManager.removeClient(clientId);
-        }, 300000);
-      },
-      cancel() {
-        clearInterval(intervalId);
-        sseManager.removeClient(clientId);
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
-  });
+  // SSE: 도메인 라우트 분할 (Plan C #C9)
+  registerSSERoutes(api, { store, queue, sseManager });
 
   // Start periodic cleanup when dashboard routes are created
   startPeriodicCleanup();

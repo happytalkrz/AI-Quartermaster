@@ -7,15 +7,12 @@ import { resolve, join } from "path";
 import { homedir } from "os";
 import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig, updateConfigSection } from "../config/loader.js";
-import { maskSensitiveConfig } from "../utils/config-masker.js";
-import { getBasicFieldMetas } from "../config/schema-meta.js";
-import { getPresets } from "../config/presets.js";
+import { loadConfig } from "../config/loader.js";
 import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { UpdateConfigRequestSchema, GetSkipEventsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { GetSkipEventsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getProjectSummary } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { runAllChecks } from "../doctor/checks.js";
@@ -35,6 +32,7 @@ import { registerVersionRoutes } from "./routes/version.js";
 import { registerProjectsRoutes } from "./routes/projects.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
 import { registerStatsRoutes } from "./routes/stats.js";
+import { registerConfigRoutes } from "./routes/config.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -520,85 +518,10 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   }
 
-  // Get configuration (masked for security)
-  api.get("/api/config", (c) => {
-    try {
-      const config = configWatcher?.current() ?? loadConfig(rootDir);
-      const maskedConfig = maskSensitiveConfig(config);
-      return c.json({ config: maskedConfig });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Get Basic tab field metadata (type, default, min/max, options)
-  api.get("/api/config/schema-meta", (c) => {
-    return c.json({ fields: getBasicFieldMetas() });
-  });
-
-  // Get config presets list
-  api.get("/api/config/presets", (c) => {
-    return c.json({ presets: getPresets() });
-  });
-
   const configPath = `${rootDir}/config.yml`;
 
-  // Update configuration
-  api.put("/api/config", zValidator('json', UpdateConfigRequestSchema.passthrough(), zodValidationHook), async (c) => {
-    try {
-      const body = c.req.valid('json');
-
-      // Update configuration file
-      // Filter out undefined values and complex sections (projects)
-      // hooks is passed through via the passthrough schema and saved to config
-      const { projects, ...safeData } = body as Record<string, unknown>;
-      const cleanedData = Object.fromEntries(
-        Object.entries(safeData).map(([key, value]) => [
-          key,
-          typeof value === 'object' && value !== null
-            ? Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined))
-            : value
-        ]).filter(([, v]) => v !== undefined)
-      ) as Partial<AQConfig>;
-
-      updateConfigSection(rootDir, cleanedData);
-      configWatcher?.refresh();
-
-      // Apply runtime changes if configWatcher is available
-      if (configWatcher) {
-        try {
-          // Load updated config for runtime application
-          const newConfig = configWatcher.current();
-
-          // Apply runtime changes immediately (force update)
-          if (body.general?.concurrency !== undefined) {
-            queue.setConcurrency(newConfig.general.concurrency);
-          }
-          if (body.general?.logLevel !== undefined) {
-            setGlobalLogLevel(newConfig.general.logLevel);
-          }
-
-          // Broadcast config change to SSE clients
-          broadcastToAllClients('configChanged', {
-            changes: body,
-            timestamp: new Date().toISOString()
-          });
-        } catch (runtimeError: unknown) {
-          // Log runtime application error but don't fail the request
-          const logger = getLogger();
-          logger.warn(`Failed to apply runtime config changes: ${getErrorMessage(runtimeError)}`);
-        }
-      }
-
-      return c.json({ success: true, message: "Configuration updated successfully" });
-    } catch (error: unknown) {
-      const rawMessage = getErrorMessage(error);
-      const isValidationError = rawMessage.includes("validation") || rawMessage.includes("Invalid") || rawMessage.includes("not found");
-      const status = isValidationError ? 400 : 500;
-      const prefix = isValidationError ? "Configuration validation failed" : "Failed to update configuration";
-      return c.json({ error: `${prefix}: ${sanitizeErrorMessage(rawMessage)}` }, status);
-    }
-  });
+  // Config: 도메인 라우트 분할 (Plan C #C9)
+  registerConfigRoutes(api, { queue, sseManager, configWatcher, rootDir });
 
   // Projects: 도메인 라우트 분할 (Plan C #C9)
   registerProjectsRoutes(api, { queue, configWatcher, rootDir, configPath });

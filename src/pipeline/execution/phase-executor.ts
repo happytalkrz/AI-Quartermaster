@@ -4,7 +4,7 @@ import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import type { JobLogger } from "../../queue/job-logger.js";
 import type { BaselineErrors } from "../reporting/verification-parser.js";
 import { ClaudePhaseExecutor } from "./claude-phase-executor.js";
-export { PhaseExecutor } from "./claude-phase-executor.js";
+export type { PhaseExecutor } from "./claude-phase-executor.js";
 
 export interface PhaseExecutorContext {
   issue: GitHubIssue;

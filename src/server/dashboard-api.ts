@@ -15,8 +15,8 @@ import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { UpdateConfigRequestSchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
-import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
+import { UpdateConfigRequestSchema, GetSkipEventsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { getProjectSummary } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { runAllChecks } from "../doctor/checks.js";
 import { healLevel1, healLevel2, writeToActiveHealProcess } from "../doctor/heal.js";
@@ -34,6 +34,7 @@ import { registerNotificationsRoutes } from "./routes/notifications.js";
 import { registerVersionRoutes } from "./routes/version.js";
 import { registerProjectsRoutes } from "./routes/projects.js";
 import { registerJobsRoutes } from "./routes/jobs.js";
+import { registerStatsRoutes } from "./routes/stats.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -705,144 +706,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
-  // Aggregate stats
-  api.get("/api/stats", (c) => {
-    try {
-      const queryParams = {
-        project: c.req.query("project"),
-        timeRange: c.req.query("timeRange") || "7d",
-      };
-
-      const parseResult = GetStatsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const stats = getJobStats(store.getAqDb(), parseResult.data);
-      return c.json(stats);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Cost stats
-  api.get("/api/stats/costs", (c) => {
-    try {
-      const queryParams = {
-        project: c.req.query("project"),
-        timeRange: c.req.query("timeRange") || "30d",
-        groupBy: c.req.query("groupBy") || "project",
-      };
-
-      const parseResult = GetCostsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const costs = getCostStats(store.getAqDb(), parseResult.data);
-      return c.json(costs);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch cost stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Project stats (success rate + cost per project)
-  api.get("/api/stats/projects", (c) => {
-    try {
-      const queryParams = {
-        timeRange: c.req.query("timeRange") || "7d",
-      };
-
-      const parseResult = GetProjectStatsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: parseResult.error
-        }, 400);
-      }
-
-      const stats = getProjectStatsWithTimeRange(store.getAqDb(), parseResult.data);
-      return c.json(stats);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch project stats: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Failure reason top-N analysis
-  api.get("/api/metrics/failure-reasons", (c) => {
-    try {
-      const queryParams = {
-        project: c.req.query("project"),
-        window: c.req.query("window"),
-        top: c.req.query("top"),
-      };
-
-      const parseResult = GetFailureReasonsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const result = getFailureReasons(store.getAqDb(), parseResult.data, patternStore);
-      return c.json(result);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch failure reasons: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Throughput time series
-  api.get("/api/metrics/throughput", (c) => {
-    try {
-      const queryParams = {
-        project: c.req.query("project"),
-        window: c.req.query("window") || "7d",
-      };
-
-      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const data = getThroughputTimeSeries(store.getAqDb(), parseResult.data);
-      return c.json(data);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch throughput metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Success rate metrics
-  api.get("/api/metrics/success-rate", (c) => {
-    try {
-      const queryParams = {
-        project: c.req.query("project"),
-        window: c.req.query("window") || "7d",
-      };
-
-      const parseResult = GetMetricsQuerySchema.safeParse(queryParams);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const data = getSuccessRate(store.getAqDb(), parseResult.data);
-      return c.json(data);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch success rate metrics: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
+  // Stats + metrics: 도메인 라우트 분할 (Plan C #C9)
+  registerStatsRoutes(api, { store, patternStore });
 
   // SSE stream for job logs
   api.get("/api/jobs/:id/logs/stream", (c) => {

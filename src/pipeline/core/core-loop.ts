@@ -1,5 +1,5 @@
 import { generatePlan } from "../phases/plan-generator.js";
-import { executePhase } from "../execution/phase-executor.js";
+import { selectExecutor } from "../execution/executor-factory.js";
 import { retryPhase } from "../execution/phase-retry.js";
 import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
 import { schedulePhases } from "../execution/phase-scheduler.js";

@@ -330,7 +330,7 @@ function makeApp(mockAqDb: MockAqDb): Hono {
     setProjectConcurrency: vi.fn(),
   } as unknown as JobQueue;
 
-  return createDashboardRoutes(mockJobStore, mockJobQueue);
+  return createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
 }
 
 describe("Notification API 엔드포인트", () => {

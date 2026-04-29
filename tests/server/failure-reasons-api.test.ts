@@ -80,7 +80,7 @@ describe("Dashboard API - GET /api/metrics/failure-reasons", () => {
 
   describe("카테고리별 집계", () => {
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     });
 
     it("실패 잡이 있을 때 카테고리별 집계 결과를 반환한다", async () => {
@@ -208,7 +208,7 @@ describe("Dashboard API - GET /api/metrics/failure-reasons", () => {
         formatForPrompt: vi.fn(),
       } as any;
 
-      app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, undefined, undefined, undefined, undefined, mockPatternStore);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue, patternStore: mockPatternStore });
 
       mockGetFailureReasons.mockReturnValue({
         reasons: [{ category: "TIMEOUT", count: 5, percentage: 100.0, recentErrors: [] }],
@@ -233,7 +233,7 @@ describe("Dashboard API - GET /api/metrics/failure-reasons", () => {
 
   describe("유효하지 않은 파라미터", () => {
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     });
 
     it("잘못된 window 값에 400을 반환한다", async () => {
@@ -263,7 +263,7 @@ describe("Dashboard API - GET /api/metrics/failure-reasons", () => {
 
   describe("에러 핸들링", () => {
     beforeEach(() => {
-      app = createDashboardRoutes(mockJobStore, mockJobQueue);
+      app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     });
 
     it("getFailureReasons가 예외를 던지면 500을 반환한다", async () => {

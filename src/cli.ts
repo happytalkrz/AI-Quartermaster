@@ -487,7 +487,17 @@ export async function startCommand(args: CliArgs): Promise<void> {
   }
 
   const patternStore = getPatternStore(dataDir);
-  const dashboardRoutes = createDashboardRoutes(store, queue, configWatcher, apiKey, host, effectiveConfig.general.dashboardAuth, wslReadOnly, patternStore, aqRoot);
+  const dashboardRoutes = createDashboardRoutes({
+    store,
+    queue,
+    aqRoot,
+    configWatcher,
+    patternStore,
+    apiKey,
+    hostname: host,
+    dashboardAuth: effectiveConfig.general.dashboardAuth,
+    readOnly: wslReadOnly,
+  });
   const healthRoutes = createHealthRoutes(queue, poller);
 
   let app: ReturnType<typeof createWebhookApp>;

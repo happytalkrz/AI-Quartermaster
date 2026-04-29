@@ -121,7 +121,7 @@ describe("PUT /api/config — automations 저장 확인", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
   });
 
   it("valid config 업데이트 시 updateConfigSection이 호출됨", async () => {

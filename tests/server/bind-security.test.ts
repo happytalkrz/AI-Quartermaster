@@ -94,7 +94,7 @@ const mockQueue = {
 
 // Helper: createDashboardRoutes without apiKey, with given hostname
 function makeRoutes(hostname?: string) {
-  return createDashboardRoutes(mockStore, mockQueue, undefined, undefined, hostname);
+  return createDashboardRoutes({ store: mockStore, queue: mockQueue, hostname });
 }
 
 describe("isLocalBind detection (no API key)", () => {
@@ -198,7 +198,7 @@ describe("non-local bind + no API key: security warning", () => {
   });
 
   it("does not warn when API key is provided with non-local hostname", () => {
-    createDashboardRoutes(mockStore, mockQueue, undefined, "secure-api-key", "0.0.0.0");
+    createDashboardRoutes({ store: mockStore, queue: mockQueue, apiKey: "secure-api-key", hostname: "0.0.0.0" });
     expect(mockWarn).not.toHaveBeenCalledWith(
       expect.stringContaining("Non-local bind")
     );

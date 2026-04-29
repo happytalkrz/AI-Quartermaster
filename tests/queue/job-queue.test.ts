@@ -69,6 +69,7 @@ describe("JobQueue", () => {
   it("should enqueue and execute a job", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/1" });
     const queue = new JobQueue(store, 2, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const job = queue.enqueue(42, "test/repo");
     expect(job).toBeDefined();
@@ -96,6 +97,7 @@ describe("JobQueue", () => {
     });
 
     const queue = new JobQueue(store, 2, handler);
+    queue.setDependencies({ projectRoot: dataDir });
     queue.enqueue(1, "test/repo");
     queue.enqueue(2, "test/repo2");
     queue.enqueue(3, "test/repo3");
@@ -109,6 +111,7 @@ describe("JobQueue", () => {
   it("should prevent duplicate jobs for same issue", () => {
     const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves
     const queue = new JobQueue(store, 2, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const job1 = queue.enqueue(42, "test/repo");
     const job2 = queue.enqueue(42, "test/repo");
@@ -126,6 +129,7 @@ describe("JobQueue", () => {
       .mockResolvedValueOnce({ prUrl: "https://pr/new-success" });
 
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     // Create initial failed job
     const initialJob = queue.enqueue(123, "test/repo");
@@ -161,6 +165,7 @@ describe("JobQueue", () => {
 
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/after-cancel" });
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     // Create and immediately cancel a job
     const initialJob = queue.enqueue(456, "test/repo");
@@ -192,6 +197,7 @@ describe("JobQueue", () => {
   it("should auto-archive success job and allow re-enqueue", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     // Create successful job
     const successJob = queue.enqueue(789, "test/repo");
@@ -220,6 +226,7 @@ describe("JobQueue", () => {
     // Since concurrency is 0, the job is in pending... actually the enqueue adds to pending
     // Let's test via enqueue
     const queue2 = new JobQueue(store, 1, handler);
+    queue2.setDependencies({ projectRoot: dataDir });
     const j = queue2.enqueue(99, "test/repo2");
     // cancel immediately
     const result = queue2.cancel(j!.id);
@@ -231,6 +238,7 @@ describe("JobQueue", () => {
   it("should track queue status", () => {
     const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
     const queue = new JobQueue(store, 3, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const status = queue.getStatus();
     expect(status.concurrency).toBe(3);
@@ -241,6 +249,7 @@ describe("JobQueue", () => {
   it("should handle job handler failure", async () => {
     const handler: JobHandler = vi.fn().mockRejectedValue(new Error("boom"));
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const job = queue.enqueue(42, "test/repo");
     await new Promise(r => setTimeout(r, 50));
@@ -253,6 +262,7 @@ describe("JobQueue", () => {
   it("should mark job as failure when handler returns no prUrl", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({});
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const job = queue.enqueue(42, "test/repo");
     await new Promise(r => setTimeout(r, 50));
@@ -265,6 +275,7 @@ describe("JobQueue", () => {
   it("should mark job as failure when handler returns explicit error", async () => {
     const handler: JobHandler = vi.fn().mockResolvedValue({ error: "Phase execution failed" });
     const queue = new JobQueue(store, 1, handler);
+    queue.setDependencies({ projectRoot: dataDir });
 
     const job = queue.enqueue(43, "test/repo");
     await new Promise(r => setTimeout(r, 50));
@@ -286,6 +297,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue initial job that will fail
       const initialJob = queue.enqueue(123, "test/repo");
@@ -298,7 +310,7 @@ describe("JobQueue", () => {
       expect(failedJob?.error).toContain("initial failure");
 
       // Retry the failed job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
       expect(retryJob?.issueNumber).toBe(123);
@@ -325,6 +337,7 @@ describe("JobQueue", () => {
       // Create a failed job with PR URL
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test error"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(456, "test/repo");
 
@@ -352,7 +365,7 @@ describe("JobQueue", () => {
       store.update(job!.id, { logs: ["[2026. 4. 4. 21시 56분 30초] PR: https://pr/existing"] });
 
       // Try to retry - should fix status instead of retrying
-      const retryResult = queue.retryJob(job!.id);
+      const retryResult = await queue.retryJob(job!.id);
       expect(retryResult).toBeUndefined();
 
       // Verify job status was fixed to success
@@ -372,6 +385,7 @@ describe("JobQueue", () => {
         .mockRejectedValueOnce(new Error("retry failure"));
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Create initial failed job
       const initialJob = queue.enqueue(789, "test/repo");
@@ -381,7 +395,7 @@ describe("JobQueue", () => {
       expect(failedJob?.status).toBe("failure");
 
       // Retry the job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
 
@@ -405,6 +419,7 @@ describe("JobQueue", () => {
     it("should not retry jobs with logs indicating PR creation", async () => {
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test error"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(999, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -419,7 +434,7 @@ describe("JobQueue", () => {
       });
 
       // Try to retry - should fix status instead of retrying
-      const retryResult = queue.retryJob(job!.id);
+      const retryResult = await queue.retryJob(job!.id);
       expect(retryResult).toBeUndefined();
 
       // Verify job status was fixed to success
@@ -434,6 +449,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const initialJob = queue.enqueue(300, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -453,7 +469,7 @@ describe("JobQueue", () => {
       store.update(initialJob!.id, { phaseResults: mockPhaseResults });
 
       // Retry - new job should inherit phaseResults from failed job
-      const retryJob = queue.retryJob(initialJob!.id);
+      const retryJob = await queue.retryJob(initialJob!.id);
       expect(retryJob).toBeDefined();
       expect(retryJob?.isRetry).toBe(true);
 
@@ -506,6 +522,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Create initial failed job
       const initialJob = queue.enqueue(123, "test/repo");
@@ -562,6 +579,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const initialJob = queue.enqueue(456, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -607,6 +625,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/retry-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Create initial failed job
       const initialJob = queue.enqueue(789, "test/repo");
@@ -664,6 +683,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Initial job that fails
       const initialJob = queue.enqueue(555, "test/repo");
@@ -704,6 +724,7 @@ describe("JobQueue", () => {
         .mockResolvedValue({ prUrl: "https://pr/second-success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Create failed job
       const failedJob = queue.enqueue(666, "test/repo");
@@ -739,6 +760,7 @@ describe("JobQueue", () => {
         .mockResolvedValue({ prUrl: "https://pr/dep-retry-success" });
 
       const queue = new JobQueue(store, 2, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue dependency (issue 100) and dependent (issue 101)
       const depJob = queue.enqueue(100, "test/repo");
@@ -815,6 +837,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Create and fail a job to trigger cleanup
       const job = queue.enqueue(123, "test/repo");
@@ -864,6 +887,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(456, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -893,6 +917,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(789, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -924,6 +949,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(111, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -956,6 +982,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(222, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -981,6 +1008,7 @@ describe("JobQueue", () => {
 
       const handler: JobHandler = vi.fn().mockRejectedValue(new Error("test failure"));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job = queue.enqueue(333, "test/repo");
       await new Promise(r => setTimeout(r, 50));
@@ -1009,6 +1037,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue 3 jobs with concurrency=1
       queue.enqueue(1, "test/repo");
@@ -1037,6 +1066,7 @@ describe("JobQueue", () => {
     it("should validate concurrency value", () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       expect(() => queue.setConcurrency(0)).toThrow("Concurrency must be a positive integer");
       expect(() => queue.setConcurrency(-1)).toThrow("Concurrency must be a positive integer");
@@ -1059,6 +1089,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 3, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue 3 jobs
       queue.enqueue(1, "test/repo");
@@ -1102,6 +1133,7 @@ describe("JobQueue", () => {
       };
 
       const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue multiple jobs for each repo
       queue.enqueue(1, "test/repo1");
@@ -1137,6 +1169,7 @@ describe("JobQueue", () => {
 
       // No project concurrency specified - should use global limit
       const queue = new JobQueue(store, 2, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       queue.enqueue(1, "test/repo1");
       queue.enqueue(2, "test/repo1");
@@ -1168,6 +1201,7 @@ describe("JobQueue", () => {
       };
 
       const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Jobs should start simultaneously for different repos
       queue.enqueue(1, "test/repo1");
@@ -1191,6 +1225,7 @@ describe("JobQueue", () => {
 
       const projectConcurrency = { "test/repo": 1 };
       const queue = new JobQueue(store, 5, handler, 600000, projectConcurrency);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Enqueue 3 jobs for same repo with limit 1
       const job1 = queue.enqueue(1, "test/repo");
@@ -1226,6 +1261,7 @@ describe("JobQueue", () => {
         .mockResolvedValue({ prUrl: "https://pr/success" });
 
       const queue = new JobQueue(store, 2, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // First failure
       const job1 = queue.enqueue(1, "test/repo");
@@ -1271,6 +1307,7 @@ describe("JobQueue", () => {
         .mockRejectedValueOnce(new Error("failure after success"));
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Two failures
       const job1 = queue.enqueue(1, "test/repo");
@@ -1302,6 +1339,7 @@ describe("JobQueue", () => {
     it("should auto-resume project after pause duration expires", async () => {
       const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Manually pause project for short duration
       const shortPauseDuration = 100; // 100ms
@@ -1329,6 +1367,7 @@ describe("JobQueue", () => {
     it("should manually resume paused project", async () => {
       const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Pause project
       queue.pauseProject("test/repo", 60000); // 1 minute
@@ -1359,6 +1398,7 @@ describe("JobQueue", () => {
         .mockResolvedValue({ prUrl: "https://pr/success" });
 
       const queue = new JobQueue(store, 2, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Fail repo1 three times to pause it
       const job1 = queue.enqueue(1, "test/repo1");
@@ -1393,6 +1433,7 @@ describe("JobQueue", () => {
       // Test the logic by simulating job stuck abort without waiting for timeout
       const handler: JobHandler = vi.fn().mockResolvedValue({ prUrl: "https://pr/success" });
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const job1 = queue.enqueue(1, "test/repo");
 
@@ -1417,6 +1458,7 @@ describe("JobQueue", () => {
         .mockResolvedValueOnce({ prUrl: "https://pr/success" });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Manual pause
       queue.pauseProject("test/repo", 60000);
@@ -1440,6 +1482,7 @@ describe("JobQueue", () => {
     it("should handle getProjectStatus for non-existent project", () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const status = queue.getProjectStatus("non/existent");
       expect(status).toBeNull();
@@ -1448,6 +1491,7 @@ describe("JobQueue", () => {
     it("should handle project pause with zero or negative duration", () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Zero duration should effectively be no pause
       queue.pauseProject("test/repo", 0);
@@ -1467,6 +1511,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 5, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Set project limit to 1
       queue.setProjectConcurrency("test/repo", 1);
@@ -1500,6 +1545,7 @@ describe("JobQueue", () => {
 
       // Start with limit of 1
       const queue = new JobQueue(store, 5, handler, 600000, { "test/repo": 1 });
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Remove the limit at runtime
       queue.setProjectConcurrency("test/repo", null);
@@ -1519,6 +1565,7 @@ describe("JobQueue", () => {
     it("should validate limit value", () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       expect(() => queue.setProjectConcurrency("test/repo", 0)).toThrow("Project concurrency limit must be a positive integer");
       expect(() => queue.setProjectConcurrency("test/repo", -1)).toThrow("Project concurrency limit must be a positive integer");
@@ -1540,6 +1587,7 @@ describe("JobQueue", () => {
 
       // Start with project limit of 1
       const queue = new JobQueue(store, 5, handler, 600000, { "test/repo": 1 });
+      queue.setDependencies({ projectRoot: dataDir });
 
       queue.enqueue(1, "test/repo");
       queue.enqueue(2, "test/repo");
@@ -1607,6 +1655,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 5, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Set different limits for two repos
       queue.setProjectConcurrency("org/repo-x", 1);
@@ -1633,6 +1682,7 @@ describe("JobQueue", () => {
     it("should clear projectErrorState on recover (paused project is resumed)", () => {
       const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Pause a project
       queue.pauseProject("test/repo", 60000); // 1분 pause
@@ -1652,6 +1702,7 @@ describe("JobQueue", () => {
         .mockRejectedValueOnce(new Error("failure 2"));
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // 두 번 실패하여 consecutiveFailures = 2
       const job1 = queue.enqueue(1, "test/repo");
@@ -1674,6 +1725,7 @@ describe("JobQueue", () => {
     it("should clear projectErrorState for multiple repos on recover", () => {
       const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // 두 repo 모두 pause
       queue.pauseProject("test/repo1", 60000);
@@ -1781,6 +1833,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // Mix jobs with and without priority
       queue.enqueue(1, "test/repo", undefined, false, "low");
@@ -1839,6 +1892,7 @@ describe("JobQueue", () => {
       // concurrency=0으로 시작하여 모든 잡을 먼저 pending 큐에 쌓음
       // (A 잡들이 슬롯을 독점하기 전에 B 잡도 큐에 있어야 라운드 로빈이 동작)
       const queue = new JobQueue(store, 0, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // A: 10개 대기
       for (let i = 1; i <= 10; i++) {
@@ -1886,6 +1940,7 @@ describe("JobQueue", () => {
 
       // concurrency=1: 순차 실행으로 라운드 로빈 순서 정확히 관찰
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       // A[1] 먼저 시작
       queue.enqueue(1, "project/A");
@@ -1924,6 +1979,7 @@ describe("JobQueue", () => {
       });
 
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       queue.enqueue(1, "project/A");
       queue.enqueue(2, "project/A");
@@ -1954,6 +2010,7 @@ describe("JobQueue", () => {
       // concurrency=0으로 시작하여 모든 잡을 큐에 쌓은 뒤 라운드 로빈 적용
       const projectConcurrency = { "project/A": 1, "project/B": 2 };
       const queue = new JobQueue(store, 0, handler, 600000, projectConcurrency);
+      queue.setDependencies({ projectRoot: dataDir });
 
       for (let i = 1; i <= 5; i++) {
         queue.enqueue(i, "project/A");
@@ -1982,6 +2039,7 @@ describe("JobQueue", () => {
     it("should resolve immediately when no jobs are running", async () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       const start = Date.now();
       await queue.shutdown(5000);
@@ -1991,6 +2049,7 @@ describe("JobQueue", () => {
     it("should reject new jobs after shutdown", async () => {
       const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       void queue.shutdown(100);
 
@@ -2007,6 +2066,7 @@ describe("JobQueue", () => {
           })
       );
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
       queue.enqueue(1, "test/repo");
 
       await new Promise((r) => setTimeout(r, 30));
@@ -2022,6 +2082,7 @@ describe("JobQueue", () => {
     it("should resolve after timeout even if jobs are still running", async () => {
       const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {})); // never resolves
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
       queue.enqueue(1, "test/repo");
 
       await new Promise((r) => setTimeout(r, 30));
@@ -2040,6 +2101,7 @@ describe("JobQueue", () => {
     it("should return undefined when no taskFactory is set", () => {
       const handler: JobHandler = vi.fn().mockImplementation(() => new Promise(() => {}));
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       queue.enqueue(1, "test/repo");
       const jobs = store.list();
@@ -2052,6 +2114,7 @@ describe("JobQueue", () => {
     it("should return undefined and log warning when queue is shutting down", () => {
       const handler: JobHandler = vi.fn();
       const queue = new JobQueue(store, 1, handler);
+      queue.setDependencies({ projectRoot: dataDir });
 
       void queue.shutdown(5000);
 

@@ -299,9 +299,14 @@ describe("POST /api/auth — rate-limit 통합 테스트", () => {
   let app: Hono;
 
   beforeEach(() => {
-    app = createDashboardRoutes(mockJobStore, mockJobQueue, undefined, apiKey, undefined, {
+    app = createDashboardRoutes({
+      store: mockJobStore,
+      queue: mockJobQueue,
+      apiKey,
+      dashboardAuth: {
       rateLimit: { maxAttempts: 3, windowMs: 60_000, blockDurationMs: 60_000 },
       sessionTtlMs: 3_600_000,
+    },
     });
   });
 

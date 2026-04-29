@@ -52,6 +52,7 @@ import { notifyPlanRetryContext } from "../../notification/notifier.js";
 import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { AQM_HOME } from "../../config/project-resolver.js";
+import { dumpPlanFailure } from "./plan-failure-dump.js";
 import { DEFAULT_PLAN_MAX_RETRIES } from "../execution/retry-config.js";
 import { analyzeTokenUsage, truncateRepoStructure, truncateToTokenBudget } from "../../review/token-estimator.js";
 
@@ -152,7 +153,7 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
     const template = loadTemplate(templatePath);
     finalPrompt = renderTemplate(template, templateData as unknown as TemplateVariables);
 
-    // retry 시에는 retry 섹션을 append
+    // attempt >= 2: retry 전용 템플릿 단독 로드 후 baseData + retryData 병합 렌더 append
     if (attempt > 1) {
       const retryTemplatePath = resolve(ctx.promptsDir, "plan-generation-retry.md");
       if (existsSync(retryTemplatePath)) {
@@ -170,12 +171,11 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
           context: retryContext.contextualization || {},
         };
 
-        // retry 템플릿에서 retry 특화 섹션만 추출
         const retryTemplate = loadTemplate(retryTemplatePath);
-        const retrySection = extractRetrySection(retryTemplate);
-        const renderedRetrySection = renderTemplate(retrySection, retryData);
+        const mergedData = { ...baseData, ...retryData };
+        const renderedRetryFull = renderTemplate(retryTemplate, mergedData as unknown as TemplateVariables);
 
-        finalPrompt += "\n\n" + renderedRetrySection;
+        finalPrompt += "\n\n" + renderedRetryFull;
       }
     }
 
@@ -316,16 +316,15 @@ export async function generatePlan(ctx: PlanGeneratorContext): Promise<PlanWithC
       errorMessage = getErrorMessage(parseError);
       logger.error(`Plan JSON parsing failed (attempt ${attempt}): ${errorMessage}. Claude output: ${result.output.slice(0, 500)}`);
 
-      try {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const logsDir = join(AQM_HOME, 'logs');
-        mkdirSync(logsDir, { recursive: true });
-        const dumpPath = join(logsDir, `plan-fail-${ctx.issue.number}-${timestamp}.txt`);
-        writeFileSync(dumpPath, result.output, 'utf-8');
-        logger.warn(`Plan 원본 응답 저장됨: ${dumpPath}`);
-      } catch (dumpError: unknown) {
-        logger.warn(`Failed to dump plan response: ${getErrorMessage(dumpError)}`);
-      }
+      // #800-1: 실패 응답 + 메타데이터 + 인덱스 라인 일괄 적재 (replay/패턴 분석용)
+      dumpPlanFailure({
+        aqmHome: AQM_HOME,
+        issueNumber: ctx.issue.number,
+        attempt,
+        errorCategory,
+        errorMessage,
+        rawResponse: result.output,
+      });
 
       // 히스토리 기록
       retryContext.generationHistory.push({
@@ -450,19 +449,3 @@ function validatePlan(plan: Plan): void {
 }
 
 export { collectContextualizationInfo };
-
-/**
- * retry 템플릿에서 retry 특화 섹션만 추출합니다.
- * "## 이전 실패 정보"부터 끝까지를 반환합니다.
- */
-function extractRetrySection(retryTemplate: string): string {
-  const lines = retryTemplate.split('\n');
-  const retryStartIndex = lines.findIndex(line => line.trim().startsWith('## 이전 실패 정보'));
-
-  if (retryStartIndex === -1) {
-    // retry 섹션을 찾을 수 없으면 전체 템플릿 반환
-    return retryTemplate;
-  }
-
-  return lines.slice(retryStartIndex).join('\n');
-}

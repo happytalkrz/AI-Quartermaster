@@ -3,6 +3,7 @@ import type { ClaudeCliConfig } from "../types/config.js";
 import { withRetry } from "../utils/rate-limiter.js";
 import { classifyError } from "../pipeline/errors/error-classifier.js";
 import { calculateCostFromUsage } from "./token-pricing.js";
+import { repairPlanJson } from "../pipeline/phases/plan-json-repair.js";
 import { getLogger } from "../utils/logger.js";
 
 const activeProcesses: Map<number, { process: ChildProcess; lastActivity: number }> = new Map();
@@ -365,11 +366,32 @@ export function extractJson<T = unknown>(text: string): T {
     // continue
   }
 
+  // 1b. Repair common Claude escape misses (#800-2): unescaped raw newline/tab/control,
+  //     curly quotes, trailing commas. 보수적 lexical 정규화만 — 의미 변경 없음.
+  try {
+    const repaired = repairPlanJson(text);
+    if (repaired !== text) {
+      return JSON.parse(repaired) as T;
+    }
+  } catch (_err: unknown) {
+    // continue
+  }
+
   // 2. Look for ```json ... ``` blocks
   const codeBlockMatch = text.match(/```json\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
+    const block = codeBlockMatch[1].trim();
     try {
-      return JSON.parse(codeBlockMatch[1].trim()) as T;
+      return JSON.parse(block) as T;
+    } catch (_err: unknown) {
+      // continue
+    }
+    // 2b. Same repair path on the code-block content
+    try {
+      const repaired = repairPlanJson(block);
+      if (repaired !== block) {
+        return JSON.parse(repaired) as T;
+      }
     } catch (_err: unknown) {
       // continue
     }

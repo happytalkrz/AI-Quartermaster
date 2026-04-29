@@ -112,7 +112,7 @@ describe("POST /api/new-issue", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = createDashboardRoutes(mockJobStore, mockJobQueue);
+    app = createDashboardRoutes({ store: mockJobStore, queue: mockJobQueue });
     mockLoadTemplate.mockReturnValue("template {{what}}");
     mockRenderTemplate.mockReturnValue("rendered body");
     mockRunCli.mockResolvedValue({ exitCode: 0, stdout: "https://github.com/owner/repo/issues/42\n", stderr: "" });
@@ -236,10 +236,11 @@ describe("POST /api/new-issue", () => {
   });
 
   it("readOnly 모드에서 POST 요청을 403으로 거부한다", async () => {
-    const readOnlyApp = createDashboardRoutes(
-      mockJobStore, mockJobQueue,
-      undefined, undefined, undefined, undefined, true
-    );
+    const readOnlyApp = createDashboardRoutes({
+      store: mockJobStore,
+      queue: mockJobQueue,
+      readOnly: true,
+    });
 
     const response = await readOnlyApp.request("/api/new-issue", {
       method: "POST",

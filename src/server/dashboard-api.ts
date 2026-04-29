@@ -10,14 +10,12 @@ import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { GetSkipEventsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
-import { getProjectSummary } from "../store/queries.js";
+import { GetSkipEventsQuerySchema, formatZodError } from "../types/api.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { runCli } from "../utils/cli-runner.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { statusToNotificationType } from "../types/pipeline.js";
-import { existsSync, statSync } from "fs";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { ZodError } from "zod";
@@ -31,6 +29,7 @@ import { registerStatsRoutes } from "./routes/stats.js";
 import { registerConfigRoutes } from "./routes/config.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerDoctorRoutes } from "./routes/doctor.js";
+import { registerHealthRoutes } from "./routes/health.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -131,100 +130,6 @@ export function zodValidationHook(
 }
 
 export { zValidator };
-
-/**
- * Health check helper functions
- */
-async function checkGitRemoteAccess(projectPath: string, gitPath: string): Promise<{ status: "ok" | "error"; message?: string }> {
-  try {
-    const result = await runCli(gitPath, ["ls-remote", "--heads", "origin"], { cwd: projectPath, timeout: 10000 });
-    if (result.exitCode !== 0) {
-      return {
-        status: "error",
-        message: `Git remote not accessible: ${result.stderr || "Cannot connect to remote"}`
-      };
-    }
-    return { status: "ok" };
-  } catch (error: unknown) {
-    return {
-      status: "error",
-      message: `Git remote check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
-    };
-  }
-}
-
-async function checkLocalPath(projectPath: string): Promise<{ status: "ok" | "error"; message?: string }> {
-  try {
-    if (!existsSync(projectPath)) {
-      return { status: "error", message: "Project path does not exist" };
-    }
-
-    const stats = statSync(projectPath);
-    if (!stats.isDirectory()) {
-      return { status: "error", message: "Project path is not a directory" };
-    }
-
-    return { status: "ok" };
-  } catch (error: unknown) {
-    return {
-      status: "error",
-      message: `Local path check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
-    };
-  }
-}
-
-async function checkDiskSpace(projectPath: string): Promise<{ status: "ok" | "warning" | "error"; message?: string; freeBytes?: number }> {
-  try {
-    const result = await runCli("df", ["-B1", projectPath], { timeout: 5000 });
-    if (result.exitCode !== 0) {
-      return { status: "warning", message: "Could not check disk space" };
-    }
-
-    const lines = result.stdout.trim().split('\n');
-    if (lines.length < 2) {
-      return { status: "warning", message: "Could not parse disk space output" };
-    }
-
-    const parts = lines[1].split(/\s+/);
-    const available = parseInt(parts[3] || "0", 10);
-
-    if (available === 0) {
-      return { status: "error", message: "No free disk space", freeBytes: available };
-    } else if (available < 1024 * 1024 * 1024) { // Less than 1GB
-      return { status: "warning", message: "Low disk space (< 1GB)", freeBytes: available };
-    }
-
-    return { status: "ok", freeBytes: available };
-  } catch (error: unknown) {
-    return {
-      status: "warning",
-      message: `Disk space check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
-    };
-  }
-}
-
-async function checkDependencies(projectPath: string): Promise<{ status: "ok" | "warning" | "error"; message?: string }> {
-  try {
-    // Check if package.json exists
-    const packageJsonPath = resolve(projectPath, "package.json");
-    if (!existsSync(packageJsonPath)) {
-      return { status: "warning", message: "No package.json found" };
-    }
-
-    // Check if node_modules exists
-    const nodeModulesPath = resolve(projectPath, "node_modules");
-    if (!existsSync(nodeModulesPath)) {
-      return { status: "warning", message: "Dependencies not installed (no node_modules)" };
-    }
-
-    return { status: "ok" };
-  } catch (error: unknown) {
-    return {
-      status: "error",
-      message: `Dependencies check failed: ${sanitizeErrorMessage(getErrorMessage(error))}`
-    };
-  }
-}
 
 /**
  * Applies runtime configuration changes to system components.
@@ -706,238 +611,11 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     setQuotaStatus: (s) => { currentQuotaStatus = s; },
   });
 
-  // Repositories API - project-level aggregated information with health and stats
-  api.get("/api/repositories", async (c) => {
-    try {
-      const config = configWatcher?.current() ?? loadConfig(rootDir);
-      const projects = config.projects ?? [];
-
-      if (projects.length === 0) {
-        return c.json({
-          repositories: [],
-          summary: { total: 0, healthy: 0, warning: 0, error: 0, totalJobs: 0, checkedAt: new Date().toISOString() },
-        });
-      }
-
-      const gitPath = config.git?.gitPath ?? "git";
-
-      // Get health checks for all projects in parallel
-      const healthResults = await Promise.all(
-        projects.map(async (projectConfig) => {
-          const projectPath = resolve(rootDir, projectConfig.path);
-          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck, worktreeCount] = await Promise.all([
-            checkGitRemoteAccess(projectPath, gitPath),
-            checkLocalPath(projectPath),
-            checkDiskSpace(projectPath),
-            checkDependencies(projectPath),
-            runCli(gitPath, ["worktree", "list", "--porcelain"], { cwd: projectPath }).then(result =>
-              result.exitCode === 0 ? result.stdout.trim().split('\n').filter(line => line.startsWith('worktree ')).length : 0
-            ).catch(() => 0), // Fall back to 0 if git worktree fails
-          ]);
-
-          let overallStatus: "healthy" | "warning" | "error" = "healthy";
-          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
-            overallStatus = "error";
-          } else if (
-            diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
-            dependenciesCheck.status === "warning" || dependenciesCheck.status === "error"
-          ) {
-            overallStatus = "warning";
-          }
-
-          return {
-            repository: projectConfig.repo,
-            name: projectConfig.repo,
-            path: projectConfig.path,
-            status: overallStatus,
-            worktreeCount,
-            health: {
-              gitRemoteAccess: gitRemoteCheck,
-              localPath: localPathCheck,
-              diskSpace: diskSpaceCheck,
-              dependencies: dependenciesCheck,
-            },
-            lastChecked: new Date().toISOString(),
-          };
-        })
-      );
-
-      // Get project statistics
-      const projectStats = getProjectSummary(store.getAqDb());
-      const statsMap = new Map(projectStats.map(s => [s.repo, s]));
-
-      // Combine health results with statistics
-      const repositories = healthResults.map(result => {
-        const stats = statsMap.get(result.repository) ?? {
-          repo: result.repository,
-          total: 0,
-          successCount: 0,
-          failureCount: 0,
-          totalCostUsd: 0,
-          successRate: 0,
-          lastActivity: null,
-        };
-
-        return {
-          ...result,
-          stats: {
-            totalJobs: stats.total,
-            successJobs: stats.successCount,
-            failedJobs: stats.failureCount,
-            successRate: stats.successRate,
-            totalCostUsd: stats.totalCostUsd,
-            lastActivity: stats.lastActivity,
-          },
-        };
-      });
-
-      const summary = {
-        total: repositories.length,
-        healthy: repositories.filter(r => r.status === "healthy").length,
-        warning: repositories.filter(r => r.status === "warning").length,
-        error: repositories.filter(r => r.status === "error").length,
-        totalJobs: repositories.reduce((sum, r) => sum + r.stats.totalJobs, 0),
-        checkedAt: new Date().toISOString(),
-      };
-
-      return c.json({ repositories, summary });
-    } catch (error: unknown) {
-      const logger = getLogger();
-      logger.error(`Failed to fetch repositories: ${getErrorMessage(error)}`);
-      return c.json({ error: "Failed to fetch repositories" }, 500);
-    }
-  });
-
-  // Projects health check endpoint — all configured projects
-  api.get("/api/projects/health", async (c) => {
-    try {
-      const config = configWatcher?.current() ?? loadConfig(rootDir);
-      const projects = config.projects ?? [];
-
-      if (projects.length === 0) {
-        return c.json({
-          projects: [],
-          summary: { total: 0, healthy: 0, warning: 0, error: 0, checkedAt: new Date().toISOString() },
-        });
-      }
-
-      const gitPath = config.git?.gitPath ?? "git";
-
-      const healthResults = await Promise.all(
-        projects.map(async (projectConfig) => {
-          const projectPath = resolve(rootDir, projectConfig.path);
-          const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
-            checkGitRemoteAccess(projectPath, gitPath),
-            checkLocalPath(projectPath),
-            checkDiskSpace(projectPath),
-            checkDependencies(projectPath),
-          ]);
-
-          let overallStatus: "healthy" | "warning" | "error" = "healthy";
-          if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
-            overallStatus = "error";
-          } else if (
-            diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
-            dependenciesCheck.status === "warning" || dependenciesCheck.status === "error"
-          ) {
-            overallStatus = "warning";
-          }
-
-          return {
-            project: projectConfig.repo,
-            status: overallStatus,
-            checks: {
-              gitRemoteAccess: gitRemoteCheck,
-              localPath: localPathCheck,
-              diskSpace: diskSpaceCheck,
-              dependencies: dependenciesCheck,
-            },
-            lastChecked: new Date().toISOString(),
-          };
-        })
-      );
-
-      const projectStats = getProjectSummary(store.getAqDb());
-      const statsMap = new Map(projectStats.map(s => [s.repo, s]));
-
-      const projectsWithStats = healthResults.map(result => ({
-        ...result,
-        stats: statsMap.get(result.project) ?? null,
-      }));
-
-      const summary = {
-        total: projectsWithStats.length,
-        healthy: projectsWithStats.filter(p => p.status === "healthy").length,
-        warning: projectsWithStats.filter(p => p.status === "warning").length,
-        error: projectsWithStats.filter(p => p.status === "error").length,
-        checkedAt: new Date().toISOString(),
-      };
-
-      return c.json({ projects: projectsWithStats, summary });
-    } catch (error: unknown) {
-      return c.json({ error: `Projects health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
+  // Health: 도메인 라우트 분할 (Plan C #C9) — repositories + projects/health + health
+  registerHealthRoutes(api, { store, configWatcher, rootDir });
 
   // Setup wizard: 도메인 라우트 분할 (Plan C #C9)
   registerSetupRoutes(api, { rootDir });
-
-  // Health check endpoint
-  api.get("/api/health", async (c) => {
-    try {
-      const projectParam = c.req.query("project");
-      if (!projectParam) {
-        return c.json({ error: "project parameter is required" }, 400);
-      }
-
-      const project = decodeURIComponent(projectParam);
-
-      // Load configuration to get project path and git settings
-      const config = configWatcher?.current() ?? loadConfig(rootDir);
-      const projectConfig = config.projects?.find(p => p.repo === project);
-
-      if (!projectConfig) {
-        return c.json({ error: `Project "${project}" not found in configuration` }, 404);
-      }
-
-      const projectPath = resolve(rootDir, projectConfig.path);
-      const gitPath = config.git?.gitPath || "git";
-
-      // Run health checks in parallel
-      const [gitRemoteCheck, localPathCheck, diskSpaceCheck, dependenciesCheck] = await Promise.all([
-        checkGitRemoteAccess(projectPath, gitPath),
-        checkLocalPath(projectPath),
-        checkDiskSpace(projectPath),
-        checkDependencies(projectPath)
-      ]);
-
-      // Determine overall status
-      let overallStatus: "healthy" | "warning" | "error" = "healthy";
-
-      if (gitRemoteCheck.status === "error" || localPathCheck.status === "error") {
-        overallStatus = "error";
-      } else if (diskSpaceCheck.status === "warning" || diskSpaceCheck.status === "error" ||
-                 dependenciesCheck.status === "warning" || dependenciesCheck.status === "error") {
-        overallStatus = "warning";
-      }
-
-      const healthResponse: HealthCheckResponse = {
-        project,
-        status: overallStatus,
-        checks: {
-          gitRemoteAccess: gitRemoteCheck,
-          localPath: localPathCheck,
-          diskSpace: diskSpaceCheck,
-          dependencies: dependenciesCheck,
-        },
-        lastChecked: new Date().toISOString(),
-      };
-
-      return c.json(healthResponse);
-    } catch (error: unknown) {
-      return c.json({ error: `Health check failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
 
   // Create a new GitHub issue from dashboard
   api.post("/api/new-issue", zValidator('json', NewIssueRequestSchema, zodValidationHook), async (c) => {

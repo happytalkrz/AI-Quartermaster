@@ -3,23 +3,21 @@ import { randomUUID, timingSafeEqual } from "crypto";
 import { SessionManager } from "./auth/session.js";
 import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "fs";
-import { resolve, normalize, join } from "path";
+import { resolve, join } from "path";
 import { homedir } from "os";
 import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
-import { loadConfig, updateConfigSection, addProjectToConfig, removeProjectFromConfig, updateProjectInConfig } from "../config/loader.js";
-import { validateConfig } from "../config/validator.js";
+import { loadConfig, updateConfigSection } from "../config/loader.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
 import { getBasicFieldMetas } from "../config/schema-meta.js";
 import { getPresets } from "../config/presets.js";
-import type { ProjectConfig, AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
+import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config.js";
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { CreateProjectRequestSchema, UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, UpdateProjectRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, GetNotificationsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, GetNotificationsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
-import { isPathSafe } from "../utils/slug.js";
 import { runAllChecks } from "../doctor/checks.js";
 import { healLevel1, healLevel2, writeToActiveHealProcess } from "../doctor/heal.js";
 import { runCli } from "../utils/cli-runner.js";
@@ -27,7 +25,6 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { sanitizeErrorMessage } from "../utils/error-sanitizer.js";
 import { statusToNotificationType } from "../types/pipeline.js";
 import { existsSync, statSync } from "fs";
-import { detectProjectCommands, detectBaseBranch } from "../config/project-detector.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import type { ZodError } from "zod";
@@ -35,6 +32,7 @@ import { loadTemplate, renderTemplate } from "../prompt/template-renderer.js";
 import { SSEManager } from "./sse-manager.js";
 import { registerNotificationsRoutes } from "./routes/notifications.js";
 import { registerVersionRoutes } from "./routes/version.js";
+import { registerProjectsRoutes } from "./routes/projects.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -135,27 +133,6 @@ export function zodValidationHook(
 }
 
 export { zValidator };
-
-/**
- * Validates and normalizes path parameters to prevent path traversal attacks.
- */
-function validateAndNormalizePath(path: string, paramName: string): string {
-  if (!path || typeof path !== 'string') {
-    throw new Error(`${paramName} is required and must be a string`);
-  }
-
-  const trimmedPath = path.trim();
-
-  // Check for path safety BEFORE normalization to catch patterns that normalize() might clean up
-  if (!isPathSafe(trimmedPath)) {
-    throw new Error(`${paramName} contains unsafe characters or path traversal patterns`);
-  }
-
-  // Normalize path after safety check
-  const normalizedPath = normalize(trimmedPath);
-
-  return normalizedPath;
-}
 
 /**
  * Health check helper functions
@@ -621,250 +598,8 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
     }
   });
 
-  // Get projects list
-  api.get("/api/projects", (c) => {
-    try {
-      const config = configWatcher?.current() ?? loadConfig(rootDir);
-
-      if (!config.projects || config.projects.length === 0) {
-        return c.json({ projects: [] });
-      }
-
-      const projects = config.projects.map(project => ({
-        ...project,
-        errorState: queue.getProjectStatus(project.repo),
-      }));
-
-      return c.json({ projects });
-    } catch (error: unknown) {
-      const logger = getLogger();
-      logger.error(`Failed to load projects: ${getErrorMessage(error)}`);
-      return c.json({ error: "Failed to load projects" }, 500);
-    }
-  });
-
-  // Add project to configuration
-  api.post("/api/projects", zValidator('json', CreateProjectRequestSchema, zodValidationHook), async (c) => {
-    try {
-      const { repo, path, baseBranch, mode, commands } = c.req.valid('json');
-
-      // Validate and normalize path
-      let normalizedPath: string;
-      try {
-        normalizedPath = validateAndNormalizePath(path, "path");
-      } catch (error: unknown) {
-        return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
-      }
-
-      // Auto-detect commands and baseBranch if not explicitly provided
-      const detection = detectProjectCommands(normalizedPath);
-      const resolvedBaseBranch = baseBranch?.trim() || await detectBaseBranch(normalizedPath);
-
-      const project: ProjectConfig = {
-        repo: repo.trim(),
-        path: normalizedPath,
-        baseBranch: resolvedBaseBranch,
-        mode,
-        commands: commands ?? detection.commands,
-      };
-
-      try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
-        if (currentConfig.projects?.find(p => p.repo === project.repo)) {
-          return c.json({ error: `Project "${project.repo}" already exists` }, 409);
-        }
-      } catch (error: unknown) {
-        // Config doesn't exist yet, proceed
-      }
-
-      addProjectToConfig(configPath, project);
-      configWatcher?.refresh();
-
-      try {
-        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
-      } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
-      }
-
-      return c.json({
-        message: "Project added successfully",
-        project,
-        detectedLanguage: detection.language,
-      }, 201);
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to add project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Remove project from configuration
-  api.delete("/api/projects/:repo", (c) => {
-    try {
-      const repo = decodeURIComponent(c.req.param("repo"));
-
-      if (!repo || repo.trim() === "") {
-        return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
-        if (!currentConfig.projects?.find(p => p.repo === repo)) {
-          return c.json({ error: `Project "${repo}" not found` }, 404);
-        }
-      } catch (error: unknown) {
-        return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-      }
-
-      removeProjectFromConfig(configPath, repo);
-      configWatcher?.refresh();
-
-      try {
-        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
-      } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
-      }
-
-      return c.json({
-        message: "Project removed successfully",
-        repo
-      });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to remove project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Update project in configuration
-  api.put("/api/projects/:repo", zValidator('json', UpdateProjectRequestSchema, zodValidationHook), async (c) => {
-    try {
-      const repo = decodeURIComponent(c.req.param("repo") ?? "");
-
-      if (!repo || repo.trim() === "") {
-        return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      // Validate that project exists
-      try {
-        const currentConfig = configWatcher?.current() ?? loadConfig(rootDir);
-        if (!currentConfig.projects?.find(p => p.repo === repo)) {
-          return c.json({ error: `Project "${repo}" not found` }, 404);
-        }
-      } catch (error: unknown) {
-        return c.json({ error: `Failed to load configuration: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-      }
-
-      const { path, baseBranch, mode, commands } = c.req.valid('json');
-      const updates: Partial<Pick<ProjectConfig, 'path' | 'baseBranch' | 'mode' | 'commands'>> = {};
-
-      if (path !== undefined) {
-        try {
-          updates.path = validateAndNormalizePath(path, "path");
-        } catch (error: unknown) {
-          return c.json({ error: sanitizeErrorMessage(getErrorMessage(error)) }, 400);
-        }
-      }
-
-      if (baseBranch !== undefined) {
-        updates.baseBranch = baseBranch?.trim() || undefined;
-      }
-
-      if (mode !== undefined) {
-        updates.mode = mode ?? undefined;
-      }
-
-      if (commands !== undefined) {
-        updates.commands = commands;
-      }
-
-      // Check if any fields to update
-      if (Object.keys(updates).length === 0) {
-        return c.json({ error: "No valid fields to update" }, 400);
-      }
-
-      updateProjectInConfig(configPath, repo, updates);
-      configWatcher?.refresh();
-
-      try {
-        validateConfig(configWatcher?.current() ?? loadConfig(rootDir));
-      } catch (error: unknown) {
-        return c.json({ error: `Configuration validation failed: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 400);
-      }
-
-      return c.json({
-        message: "Project updated successfully",
-        repo,
-        updates
-      });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to update project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Get project error state
-  api.get("/api/projects/:repo/error-state", (c) => {
-    try {
-      const repo = decodeURIComponent(c.req.param("repo"));
-
-      if (!repo || repo.trim() === "") {
-        return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      const errorState = queue.getProjectStatus(repo);
-      return c.json({ repo, errorState });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to get error state: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Manually pause a project
-  api.post("/api/projects/:repo/pause", async (c) => {
-    try {
-      const repo = decodeURIComponent(c.req.param("repo"));
-
-      if (!repo || repo.trim() === "") {
-        return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      let durationMs: number | undefined;
-      try {
-        const body = await c.req.json() as Record<string, unknown>;
-        if (body.durationMs !== undefined) {
-          if (typeof body.durationMs !== "number" || body.durationMs <= 0) {
-            return c.json({ error: "durationMs must be a positive number" }, 400);
-          }
-          durationMs = body.durationMs;
-        }
-      } catch (err: unknown) {
-        getLogger().debug(`Optional body parse failed — using default: ${getErrorMessage(err)}`);
-      }
-
-      // Default: 30 minutes
-      const effectiveDuration = durationMs ?? 30 * 60 * 1000;
-      queue.pauseProject(repo, effectiveDuration);
-
-      return c.json({
-        message: `Project "${repo}" paused for ${Math.round(effectiveDuration / 1000)}s`,
-        repo,
-        pausedUntil: Date.now() + effectiveDuration,
-      });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to pause project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Manually resume a paused project
-  api.post("/api/projects/:repo/resume", (c) => {
-    try {
-      const repo = decodeURIComponent(c.req.param("repo"));
-
-      if (!repo || repo.trim() === "") {
-        return c.json({ error: "repo parameter is required" }, 400);
-      }
-
-      queue.resumeProject(repo);
-      return c.json({ message: `Project "${repo}" resumed`, repo });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to resume project: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
+  // Projects: 도메인 라우트 분할 (Plan C #C9)
+  registerProjectsRoutes(api, { queue, configWatcher, rootDir, configPath });
 
   // List all jobs (exclude archived by default, ?include=archived to show)
   api.get("/api/jobs", (c) => {

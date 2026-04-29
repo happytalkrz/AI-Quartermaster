@@ -5,7 +5,7 @@ import { LoginRateLimiter } from "./auth/rate-limiter.js";
 import { readFileSync, writeFileSync, copyFileSync, mkdirSync } from "fs";
 import { resolve, join } from "path";
 import { homedir } from "os";
-import type { JobStore, Job, ListJobsOptions } from "../queue/job-store.js";
+import type { JobStore, Job } from "../queue/job-store.js";
 import type { JobQueue } from "../queue/job-queue.js";
 import { loadConfig, updateConfigSection } from "../config/loader.js";
 import { maskSensitiveConfig } from "../utils/config-masker.js";
@@ -15,7 +15,7 @@ import type { AQConfig, DashboardAuthConfig, QuotaStatus } from "../types/config
 import type { ConfigWatcher } from "../config/config-watcher.js";
 import type { AutomationScheduler } from "../automation/scheduler.js";
 import { setGlobalLogLevel, getLogger } from "../utils/logger.js";
-import { UpdateConfigRequestSchema, GetJobsQuerySchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, UpdateJobPriorityRequestSchema, GetMetricsQuerySchema, CancelJobRequestSchema, RetryJobRequestSchema, GetNotificationsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
+import { UpdateConfigRequestSchema, GetStatsQuerySchema, GetCostsQuerySchema, GetProjectStatsQuerySchema, GetSkipEventsQuerySchema, GetFailureReasonsQuerySchema, GetMetricsQuerySchema, formatZodError, type HealthCheckResponse } from "../types/api.js";
 import { getJobStats, getCostStats, getProjectSummary, getProjectStatsWithTimeRange, getFailureReasons, getThroughputTimeSeries, getSuccessRate } from "../store/queries.js";
 import type { PatternStore } from "../learning/pattern-store.js";
 import { runAllChecks } from "../doctor/checks.js";
@@ -33,6 +33,7 @@ import { SSEManager } from "./sse-manager.js";
 import { registerNotificationsRoutes } from "./routes/notifications.js";
 import { registerVersionRoutes } from "./routes/version.js";
 import { registerProjectsRoutes } from "./routes/projects.js";
+import { registerJobsRoutes } from "./routes/jobs.js";
 
 // Session manager: in-memory token store with TTL and periodic pruning
 const sessionManager = new SessionManager();
@@ -601,108 +602,9 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
   // Projects: 도메인 라우트 분할 (Plan C #C9)
   registerProjectsRoutes(api, { queue, configWatcher, rootDir, configPath });
 
-  // List all jobs (exclude archived by default, ?include=archived to show)
-  api.get("/api/jobs", (c) => {
-    try {
-      // Parse query parameters using Zod schema
-      const queryParamsForValidation = {
-        project: c.req.query("project"),
-        status: c.req.query("status"),
-        limit: c.req.query("limit") ? parseInt(c.req.query("limit")!, 10) : undefined,
-        offset: c.req.query("offset") ? parseInt(c.req.query("offset")!, 10) : undefined,
-      };
-      const includeArchived = c.req.query("include") === "archived";
-
-      // Validate query parameters (excluding the legacy 'include' parameter)
-      const parseResult = GetJobsQuerySchema.safeParse(queryParamsForValidation);
-      if (!parseResult.success) {
-        return c.json({
-          error: "Invalid query parameters",
-          details: formatZodError(parseResult.error)
-        }, 400);
-      }
-
-      const { project, status, limit, offset } = parseResult.data;
-
-      // DB 레벨 필터 옵션 구성
-      const baseOptions: ListJobsOptions = {};
-      if (!includeArchived) baseOptions.excludeStatus = "archived";
-      if (project) baseOptions.repo = project;
-
-      // API status → 내부 JobStatus 매핑
-      if (status === "pending") {
-        baseOptions.status = "queued";
-      } else if (status === "running") {
-        baseOptions.status = "running";
-      } else if (status === "completed") {
-        baseOptions.status = "success";
-      } else if (status === "failed") {
-        baseOptions.statuses = ["failure", "cancelled"];
-      }
-
-      // DB 레벨에서 총 개수 조회 (페이지네이션 없이)
-      const totalJobs = store.list(baseOptions).length;
-
-      // DB 레벨에서 페이지네이션 적용하여 결과 조회
-      const jobs = store.list({ ...baseOptions, limit, offset });
-
-      const queueStatus = queue.getStatus();
-      return c.json({
-        jobs,
-        queue: queueStatus,
-        pagination: {
-          total: totalJobs,
-          offset: offset ?? 0,
-          limit: limit ?? totalJobs,
-          hasMore: (offset ?? 0) + (limit ?? totalJobs) < totalJobs
-        }
-      });
-    } catch (error: unknown) {
-      return c.json({ error: `Failed to fetch jobs: ${sanitizeErrorMessage(getErrorMessage(error))}` }, 500);
-    }
-  });
-
-  // Get single job
-  api.get("/api/jobs/:id", (c) => {
-    const job = store.get(c.req.param("id"));
-    if (!job) return c.json({ error: "Job not found" }, 404);
-    return c.json(job);
-  });
-
-  // Cancel a job
-  api.post("/api/jobs/:id/cancel", zValidator('json', CancelJobRequestSchema, zodValidationHook), (c) => {
-    const id = c.req.param("id") ?? "";
-    const cancelled = queue.cancel(id);
-    if (!cancelled) return c.json({ error: "Job not found or not cancellable" }, 404);
-    return c.json({ status: "cancelled", id });
-  });
-
-  // Update job priority
-  api.put("/api/jobs/:id/priority", zValidator('json', UpdateJobPriorityRequestSchema, zodValidationHook), async (c) => {
-    const id = c.req.param("id") ?? "";
-    const job = store.get(id);
-    if (!job) return c.json({ error: "Job not found" }, 404);
-
-    const { priority } = c.req.valid('json');
-    const updatedJob = store.update(id, { priority });
-    if (!updatedJob) return c.json({ error: "Failed to update priority" }, 500);
-
-    broadcastToAllClients("job-updated", updatedJob);
-    return c.json(updatedJob);
-  });
-
-  // Delete a completed/failed job
-  api.delete("/api/jobs/:id", (c) => {
-    const id = c.req.param("id");
-    const job = store.get(id);
-    if (!job) return c.json({ error: "Job not found" }, 404);
-    if (job.status === "queued" || job.status === "running") {
-      return c.json({ error: "Cannot delete active job. Cancel it first." }, 400);
-    }
-    const deleted = store.remove(id);
-    if (!deleted) return c.json({ error: "Failed to delete" }, 500);
-    return c.json({ status: "deleted", id });
-  });
+  // Jobs CRUD + cancel/priority/retry: 도메인 라우트 분할 (Plan C #C9)
+  // (logs/stream은 SSE이므로 별도 처리)
+  registerJobsRoutes(api, { store, queue, sseManager });
 
   // Skip events stats (reasonCode별 집계)
   api.get("/api/skip-events/stats", (c) => {
@@ -997,21 +899,6 @@ export function createDashboardRoutes(store: JobStore, queue: JobQueue, configWa
         "Connection": "keep-alive",
       },
     });
-  });
-
-  // Retry a failed job
-  api.post("/api/jobs/:id/retry", zValidator('json', RetryJobRequestSchema, zodValidationHook), async (c) => {
-    const id = c.req.param("id") ?? "";
-    const job = store.get(id);
-    if (!job) return c.json({ error: "Job not found" }, 404);
-    if (job.status !== "failure" && job.status !== "cancelled") {
-      return c.json({ error: "Only failed or cancelled jobs can be retried" }, 400);
-    }
-    const newJob = await queue.retryJob(id);
-    if (!newJob) {
-      return c.json({ error: "Failed to retry job" }, 500);
-    }
-    return c.json({ status: "queued", id: newJob.id });
   });
 
   // SSE endpoint for real-time updates

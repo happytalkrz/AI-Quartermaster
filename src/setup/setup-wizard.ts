@@ -38,6 +38,11 @@ export async function runSetup(aqRoot: string, options?: SetupOptions): Promise<
       const minimalConfig = `# AI 병참부 최소 설정 파일
 # 전체 옵션은 config.reference.yml 참조
 
+general:
+  # 필수: 이 인스턴스가 처리할 이슈를 만든 GitHub 사용자(들).
+  # 비어 있으면 모든 이슈가 차단됩니다. 본인 GitHub 아이디로 교체하세요.
+  instanceOwners: []
+
 projects:
   - repo: "owner/repo-name"        # 필수: GitHub 저장소 (owner/repo)
     path: "/path/to/local/clone"   # 필수: 로컬 클론 경로
@@ -58,7 +63,14 @@ projects:
     }
 
     const answers = await runInteractiveWizard();
+    const ownersYaml = answers.instanceOwners.map(o => `    - "${o}"`).join("\n");
     const userConfig = `# AI 병참부 프로젝트 설정
+
+general:
+  # 이 인스턴스가 처리할 이슈를 만든 GitHub 사용자 목록.
+  # 비어 있으면 모든 이슈가 차단됩니다.
+  instanceOwners:
+${ownersYaml}
 
 projects:
   - repo: "${answers.repo}"
@@ -276,7 +288,31 @@ export async function runInteractiveWizard(): Promise<WizardAnswers> {
     }
   }
 
-  // 3. 서버 모드 선택 (폴링/웹훅)
+  // 3. 인스턴스 소유자(GitHub 아이디) 입력 — 비어 있으면 모든 이슈가 차단되므로 강제.
+  let instanceOwners: string[] = [];
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const raw = await askQuestion(
+      "이 인스턴스가 처리할 이슈를 만든 GitHub 사용자 (콤마 구분, 예: alice,bob): ",
+    );
+    instanceOwners = raw
+      .split(",")
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    const invalid = instanceOwners.find(o => !/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(o));
+    if (instanceOwners.length === 0) {
+      console.log("   ❌ 최소 1명은 입력해야 합니다. 빈 값이면 모든 이슈가 차단됩니다.");
+      continue;
+    }
+    if (invalid) {
+      console.log(`   ❌ 잘못된 GitHub 아이디 형식: '${invalid}'`);
+      continue;
+    }
+    break;
+  }
+
+  // 4. 서버 모드 선택 (폴링/웹훅)
   const modeChoices = ["폴링 (간편 — webhook 설정 불필요)", "웹훅 (실시간 — smee.io 필요)"];
   const modeIndex = await askChoice("모드를 선택하세요:", modeChoices);
   const serverMode: ServerMode = modeIndex === 0 ? "polling" : "webhook";
@@ -284,7 +320,8 @@ export async function runInteractiveWizard(): Promise<WizardAnswers> {
   console.log("\n✅ 설정 완료!");
   console.log(`   저장소: ${repo}`);
   console.log(`   경로: ${path}`);
+  console.log(`   소유자: ${instanceOwners.join(", ")}`);
   console.log(`   모드: ${serverMode}\n`);
 
-  return { repo, path, serverMode };
+  return { repo, path, serverMode, instanceOwners };
 }

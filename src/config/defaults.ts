@@ -100,8 +100,9 @@ export const DEFAULT_CONFIG: AQConfig = {
     rounds: [
       {
         name: "code-review",
-        promptTemplate:
-          "Review the following code changes for correctness, style, and potential issues:\n\n{diff}",
+        // review-runner는 promptTemplate를 prompts/ 디렉토리 내 파일명으로 취급한다.
+        // raw text를 넣으면 path로 resolve돼 ENOENT가 발생한다.
+        promptTemplate: "review-round1.md",
         failAction: "warn",
         maxRetries: 2,
         model: null,
@@ -111,8 +112,7 @@ export const DEFAULT_CONFIG: AQConfig = {
     ],
     simplify: {
       enabled: true,
-      promptTemplate:
-        "Simplify the following implementation while preserving all functionality:\n\n{diff}",
+      promptTemplate: "review-round3-simplify.md",
     },
     unifiedMode: false,  // 기본값은 false로 기존 동작 유지
   },

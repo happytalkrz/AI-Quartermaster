@@ -165,8 +165,17 @@ export async function fetchAndValidateIssue(
     validateIssue(issue, project.safety, instanceLabel);
   }
 
-  // Determine initial pipeline mode: issue label > project config > default
-  const mode = resumeMode || detectModeFromLabels(issue.labels, project.mode ?? "code");
+  // Determine initial pipeline mode.
+  // 우선순위: 명시 라벨(aq-mode:*) > resumeMode(체크포인트 mode) > project.mode > "code".
+  // 명시 라벨을 resumeMode보다 우선하지 않으면, 한 번 잘못 저장된 체크포인트가 라벨 변경을
+  // 이기는 상황이 생긴다 (사용자 보고: "라벨을 바꿔도 mode가 안 바뀐다").
+  const explicitLabelModeMatch = issue.labels
+    .map(l => /^aq-mode:(code|content|qa)$/.exec(l))
+    .find((m): m is RegExpExecArray => m !== null);
+  const explicitLabelMode = explicitLabelModeMatch?.[1] as PipelineMode | undefined;
+  const mode: PipelineMode = explicitLabelMode
+    ?? resumeMode
+    ?? detectModeFromLabels(issue.labels, project.mode ?? "code");
   logger.info(`Pipeline mode (초기): ${mode}`);
   jl?.log(`모드: ${mode}`);
 

@@ -48,9 +48,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
     logger.info(`[HEARTBEAT] pipeline alive — issue=#${input.issueNumber} repo=${input.repo} state=${runtime.state} elapsed=${elapsedSec}s`);
   }, HEARTBEAT_INTERVAL_MS);
-  if (typeof heartbeatTimer.unref === "function") {
-    heartbeatTimer.unref();
-  }
+  heartbeatTimer.unref?.();
 
   // 전체 파이프라인 수명 동안 유지되는 누적 phase 결과 배열
   const accumulatedPhaseResults: PhaseResult[] = [];

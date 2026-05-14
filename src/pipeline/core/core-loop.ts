@@ -13,6 +13,7 @@ import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore, getPatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
+import { getModePreset } from "../../config/mode-presets.js";
 import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
 import { createCheckpoint } from "../../safety/rollback-manager.js";
 import { createSlug } from "../../utils/slug.js";
@@ -313,6 +314,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     }
   }
 
+  // mode preset에 따라 phase 실행 단계에서 사용할 test/lint 명령을 결정한다.
+  // content 모드 등 코드 검증이 부적절한 모드에서는 빈 문자열로 비워 phase-executor /
+  // phase-retry가 명령 실행을 건너뛰도록 한다 (ENOENT 방지).
+  const modePreset = getModePreset(plan.mode ?? "code");
+  const effectiveTestCommand = modePreset.skipTests ? "" : ctx.config.commands.test;
+  const effectiveLintCommand = modePreset.skipLint ? "" : ctx.config.commands.lint;
+
   // Schedule phases for parallel execution based on dependencies
   const enableParallelPhases = ctx.config.features?.parallelPhases ?? false;
   logger.info(`Parallel phases feature: ${enableParallelPhases ? 'enabled' : 'disabled'}`);
@@ -377,8 +385,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         claudeConfig: ctx.config.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.cwd,
-        testCommand: ctx.config.commands.test,
-        lintCommand: ctx.config.commands.lint,
+        testCommand: effectiveTestCommand,
+        lintCommand: effectiveLintCommand,
         gitPath: ctx.config.git.gitPath,
         projectConventions: ctx.projectConventions,
         skillsContext: ctx.skillsContext,
@@ -420,8 +428,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             claudeConfig: ctx.config.commands.claudeCli,
             promptsDir: ctx.promptsDir,
             cwd: ctx.cwd,
-            testCommand: ctx.config.commands.test,
-            lintCommand: ctx.config.commands.lint,
+            testCommand: effectiveTestCommand,
+            lintCommand: effectiveLintCommand,
             gitPath: ctx.config.git.gitPath,
             jobLogger: jl,
             checkpoint,

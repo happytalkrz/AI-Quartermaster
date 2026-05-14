@@ -3,7 +3,7 @@ import { selectExecutor } from "../execution/executor-factory.js";
 import { retryPhase } from "../execution/phase-retry.js";
 import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
 import { schedulePhases } from "../execution/phase-scheduler.js";
-import type { AQConfig } from "../../types/config.js";
+import type { AQConfig, PipelineMode } from "../../types/config.js";
 import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost, CostBreakdown, ModelCostEntry } from "../../types/pipeline.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
@@ -138,6 +138,12 @@ export interface CoreLoopContext {
   promptsDir: string;
   cwd: string;
   modeHint?: string;
+  /**
+   * 호출자가 결정한 초기 PipelineMode. baseline 캡처 등 plan 생성 이전 단계에서
+   * preset 플래그(skipTypecheck/skipLint 등)를 적용하는 데 사용된다.
+   * 생략 시 "code"로 간주한다.
+   */
+  mode?: PipelineMode;
   projectConventions?: string;
   skillsContext?: string;
   dataDir?: string;
@@ -212,7 +218,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   }
 
   // Step 0b: Capture error baseline (한 번만 캡처하여 모든 phase에서 재사용)
-  if (!ctx.baseline) {
+  // content 모드 등 코드 검증을 건너뛰는 preset에서는 baseline 캡처 자체를 스킵한다.
+  // 그렇지 않으면 package.json이 없는 디렉토리에서 ENOENT/오류 로그가 양산된다.
+  const initialPreset = getModePreset(ctx.mode ?? "code");
+  const shouldSkipBaseline = initialPreset.skipTypecheck && initialPreset.skipLint;
+  if (!ctx.baseline && !shouldSkipBaseline) {
     logger.info("Capturing pre-existing error baseline (tsc + eslint)...");
     ctx.baseline = await captureErrorBaseline(ctx.cwd, {
       typecheck: ctx.config.commands.typecheck,
@@ -220,6 +230,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       test: ctx.config.commands.test,
     });
     logger.info(`Baseline captured: tsc=${ctx.baseline.tsc.totalErrors} errors, eslint=${ctx.baseline.eslint.totalErrors} errors, test failures=${ctx.baseline.test?.failedFiles.length ?? "not captured"}, capture warnings=${ctx.baseline.captureWarnings?.length ?? 0}`);
+  } else if (shouldSkipBaseline) {
+    logger.info(`Baseline capture skipped (mode=${ctx.mode ?? "code"}, skipTypecheck+skipLint preset)`);
   }
 
   // Step 1: Generate plan

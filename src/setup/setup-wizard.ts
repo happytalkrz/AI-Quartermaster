@@ -306,7 +306,7 @@ export async function runInteractiveWizard(): Promise<WizardAnswers> {
       continue;
     }
     if (invalid) {
-      console.log(`   ❌ 잘못된 GitHub 아이디 형식: '${invalid}'`);
+      console.log(`   ❌ 잘못된 GitHub 아이디 형식: '${invalid}' — 영숫자/하이픈만, 하이픈으로 시작·종료 불가, 최대 39자`);
       continue;
     }
     break;

@@ -163,20 +163,24 @@ export async function fetchAndValidateIssue(
 
     // === Safety: validate issue labels ===
     validateIssue(issue, project.safety, instanceLabel);
-
-    if (setupContext) {
-      saveCheckpoint(setupContext.dataDir, issueNumber, {
-        issueNumber, repo, state, projectRoot: setupContext.projectRoot,
-        worktreePath: setupContext.worktreePath, branchName: setupContext.branchName,
-        phaseResults: [], mode: "code", savedAt: new Date().toISOString(),
-      });
-    }
   }
 
   // Determine initial pipeline mode: issue label > project config > default
   const mode = resumeMode || detectModeFromLabels(issue.labels, project.mode ?? "code");
   logger.info(`Pipeline mode (초기): ${mode}`);
   jl?.log(`모드: ${mode}`);
+
+  // VALIDATED 단계 첫 진입이면 mode를 포함해 1회 저장.
+  // 이전에는 mode 결정 전에 saveCheckpoint를 호출하며 mode:"code"를 하드코딩했고,
+  // 그 결과 첫 체크포인트가 항상 code로 저장돼 resume 시 라벨/project.mode가
+  // 무시되는 버그가 있었다.
+  if (state === "VALIDATED" && setupContext) {
+    saveCheckpoint(setupContext.dataDir, issueNumber, {
+      issueNumber, repo, state, projectRoot: setupContext.projectRoot,
+      worktreePath: setupContext.worktreePath, branchName: setupContext.branchName,
+      phaseResults: [], mode, savedAt: new Date().toISOString(),
+    });
+  }
 
   // === Feasibility Check ===
   const feasibilityResult = checkFeasibility(issue, project.safety.feasibilityCheck);

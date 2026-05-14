@@ -257,7 +257,8 @@ PORT=3000
     it("should collect valid answers through complete wizard flow", async () => {
       const mockAskQuestion = vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("test-user/test-repo")  // valid repo
-        .mockResolvedValueOnce(mockPath);               // valid path
+        .mockResolvedValueOnce(mockPath)               // valid path
+        .mockResolvedValueOnce("alice,bob");           // instance owners
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(0); // polling mode (index 0)
@@ -267,10 +268,11 @@ PORT=3000
       expect(result).toEqual({
         repo: "test-user/test-repo",
         path: mockPath,
-        serverMode: "polling"
+        serverMode: "polling",
+        instanceOwners: ["alice", "bob"]
       });
 
-      expect(mockAskQuestion).toHaveBeenCalledTimes(2);
+      expect(mockAskQuestion).toHaveBeenCalledTimes(3);
       expect(mockAskChoice).toHaveBeenCalledTimes(1);
     });
 
@@ -279,7 +281,8 @@ PORT=3000
         .mockResolvedValueOnce("invalid-repo")         // invalid (no slash)
         .mockResolvedValueOnce("user/")               // invalid (empty repo)
         .mockResolvedValueOnce("valid-user/valid-repo") // valid
-        .mockResolvedValueOnce(mockPath);             // valid path
+        .mockResolvedValueOnce(mockPath)              // valid path
+        .mockResolvedValueOnce("alice");              // instance owners
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(0); // polling mode
@@ -309,7 +312,8 @@ PORT=3000
       const mockAskQuestion = vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")           // valid repo
         .mockResolvedValueOnce(invalidPath)           // invalid path (doesn't exist)
-        .mockResolvedValueOnce(mockPath);              // valid path
+        .mockResolvedValueOnce(mockPath)              // valid path
+        .mockResolvedValueOnce("alice");              // instance owners
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(1); // webhook mode (index 1)
@@ -328,7 +332,8 @@ PORT=3000
       const mockAskQuestion = vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")           // valid repo
         .mockResolvedValueOnce(nonExistentPath)       // invalid path
-        .mockResolvedValueOnce(mockPath);             // valid path (after clone suggestion)
+        .mockResolvedValueOnce(mockPath)              // valid path (after clone suggestion)
+        .mockResolvedValueOnce("alice");              // instance owners
 
       const mockAskChoice = vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(0); // polling mode
@@ -367,7 +372,8 @@ PORT=3000
       // Test polling mode (choice 0)
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
-        .mockResolvedValueOnce(mockPath);
+        .mockResolvedValueOnce(mockPath)
+        .mockResolvedValueOnce("alice");
 
       vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(0);  // polling mode (index 0)
@@ -381,7 +387,8 @@ PORT=3000
       // Test webhook mode (choice 1)
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
-        .mockResolvedValueOnce(mockPath);
+        .mockResolvedValueOnce(mockPath)
+        .mockResolvedValueOnce("alice");
 
       vi.spyOn(promptUtils, "askChoice")
         .mockResolvedValue(1);  // webhook mode (index 1)
@@ -394,7 +401,8 @@ PORT=3000
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")    // valid repo
         .mockResolvedValueOnce("")             // empty path - triggers non-existence error
-        .mockResolvedValueOnce(mockPath);      // valid path
+        .mockResolvedValueOnce(mockPath)       // valid path
+        .mockResolvedValueOnce("alice");       // instance owners
 
       vi.spyOn(promptUtils, "askChoice").mockResolvedValue(0);
 
@@ -498,7 +506,8 @@ PORT=3000
     it("should write config and return early for polling mode", async () => {
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
-        .mockResolvedValueOnce(testDir);  // testDir already exists
+        .mockResolvedValueOnce(testDir)        // testDir already exists
+        .mockResolvedValueOnce("alice");       // instance owners
 
       vi.spyOn(promptUtils, "askChoice").mockResolvedValue(0); // polling
 
@@ -508,12 +517,14 @@ PORT=3000
       expect(existsSync(configPath)).toBe(true);
       const content = readFileSync(configPath, "utf-8");
       expect(content).toContain("user/repo");
+      expect(content).toContain("alice");
     });
 
     it("should continue to smee/webhook steps for webhook mode", async () => {
       vi.spyOn(promptUtils, "askQuestion")
         .mockResolvedValueOnce("user/repo")
-        .mockResolvedValueOnce(testDir);
+        .mockResolvedValueOnce(testDir)
+        .mockResolvedValueOnce("alice");
 
       vi.spyOn(promptUtils, "askChoice").mockResolvedValue(1); // webhook
 

@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-AQM_INSTALL_MODE="${AQM_INSTALL_MODE:-npm}"
+AQM_INSTALL_MODE="${AQM_INSTALL_MODE:-git}"
 AQM_HOME="${AQM_HOME:-$HOME/.ai-quartermaster}"
 BIN_DIR="${HOME}/.local/bin"
 REPO_URL="https://github.com/happytalkrz/AI-Quartermaster.git"
@@ -128,7 +128,9 @@ check_optional "claude" "https://docs.anthropic.com/en/docs/claude-code"
 echo ""
 
 # ── 2. 설치 ────────────────────────────────────────────────────────────
-NPM_LOG=$(mktemp /tmp/aqm-install-XXXXXX.log)
+# macOS(BSD) mktemp는 'XXXXXX' 뒤에 suffix가 있으면 치환을 하지 않아 매 호출 같은 경로를 반환한다.
+# .log 확장자는 외부에 노출되지 않으므로 XXXXXX를 끝에 두고 suffix를 제거한다.
+NPM_LOG=$(mktemp /tmp/aqm-install-XXXXXX)
 
 if [ "$AQM_INSTALL_MODE" = "git" ]; then
   # ── git-clone 모드 (AQM_INSTALL_MODE=git) ─────────────────────────

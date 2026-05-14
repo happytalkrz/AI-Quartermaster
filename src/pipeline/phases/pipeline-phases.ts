@@ -7,6 +7,7 @@ import { getLogger } from "../../utils/logger.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
 import { handleCoreLoopFailure } from "../errors/pipeline-error-handler.js";
 import { runReviewPhase, runSimplifyPhase, type ReviewContext, type SimplifyContext } from "./pipeline-review.js";
+import type { ReviewVariables } from "../../types/review.js";
 import { runValidationPhase } from "../setup/pipeline-validation.js";
 import { pushAndCreatePR, cleanupOnSuccess } from "./pipeline-publish.js";
 import { setupGitEnvironment, prepareWorkEnvironment } from "../setup/pipeline-git-setup.js";
@@ -449,46 +450,59 @@ export async function executePostProcessingPhases(
     });
   }
 
-  // Review Phase
-  const reviewContext: ReviewContext = {
-    issue,
-    coreResult,
-    gitConfig,
-    project,
-    worktreePath,
-    promptsDir,
-    skillsContext,
-    jl,
-    timer,
-    checkpoint
-  };
+  // Review Phase — mode preset이 skipReview면 스킵하고 상태 전이만 수행.
+  let reviewCostUsd = 0;
+  let reviewVariables: ReviewVariables | undefined;
 
-  const reviewTracking = await runPhaseWithTracking(
-    "review:code",
-    () => runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState),
-    context.accumulatedPhaseResults
-  );
-  const reviewResult = reviewTracking.result;
+  if (preset.skipReview) {
+    logger.info("Review phase skipped (preset.skipReview=true)");
+    jl?.log("Review 단계 스킵 (모드 preset)");
+    transitionState(runtime, "REVIEWING");
+  } else {
+    const reviewContext: ReviewContext = {
+      issue,
+      coreResult,
+      gitConfig,
+      project,
+      worktreePath,
+      promptsDir,
+      skillsContext,
+      jl,
+      timer,
+      checkpoint
+    };
 
-  if (!reviewResult.success) {
-    const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
-    saveResult(config, aqRoot ?? runtime.projectRoot, issueNumber, report);
-    throw new Error(reviewResult.error || "Review phase failed");
+    const reviewTracking = await runPhaseWithTracking(
+      "review:code",
+      () => runReviewPhase(reviewContext, executionModePreset, runtime.state, isPastState),
+      context.accumulatedPhaseResults
+    );
+    const reviewResult = reviewTracking.result;
+
+    if (!reviewResult.success) {
+      const report = formatResult(issueNumber, repo, coreResult.plan, coreResult.phaseResults, startTime, undefined, coreResult.totalUsage);
+      saveResult(config, aqRoot ?? runtime.projectRoot, issueNumber, report);
+      throw new Error(reviewResult.error || "Review phase failed");
+    }
+
+    reviewCostUsd = reviewResult.costUsd ?? 0;
+    reviewVariables = reviewResult.reviewVariables;
+    transitionState(runtime, "REVIEWING");
+
+    if (hookRegistry && hookExecutor) {
+      await safeExecuteHooks(hookRegistry, hookExecutor, "post-review", {
+        repo,
+        issue_number: String(issueNumber),
+      });
+    }
   }
 
-  let reviewCostUsd = reviewResult.costUsd ?? 0;
-  const reviewVariables = reviewResult.reviewVariables;
-  transitionState(runtime, "REVIEWING");
-
-  if (hookRegistry && hookExecutor) {
-    await safeExecuteHooks(hookRegistry, hookExecutor, "post-review", {
-      repo,
-      issue_number: String(issueNumber),
-    });
-  }
-
-  // Simplify Phase
-  if (reviewVariables) {
+  // Simplify Phase — skipSimplify 또는 reviewVariables 없으면 스킵.
+  if (preset.skipSimplify) {
+    logger.info("Simplify phase skipped (preset.skipSimplify=true)");
+    jl?.log("Simplify 단계 스킵 (모드 preset)");
+    transitionState(runtime, "SIMPLIFYING");
+  } else if (reviewVariables) {
     const simplifyContext: SimplifyContext = {
       project,
       worktreePath,

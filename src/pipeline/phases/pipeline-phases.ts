@@ -326,6 +326,7 @@ export async function executeCoreLoopPhase(
     promptsDir,
     cwd: runtime.worktreePath!,
     modeHint: preset.planHint,
+    mode,
     projectConventions: envResult.projectConventions,
     skillsContext: envResult.skillsContext,
     dataDir,

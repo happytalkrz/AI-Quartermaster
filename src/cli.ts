@@ -69,8 +69,24 @@ export async function runCommand(args: CliArgs): Promise<void> {
     ? { ...config, general: { ...config.general, dryRun: true } }
     : config;
   setGlobalLogLevel(effectiveConfig.general.logLevel);
-  const targetRoot = args.target ? resolve(args.target) : process.cwd();
+
+  // --target 미지정 시: config.projects에서 repo가 일치하는 항목의 path를 사용한다.
+  // 매칭 실패한 경우에만 cwd로 폴백. 기존에는 항상 cwd로 폴백해 aqm run을 다른
+  // 디렉토리에서 실행하면 엉뚱한 경로를 프로젝트 루트로 잡았다.
   const logger = getLogger();
+  let targetRoot: string;
+  if (args.target) {
+    targetRoot = resolve(args.target);
+  } else {
+    const matched = (effectiveConfig.projects ?? []).find(p => p.repo === args.repo);
+    if (matched) {
+      targetRoot = resolve(matched.path);
+      logger.info(`--target 미지정: config.projects의 매칭 path 사용 (${args.repo} → ${targetRoot})`);
+    } else {
+      targetRoot = process.cwd();
+      logger.warn(`--target 미지정 + config.projects에 ${args.repo} 매칭 없음 → 현재 디렉토리(cwd) 사용`);
+    }
+  }
 
   logger.info(`AI Quartermaster 시작 - Issue #${args.issue} (${args.repo})`);
   logger.info(`대상 프로젝트: ${targetRoot}`);

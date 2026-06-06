@@ -220,6 +220,7 @@ export interface WizardAnswers {
   repo: string;
   path: string;
   serverMode: ServerMode;
+  instanceOwners: string[];
 }
 
 /** Options for the init command */

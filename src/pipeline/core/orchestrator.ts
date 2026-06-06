@@ -22,11 +22,15 @@ import { HookRegistry } from "../../hooks/hook-registry.js";
 import { HookExecutor } from "../../hooks/hook-executor.js";
 import { dispatchPipelineEvent } from "../automation/automation-dispatcher.js";
 import { getErrorMessage } from "../../utils/error-utils.js";
+import { getLogger } from "../../utils/logger.js";
+
+const HEARTBEAT_INTERVAL_MS = 60_000;
 
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorResult> {
   const { config, aqRoot } = input;
   const startTime = Date.now();
+  const logger = getLogger();
 
   // Initialize hook registry and executor from config
   const hookRegistry = new HookRegistry(config.hooks ?? {});
@@ -37,6 +41,14 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
 
   // Initialize pipeline state
   const runtime = await initializePipelineState(input, config);
+
+  // 파이프라인 진행 단계 heartbeat — 사용자에게 hang이 아님을 알린다.
+  // Plan 생성/Phase 작성 같은 장기 단계가 60s 이상 걸려도 server.log에 진행 신호가 보이도록.
+  const heartbeatTimer = setInterval(() => {
+    const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+    logger.info(`[HEARTBEAT] pipeline alive — issue=#${input.issueNumber} repo=${input.repo} state=${runtime.state} elapsed=${elapsedSec}s`);
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref?.();
 
   // 전체 파이프라인 수명 동안 유지되는 누적 phase 결과 배열
   const accumulatedPhaseResults: PhaseResult[] = [];
@@ -153,7 +165,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       startTime
     });
   } finally {
-    // 파이프라인 종료 시 캐시 정리 - 성공/실패 모두 메모리 누수 방지
+    // 파이프라인 종료 시 heartbeat 중지 + 캐시 정리 — 성공/실패 모두 메모리 누수 방지
+    clearInterval(heartbeatTimer);
     clearCache();
   }
 }

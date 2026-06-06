@@ -3,7 +3,7 @@ import { selectExecutor } from "../execution/executor-factory.js";
 import { retryPhase } from "../execution/phase-retry.js";
 import { checkPhaseLimit } from "../../safety/phase-limit-guard.js";
 import { schedulePhases } from "../execution/phase-scheduler.js";
-import type { AQConfig } from "../../types/config.js";
+import type { AQConfig, PipelineMode } from "../../types/config.js";
 import type { Plan, PhaseResult, ErrorHistoryEntry, ErrorCategory, PlanWithCost, CostBreakdown, ModelCostEntry } from "../../types/pipeline.js";
 import type { GitHubIssue } from "../../github/issue-fetcher.js";
 import { getLogger } from "../../utils/logger.js";
@@ -13,6 +13,7 @@ import type { JobLogger } from "../../queue/job-logger.js";
 import { PatternStore, getPatternStore } from "../../learning/pattern-store.js";
 import { PROGRESS_PLAN_GENERATED, phaseStart } from "../reporting/progress-tracker.js";
 import { makePseudoPhaseSuccess, makePseudoPhaseFailure, nowIso } from "../reporting/phase-result-helper.js";
+import { getModePreset } from "../../config/mode-presets.js";
 import { createWorktree, removeWorktree } from "../../git/worktree-manager.js";
 import { createCheckpoint } from "../../safety/rollback-manager.js";
 import { createSlug } from "../../utils/slug.js";
@@ -137,6 +138,12 @@ export interface CoreLoopContext {
   promptsDir: string;
   cwd: string;
   modeHint?: string;
+  /**
+   * 호출자가 결정한 초기 PipelineMode. baseline 캡처 등 plan 생성 이전 단계에서
+   * preset 플래그(skipTypecheck/skipLint 등)를 적용하는 데 사용된다.
+   * 생략 시 "code"로 간주한다.
+   */
+  mode?: PipelineMode;
   projectConventions?: string;
   skillsContext?: string;
   dataDir?: string;
@@ -211,7 +218,11 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
   }
 
   // Step 0b: Capture error baseline (한 번만 캡처하여 모든 phase에서 재사용)
-  if (!ctx.baseline) {
+  // content 모드 등 코드 검증을 건너뛰는 preset에서는 baseline 캡처 자체를 스킵한다.
+  // 그렇지 않으면 package.json이 없는 디렉토리에서 ENOENT/오류 로그가 양산된다.
+  const initialPreset = getModePreset(ctx.mode ?? "code");
+  const shouldSkipBaseline = initialPreset.skipTypecheck && initialPreset.skipLint;
+  if (!ctx.baseline && !shouldSkipBaseline) {
     logger.info("Capturing pre-existing error baseline (tsc + eslint)...");
     ctx.baseline = await captureErrorBaseline(ctx.cwd, {
       typecheck: ctx.config.commands.typecheck,
@@ -219,6 +230,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
       test: ctx.config.commands.test,
     });
     logger.info(`Baseline captured: tsc=${ctx.baseline.tsc.totalErrors} errors, eslint=${ctx.baseline.eslint.totalErrors} errors, test failures=${ctx.baseline.test?.failedFiles.length ?? "not captured"}, capture warnings=${ctx.baseline.captureWarnings?.length ?? 0}`);
+  } else if (shouldSkipBaseline) {
+    logger.info(`Baseline capture skipped (mode=${ctx.mode ?? "code"}, skipTypecheck+skipLint preset)`);
   }
 
   // Step 1: Generate plan
@@ -313,6 +326,13 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
     }
   }
 
+  // mode preset에 따라 phase 실행 단계에서 사용할 test/lint 명령을 결정한다.
+  // content 모드 등 코드 검증이 부적절한 모드에서는 빈 문자열로 비워 phase-executor /
+  // phase-retry가 명령 실행을 건너뛰도록 한다 (ENOENT 방지).
+  const modePreset = getModePreset(plan.mode ?? "code");
+  const effectiveTestCommand = modePreset.skipTests ? "" : ctx.config.commands.test;
+  const effectiveLintCommand = modePreset.skipLint ? "" : ctx.config.commands.lint;
+
   // Schedule phases for parallel execution based on dependencies
   const enableParallelPhases = ctx.config.features?.parallelPhases ?? false;
   logger.info(`Parallel phases feature: ${enableParallelPhases ? 'enabled' : 'disabled'}`);
@@ -377,8 +397,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
         claudeConfig: ctx.config.commands.claudeCli,
         promptsDir: ctx.promptsDir,
         cwd: ctx.cwd,
-        testCommand: ctx.config.commands.test,
-        lintCommand: ctx.config.commands.lint,
+        testCommand: effectiveTestCommand,
+        lintCommand: effectiveLintCommand,
         gitPath: ctx.config.git.gitPath,
         projectConventions: ctx.projectConventions,
         skillsContext: ctx.skillsContext,
@@ -420,8 +440,8 @@ export async function runCoreLoop(ctx: CoreLoopContext): Promise<CoreLoopResult>
             claudeConfig: ctx.config.commands.claudeCli,
             promptsDir: ctx.promptsDir,
             cwd: ctx.cwd,
-            testCommand: ctx.config.commands.test,
-            lintCommand: ctx.config.commands.lint,
+            testCommand: effectiveTestCommand,
+            lintCommand: effectiveLintCommand,
             gitPath: ctx.config.git.gitPath,
             jobLogger: jl,
             checkpoint,

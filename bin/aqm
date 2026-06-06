@@ -361,8 +361,27 @@ case "${1:-}" in
       exit 0
     fi
 
-    # Foreground mode — pass through
-    exec_cli start "${ARGS[@]}"
+    # Foreground mode — PID 파일을 작성하고 자식 프로세스로 띄워 부모가 wait한다.
+    # 기존에는 exec_cli로 바로 교체해 PID 파일이 없었고, aqm stop/restart가
+    # lsof 폴백에만 의존했다. PID 파일이 있으면 즉시 신호 전달 가능.
+    # 출력은 터미널과 server.log에 동시에 남긴다 — daemon 모드와 동일한 위치라
+    # aqm logs가 일관되게 동작한다. (process substitution 사용 → CHILD_PID는 node)
+    mkdir -p "$AQM_DATA_DIR/logs"
+    inject_default_config start "${ARGS[@]}"
+    if [ "$AQM_MODE" = "npm" ]; then
+      node "$AQM_ROOT/dist/cli.js" "${INJECTED_ARGS[@]}" \
+        > >(tee -a "$AQM_LOG_FILE") 2> >(tee -a "$AQM_LOG_FILE" >&2) &
+    else
+      npx --prefix "$AQM_ROOT" tsx "$AQM_ROOT/src/cli.ts" "${INJECTED_ARGS[@]}" \
+        > >(tee -a "$AQM_LOG_FILE") 2> >(tee -a "$AQM_LOG_FILE" >&2) &
+    fi
+    CHILD_PID=$!
+    echo "$CHILD_PID" > "$AQM_PID_FILE"
+    # Ctrl+C / SIGTERM 시 자식에게 신호 전달, EXIT에서 PID 파일 정리
+    trap 'rm -f "$AQM_PID_FILE"' EXIT
+    trap 'kill -TERM "$CHILD_PID" 2>/dev/null' INT TERM
+    wait "$CHILD_PID"
+    exit $?
     ;;
   stop)
     # Extract port from config or use default
